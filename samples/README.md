@@ -1,6 +1,6 @@
 # Samples
 
-A curated catalog of samples that build on the [AI Gateway tier in Azure API Management](https://aka.ms/aigateway/docs). This folder catalogs samples that live in their own repositories; it does not host sample code.
+A curated catalog of samples that build on [Azure AI Gateway](https://learn.microsoft.com/azure/ai-gateway/overview). This folder catalogs samples that live in their own repositories; it does not host sample code.
 
 | Sample | Language | Description |
 | ------ | -------- | ----------- |

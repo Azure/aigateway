@@ -1,6 +1,6 @@
 ---
 title: Deploy an enterprise reference architecture
-summary: Deploy a production-shaped AI Gateway environment from modular Bicep, with a keyless Foundry backend, models and MCP tools behind RBAC, a key per app, layered policies, and monitoring. Then promote it from dev to prod with a GitHub Actions workflow that signs in with OpenID Connect and smoke-tests every deployment.
+summary: Deploy a production-shaped Azure AI Gateway environment from modular Bicep, with a keyless Foundry backend, models and MCP tools behind RBAC, a key per app, layered policies, and monitoring. Then promote it from dev to prod with a GitHub Actions workflow that signs in with OpenID Connect and smoke-tests every deployment.
 category: production
 level: Advanced
 duration: 60

@@ -1,6 +1,6 @@
 ---
 title: Provision your AI Gateway
-summary: Create the shared AI Gateway that your apps and agents will call, from the AI Gateway portal, the Azure CLI, or Bicep and azd, then take a guided tour of the portal.
+summary: Create the shared Azure AI Gateway that your apps and agents will call, from the AI Gateway portal, the Azure CLI, or Bicep and azd, then take a guided tour of the portal.
 category: foundations
 level: Beginner
 duration: 15

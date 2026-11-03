@@ -356,7 +356,7 @@ usually makes at least two model calls: one that asks for a tool and one that wr
   [Publish models from any provider behind stable aliases](../03-multi-provider-aliases/README.md). The agents keep
   working with the same `AI_GATEWAY_MODEL`.
 - **Use .NET.** The [.NET hosted agent sample](https://github.com/Azure-Samples/simple-foundry-hosted-agent-dotnet-aigateway)
-  connects Microsoft Agent Framework for .NET to a gateway. With the AI Gateway tier, pass the runtime key as the
+  connects Microsoft Agent Framework for .NET to a gateway. With Azure AI Gateway, pass the runtime key as the
   client's API key and don't add an `api-key` header to model calls.
 - **Other SDKs.** For the GitHub Copilot SDK and other frameworks, use their model and MCP configuration points with
   the same endpoints, and confirm the endpoint formats and authentication they support.

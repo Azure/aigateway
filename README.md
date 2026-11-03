@@ -1,15 +1,15 @@
-# AI Gateway tier in Azure API Management
+# Azure AI Gateway
 
 **One gateway for every model and tool.**
-[AI Gateway tier in Azure API Management](https://aka.ms/aigateway/docs) is the AI-focused tier of Azure API
-Management. It gives developers one familiar way to call model APIs and MCP tools, while
+[Azure AI Gateway](https://learn.microsoft.com/azure/ai-gateway/overview) is a managed gateway for AI traffic: requests to AI models and
+Model Context Protocol (MCP) servers. It gives developers one familiar way to call model APIs and MCP tools, while
 platform teams enforce security, policy, networking, and observability.
 
 - **Govern model APIs** — Microsoft Foundry, OpenAI, Anthropic, Google Vertex, and more, while developers keep the SDKs they already use.
 - **Federate MCP tools** — combine MCP servers, OpenAPI APIs, and SaaS connectors behind one governed MCP endpoint.
 - **Enforce AI policies** — access, content safety, token, and rate controls, globally or per model and tool.
 - **Observe AI traffic** — token usage, latency, errors, and policy outcomes in dashboards and logs.
-- **Run on a trusted platform** — the Azure API Management platform, with Private Link, virtual network integration, and managed identity.
+- **Run on a trusted platform** — built on the Azure API Management gateway foundation, with Private Link, virtual network integration, and managed identity.
 
 > See the **[AI Gateway documentation](https://aka.ms/aigateway/docs)** to get started.
 
@@ -40,7 +40,7 @@ one-line Bash and PowerShell installers, or browse the
 ## Coding-agent plugin
 
 This repository hosts the official **plugin** for coding agents. It helps
-developers **build applications on top of an existing AI Gateway tier in Azure API Management resources**: it discovers the
+developers **build applications on top of an existing Azure AI Gateway**: it discovers the
 models and MCP tool servers registered in a gateway and integrates them into whatever
 you're building — call a model over the OpenAI-compatible passthrough, connect MCP
 tools, or scaffold a runnable agent — all from your coding agent.
@@ -119,7 +119,7 @@ To report a security issue, see [SECURITY.md](SECURITY.md).
 ## Samples
 
 Looking for working examples? The [samples catalog](samples/README.md) curates end-to-end
-samples and infrastructure that build on the AI Gateway tier in Azure API Management.
+samples and infrastructure that build on Azure AI Gateway.
 
 ## Contributing
 

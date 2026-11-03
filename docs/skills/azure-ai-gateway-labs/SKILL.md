@@ -6,7 +6,7 @@ license: MIT
 
 # Azure AI Gateway labs
 
-Hands-on labs for the Azure AI Gateway. Each lab is one Markdown file with a scenario, a diagram, step-by-step tasks
+Hands-on labs for Azure AI Gateway. Each lab is one Markdown file with a scenario, a diagram, step-by-step tasks
 with checkpoints, a **Verify** section, and clean-up, and the Troubleshooting page maps its errors to its steps. Most
 labs offer several tracks (Portal, Azure CLI, REST, Bicep, Code), and some also ship a Jupyter notebook.
 
@@ -14,7 +14,7 @@ labs offer several tracks (Portal, Azure CLI, REST, Bicep, Code), and some also 
 - Source: https://github.com/Azure/ai-gateway/tree/main/labs
 - Product docs: https://ai.gateway.azure.com/docs
 - AI Gateway portal: https://ai.gateway.azure.com
-- Overview on Microsoft Learn: https://learn.microsoft.com/azure/api-management/ai-gateway-overview
+- Overview on Microsoft Learn: https://learn.microsoft.com/azure/ai-gateway/overview
 
 Portal labels and API shapes can change as AI Gateway evolves. When a step fails, look up the error in the lab's
 section of the Troubleshooting page (its **Step** column names the steps where each error shows up), and compare the
@@ -152,8 +152,8 @@ Each entry shows the level, time, tracks, and the labs it needs.
 ### Foundations
 
 - **⚡** [Your first model call in 5 minutes](https://azure.github.io/ai-gateway/labs/quickstart/index.md) `quickstart` (Beginner, 5 min · Portal, CLI, Bicep): Learn the building blocks of Azure AI Gateway, create a gateway with a Microsoft Foundry model in the portal, the Azure CLI, or Bicep with azd, and make your first model call, all in about five minutes.
-- **00** [How Azure AI Gateway works](https://azure.github.io/ai-gateway/labs/00-how-ai-gateway-works/index.md) `00-how-ai-gateway-works` (Beginner, 20 min · Portal): A 20-minute visual tour of the AI Gateway tier of Azure API Management. Follow one request through the gateway, meet models, aliases, MCP servers, policies, and identities, and pick the learning path that fits your role.
-- **01** [Provision your AI Gateway](https://azure.github.io/ai-gateway/labs/01-provision-gateway/index.md) `01-provision-gateway` (Beginner, 15 min · Portal, CLI, Bicep, Notebook): Create the shared AI Gateway that your apps and agents will call, from the AI Gateway portal, the Azure CLI, or Bicep and azd, then take a guided tour of the portal.
+- **00** [How Azure AI Gateway works](https://azure.github.io/ai-gateway/labs/00-how-ai-gateway-works/index.md) `00-how-ai-gateway-works` (Beginner, 20 min · Portal): A 20-minute visual tour of Azure AI Gateway. Follow one request through the gateway, meet models, aliases, MCP servers, policies, and identities, and pick the learning path that fits your role.
+- **01** [Provision your AI Gateway](https://azure.github.io/ai-gateway/labs/01-provision-gateway/index.md) `01-provision-gateway` (Beginner, 15 min · Portal, CLI, Bicep, Notebook): Create the shared Azure AI Gateway that your apps and agents will call, from the AI Gateway portal, the Azure CLI, or Bicep and azd, then take a guided tour of the portal.
 - **02** [Publish a Foundry model and make your first call](https://azure.github.io/ai-gateway/labs/02-first-model-call/index.md) `02-first-model-call` (Beginner, 25 min · Portal, CLI, Bicep, Code, Notebook · needs 01): Publish a Microsoft Foundry model deployment through your gateway with its managed identity, create a runtime API key, try the model in the Catalog playground, and call it from curl, PowerShell, Python, TypeScript, and C#.
 
 ### Models & routing
@@ -164,7 +164,7 @@ Each entry shows the level, time, tracks, and the labs it needs.
 
 ### MCP & tools
 
-- **04** [Federate MCP tools behind one endpoint](https://azure.github.io/ai-gateway/labs/04-federate-mcp-tools/index.md) `04-federate-mcp-tools` (Beginner, 30 min · Portal, CLI, Bicep, Code, Notebook · needs 01): Register a remote MCP server in AI Gateway, add a second backend under its own namespace, and connect curl, VS Code, and Python to one governed MCP endpoint.
+- **04** [Federate MCP tools behind one endpoint](https://azure.github.io/ai-gateway/labs/04-federate-mcp-tools/index.md) `04-federate-mcp-tools` (Beginner, 30 min · Portal, CLI, Bicep, Code, Notebook · needs 01): Register a remote MCP server in Azure AI Gateway, add a second backend under its own namespace, and connect curl, VS Code, and Python to one governed MCP endpoint.
 - **05** [Control which tools agents can call](https://azure.github.io/ai-gateway/labs/05-mcp-tool-controls/index.md) `05-mcp-tool-controls` (Intermediate, 20 min · Portal, CLI, Bicep · needs 04): Publish only approved MCP tools with name patterns, block risky tools, take a whole MCP server offline, and cap tool traffic per caller with a request rate limit.
 
 ### Governance & cost
@@ -194,10 +194,10 @@ Each entry shows the level, time, tracks, and the labs it needs.
 
 ### Production & emerging
 
-- **18** [Lock down backend traffic with private networking](https://azure.github.io/ai-gateway/labs/18-private-networking/index.md) `18-private-networking` (Advanced, 45 min · Portal, CLI, Bicep · needs 01, 12): Create an AI Gateway with private routing through your virtual network, reach a Foundry backend over a private endpoint with its public access turned off, and learn which inbound options aren't available yet.
+- **18** [Lock down backend traffic with private networking](https://azure.github.io/ai-gateway/labs/18-private-networking/index.md) `18-private-networking` (Advanced, 45 min · Portal, CLI, Bicep · needs 01, 12): Create an Azure AI Gateway with private routing through your virtual network, reach a Foundry backend over a private endpoint with its public access turned off, and learn which inbound options aren't available yet.
 - **19** [Protect tool calls with Agent 365 threat protection](https://azure.github.io/ai-gateway/labs/19-tool-threat-protection/index.md) `19-tool-threat-protection` (Advanced, 30 min · Portal, Bicep · needs 04, 11): Have Microsoft Defender and Microsoft Purview evaluate every tool call on an MCP server, before the tool runs, after it returns, or both, and see how a fail-closed denial reaches the caller.
 - **20** [Govern MCP servers with Agent 365](https://azure.github.io/ai-gateway/labs/20-agent-365-governance/index.md) `20-agent-365-governance` (Intermediate, 20 min · Portal · needs 04, 05): Connect Microsoft Agent 365 to your gateways, find their MCP servers in one inventory, block a single tool or a whole server from the Microsoft 365 admin center, and see exactly what agents get back.
-- **21** [Deploy an enterprise reference architecture](https://azure.github.io/ai-gateway/labs/21-enterprise-reference/index.md) `21-enterprise-reference` (Advanced, 60 min · Bicep · needs 09, 13, 12): Deploy a production-shaped AI Gateway environment from modular Bicep, with a keyless Foundry backend, models and MCP tools behind RBAC, a key per app, layered policies, and monitoring. Then promote it from dev to prod with a GitHub Actions workflow that signs in with OpenID Connect and smoke-tests every deployment.
+- **21** [Deploy an enterprise reference architecture](https://azure.github.io/ai-gateway/labs/21-enterprise-reference/index.md) `21-enterprise-reference` (Advanced, 60 min · Bicep · needs 09, 13, 12): Deploy a production-shaped Azure AI Gateway environment from modular Bicep, with a keyless Foundry backend, models and MCP tools behind RBAC, a key per app, layered policies, and monitoring. Then promote it from dev to prod with a GitHub Actions workflow that signs in with OpenID Connect and smoke-tests every deployment.
 
 ## Learning paths
 

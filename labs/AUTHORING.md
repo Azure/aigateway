@@ -422,6 +422,9 @@ Keep the video optional: every step it shows must also be written in the lab.
   feature isn't documented, give the portal path and say so.
 - Every command must be copy-pasteable. Prefer environment variables set once at the top of a track.
 - Bash first, PowerShell as an adjacent tab where it matters.
+- Call the product **Azure AI Gateway** in titles, summaries, and the first mention on a page, and **AI Gateway**
+  after that. It's its own product, built on the API Management gateway foundation, so don't call it a tier or SKU
+  of Azure API Management. Keep verbatim strings as they are: portal labels, role names, and error messages.
 - Never list the AI Gateway regions, because they change. Link to
   [Find the available regions](SETUP.md#find-the-available-regions), and use `eastus2` as the example value.
 - Don't describe AI Gateway as a preview service or as free. Mark a capability that's still emerging with

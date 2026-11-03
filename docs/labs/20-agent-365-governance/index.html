@@ -30,9 +30,9 @@
 <header class="topbar">
   <div class="topbar-inner">
     <button class="icon-btn nav-toggle" type="button" aria-label="Open lab navigation" aria-controls="sidebar" aria-expanded="false"><svg class="i" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5.5h14M3 10h14M3 14.5h14"/></svg></button>
-    <a class="brand" href="../../index.html" aria-label="AI Gateway Labs home">
+    <a class="brand" href="../../index.html" aria-label="Azure AI Gateway Labs home">
       <img class="brand-logo" src="../../assets/favicon.svg" width="28" height="28" alt="">
-      <span class="brand-name">AI Gateway</span> <span class="brand-badge">Labs</span>
+      <span class="brand-name"><span class="brand-azure">Azure </span>AI Gateway</span> <span class="brand-badge">Labs</span>
     </a>
     <nav class="topnav" aria-label="Primary">
       <a href="../../labs/" aria-current="page">All labs</a>
@@ -186,7 +186,7 @@ removes it. Existing agents keep using the same gateway endpoints.</p>
 <div class="table-wrap"><table><thead><tr><th>Control</th><th>Where you set it</th><th>What callers get</th></tr></thead><tbody><tr><td>Block a tool (Agent 365)</td><td>Admin center › <span class="uipath"><span class="uipath-item">Agents</span><span class="uipath-sep" aria-hidden="true">›</span><span class="uipath-item">Tools</span></span> › server › <strong>Tools</strong> tab</td><td>HTTP <code>200</code>, <code>isError: true</code>, denial code <code>ToolNotAvailable</code></td></tr><tr><td>Block a server (Agent 365)</td><td>Admin center › <span class="uipath"><span class="uipath-item">Agents</span><span class="uipath-sep" aria-hidden="true">›</span><span class="uipath-item">Tools</span></span> › server › <strong>Block</strong></td><td>HTTP <code>403</code>, error code <code>AccessBlockedByGateway</code></td></tr><tr><td><strong>Blocked tools</strong> (gateway)</td><td>AI Gateway portal › MCP server › <strong>Tools</strong> step</td><td>The tool stays visible, but the gateway blocks its execution</td></tr><tr><td><strong>MCP server access</strong> (gateway)</td><td>AI Gateway portal › MCP server › <strong>Basic info</strong> step</td><td><strong>Blocked</strong> servers can&#39;t be reached by clients</td></tr></tbody></table></div>
 <p>Tool-level blocking needs a <strong>static list of allowed tools</strong> on the server, so Agent 365 can read the tool list.
 It isn&#39;t available for servers with dynamic allowed tools, such as <strong>Allow all tools</strong>.</p>
-<div class="table-wrap"><table><thead><tr><th>Capability</th><th>API Management v2 tiers</th><th>AI Gateway tier</th></tr></thead><tbody><tr><td>Centralized MCP server inventory</td><td>Yes</td><td>Yes</td></tr><tr><td>Block or unblock MCP servers</td><td>Yes</td><td>Yes</td></tr><tr><td>Tool-level blocking</td><td>No</td><td>Yes</td></tr><tr><td>Tool activity observability</td><td>No</td><td>Yes</td></tr><tr><td>Tool threat protection</td><td>No</td><td>Yes</td></tr></tbody></table></div>
+<div class="table-wrap"><table><thead><tr><th>Capability</th><th>API Management v2 tiers</th><th>Azure AI Gateway</th></tr></thead><tbody><tr><td>Centralized MCP server inventory</td><td>Yes</td><td>Yes</td></tr><tr><td>Block or unblock MCP servers</td><td>Yes</td><td>Yes</td></tr><tr><td>Tool-level blocking</td><td>No</td><td>Yes</td></tr><tr><td>Tool activity observability</td><td>No</td><td>Yes</td></tr><tr><td>Tool threat protection</td><td>No</td><td>Yes</td></tr></tbody></table></div>
 <p>API Management v1 tiers aren&#39;t supported.</p>
 <h2 id="publish-a-static-list-of-allowed-tools"><a class="anchor" href="#publish-a-static-list-of-allowed-tools" aria-hidden="true" tabindex="-1">#</a>Publish a static list of allowed tools</h2>
 <p>Agent 365 can only list and block individual tools when the MCP server publishes a fixed set of tools. You set
@@ -429,7 +429,7 @@ shows the server&#39;s tool executions and <strong>Traces</strong> shows each re
 gateway&#39;s MCP endpoint, and a block only works if agents can&#39;t reach the MCP server directly. Restrict the
 backend so the gateway is its only caller, for example with
 <a href="../18-private-networking/">private networking</a>.</li>
-<li><strong>Add threat protection.</strong> On the AI Gateway tier, add
+<li><strong>Add threat protection.</strong> On Azure AI Gateway, add
 <a href="../19-tool-threat-protection/">Agent 365 tool threat protection</a> so Microsoft Defender and Microsoft
 Purview evaluate the calls that you allow.</li>
 <li><strong>Decide who owns which switch.</strong> Agent 365 blocks are tenant-wide governance decisions. The gateway&#39;s own
@@ -485,12 +485,12 @@ select <strong>Save</strong>.</p>
 <footer class="footer">
   <div class="footer-inner">
     <div class="footer-brand">
-      <a class="brand" href="../../index.html"><img class="brand-logo" src="../../assets/favicon.svg" width="24" height="24" alt=""><span class="brand-name">AI Gateway</span> <span class="brand-badge">Labs</span></a>
-      <p>Hands-on labs for the Azure AI Gateway.</p>
+      <a class="brand" href="../../index.html"><img class="brand-logo" src="../../assets/favicon.svg" width="24" height="24" alt=""><span class="brand-name">Azure AI Gateway</span> <span class="brand-badge">Labs</span></a>
+      <p>Hands-on labs for Azure AI Gateway.</p>
     </div>
     <div class="footer-cols">
       <div><h2>Labs</h2><a href="../../labs/">All labs</a><a href="../../index.html#paths">Learning paths</a><a href="../../index.html#use-cases">Use cases</a><a href="../../setup/">Setup guide</a><a href="../../troubleshooting/">Troubleshooting</a><a href="../../release-notes/">Release notes</a><a href="../../skills/azure-ai-gateway-labs/SKILL.md" title="azure-ai-gateway-labs: the agent skill that teaches coding agents how to use these labs">Agent skill</a></div>
-      <div><h2>Product</h2><a href="https://ai.gateway.azure.com" target="_blank" rel="noopener">AI Gateway portal</a><a href="https://ai.gateway.azure.com/docs" target="_blank" rel="noopener">Documentation</a><a href="https://learn.microsoft.com/azure/api-management/ai-gateway-overview" target="_blank" rel="noopener">Microsoft Learn</a></div>
+      <div><h2>Product</h2><a href="https://ai.gateway.azure.com" target="_blank" rel="noopener">AI Gateway portal</a><a href="https://ai.gateway.azure.com/docs" target="_blank" rel="noopener">Documentation</a><a href="https://learn.microsoft.com/azure/ai-gateway/overview" target="_blank" rel="noopener">Microsoft Learn</a></div>
       <div><h2>Contribute</h2><a href="https://github.com/Azure/ai-gateway" target="_blank" rel="noopener">GitHub repository</a><a href="https://github.com/Azure/ai-gateway/blob/main/labs/AUTHORING.md" target="_blank" rel="noopener">Authoring guide</a><a href="https://github.com/Azure/ai-gateway/issues/new?labels=labs" target="_blank" rel="noopener">Report an issue</a></div>
     </div>
   </div>

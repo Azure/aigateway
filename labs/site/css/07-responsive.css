@@ -4,6 +4,7 @@
   .toc { display: none; }
   .lab-main { padding-inline: 48px; }
   .search-trigger { width: 200px; }
+  .topbar-link { display: none; }
 }
 @media (max-width: 1100px) {
   .hero-inner { grid-template-columns: minmax(0, 1fr); gap: 24px; padding-top: 56px; }
@@ -16,6 +17,7 @@
   .topnav { display: none; }
 }
 @media (max-width: 900px) {
+  .search-trigger kbd { display: none; }
   .nav-toggle { display: inline-grid; margin-left: -8px; }
   .lab-layout { display: block; }
   .sidebar {
@@ -51,7 +53,7 @@
   .container { width: calc(100% - 32px); }
   .topbar-inner { padding: 0 12px; gap: 8px; }
   .hide-sm { display: none !important; }
-  .search-trigger { width: 36px; padding: 0; justify-content: center; margin-right: 0; background: transparent; border-color: transparent; }
+  .search-trigger { flex: none; width: 36px; padding: 0; justify-content: center; margin-right: 0; background: transparent; border-color: transparent; }
   .search-trigger kbd { display: none; }
   .search-trigger span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .section { padding: 56px 0; }
@@ -91,7 +93,7 @@
   .track-card p { margin: 0; font-size: 14px; }
   .lab-grid, .home .lab-grid { grid-template-columns: minmax(0, 1fr); }
   .hero-cta .btn { flex: 1 1 auto; }
-  .brand-badge { display: none; }
+  .brand-badge, .brand-azure { display: none; }
   .wd-caller { grid-template-columns: minmax(0, 1fr); }
   .wd-caller .btn { grid-row: auto; justify-self: start; }
   .wr-row { grid-template-columns: minmax(0, 1fr) 64px 64px; gap: 8px; }

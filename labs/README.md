@@ -14,7 +14,7 @@
 
 # AI Gateway labs
 
-Hands-on labs for the [AI Gateway tier in Azure API Management](https://learn.microsoft.com/azure/api-management/ai-gateway-overview).
+Hands-on labs for [Azure AI Gateway](https://learn.microsoft.com/azure/ai-gateway/overview).
 Customers and field teams use them to learn the core AI gateway use cases first (models, tools, limits, budgets,
 identity, and observability) and then the emerging ones (agents, Agent 365, private networking, and reference
 architectures).

@@ -1,6 +1,6 @@
 ---
 title: Federate MCP tools behind one endpoint
-summary: Register a remote MCP server in AI Gateway, add a second backend under its own namespace, and connect curl, VS Code, and Python to one governed MCP endpoint.
+summary: Register a remote MCP server in Azure AI Gateway, add a second backend under its own namespace, and connect curl, VS Code, and Python to one governed MCP endpoint.
 category: tools
 level: Beginner
 duration: 30

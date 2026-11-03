@@ -117,9 +117,9 @@ function topbar(rel, site, kind) {
   return `<header class="topbar">
   <div class="topbar-inner">
     ${kind === 'lab' ? `<button class="icon-btn nav-toggle" type="button" aria-label="Open lab navigation" aria-controls="sidebar" aria-expanded="false">${I.menu}</button>` : ''}
-    <a class="brand" href="${rel}index.html" aria-label="AI Gateway Labs home">
+    <a class="brand" href="${rel}index.html" aria-label="Azure AI Gateway Labs home">
       <img class="brand-logo" src="${rel}assets/favicon.svg" width="28" height="28" alt="">
-      <span class="brand-name">AI Gateway</span> <span class="brand-badge">Labs</span>
+      <span class="brand-name"><span class="brand-azure">Azure </span>AI Gateway</span> <span class="brand-badge">Labs</span>
     </a>
     <nav class="topnav" aria-label="Primary">
       <a href="${rel}labs/"${kind === 'catalog' || kind === 'lab' ? ' aria-current="page"' : ''}>All labs</a>
@@ -144,8 +144,8 @@ function footer(rel, site) {
   return `<footer class="footer">
   <div class="footer-inner">
     <div class="footer-brand">
-      <a class="brand" href="${rel}index.html"><img class="brand-logo" src="${rel}assets/favicon.svg" width="24" height="24" alt=""><span class="brand-name">AI Gateway</span> <span class="brand-badge">Labs</span></a>
-      <p>Hands-on labs for the Azure AI Gateway.</p>
+      <a class="brand" href="${rel}index.html"><img class="brand-logo" src="${rel}assets/favicon.svg" width="24" height="24" alt=""><span class="brand-name">Azure AI Gateway</span> <span class="brand-badge">Labs</span></a>
+      <p>Hands-on labs for Azure AI Gateway.</p>
     </div>
     <div class="footer-cols">
       <div><h2>Labs</h2><a href="${rel}labs/">All labs</a><a href="${rel}index.html#paths">Learning paths</a><a href="${rel}index.html#use-cases">Use cases</a><a href="${rel}setup/">Setup guide</a><a href="${rel}troubleshooting/">Troubleshooting</a><a href="${rel}release-notes/">Release notes</a><a href="${rel}skills/azure-ai-gateway-labs/SKILL.md" title="azure-ai-gateway-labs: the agent skill that teaches coding agents how to use these labs">Agent skill</a></div>
@@ -415,7 +415,7 @@ ${quick ? `
     <div class="resource-grid">
       <a class="resource" href="${site.portal}" target="_blank" rel="noopener"><span class="resource-icon">${I.portal}</span><span><b>AI Gateway portal</b><span>Create and manage gateways, models, tools, and policies.</span></span>${I.external}</a>
       <a class="resource" href="${site.docs}" target="_blank" rel="noopener"><span class="resource-icon">${I.book}</span><span><b>Documentation</b><span>Concepts, quickstarts, and release notes.</span></span>${I.external}</a>
-      <a class="resource" href="${site.learn}" target="_blank" rel="noopener"><span class="resource-icon">${I.layers}</span><span><b>Microsoft Learn overview</b><span>How the AI Gateway tier fits API Management.</span></span>${I.external}</a>
+      <a class="resource" href="${site.learn}" target="_blank" rel="noopener"><span class="resource-icon">${I.layers}</span><span><b>Microsoft Learn overview</b><span>What Azure AI Gateway is and how it relates to API Management.</span></span>${I.external}</a>
       <a class="resource" href="${site.repo}/tree/${site.branch}/cli" target="_blank" rel="noopener"><span class="resource-icon">${I.cli}</span><span><b>AI Gateway CLI extension</b><span>The az aigateway extension and its command reference.</span></span>${I.external}</a>
       <a class="resource" href="https://learn.microsoft.com/azure/foundry/agents/quickstarts/quickstart-hosted-agent" target="_blank" rel="noopener"><span class="resource-icon">${I.agent}</span><span><b>Foundry hosted agents</b><span>Build agent code and deploy it to Microsoft Foundry with azd.</span></span>${I.external}</a>
       <a class="resource" href="${site.repo}" target="_blank" rel="noopener"><span class="resource-icon">${I.sparkle}</span><span><b>Coding-agent plugin</b><span>Skills for Copilot, Claude Code, Cursor, and Gemini.</span></span>${I.external}</a>

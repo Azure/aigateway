@@ -34,7 +34,7 @@ def endpoint(server: str) -> str:
 async def main() -> None:
     server = sys.argv[1] if len(sys.argv) > 1 else "learn"
     tool = sys.argv[2] if len(sys.argv) > 2 else None
-    query = sys.argv[3] if len(sys.argv) > 3 else "What is the AI gateway in Azure API Management?"
+    query = sys.argv[3] if len(sys.argv) > 3 else "What is Azure AI Gateway?"
     api_key = os.environ.get("AI_GATEWAY_API_KEY")
     if not api_key:
         sys.exit("Set AI_GATEWAY_API_KEY to a runtime key from Access > Keys")

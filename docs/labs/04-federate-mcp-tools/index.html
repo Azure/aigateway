@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Federate MCP tools behind one endpoint · Azure AI Gateway Labs</title>
-<meta name="description" content="Register a remote MCP server in AI Gateway, add a second backend under its own namespace, and connect curl, VS Code, and Python to one governed MCP endpoint.">
+<meta name="description" content="Register a remote MCP server in Azure AI Gateway, add a second backend under its own namespace, and connect curl, VS Code, and Python to one governed MCP endpoint.">
 <meta property="og:title" content="Federate MCP tools behind one endpoint · Azure AI Gateway Labs">
-<meta property="og:description" content="Register a remote MCP server in AI Gateway, add a second backend under its own namespace, and connect curl, VS Code, and Python to one governed MCP endpoint.">
+<meta property="og:description" content="Register a remote MCP server in Azure AI Gateway, add a second backend under its own namespace, and connect curl, VS Code, and Python to one governed MCP endpoint.">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Azure AI Gateway Labs">
 <meta property="og:url" content="https://azure.github.io/ai-gateway/labs/04-federate-mcp-tools/">
@@ -30,9 +30,9 @@
 <header class="topbar">
   <div class="topbar-inner">
     <button class="icon-btn nav-toggle" type="button" aria-label="Open lab navigation" aria-controls="sidebar" aria-expanded="false"><svg class="i" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5.5h14M3 10h14M3 14.5h14"/></svg></button>
-    <a class="brand" href="../../index.html" aria-label="AI Gateway Labs home">
+    <a class="brand" href="../../index.html" aria-label="Azure AI Gateway Labs home">
       <img class="brand-logo" src="../../assets/favicon.svg" width="28" height="28" alt="">
-      <span class="brand-name">AI Gateway</span> <span class="brand-badge">Labs</span>
+      <span class="brand-name"><span class="brand-azure">Azure </span>AI Gateway</span> <span class="brand-badge">Labs</span>
     </a>
     <nav class="topnav" aria-label="Primary">
       <a href="../../labs/" aria-current="page">All labs</a>
@@ -65,7 +65,7 @@
     <header class="lab-header">
       <div class="lab-eyebrow"><span class="lab-eyebrow-icon"><svg class="i" viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 3a4 4 0 0 0-3.8 5.3L3.5 13.5a1.5 1.5 0 0 0 0 2.1l.9.9a1.5 1.5 0 0 0 2.1 0l5.2-5.2A4 4 0 0 0 17 7.5l-2.3 2.3-2.3-.4-.4-2.3L14.3 4.8A4 4 0 0 0 12.5 3Z"/></svg></span>MCP &amp; tools · Lab 04</div>
       <h1>Federate MCP tools behind one endpoint</h1>
-      <p class="lead">Register a remote MCP server in AI Gateway, add a second backend under its own namespace, and connect curl, VS Code, and Python to one governed MCP endpoint.</p>
+      <p class="lead">Register a remote MCP server in Azure AI Gateway, add a second backend under its own namespace, and connect curl, VS Code, and Python to one governed MCP endpoint.</p>
       <div class="lab-meta">
         <span class="meta-pill"><span class="level-dots" aria-hidden="true"><i class="on"></i><i></i><i></i></span>Beginner</span>
         <span class="meta-pill"><svg class="i" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.5"/><path d="M10 5.5V10l3 2"/></svg>30 min</span>
@@ -685,7 +685,7 @@ Copilot Chat agent mode, the gateway&#39;s namespaced tools are now available, f
 <span class="line"><span style="--shiki-light:#c62a39;--shiki-dark:#F47067">async</span><span style="--shiki-light:#c62a39;--shiki-dark:#F47067"> def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#DCBDFB"> main</span><span style="--shiki-light:#24292E;--shiki-dark:#ADBAC7">() -> </span><span style="--shiki-light:#005CC5;--shiki-dark:#6CB6FF">None</span><span style="--shiki-light:#24292E;--shiki-dark:#ADBAC7">:</span></span>
 <span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#ADBAC7">    server </span><span style="--shiki-light:#c62a39;--shiki-dark:#F47067">=</span><span style="--shiki-light:#24292E;--shiki-dark:#ADBAC7"> sys.argv[</span><span style="--shiki-light:#005CC5;--shiki-dark:#6CB6FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#ADBAC7">] </span><span style="--shiki-light:#c62a39;--shiki-dark:#F47067">if</span><span style="--shiki-light:#005CC5;--shiki-dark:#6CB6FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#ADBAC7">(sys.argv) </span><span style="--shiki-light:#c62a39;--shiki-dark:#F47067">></span><span style="--shiki-light:#005CC5;--shiki-dark:#6CB6FF"> 1</span><span style="--shiki-light:#c62a39;--shiki-dark:#F47067"> else</span><span style="--shiki-light:#032F62;--shiki-dark:#96D0FF"> "learn"</span></span>
 <span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#ADBAC7">    tool </span><span style="--shiki-light:#c62a39;--shiki-dark:#F47067">=</span><span style="--shiki-light:#24292E;--shiki-dark:#ADBAC7"> sys.argv[</span><span style="--shiki-light:#005CC5;--shiki-dark:#6CB6FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#ADBAC7">] </span><span style="--shiki-light:#c62a39;--shiki-dark:#F47067">if</span><span style="--shiki-light:#005CC5;--shiki-dark:#6CB6FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#ADBAC7">(sys.argv) </span><span style="--shiki-light:#c62a39;--shiki-dark:#F47067">></span><span style="--shiki-light:#005CC5;--shiki-dark:#6CB6FF"> 2</span><span style="--shiki-light:#c62a39;--shiki-dark:#F47067"> else</span><span style="--shiki-light:#005CC5;--shiki-dark:#6CB6FF"> None</span></span>
-<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#ADBAC7">    query </span><span style="--shiki-light:#c62a39;--shiki-dark:#F47067">=</span><span style="--shiki-light:#24292E;--shiki-dark:#ADBAC7"> sys.argv[</span><span style="--shiki-light:#005CC5;--shiki-dark:#6CB6FF">3</span><span style="--shiki-light:#24292E;--shiki-dark:#ADBAC7">] </span><span style="--shiki-light:#c62a39;--shiki-dark:#F47067">if</span><span style="--shiki-light:#005CC5;--shiki-dark:#6CB6FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#ADBAC7">(sys.argv) </span><span style="--shiki-light:#c62a39;--shiki-dark:#F47067">></span><span style="--shiki-light:#005CC5;--shiki-dark:#6CB6FF"> 3</span><span style="--shiki-light:#c62a39;--shiki-dark:#F47067"> else</span><span style="--shiki-light:#032F62;--shiki-dark:#96D0FF"> "What is the AI gateway in Azure API Management?"</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#ADBAC7">    query </span><span style="--shiki-light:#c62a39;--shiki-dark:#F47067">=</span><span style="--shiki-light:#24292E;--shiki-dark:#ADBAC7"> sys.argv[</span><span style="--shiki-light:#005CC5;--shiki-dark:#6CB6FF">3</span><span style="--shiki-light:#24292E;--shiki-dark:#ADBAC7">] </span><span style="--shiki-light:#c62a39;--shiki-dark:#F47067">if</span><span style="--shiki-light:#005CC5;--shiki-dark:#6CB6FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#ADBAC7">(sys.argv) </span><span style="--shiki-light:#c62a39;--shiki-dark:#F47067">></span><span style="--shiki-light:#005CC5;--shiki-dark:#6CB6FF"> 3</span><span style="--shiki-light:#c62a39;--shiki-dark:#F47067"> else</span><span style="--shiki-light:#032F62;--shiki-dark:#96D0FF"> "What is Azure AI Gateway?"</span></span>
 <span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#ADBAC7">    api_key </span><span style="--shiki-light:#c62a39;--shiki-dark:#F47067">=</span><span style="--shiki-light:#24292E;--shiki-dark:#ADBAC7"> os.environ.get(</span><span style="--shiki-light:#032F62;--shiki-dark:#96D0FF">"AI_GATEWAY_API_KEY"</span><span style="--shiki-light:#24292E;--shiki-dark:#ADBAC7">)</span></span>
 <span class="line"><span style="--shiki-light:#c62a39;--shiki-dark:#F47067">    if</span><span style="--shiki-light:#c62a39;--shiki-dark:#F47067"> not</span><span style="--shiki-light:#24292E;--shiki-dark:#ADBAC7"> api_key:</span></span>
 <span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#ADBAC7">        sys.exit(</span><span style="--shiki-light:#032F62;--shiki-dark:#96D0FF">"Set AI_GATEWAY_API_KEY to a runtime key from Access > Keys"</span><span style="--shiki-light:#24292E;--shiki-dark:#ADBAC7">)</span></span>
@@ -876,12 +876,12 @@ rate-limit the server.</li>
 <footer class="footer">
   <div class="footer-inner">
     <div class="footer-brand">
-      <a class="brand" href="../../index.html"><img class="brand-logo" src="../../assets/favicon.svg" width="24" height="24" alt=""><span class="brand-name">AI Gateway</span> <span class="brand-badge">Labs</span></a>
-      <p>Hands-on labs for the Azure AI Gateway.</p>
+      <a class="brand" href="../../index.html"><img class="brand-logo" src="../../assets/favicon.svg" width="24" height="24" alt=""><span class="brand-name">Azure AI Gateway</span> <span class="brand-badge">Labs</span></a>
+      <p>Hands-on labs for Azure AI Gateway.</p>
     </div>
     <div class="footer-cols">
       <div><h2>Labs</h2><a href="../../labs/">All labs</a><a href="../../index.html#paths">Learning paths</a><a href="../../index.html#use-cases">Use cases</a><a href="../../setup/">Setup guide</a><a href="../../troubleshooting/">Troubleshooting</a><a href="../../release-notes/">Release notes</a><a href="../../skills/azure-ai-gateway-labs/SKILL.md" title="azure-ai-gateway-labs: the agent skill that teaches coding agents how to use these labs">Agent skill</a></div>
-      <div><h2>Product</h2><a href="https://ai.gateway.azure.com" target="_blank" rel="noopener">AI Gateway portal</a><a href="https://ai.gateway.azure.com/docs" target="_blank" rel="noopener">Documentation</a><a href="https://learn.microsoft.com/azure/api-management/ai-gateway-overview" target="_blank" rel="noopener">Microsoft Learn</a></div>
+      <div><h2>Product</h2><a href="https://ai.gateway.azure.com" target="_blank" rel="noopener">AI Gateway portal</a><a href="https://ai.gateway.azure.com/docs" target="_blank" rel="noopener">Documentation</a><a href="https://learn.microsoft.com/azure/ai-gateway/overview" target="_blank" rel="noopener">Microsoft Learn</a></div>
       <div><h2>Contribute</h2><a href="https://github.com/Azure/ai-gateway" target="_blank" rel="noopener">GitHub repository</a><a href="https://github.com/Azure/ai-gateway/blob/main/labs/AUTHORING.md" target="_blank" rel="noopener">Authoring guide</a><a href="https://github.com/Azure/ai-gateway/issues/new?labels=labs" target="_blank" rel="noopener">Report an issue</a></div>
     </div>
   </div>

@@ -106,7 +106,7 @@ removes it. Existing agents keep using the same gateway endpoints.
 Tool-level blocking needs a **static list of allowed tools** on the server, so Agent 365 can read the tool list.
 It isn't available for servers with dynamic allowed tools, such as **Allow all tools**.
 
-| Capability | API Management v2 tiers | AI Gateway tier |
+| Capability | API Management v2 tiers | Azure AI Gateway |
 |---|---|---|
 | Centralized MCP server inventory | Yes | Yes |
 | Block or unblock MCP servers | Yes | Yes |
@@ -389,7 +389,7 @@ shows the server's tool executions and **Traces** shows each request.
   gateway's MCP endpoint, and a block only works if agents can't reach the MCP server directly. Restrict the
   backend so the gateway is its only caller, for example with
   [private networking](../18-private-networking/README.md).
-- **Add threat protection.** On the AI Gateway tier, add
+- **Add threat protection.** On Azure AI Gateway, add
   [Agent 365 tool threat protection](../19-tool-threat-protection/README.md) so Microsoft Defender and Microsoft
   Purview evaluate the calls that you allow.
 - **Decide who owns which switch.** Agent 365 blocks are tenant-wide governance decisions. The gateway's own

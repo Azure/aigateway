@@ -7,7 +7,7 @@
     "branch": "main",
     "docs": "https://ai.gateway.azure.com/docs",
     "portal": "https://ai.gateway.azure.com",
-    "learn": "https://learn.microsoft.com/azure/api-management/ai-gateway-overview"
+    "learn": "https://learn.microsoft.com/azure/ai-gateway/overview"
   },
   "categories": [
     {

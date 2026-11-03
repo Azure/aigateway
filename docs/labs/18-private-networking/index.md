@@ -1,6 +1,6 @@
 ---
 title: Lock down backend traffic with private networking
-summary: Create an AI Gateway with private routing through your virtual network, reach a Foundry backend over a private endpoint with its public access turned off, and learn which inbound options aren't available yet.
+summary: Create an Azure AI Gateway with private routing through your virtual network, reach a Foundry backend over a private endpoint with its public access turned off, and learn which inbound options aren't available yet.
 category: production
 level: Advanced
 duration: 45

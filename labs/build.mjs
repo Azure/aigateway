@@ -622,7 +622,7 @@ export async function build({ strict = false } = {}) {
 
   // Agent and crawler friendly outputs
   const llms = [`# ${site.title}`, '', `> ${site.tagline}`, '',
-    'Hands-on labs for the AI Gateway tier of Azure API Management. Each lab has portal, Azure CLI, REST, Bicep, or code tracks.', '',
+    'Hands-on labs for Azure AI Gateway. Each lab has portal, Azure CLI, REST, Bicep, or code tracks.', '',
     `Product docs: ${site.docs}`, `Portal: ${site.portal}`, `Source: ${site.repo}/tree/${site.branch}/labs`,
     `Agent skill: ${BASE_URL}skills/${SKILL_NAME}/SKILL.md`, ...(setup ? [`Setup guide: ${BASE_URL}setup/index.md`] : []), ...(trouble ? [`Troubleshooting: ${BASE_URL}troubleshooting/index.md`] : []), ...(notes ? [`Release notes: ${BASE_URL}release-notes/index.md`] : []), '', '## Labs', '',
     ...labs.map((l) => `- [${l.num} ${l.title}](${BASE_URL}labs/${l.slug}/index.md): ${l.summary}`), '',

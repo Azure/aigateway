@@ -22,7 +22,7 @@ INSTRUCTIONS = (
     "You answer questions about Microsoft technologies. Use the Microsoft Learn tools to find current "
     "documentation and cite the URLs you used. Keep answers under 120 words."
 )
-QUESTION = "What is AI Gateway in Azure API Management? Answer in three bullet points."
+QUESTION = "What is Azure AI Gateway? Answer in three bullet points."
 
 
 def settings() -> tuple[str, str, str, str]:

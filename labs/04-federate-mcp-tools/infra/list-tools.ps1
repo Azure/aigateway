@@ -15,7 +15,7 @@
 param(
   [string]$Server = 'learn',
   [string]$Tool,
-  [string]$Query = 'What is the AI gateway in Azure API Management?'
+  [string]$Query = 'What is Azure AI Gateway?'
 )
 $ErrorActionPreference = 'Stop'
 if (-not $env:AI_GATEWAY_API_KEY) { throw 'Set $env:AI_GATEWAY_API_KEY to a runtime key from Access > Keys' }

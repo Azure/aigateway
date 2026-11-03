@@ -18,7 +18,7 @@ set -euo pipefail
 
 SERVER="${1:-learn}"
 TOOL="${2:-}"
-QUERY="${3:-What is the AI gateway in Azure API Management?}"
+QUERY="${3:-What is Azure AI Gateway?}"
 : "${AI_GATEWAY_API_KEY:?Set AI_GATEWAY_API_KEY to a runtime key from Access > Keys}"
 if [ -z "${AI_GATEWAY_MCP_ENDPOINT:-}" ]; then
   : "${AI_GATEWAY_URL:?Set AI_GATEWAY_URL to https://<gateway>.eastus2-01.ai.gateway.azure.com}"

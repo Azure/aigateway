@@ -193,6 +193,7 @@ a.usecase:hover { border-color: var(--c, var(--brand)); box-shadow: var(--shadow
 .lab-card.done .lab-card-num::after { content: " · Completed"; color: var(--success); font-family: var(--font); font-weight: 600; }
 
 /* Anatomy */
+#anatomy { overflow-x: clip; }
 .anatomy { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 56px; align-items: center; }
 .anatomy-list { list-style: none; margin: 24px 0 32px; padding: 0; display: grid; gap: 18px; }
 .anatomy-list li { display: flex; gap: 14px; }
