@@ -4,7 +4,7 @@ Create an AI Gateway, register model providers and MCP servers, and manage
 policies, keys, identities, and networking from your terminal with `az aigateway`.
 
 > **Public preview**: commands and behavior may change before general availability.
-> Current extension release: **1.0.0b20**.
+> Current extension release: **1.0.0b22**.
 
 [Install](#install) | [Quickstart](#quickstart) | [Command reference](command-reference.md) | [AI Gateway documentation](https://aka.ms/aigateway/docs)
 
@@ -50,7 +50,7 @@ az aigateway version
 az aigateway --help
 ```
 
-`version` reports `extensionName: aigateway`, `extensionVersion: 1.0.0b20`,
+`version` reports `extensionName: aigateway`, `extensionVersion: 1.0.0b22`,
 and `apiVersion: 2025-09-01-preview`. Neither command needs an Azure login.
 
 ## Quickstart
@@ -94,9 +94,9 @@ az aigateway show --resource-group "$RG" --name "$GATEWAY" --output table
 ```
 
 Creation waits for provisioning to finish. The gateway is an Azure AI Gateway
-resource (`Microsoft.ApiManagement/aigateways`); the CLI selects the
-`Premium` SKU by default (or pass `--sku Consumption|Premium` on `create`
-and `update`).
+resource (`Microsoft.ApiManagement/aigateways`); omitting `--sku` lets the
+service apply its default SKU (`Standard`), or pass
+`--sku Standard|Premium|Consumption` on `create` and `update`.
 
 ### 2. Register an MCP server
 
