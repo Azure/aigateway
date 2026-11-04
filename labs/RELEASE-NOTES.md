@@ -27,6 +27,35 @@ model version, and manage MCP servers that use the 2026-07-28 MCP specification.
 
 #### Labs changes
 
+- **November 4.** The Azure CLI tracks need `aigateway` extension 1.0.0b22 or later, which the
+  [Setup guide](SETUP.md#install-the-aigateway-extension) installs, and use its new commands instead of `az rest`.
+  Labs [07](07-cost-budgets/README.md#set-the-cost-limit), [09](09-gateway-baselines/README.md#set-the-baseline), and
+  [14](14-otel-chargeback/README.md#choose-the-claims-to-export) replace their REST API tracks with Azure CLI tracks
+  that run `az aigateway model policy set-cost-limit`, `az aigateway policy set`, and
+  `az aigateway telemetry-exporter update`. [Lab 13](13-monitoring/README.md#create-the-telemetry-exporter) gets an
+  Azure CLI track that connects Application Insights with `az aigateway telemetry-exporter create`. Labs
+  [10](10-api-keys/README.md#suspend-a-key-instead) and
+  [24](24-github-copilot-byok/README.md#cut-copilot-off-by-suspending-the-key) suspend and reactivate keys with
+  `az aigateway api-key update --state`, [lab 04](04-federate-mcp-tools/README.md#choose-supported-mcp-versions)
+  sets the supported MCP versions with `az aigateway mcp update --versions`, and `az aigateway api-key create` no
+  longer passes `--display-name`. The labs still call `az rest` for the connector gateway, MCP tool rules, and
+  policy files, which the extension doesn't cover yet.
+- **November 4.** The gateways use the `Standard` SKU, the only one that AI Gateway accepts. It's the default in
+  the portal and in `az aigateway create`, so [lab 01](01-provision-gateway/README.md#create-the-ai-gateway) no
+  longer passes `--sku`, and the Bicep templates set `Standard`. Lab 01 also explains the runtime host name: the
+  gateway name's first 10 characters, a hyphen, a 13-character hash, and `.<region>-01.ai.gateway.azure.com`, so
+  always read it from the gateway instead of building it from the name.
+- **November 4.** On the site, **Your values** has a **Runtime URL** field, and the code blocks fill
+  `<gateway-url>` in with it, like the gateway name. The code blocks use `<model-name>` for the alias that apps
+  call, so **Model alias** fills it in too.
+- **November 4.** [Lab 18](18-private-networking/README.md#how-it-works) no longer says that private routing can only
+  be chosen at creation: add, change, or remove it under **Networking**, or with `az aigateway network update`.
+  [Lab 02](02-first-model-call/README.md#register-the-deployment)'s tip imports every deployment of a Foundry account with
+  `az aigateway model-provider create --foundry-resource-id`. The [lab 15](15-agent-frameworks/README.md) samples
+  call the Responses API, because some reasoning models accept function tools only there.
+  [Lab 16](16-foundry-hosted-agent/README.md#create-an-azd-environment) creates the azd environment in the
+  subscription that the Azure CLI uses, so azd doesn't stop to ask for one, and the
+  [lab 11](11-entra-rbac/README.md#clean-up) cleanup skips the role assignment when **Verify** already removed it.
 - **October 28.** A new [Setup guide](SETUP.md) collects the tasks that every lab shares: checking your subscription
   and permissions, choosing between Cloud Shell and a local shell, signing in, installing the `aigateway` extension,
   registering the resource providers, finding the available regions, cloning the labs repo, and deploying and

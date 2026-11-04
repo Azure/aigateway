@@ -250,8 +250,8 @@ the usage chunk if the stream had one.
 # chunk if the stream ended with one.
 #
 # Usage:
-#   export AI_GATEWAY_URL="https://<gateway>.eastus2-01.ai.gateway.azure.com"
-#   export AI_GATEWAY_MODEL="<model-alias>"
+#   export AI_GATEWAY_URL="<gateway-url>"
+#   export AI_GATEWAY_MODEL="<model-name>"
 #   export AI_GATEWAY_API_KEY="..."      # never commit this value
 #   ./stream-chat.sh [--usage] [--raw] ["Your prompt"]
 #
@@ -271,7 +271,7 @@ while [[ "${1:-}" == --* ]]; do
   shift
 done
 PROMPT="${1:-Explain in three short sentences why streaming makes chat apps feel faster.}"
-: "${AI_GATEWAY_URL:?Set AI_GATEWAY_URL to https://<gateway>.eastus2-01.ai.gateway.azure.com}"
+: "${AI_GATEWAY_URL:?Set AI_GATEWAY_URL to the gateway runtime URL, for example https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com}"
 : "${AI_GATEWAY_MODEL:?Set AI_GATEWAY_MODEL to the callable model alias}"
 : "${AI_GATEWAY_API_KEY:?Set AI_GATEWAY_API_KEY to a runtime key from Access > Keys}"
 

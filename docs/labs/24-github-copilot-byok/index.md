@@ -74,10 +74,8 @@ export PROVIDER="foundry-models"                  # the gateway's Foundry provid
 export MODEL="gpt-6-astra"                        # the deployment, the backend model, and the alias
 export KEY_NAME="github-copilot"                  # the runtime key that Copilot uses
 
-# Read the gateway's resource ID and runtime URL, and build the management URL that the az rest calls use
-export API="api-version=2025-09-01-preview"
+# Read the gateway's resource ID and runtime URL
 export GATEWAY_ID="$(az aigateway show -g "$RG" -n "$GATEWAY" --query id -o tsv)"
-export GW="https://management.azure.com$GATEWAY_ID"
 export AI_GATEWAY_URL="https://$(az aigateway show -g "$RG" -n "$GATEWAY" --query properties.frontend.defaultHostname -o tsv)"
 export AI_GATEWAY_MODEL="$MODEL"
 echo "📝 Gateway $GATEWAY in $RG, with Foundry account $FOUNDRY_ACCOUNT in $FOUNDRY_RG"
@@ -95,10 +93,8 @@ $PROVIDER        = "foundry-models"               # the gateway's Foundry provid
 $MODEL           = "gpt-6-astra"                  # the deployment, the backend model, and the alias
 $KEY_NAME        = "github-copilot"               # the runtime key that Copilot uses
 
-# Read the gateway's resource ID and runtime URL, and build the management URL that the az rest calls use
-$API        = "api-version=2025-09-01-preview"
+# Read the gateway's resource ID and runtime URL
 $GATEWAY_ID = az aigateway show -g $RG -n $GATEWAY --query id -o tsv
-$GW         = "https://management.azure.com$GATEWAY_ID"
 $env:AI_GATEWAY_URL   = "https://$(az aigateway show -g $RG -n $GATEWAY --query properties.frontend.defaultHostname -o tsv)"
 $env:AI_GATEWAY_MODEL = $MODEL
 Write-Host "📝 Gateway $GATEWAY in $RG, with Foundry account $FOUNDRY_ACCOUNT in $FOUNDRY_RG"
@@ -333,12 +329,12 @@ matters when two people create the same alias at the same time.
 ### Create the key for Copilot
 
 `api-key create` returns metadata only. Read the value with `list-secrets` straight into a variable, so it never
-appears on screen. The service assigns the key's display name itself, so any `--display-name` works.
+appears on screen.
 
 ```bash title="Bash"
 # Create the runtime key that Copilot uses, and show its state
 echo "🔑 API key github-copilot and its state:"
-az aigateway api-key create -g "$RG" --gateway-name "$GATEWAY" -n "$KEY_NAME" --display-name "GitHub Copilot" \
+az aigateway api-key create -g "$RG" --gateway-name "$GATEWAY" -n "$KEY_NAME" \
   --query "{name:name, state:properties.state}"
 
 # Read the key's value straight into a variable, so that it never shows on screen
@@ -350,7 +346,7 @@ echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not sh
 ```powershell title="PowerShell"
 # Create the runtime key that Copilot uses, and show its state
 Write-Host "🔑 API key github-copilot and its state:"
-az aigateway api-key create -g $RG --gateway-name $GATEWAY -n $KEY_NAME --display-name "GitHub Copilot" `
+az aigateway api-key create -g $RG --gateway-name $GATEWAY -n $KEY_NAME `
   --query "{name:name, state:properties.state}"
 
 # Read the key's value straight into an environment variable, so that it never shows on screen
@@ -458,10 +454,8 @@ export PROVIDER="$(azd env get-value AI_GATEWAY_PROVIDER)"
 export MODEL="$(azd env get-value AI_GATEWAY_BACKEND_MODEL)"
 export KEY_NAME="$(azd env get-value AI_GATEWAY_KEY_NAME)"
 
-# Read the gateway's resource ID, runtime URL, and alias, and build the management URL that the az rest calls use
-export API="api-version=2025-09-01-preview"
+# Read the gateway's resource ID, runtime URL, and alias
 export GATEWAY_ID="$(azd env get-value AI_GATEWAY_ID)"
-export GW="https://management.azure.com$GATEWAY_ID"
 export AI_GATEWAY_URL="$(azd env get-value AI_GATEWAY_URL)"
 export AI_GATEWAY_MODEL="$(azd env get-value AI_GATEWAY_MODEL)"
 
@@ -486,10 +480,8 @@ $PROVIDER               = azd env get-value AI_GATEWAY_PROVIDER
 $MODEL                  = azd env get-value AI_GATEWAY_BACKEND_MODEL
 $KEY_NAME               = azd env get-value AI_GATEWAY_KEY_NAME
 
-# Read the gateway's resource ID, runtime URL, and alias, and build the management URL that the az rest calls use
-$API                    = "api-version=2025-09-01-preview"
+# Read the gateway's resource ID, runtime URL, and alias
 $GATEWAY_ID             = azd env get-value AI_GATEWAY_ID
-$GW                     = "https://management.azure.com$GATEWAY_ID"
 $env:AI_GATEWAY_URL     = azd env get-value AI_GATEWAY_URL
 $env:AI_GATEWAY_MODEL   = azd env get-value AI_GATEWAY_MODEL
 
@@ -995,6 +987,8 @@ azd env get-value AI_GATEWAY_MCP_URL
 
 <!-- /tracks -->
 
+<!-- steps -->
+
 ### Test the MCP endpoint
 
 Save the endpoint, then list its tools the way Copilot does: a JSON-RPC `tools/list` request with the key in the
@@ -1038,6 +1032,8 @@ learn_microsoft_docs_fetch
 
 Each name starts with the backend's namespace, `learn`. The Learn server can add tools over time, and **Allow all
 tools** publishes them too.
+
+<!-- /steps -->
 
 ## Add the Learn tools to VS Code
 
@@ -1376,13 +1372,12 @@ higher than the output tokens: that's the context that the agent sends with ever
 
 ### Cut Copilot off by suspending the key
 
-Suspend the key, then run the CLI again. The settings are unchanged, but the gateway now rejects the key. The
-`aigateway` extension doesn't change a key's state yet, so call the Azure Resource Manager REST API with `az rest`:
+Suspend the key, then run the CLI again. The settings are unchanged, but the gateway now rejects the key.
 
 ```bash title="Bash"
-# Suspend the github-copilot key with the Azure Resource Manager REST API
-STATE="$(az rest --method patch --url "$GW/apiKeys/$KEY_NAME?$API" \
-  --body '{"properties":{"state":"suspended"}}' --query properties.state -o tsv)" &&
+# Suspend the github-copilot key: calls with it get 401 until you set it back to active
+STATE="$(az aigateway api-key update -g "$RG" --gateway-name "$GATEWAY" -n "$KEY_NAME" --state suspended \
+  --query properties.state -o tsv)" &&
   echo "🔑 API key github-copilot is $STATE"
 
 # Give the gateway time to apply the change
@@ -1395,9 +1390,9 @@ cd ~/contoso-calc && copilot -p "Say hi"
 ```
 
 ```powershell title="PowerShell"
-# Suspend the github-copilot key with the Azure Resource Manager REST API, with the body in a file to keep its quotes
-'{"properties":{"state":"suspended"}}' | Set-Content keystate.json
-$STATE = az rest --method patch --url "$GW/apiKeys/$KEY_NAME`?$API" --body "@keystate.json" --query properties.state -o tsv
+# Suspend the github-copilot key: calls with it get 401 until you set it back to active
+$STATE = az aigateway api-key update -g $RG --gateway-name $GATEWAY -n $KEY_NAME --state suspended `
+  --query properties.state -o tsv
 if ($?) { Write-Host "🔑 API key github-copilot is $STATE" }
 
 # Give the gateway time to apply the change
@@ -1431,8 +1426,8 @@ in every surface.
 
 ```bash title="Bash"
 # Turn the github-copilot key back on
-STATE="$(az rest --method patch --url "$GW/apiKeys/$KEY_NAME?$API" \
-  --body '{"properties":{"state":"active"}}' --query properties.state -o tsv)" &&
+STATE="$(az aigateway api-key update -g "$RG" --gateway-name "$GATEWAY" -n "$KEY_NAME" --state active \
+  --query properties.state -o tsv)" &&
   echo "🔑 API key github-copilot is $STATE"
 
 # Give the gateway time to apply the change
@@ -1445,11 +1440,10 @@ copilot -p "Say hi in three words"
 ```
 
 ```powershell title="PowerShell"
-# Turn the github-copilot key back on, then remove the body file
-'{"properties":{"state":"active"}}' | Set-Content keystate.json
-$STATE = az rest --method patch --url "$GW/apiKeys/$KEY_NAME`?$API" --body "@keystate.json" --query properties.state -o tsv
+# Turn the github-copilot key back on
+$STATE = az aigateway api-key update -g $RG --gateway-name $GATEWAY -n $KEY_NAME --state active `
+  --query properties.state -o tsv
 if ($?) { Write-Host "🔑 API key github-copilot is $STATE" }
-Remove-Item keystate.json
 
 # Give the gateway time to apply the change
 Write-Host "⏳ Waiting 30 seconds for the key change to apply"

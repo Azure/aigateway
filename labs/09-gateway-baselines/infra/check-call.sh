@@ -4,15 +4,15 @@
 # drops it, 429 when a rate limit applies, or 400 when content safety blocks it.
 #
 # Usage:
-#   export AI_GATEWAY_URL="https://<gateway>.eastus2-01.ai.gateway.azure.com"
+#   export AI_GATEWAY_URL="<gateway-url>"
 #   export AI_GATEWAY_API_KEY="..."      # never commit this value
-#   ./check-call.sh <model-alias>
+#   ./check-call.sh <model-name>
 #
 # Requires curl and jq.
 set -euo pipefail
 
 MODEL="${1:?Pass the callable model alias as the first argument}"
-: "${AI_GATEWAY_URL:?Set AI_GATEWAY_URL to https://<gateway>.eastus2-01.ai.gateway.azure.com}"
+: "${AI_GATEWAY_URL:?Set AI_GATEWAY_URL to the gateway runtime URL, for example https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com}"
 : "${AI_GATEWAY_API_KEY:?Set AI_GATEWAY_API_KEY to a runtime key from Access > Keys}"
 command -v jq >/dev/null || { echo "This script needs jq." >&2; exit 1; }
 

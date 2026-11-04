@@ -44,6 +44,7 @@ async def main() -> None:
         model=model_name,
         base_url=f"{gateway_url}/default/models/openai/v1",
         api_key=api_key,
+        use_responses_api=True,
     )
 
     mcp_client = MultiServerMCPClient(
@@ -60,7 +61,7 @@ async def main() -> None:
     agent = create_agent(model, tools, system_prompt=INSTRUCTIONS)
     print(f"Model {model_name} and MCP server {server} ({len(tools)} tools) through {gateway_url}\n")
     result = await agent.ainvoke({"messages": [{"role": "user", "content": question}]})
-    print(result["messages"][-1].content)
+    print(result["messages"][-1].text)
 
 
 if __name__ == "__main__":

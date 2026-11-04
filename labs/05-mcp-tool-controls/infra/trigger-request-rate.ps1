@@ -3,7 +3,7 @@
 # Every HTTP request counts as a call, including the two handshake messages. Requires PowerShell 7 or later.
 #
 # Usage:
-#   $env:AI_GATEWAY_URL = "https://<gateway>.eastus2-01.ai.gateway.azure.com"
+#   $env:AI_GATEWAY_URL = "<gateway-url>"
 #   $env:AI_GATEWAY_API_KEY = "..."      # never commit this value
 #   ./trigger-request-rate.ps1 [-Server learn] [-Requests 8]
 #
@@ -16,7 +16,7 @@ $ErrorActionPreference = 'Stop'
 if (-not $env:AI_GATEWAY_API_KEY) { throw 'Set $env:AI_GATEWAY_API_KEY to a runtime key from Access > Keys' }
 $uri = $env:AI_GATEWAY_MCP_ENDPOINT
 if (-not $uri) {
-  if (-not $env:AI_GATEWAY_URL) { throw 'Set $env:AI_GATEWAY_URL to https://<gateway>.eastus2-01.ai.gateway.azure.com' }
+  if (-not $env:AI_GATEWAY_URL) { throw 'Set $env:AI_GATEWAY_URL to the gateway runtime URL, for example https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com' }
   $uri = "$($env:AI_GATEWAY_URL.TrimEnd('/'))/default/toolservers/$Server/mcp"
 }
 $headers = @{ 'api-key' = $env:AI_GATEWAY_API_KEY; Accept = 'application/json, text/event-stream' }

@@ -132,12 +132,12 @@ az aigateway version
 
 > **Checkpoint**
 > The installer printed `📦 aigateway extension … is installed`, and `az aigateway version` prints the extension
-> version and the API version it calls, `2025-09-01-preview`. The labs need version `1.0.0b15` or later; run the
+> version and the API version it calls, `2025-09-01-preview`. The labs need version `1.0.0b22` or later; run the
 > installer again to upgrade an older one.
 
 > [!NOTE]
 > The labs use `az aigateway` commands wherever the extension covers an operation. A few operations, such as
-> gateway-wide policies, telemetry exporters, and the connector gateway, aren't in the extension yet. For those,
+> the connector gateway and an MCP server's tool rules, aren't in the extension yet. For those,
 > the labs call the Azure Resource Manager REST API with `az rest` and say why.
 
 ## Register the resource providers

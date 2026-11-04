@@ -57,13 +57,14 @@ that leaves the agent. Changing a model, a policy, or a tool list then needs no 
 | Framework | Model client | MCP tools | Model API |
 |---|---|---|---|
 | Microsoft Agent Framework | `OpenAIChatClient` | `MCPStreamableHTTPTool` | Responses |
-| OpenAI Agents SDK | `OpenAIChatCompletionsModel` with `AsyncOpenAI` | `MCPServerStreamableHttp` | Chat Completions |
-| LangChain and LangGraph | `ChatOpenAI` | `MultiServerMCPClient` (langchain-mcp-adapters) | Chat Completions |
+| OpenAI Agents SDK | `OpenAIResponsesModel` with `AsyncOpenAI` | `MCPServerStreamableHttp` | Responses |
+| LangChain and LangGraph | `ChatOpenAI` with `use_responses_api=True` | `MultiServerMCPClient` (langchain-mcp-adapters) | Responses |
 
-All three use the same two endpoints. The gateway serves both model APIs on the model endpoint:
+All three use the same two endpoints. The model endpoint also serves Chat Completions, but some reasoning models
+only accept function tools on Responses, so the samples use Responses:
 
-- Model: `https://<gateway>.eastus2-01.ai.gateway.azure.com/default/models/openai/v1`
-- MCP: `https://<gateway>.eastus2-01.ai.gateway.azure.com/default/toolservers/<server-name>/mcp`
+- Model: `<gateway-url>/default/models/openai/v1`
+- MCP: `<gateway-url>/default/toolservers/<server-name>/mcp`
 
 ## Set up the samples
 
@@ -159,7 +160,7 @@ client = AsyncOpenAI(
     api_key=api_key,
 )
 # ...
-model=OpenAIChatCompletionsModel(model=model, openai_client=client),
+model=OpenAIResponsesModel(model=model, openai_client=client),
 ```
 
 ```python title="LangGraph"
@@ -167,6 +168,7 @@ model = ChatOpenAI(
     model=model_name,
     base_url=f"{gateway_url}/default/models/openai/v1",
     api_key=api_key,
+    use_responses_api=True,
 )
 ```
 
@@ -242,7 +244,7 @@ async with mcp_tool:
 agent = Agent(
     name="docs-agent",
     instructions=INSTRUCTIONS,
-    model=OpenAIChatCompletionsModel(model=model, openai_client=client),
+    model=OpenAIResponsesModel(model=model, openai_client=client),
     mcp_servers=[mcp_server],
 )
 result = await Runner.run(agent, question)
@@ -252,7 +254,7 @@ print(result.final_output)
 ```python title="LangGraph"
 agent = create_agent(model, tools, system_prompt=INSTRUCTIONS)
 result = await agent.ainvoke({"messages": [{"role": "user", "content": question}]})
-print(result["messages"][-1].content)
+print(result["messages"][-1].text)
 ```
 
 `create_agent` from LangChain builds a LangGraph graph that loops between the model and the tools. LangGraph keeps
@@ -287,7 +289,7 @@ python langgraph_agent.py
 echo "🤖 The LangGraph agent's answer is above"
 ```
 
-Expected output: a line such as `Model <model-name> and MCP server learn through https://<gateway>.eastus2-01.ai.gateway.azure.com`
+Expected output: a line such as `Model <model-name> and MCP server learn through <gateway-url>`
 (the LangGraph sample also prints how many tools it loaded), then a short answer about AI Gateway that cites
 Microsoft Learn URLs. The answer differs between runs and frameworks.
 

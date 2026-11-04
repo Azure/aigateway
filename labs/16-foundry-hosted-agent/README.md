@@ -135,8 +135,8 @@ read -rsp "hosted-agent key: " AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY &
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 
 # Set the gateway's runtime URL from its Overview page, and the alias that the agent sends as its model
-export AI_GATEWAY_URL="https://<gateway>.<region>-01.ai.gateway.azure.com"
-export AI_GATEWAY_MODEL="<model-alias>"    # the alias from lab 02
+export AI_GATEWAY_URL="<gateway-url>"
+export AI_GATEWAY_MODEL="<model-name>"    # the alias from lab 02
 echo "🌐 Runtime URL: $AI_GATEWAY_URL"
 echo "🔖 Model alias: $AI_GATEWAY_MODEL"
 ```
@@ -150,8 +150,8 @@ $env:AI_GATEWAY_API_KEY = Read-Host "hosted-agent key" -MaskInput
 Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) characters, not shown)"
 
 # Set the gateway's runtime URL from its Overview page, and the alias that the agent sends as its model
-$env:AI_GATEWAY_URL = "https://<gateway>.<region>-01.ai.gateway.azure.com"
-$env:AI_GATEWAY_MODEL = "<model-alias>"    # the alias from lab 02
+$env:AI_GATEWAY_URL = "<gateway-url>"
+$env:AI_GATEWAY_MODEL = "<model-name>"    # the alias from lab 02
 Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
 Write-Host "🔖 Model alias: $env:AI_GATEWAY_MODEL"
 ```
@@ -169,7 +169,7 @@ Write-Host "🔖 Model alias: $env:AI_GATEWAY_MODEL"
 # Set your resource group, your gateway, and the alias that the agent sends as its model
 export RG="<resource-group>"
 export GATEWAY="<gateway>"
-export AI_GATEWAY_MODEL="<model-alias>"    # the alias from lab 02
+export AI_GATEWAY_MODEL="<model-name>"    # the alias from lab 02
 echo "📝 Gateway $GATEWAY in $RG, alias $AI_GATEWAY_MODEL"
 
 # Read the gateway's runtime URL, which the agent calls for its model and its tools
@@ -184,7 +184,7 @@ echo "🌐 Runtime URL: $AI_GATEWAY_URL"
 # Set your resource group, your gateway, and the alias that the agent sends as its model
 $RG                   = "<resource-group>"
 $GATEWAY              = "<gateway>"
-$env:AI_GATEWAY_MODEL = "<model-alias>"    # the alias from lab 02
+$env:AI_GATEWAY_MODEL = "<model-name>"    # the alias from lab 02
 Write-Host "📝 Gateway $GATEWAY in $RG, alias $env:AI_GATEWAY_MODEL"
 
 # Read the gateway's runtime URL, which the agent calls for its model and its tools
@@ -202,7 +202,7 @@ appears on screen.
 
 ```bash title="Bash"
 # Create the hosted-agent key, which makes the agent a caller identity of its own
-az aigateway api-key create -g "$RG" --gateway-name "$GATEWAY" -n hosted-agent --display-name hosted-agent -o none &&
+az aigateway api-key create -g "$RG" --gateway-name "$GATEWAY" -n hosted-agent -o none &&
   echo "🔑 API key hosted-agent is ready"
 
 # Read the key's value straight into a variable, so that it never shows on screen
@@ -216,7 +216,7 @@ echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not sh
 
 ```powershell title="PowerShell"
 # Create the hosted-agent key, which makes the agent a caller identity of its own
-az aigateway api-key create -g $RG --gateway-name $GATEWAY -n hosted-agent --display-name hosted-agent -o none
+az aigateway api-key create -g $RG --gateway-name $GATEWAY -n hosted-agent -o none
 if ($?) { Write-Host "🔑 API key hosted-agent is ready" }
 
 # Read the key's value straight into a variable, so that it never shows on screen
@@ -257,11 +257,12 @@ azd ext install microsoft.foundry &&
 ### Create an azd environment
 
 The environment name also names the resource group, `rg-<env>`, and the Foundry project. Choose a region where
-Foundry Hosted Agents are available, for example `eastus2`.
+Foundry Hosted Agents are available, for example `eastus2`. The environment uses the subscription that the Azure CLI
+signed in to, the same one as your gateway.
 
 ```bash
 # Create the azd environment, which also names the resource group, rg-aigw-lab16, and the Foundry project
-azd env new aigw-lab16 --location eastus2 &&
+azd env new aigw-lab16 --location eastus2 --subscription "$(az account show --query id -o tsv)" &&
   echo "📝 azd environment aigw-lab16 deploys to eastus2"
 ```
 
@@ -624,7 +625,7 @@ if ($?) { Write-Host "🔐 Token limit of 1,000 tokens per minute per caller ide
 
 ### Trigger the limit
 
-Wait about 30 seconds for the policy to apply, then invoke the hosted agent twice:
+Wait about a minute for the policy to apply, then invoke the hosted agent twice:
 
 ```bash
 # Invoke the hosted agent twice, each time in a new conversation: the first invoke uses well over 1,000 tokens
@@ -641,7 +642,8 @@ ERROR: agent failed (server_error): (... Error code: 429 - {'statusCode': 429, '
 ```
 
 The counter belongs to the `hosted-agent` key. Your other apps, with their own keys, keep their full allowance on
-the same alias. For more on limits, see
+the same alias. The wait in the message can be several minutes, because the first invoke spent several times the
+1,000-token budget. For more on limits, see
 [Throttle tokens per caller with token limits](../06-token-limits/README.md).
 
 ### Remove the limit
@@ -718,7 +720,7 @@ you can reuse its name:
 
 ```bash
 # Delete the resource group with the Foundry resource and the hosted agent, and purge the soft-deleted resource
-azd down --purge &&
+azd down --purge --force &&
   echo "🚮 The Foundry resource group and the hosted agent are deleted"
 ```
 

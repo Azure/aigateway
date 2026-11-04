@@ -304,7 +304,7 @@ Write-Host "🔧 Tool call on $MCP_SERVER with your user token:"
 ```text title="Expected output"
 🔧 Tool call on learn with your user token:
 Delegated token for the signed-in user (scp: ...)
-MCP endpoint: https://<gateway>.eastus2-01.ai.gateway.azure.com/default/toolservers/learn/mcp
+MCP endpoint: <gateway-url>/default/toolservers/learn/mcp
 tools/list: HTTP 200, <n> tools (discovery isn't evaluated)
 tools/call: learn_microsoft_docs_search with query: What is Azure API Management?
 HTTP status: 200

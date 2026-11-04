@@ -1025,8 +1025,8 @@ sends the result as `Authorization: Bearer <token>`.
 Usage:
   pip install -r requirements.txt
   az login
-  export AI_GATEWAY_URL="https://<gateway>.eastus2-01.ai.gateway.azure.com"
-  export AI_GATEWAY_MODEL="<model-alias>"
+  export AI_GATEWAY_URL="<gateway-url>"
+  export AI_GATEWAY_MODEL="<model-name>"
   python call_with_entra.py
 """
 
@@ -1076,8 +1076,8 @@ print(f"Tokens used: {completion.usage.total_tokens if completion.usage else 'n/
 // Usage (Node.js 22.18 or later runs TypeScript directly; on older versions use `npx tsx call-with-entra.ts`):
 //   npm install
 //   az login
-//   export AI_GATEWAY_URL="https://<gateway>.eastus2-01.ai.gateway.azure.com"
-//   export AI_GATEWAY_MODEL="<model-alias>"
+//   export AI_GATEWAY_URL="<gateway-url>"
+//   export AI_GATEWAY_MODEL="<model-name>"
 //   node call-with-entra.ts
 import { DefaultAzureCredential, getBearerTokenProvider } from "@azure/identity";
 import OpenAI from "openai";
@@ -1127,8 +1127,8 @@ console.log(`Tokens used: ${completion.usage?.total_tokens ?? "n/a"}`);
 //
 // Usage:
 //   az login
-//   export AI_GATEWAY_URL="https://<gateway>.eastus2-01.ai.gateway.azure.com"
-//   export AI_GATEWAY_MODEL="<model-alias>"
+//   export AI_GATEWAY_URL="<gateway-url>"
+//   export AI_GATEWAY_MODEL="<model-name>"
 //   dotnet run
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -1308,20 +1308,30 @@ Select **Access** › **Entra ID**, find your assignment, and remove it.
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# Delete your AI Gateway Models User role assignment (a6b68e3d-…) on the gateway
-az role assignment delete --assignee "$MY_OBJECT_ID" \
-  --role "a6b68e3d-a1f0-4c60-8678-237c050cf4ea" --scope "$GATEWAY_ID" &&
-  echo "🚮 Your AI Gateway Models User role assignment on $GATEWAY is deleted"
+# Delete your AI Gateway Models User role assignment (a6b68e3d-…) on the gateway, unless Verify already removed it
+ROLE_IDS="$(az role assignment list --assignee "$MY_OBJECT_ID" \
+  --role "a6b68e3d-a1f0-4c60-8678-237c050cf4ea" --scope "$GATEWAY_ID" --query "[].id" -o tsv)"
+if [ -n "$ROLE_IDS" ]; then
+  az role assignment delete --ids $ROLE_IDS &&
+    echo "🚮 Your AI Gateway Models User role assignment on $GATEWAY is deleted"
+else
+  echo "✅ You have no AI Gateway Models User role assignment on $GATEWAY to delete"
+fi
 ```
 </details> <!-- gh -->
 
 <details><summary>PowerShell</summary> <!-- gh -->
 
 ```powershell title="PowerShell"
-# Delete your AI Gateway Models User role assignment (a6b68e3d-…) on the gateway
-az role assignment delete --assignee $MY_OBJECT_ID `
-  --role "a6b68e3d-a1f0-4c60-8678-237c050cf4ea" --scope $GATEWAY_ID
-if ($?) { Write-Host "🚮 Your AI Gateway Models User role assignment on $GATEWAY is deleted" }
+# Delete your AI Gateway Models User role assignment (a6b68e3d-…) on the gateway, unless Verify already removed it
+$roleIds = @(az role assignment list --assignee $MY_OBJECT_ID `
+  --role "a6b68e3d-a1f0-4c60-8678-237c050cf4ea" --scope $GATEWAY_ID --query "[].id" -o tsv)
+if ($roleIds) {
+  az role assignment delete --ids @roleIds
+  if ($?) { Write-Host "🚮 Your AI Gateway Models User role assignment on $GATEWAY is deleted" }
+} else {
+  Write-Host "✅ You have no AI Gateway Models User role assignment on $GATEWAY to delete"
+}
 ```
 </details> <!-- gh -->
 

@@ -39,7 +39,7 @@ Learn MCP server, so agents get tools through the same front door they already u
 - A runtime API key, for example `app-first-call` from [lab 02](../02-first-model-call/README.md). If you don't have
   one yet, create it in the portal under **Access** › **Keys**, or, after
   you set the variables below, run
-  `az aigateway api-key create -g "$RG" --gateway-name "$GATEWAY" -n app-first-call --display-name app-first-call`
+  `az aigateway api-key create -g "$RG" --gateway-name "$GATEWAY" -n app-first-call`
   and read its value with
   `az aigateway api-key list-secrets -g "$RG" --gateway-name "$GATEWAY" -n app-first-call --query primaryKey -o tsv`.
 - For the Code track: Python 3.10 or later and, optionally, VS Code.
@@ -53,12 +53,6 @@ Set these variables once. Every track and the **Verify** section reuse them.
 export RG="<resource-group>"
 export GATEWAY="<gateway>"
 echo "📝 Gateway $GATEWAY in $RG"
-
-# Read the gateway's resource ID, for the management API calls that later sections make with az rest
-export API="api-version=2025-09-01-preview"
-export GATEWAY_ID="$(az aigateway show -g "$RG" -n "$GATEWAY" --query id -o tsv)"
-export WS="https://management.azure.com$GATEWAY_ID/workspaces/default"
-echo "🆔 Gateway: $GATEWAY_ID"
 
 # Read the gateway's runtime URL, which MCP clients call
 export AI_GATEWAY_URL="https://$(az aigateway show -g "$RG" -n "$GATEWAY" --query properties.frontend.defaultHostname -o tsv)"
@@ -75,12 +69,6 @@ $RG         = "<resource-group>"
 $GATEWAY    = "<gateway>"
 Write-Host "📝 Gateway $GATEWAY in $RG"
 
-# Read the gateway's resource ID, for the management API calls that later sections make with az rest
-$API        = "api-version=2025-09-01-preview"
-$GATEWAY_ID = az aigateway show -g $RG -n $GATEWAY --query id -o tsv
-$WS         = "https://management.azure.com$GATEWAY_ID/workspaces/default"
-Write-Host "🆔 Gateway: $GATEWAY_ID"
-
 # Read the gateway's runtime URL, which MCP clients call
 $env:AI_GATEWAY_URL = "https://$(az aigateway show -g $RG -n $GATEWAY --query properties.frontend.defaultHostname -o tsv)"
 Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
@@ -94,7 +82,7 @@ Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) c
 
 An **MCP server** in AI Gateway is a federation point. You give it one or more **backends**, and the gateway
 publishes all their tools at one Streamable HTTP endpoint:
-`https://<gateway>.eastus2-01.ai.gateway.azure.com/default/toolservers/<server-name>/mcp`.
+`<gateway-url>/default/toolservers/<server-name>/mcp`.
 
 | Backend type | What you provide | What clients see |
 |---|---|---|
@@ -461,28 +449,26 @@ list, or update the backend.
 
 ### Set the versions
 
-The `aigateway` extension doesn't set MCP protocol versions yet, so call the Azure Resource Manager REST API with
-`az rest`. A `PATCH` that sends only `properties.versions` keeps the backends, tool rules, and policies as they are.
+`az aigateway mcp update --versions` takes a space-separated list and replaces the server's list. The backends,
+tool rules, and policies stay as they are.
 
 ```bash title="Bash"
-# Pin learn to MCP version 2025-06-18 with a PATCH that changes only properties.versions
-az rest --method patch --url "$WS/toolServers/learn?$API" \
-  --body '{"properties": {"versions": ["2025-06-18"]}}' --query properties.versions &&
+# Pin learn to MCP version 2025-06-18, and print the list that the server keeps
+az aigateway mcp update -g "$RG" --gateway-name "$GATEWAY" -n learn --versions 2025-06-18 \
+  --query properties.versions &&
   echo "📝 MCP server learn supports only MCP version 2025-06-18"
 ```
 
 ```powershell title="PowerShell"
-# Write the request body to a file, so that PowerShell passes the JSON to az unchanged
-@{ properties = @{ versions = @('2025-06-18') } } | ConvertTo-Json -Depth 5 -Compress | Set-Content -Path body.json
-
-# Pin learn to MCP version 2025-06-18 with a PATCH that changes only properties.versions
-az rest --method patch --url "$WS/toolServers/learn?$API" --body '@body.json' --query properties.versions
+# Pin learn to MCP version 2025-06-18, and print the list that the server keeps
+az aigateway mcp update -g $RG --gateway-name $GATEWAY -n learn --versions 2025-06-18 `
+  --query properties.versions
 if ($?) { Write-Host "📝 MCP server learn supports only MCP version 2025-06-18" }
-Remove-Item body.json
 ```
 
-Unlike the portal, the API doesn't ask the backends which versions they support. If you list a version that a
-backend can't speak, the `PATCH` succeeds and clients that negotiate that version fail. See
+Unlike the portal, the CLI doesn't ask the backends which versions they support. If you list a version that a
+backend can't speak, the update succeeds and clients that negotiate that version fail. A version that the gateway
+doesn't know fails with `Unsupported MCP protocol version`. See
 [Troubleshooting](../TROUBLESHOOTING.md#lab-04-federate-mcp-tools).
 
 <!-- track: iac | Bicep + azd -->
@@ -528,7 +514,8 @@ to change the versions later, set another list.
 
 ### Check the negotiated version
 
-Ask for an older version. The gateway answers with the version it will use:
+A new list takes about 15 seconds to reach the runtime. Until then, the gateway still answers with the previous
+list. Ask for an older version. The gateway answers with the version it will use:
 
 ```bash title="Bash"
 # Send an initialize request that asks for 2025-03-26, with your runtime key in api-key
@@ -672,7 +659,7 @@ Expected output (descriptions are shortened, and the tool list can change as the
 
 ```text
 🔧 Tools on learn:
-MCP endpoint: https://<gateway>.eastus2-01.ai.gateway.azure.com/default/toolservers/learn/mcp
+MCP endpoint: <gateway-url>/default/toolservers/learn/mcp
 Server: <server-name-reported-by-the-gateway>  protocol: <negotiated-version>
 
 Tool                                          Description

@@ -2,8 +2,8 @@
 // Chat Completions. The api-key header stays explicit, as in the .NET samples in the AI Gateway docs.
 //
 // Usage:
-//   export AI_GATEWAY_URL="https://<gateway>.eastus2-01.ai.gateway.azure.com"
-//   export AI_GATEWAY_MODEL="<model-alias>"
+//   export AI_GATEWAY_URL="<gateway-url>"
+//   export AI_GATEWAY_MODEL="<model-name>"
 //   export AI_GATEWAY_API_KEY="..."      // never commit this value
 //   dotnet run
 using System.Net.Http.Json;

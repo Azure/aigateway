@@ -195,7 +195,7 @@ gateway's answer even when a call is blocked.
 # how Agent 365 and gateway controls reach the caller.
 #
 # Usage:
-#   export AI_GATEWAY_URL="https://<gateway>.eastus2-01.ai.gateway.azure.com"
+#   export AI_GATEWAY_URL="<gateway-url>"
 #   export AI_GATEWAY_API_KEY="..."      # never commit this value
 #   ./call-tool.sh [server-name] [tool-name] [arguments-json]
 #
@@ -211,7 +211,7 @@ SERVER="${1:-learn}"
 TOOL="${2:-}"
 ARGS="${3:-}"
 if [ -z "$ARGS" ]; then ARGS="{}"; fi
-: "${AI_GATEWAY_URL:?Set AI_GATEWAY_URL to https://<gateway>.eastus2-01.ai.gateway.azure.com}"
+: "${AI_GATEWAY_URL:?Set AI_GATEWAY_URL to the gateway runtime URL, for example https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com}"
 : "${AI_GATEWAY_API_KEY:?Set AI_GATEWAY_API_KEY to a runtime key from Access > Keys}"
 command -v jq >/dev/null || { echo "This script needs jq." >&2; exit 1; }
 printf '%s' "$ARGS" | jq -e 'type == "object"' >/dev/null || { echo "arguments-json must be a JSON object." >&2; exit 1; }
@@ -321,7 +321,7 @@ Write-Host "🔧 Tools on MCP server ${MCP_SERVER}:"
 
 ```text title="Expected output"
 🔧 Tools on MCP server learn:
-MCP endpoint: https://<gateway>.eastus2-01.ai.gateway.azure.com/default/toolservers/learn/mcp
+MCP endpoint: <gateway-url>/default/toolservers/learn/mcp
 tools/list: HTTP 200
   learn_microsoft_docs_search
   learn_microsoft_code_sample_search
@@ -478,7 +478,7 @@ Write-Host "🚦 Expect 403 AccessBlockedByGateway from MCP server ${MCP_SERVER}
 
 ```text title="Expected output"
 🚦 Expect 403 AccessBlockedByGateway from MCP server learn:
-MCP endpoint: https://<gateway>.eastus2-01.ai.gateway.azure.com/default/toolservers/learn/mcp
+MCP endpoint: <gateway-url>/default/toolservers/learn/mcp
 initialize: HTTP 403 (x-correlation-id: <guid>)
 {
   "error": {

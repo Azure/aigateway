@@ -521,7 +521,7 @@ delegated user token, runs the MCP handshake, and calls the server's search tool
 # Prints whether the tool result came back, or the denial code and correlation ID the gateway returned.
 #
 # Usage:
-#   export AI_GATEWAY_URL="https://<gateway>.eastus2-01.ai.gateway.azure.com"
+#   export AI_GATEWAY_URL="<gateway-url>"
 #   ./call-protected-tool.sh token [server-name] [query]   # delegated Entra token for the signed-in az user
 #   ./call-protected-tool.sh key   [server-name] [query]   # runtime key in AI_GATEWAY_API_KEY (no bearer token)
 #
@@ -534,7 +534,7 @@ set -euo pipefail
 AUTH="${1:?Pass token or key as the first argument}"
 SERVER="${2:-learn}"
 QUERY="${3:-What is Azure API Management?}"
-: "${AI_GATEWAY_URL:?Set AI_GATEWAY_URL to https://<gateway>.eastus2-01.ai.gateway.azure.com}"
+: "${AI_GATEWAY_URL:?Set AI_GATEWAY_URL to the gateway runtime URL, for example https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com}"
 command -v jq >/dev/null || { echo "This script needs jq." >&2; exit 1; }
 ENDPOINT="${AI_GATEWAY_URL%/}/default/toolservers/${SERVER}/mcp"
 
@@ -657,7 +657,7 @@ Write-Host "🔧 Tool call on $MCP_SERVER with your user token:"
 ```text title="Expected output"
 🔧 Tool call on learn with your user token:
 Delegated token for the signed-in user (scp: ...)
-MCP endpoint: https://<gateway>.eastus2-01.ai.gateway.azure.com/default/toolservers/learn/mcp
+MCP endpoint: <gateway-url>/default/toolservers/learn/mcp
 tools/list: HTTP 200, <n> tools (discovery isn't evaluated)
 tools/call: learn_microsoft_docs_search with query: What is Azure API Management?
 HTTP status: 200

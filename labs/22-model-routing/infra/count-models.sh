@@ -7,7 +7,7 @@ set -euo pipefail
 ALIAS="${1:-chat}"
 COUNT="${2:-20}"
 PAUSE="${3:-0.5}"
-: "${AI_GATEWAY_URL:?Set AI_GATEWAY_URL to the gateway URL, for example https://<gateway>.eastus2-01.ai.gateway.azure.com}"
+: "${AI_GATEWAY_URL:?Set AI_GATEWAY_URL to the gateway runtime URL, for example https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com}"
 : "${AI_GATEWAY_API_KEY:?Set AI_GATEWAY_API_KEY to a gateway runtime API key}"
 
 URL="${AI_GATEWAY_URL%/}/default/models/openai/v1/chat/completions"

@@ -10,7 +10,7 @@
   "servers": {
     "ai-gateway-learn": {
       "type": "http",
-      "url": "https://<gateway>.eastus2-01.ai.gateway.azure.com/default/toolservers/learn/mcp",
+      "url": "<gateway-url>/default/toolservers/learn/mcp",
       "headers": {
         "api-key": "${input:aigw-key}"
       }

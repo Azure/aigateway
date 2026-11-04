@@ -5,7 +5,7 @@
 # how Agent 365 and gateway controls reach the caller.
 #
 # Usage:
-#   export AI_GATEWAY_URL="https://<gateway>.eastus2-01.ai.gateway.azure.com"
+#   export AI_GATEWAY_URL="<gateway-url>"
 #   export AI_GATEWAY_API_KEY="..."      # never commit this value
 #   ./call-tool.sh [server-name] [tool-name] [arguments-json]
 #
@@ -21,7 +21,7 @@ SERVER="${1:-learn}"
 TOOL="${2:-}"
 ARGS="${3:-}"
 if [ -z "$ARGS" ]; then ARGS="{}"; fi
-: "${AI_GATEWAY_URL:?Set AI_GATEWAY_URL to https://<gateway>.eastus2-01.ai.gateway.azure.com}"
+: "${AI_GATEWAY_URL:?Set AI_GATEWAY_URL to the gateway runtime URL, for example https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com}"
 : "${AI_GATEWAY_API_KEY:?Set AI_GATEWAY_API_KEY to a runtime key from Access > Keys}"
 command -v jq >/dev/null || { echo "This script needs jq." >&2; exit 1; }
 printf '%s' "$ARGS" | jq -e 'type == "object"' >/dev/null || { echo "arguments-json must be a JSON object." >&2; exit 1; }

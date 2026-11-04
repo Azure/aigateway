@@ -165,7 +165,7 @@ Write-Host "🔧 Tools on MCP server ${MCP_SERVER}:"
 
 ```text title="Expected output"
 🔧 Tools on MCP server learn:
-MCP endpoint: https://<gateway>.eastus2-01.ai.gateway.azure.com/default/toolservers/learn/mcp
+MCP endpoint: <gateway-url>/default/toolservers/learn/mcp
 tools/list: HTTP 200
   learn_microsoft_docs_search
   learn_microsoft_code_sample_search
@@ -322,7 +322,7 @@ Write-Host "🚦 Expect 403 AccessBlockedByGateway from MCP server ${MCP_SERVER}
 
 ```text title="Expected output"
 🚦 Expect 403 AccessBlockedByGateway from MCP server learn:
-MCP endpoint: https://<gateway>.eastus2-01.ai.gateway.azure.com/default/toolservers/learn/mcp
+MCP endpoint: <gateway-url>/default/toolservers/learn/mcp
 initialize: HTTP 403 (x-correlation-id: <guid>)
 {
   "error": {

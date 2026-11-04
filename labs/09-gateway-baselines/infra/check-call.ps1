@@ -4,14 +4,14 @@
 # Requires PowerShell 7 or later.
 #
 # Usage:
-#   $env:AI_GATEWAY_URL = "https://<gateway>.eastus2-01.ai.gateway.azure.com"
+#   $env:AI_GATEWAY_URL = "<gateway-url>"
 #   $env:AI_GATEWAY_API_KEY = "..."      # never commit this value
-#   ./check-call.ps1 -Model <model-alias>
+#   ./check-call.ps1 -Model <model-name>
 param(
   [Parameter(Mandatory)][string]$Model
 )
 $ErrorActionPreference = 'Stop'
-if (-not $env:AI_GATEWAY_URL) { throw 'Set $env:AI_GATEWAY_URL to https://<gateway>.eastus2-01.ai.gateway.azure.com' }
+if (-not $env:AI_GATEWAY_URL) { throw 'Set $env:AI_GATEWAY_URL to the gateway runtime URL, for example https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com' }
 if (-not $env:AI_GATEWAY_API_KEY) { throw 'Set $env:AI_GATEWAY_API_KEY to a runtime key from Access > Keys' }
 
 $uri = "$($env:AI_GATEWAY_URL.TrimEnd('/'))/default/models/openai/v1/chat/completions"

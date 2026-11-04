@@ -89,7 +89,7 @@ export AI_GATEWAY_URL="https://$(az aigateway show -g "$RG" -n "$GATEWAY" --quer
 echo "🌐 Runtime URL: $AI_GATEWAY_URL"
 
 # Create an API key for this app, so that you can revoke it on its own later
-az aigateway api-key create -g "$RG" --gateway-name "$GATEWAY" -n app-coding-agent --display-name app-coding-agent -o none &&
+az aigateway api-key create -g "$RG" --gateway-name "$GATEWAY" -n app-coding-agent -o none &&
   echo "🔑 API key app-coding-agent is ready"
 
 # Read the key into an environment variable, so that it never shows on screen
@@ -114,7 +114,7 @@ $env:AI_GATEWAY_URL = "https://$(az aigateway show -g $RG -n $GATEWAY --query pr
 Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
 
 # Create an API key for this app, so that you can revoke it on its own later
-az aigateway api-key create -g $RG --gateway-name $GATEWAY -n app-coding-agent --display-name app-coding-agent -o none
+az aigateway api-key create -g $RG --gateway-name $GATEWAY -n app-coding-agent -o none
 if ($?) { Write-Host "🔑 API key app-coding-agent is ready" }
 
 # Read the key into an environment variable, so that it never shows on screen
@@ -234,8 +234,8 @@ Install ai-gateway from Customize.
 
 ```bash title="Gemini CLI"
 # Install the plugin as a Gemini CLI extension, straight from the GitHub repository
-gemini extensions install https://github.com/Azure/ai-gateway
-echo "📦 The ai-gateway extension is installed in Gemini CLI"
+gemini extensions install https://github.com/Azure/ai-gateway &&
+  echo "📦 The ai-gateway extension is installed in Gemini CLI"
 ```
 </details> <!-- gh -->
 
@@ -337,7 +337,7 @@ Read the code before you run it again or commit it. Check that:
   [Publish models from any provider behind stable aliases](../03-multi-provider-aliases/README.md).
 - The key comes from `AI_GATEWAY_API_KEY` and goes in the `api-key` header. No key value appears in code,
   `README.md`, or config files, and `.env.example` holds only a placeholder.
-- `.gitignore` lists `.env`.
+- If the plugin wrote a `.env` file, `.gitignore` lists it.
 - The app calls only the gateway's runtime URL, never `management.azure.com`.
 - For a scaffolded agent: `requirements.txt` pins `github-copilot-sdk>=1.0.0`, each MCP server lists the selected
   tools by name instead of `"*"`, and tool permission requests wait for your approval.
@@ -345,7 +345,8 @@ Read the code before you run it again or commit it. Check that:
 ### Run the app
 
 `build` already ran the code once and reported the result. Run it yourself from the shell where you set
-`AI_GATEWAY_API_KEY`, using the command in the generated `README.md`. For a Python project, that's usually:
+`AI_GATEWAY_API_KEY`, using the command that `build` reported or the generated `README.md`. If the project has a
+`requirements.txt`, install its packages in a virtual environment first:
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -373,7 +374,8 @@ if ($?) { Write-Host "📦 The packages in requirements.txt are installed" }
 ```
 </details> <!-- gh -->
 
-Then start the entry point that the README names, for example `python summarize.py ticket.txt`.
+Then start the entry point, for example `python summarize_ticket.py ticket.txt`. A script that uses only the
+Python standard library has no `requirements.txt`, so run it directly.
 
 <!-- /steps -->
 
@@ -414,13 +416,16 @@ Expect `HTTP 200` (`200` in PowerShell).
 
 ### Check that no secret can be committed
 
-Run this in the project folder. It checks that Git ignores `.env` and that your key appears in no other file.
+Run this in the project folder. It checks that Git ignores `.env`, if the plugin wrote one, and that your key
+appears in no other file.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# Check that Git ignores .env, the file that holds your key
-git check-ignore -q .env && echo "✅ .env is ignored" || echo "🚨 .env is not ignored"
+# If the plugin wrote a .env file, the file that holds your key, check that Git ignores it
+if [ ! -e .env ]; then echo "✅ No .env file"
+elif git check-ignore -q .env; then echo "✅ .env is ignored"
+else echo "🚨 .env is not ignored"; fi
 
 # Search every other file for your key, skipping .git, .venv, and node_modules, and list any file that holds it
 if grep -rIlF --exclude=.env --exclude-dir=.git --exclude-dir=.venv --exclude-dir=node_modules -- "$AI_GATEWAY_API_KEY" .; then
@@ -434,8 +439,9 @@ fi
 <details><summary>PowerShell</summary> <!-- gh -->
 
 ```powershell title="PowerShell"
-# Check that Git ignores .env, the file that holds your key
-git check-ignore -q .env; if ($LASTEXITCODE -eq 0) { Write-Host "✅ .env is ignored" } else { Write-Host "🚨 .env is not ignored" }
+# If the plugin wrote a .env file, the file that holds your key, check that Git ignores it
+if (-not (Test-Path .env)) { Write-Host "✅ No .env file" } else {
+  git check-ignore -q .env; if ($LASTEXITCODE -eq 0) { Write-Host "✅ .env is ignored" } else { Write-Host "🚨 .env is not ignored" } }
 
 # Search every other file for your key, skipping .git, .venv, and node_modules, and list any file that holds it
 $hits = Get-ChildItem -Recurse -File -Force |
@@ -445,8 +451,9 @@ if ($hits) { Write-Host "🚨 The key appears in:"; $hits.Path } else { Write-Ho
 ```
 </details> <!-- gh -->
 
-Expect `✅ .env is ignored` and `✅ No key in project files`. If the plugin wrote a different key to `.env`, run the
-check again with that key in `AI_GATEWAY_API_KEY`.
+Expect `✅ .env is ignored`, or `✅ No .env file` when the code reads the key only from your environment, and
+`✅ No key in project files`. If the plugin wrote a different key to `.env`, run the check again with that key in
+`AI_GATEWAY_API_KEY`.
 
 <!-- /steps -->
 
@@ -459,7 +466,7 @@ check again with that key in `AI_GATEWAY_API_KEY`.
 
 VS Code reads MCP servers from `.vscode/mcp.json`. To give agent mode the tools that you federated in
 [Federate MCP tools behind one endpoint](../04-federate-mcp-tools/README.md), save this file as
-`.vscode/mcp.json` in your project. Replace `https://<gateway>.eastus2-01.ai.gateway.azure.com` with your gateway
+`.vscode/mcp.json` in your project. Replace `<gateway-url>` with your gateway
 URL (`echo $AI_GATEWAY_URL`) and `learn` with any tool server name that discover listed. To copy a tool server's
 exact MCP URL, run
 `az aigateway mcp show -g "$RG" --gateway-name "$GATEWAY" -n learn --query "properties.gatewayEndpoints[0].url" -o tsv`.
@@ -481,7 +488,7 @@ exact MCP URL, run
   "servers": {
     "ai-gateway-learn": {
       "type": "http",
-      "url": "https://<gateway>.eastus2-01.ai.gateway.azure.com/default/toolservers/learn/mcp",
+      "url": "<gateway-url>/default/toolservers/learn/mcp",
       "headers": {
         "api-key": "${input:aigw-key}"
       }
@@ -553,8 +560,8 @@ Optionally, remove the plugin. In Cursor, remove it where you installed it.
 
 ```bash title="Gemini CLI"
 # Remove the ai-gateway extension from Gemini CLI
-gemini extensions uninstall ai-gateway
-echo "🚮 The ai-gateway extension is removed from Gemini CLI"
+gemini extensions uninstall ai-gateway &&
+  echo "🚮 The ai-gateway extension is removed from Gemini CLI"
 ```
 </details> <!-- gh -->
 

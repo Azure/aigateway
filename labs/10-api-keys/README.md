@@ -94,13 +94,10 @@ Set these variables once. Every track and the **Verify** section reuse them.
 # Name your gateway, its resource group, and the model alias that the checks in this lab call
 export RG="<resource-group>"
 export GATEWAY="<gateway>"
-export AI_GATEWAY_MODEL="<model-alias>"      # an alias you can call, for example the one from lab 02
+export AI_GATEWAY_MODEL="<model-name>"      # an alias you can call, for example the one from lab 02
 # export KEY_VAULT="<key-vault>"             # optional: uncomment to keep key values in Key Vault
 
-# Read the gateway's resource ID and runtime URL, and set the management URL and API version for the az rest calls
-export API="api-version=2025-09-01-preview"
-export GATEWAY_ID="$(az aigateway show -g "$RG" -n "$GATEWAY" --query id -o tsv)"
-export GW="https://management.azure.com$GATEWAY_ID"
+# Read the gateway's runtime URL
 export AI_GATEWAY_URL="https://$(az aigateway show -g "$RG" -n "$GATEWAY" --query properties.frontend.defaultHostname -o tsv)"
 echo "📝 Gateway $GATEWAY in $RG, model alias $AI_GATEWAY_MODEL"
 echo "🌐 Runtime URL: $AI_GATEWAY_URL"
@@ -113,13 +110,10 @@ echo "🌐 Runtime URL: $AI_GATEWAY_URL"
 # Name your gateway, its resource group, and the model alias that the checks in this lab call
 $RG                   = "<resource-group>"
 $GATEWAY              = "<gateway>"
-$env:AI_GATEWAY_MODEL = "<model-alias>"      # an alias you can call, for example the one from lab 02
+$env:AI_GATEWAY_MODEL = "<model-name>"      # an alias you can call, for example the one from lab 02
 # $KEY_VAULT          = "<key-vault>"        # optional: uncomment to keep key values in Key Vault
 
-# Read the gateway's resource ID and runtime URL, and set the management URL and API version for the az rest calls
-$API        = "api-version=2025-09-01-preview"
-$GATEWAY_ID = az aigateway show -g $RG -n $GATEWAY --query id -o tsv
-$GW         = "https://management.azure.com$GATEWAY_ID"
+# Read the gateway's runtime URL
 $env:AI_GATEWAY_URL = "https://$(az aigateway show -g $RG -n $GATEWAY --query properties.frontend.defaultHostname -o tsv)"
 Write-Host "📝 Gateway $GATEWAY in $RG, model alias $env:AI_GATEWAY_MODEL"
 Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
@@ -189,7 +183,7 @@ That's why every app, agent, or user should get its own key.
 | Create a key | **Create API key** | `create` | Declare the key |
 | Read a value | **View keys** (primary value) | `list-secrets` (primary and secondary values) | — (never an output) |
 | Rotate | **Rotate key** (primary value) | `regenerate --key-type primary` or `--key-type secondary` | — |
-| Block temporarily | — | `az rest` `PATCH` with `state` set to `suspended`, then back to `active` | — |
+| Block temporarily | — | `update --state suspended`, then `--state active` | — |
 | Revoke | **Delete** | `delete` | — (removing the key from the template doesn't delete it) |
 
 The gateway also has a built-in key named `master`. Don't hand it out; create named keys instead.
@@ -247,14 +241,14 @@ Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) c
 
 ### Create the keys
 
-`create` needs a display name, but the service replaces it with its own, so identify keys by `name`.
+The service gives each key its own display name, so identify keys by `name`.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
 # Create one runtime API key for each caller: the web app, the agent, and the notebook whose key leaks
 for KEY in app-dev support-bot old-notebook; do
-  az aigateway api-key create -g "$RG" --gateway-name "$GATEWAY" -n "$KEY" --display-name "$KEY" -o none &&
+  az aigateway api-key create -g "$RG" --gateway-name "$GATEWAY" -n "$KEY" -o none &&
     echo "🔑 API key $KEY is ready"
 done
 
@@ -269,7 +263,7 @@ az aigateway api-key list -g "$RG" --gateway-name "$GATEWAY" --query "[].{name:n
 ```powershell title="PowerShell"
 # Create one runtime API key for each caller: the web app, the agent, and the notebook whose key leaks
 foreach ($key in "app-dev", "support-bot", "old-notebook") {
-  az aigateway api-key create -g $RG --gateway-name $GATEWAY -n $key --display-name $key -o none
+  az aigateway api-key create -g $RG --gateway-name $GATEWAY -n $key -o none
   if ($?) { Write-Host "🔑 API key $key is ready" }
 }
 
@@ -435,7 +429,7 @@ resource apiKeys 'Microsoft.ApiManagement/aigateways/apiKeys@2025-09-01-preview'
   parent: gateway
   name: name
   properties: {
-    // Like the CLI's --display-name: the service replaces it with its own, so identify keys by name.
+    // The service replaces the display name with its own, so identify keys by name.
     displayName: name
   }
 }]
@@ -497,13 +491,11 @@ key from the gateway, so that it never shows on screen.
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# Read azd's outputs into the variables that the next sections use, and set the management URL for the az rest calls
+# Read azd's outputs into the variables that the next sections use
 export RG="$(azd env get-value AZURE_RESOURCE_GROUP)"
 export GATEWAY="$(azd env get-value AI_GATEWAY_NAME)"
 export AI_GATEWAY_MODEL="$(azd env get-value AI_GATEWAY_MODEL)"
-export API="api-version=2025-09-01-preview"
 export GATEWAY_ID="$(azd env get-value AI_GATEWAY_ID)"
-export GW="https://management.azure.com$GATEWAY_ID"
 export AI_GATEWAY_URL="$(azd env get-value AI_GATEWAY_URL)"
 echo "📝 Gateway $GATEWAY in $RG, model alias $AI_GATEWAY_MODEL"
 echo "🌐 Runtime URL: $AI_GATEWAY_URL"
@@ -522,13 +514,11 @@ az aigateway api-key list -g "$RG" --gateway-name "$GATEWAY" --query "[].{name:n
 <details><summary>PowerShell</summary> <!-- gh -->
 
 ```powershell title="PowerShell"
-# Read azd's outputs into the variables that the next sections use, and set the management URL for the az rest calls
+# Read azd's outputs into the variables that the next sections use
 $RG                     = azd env get-value AZURE_RESOURCE_GROUP
 $GATEWAY                = azd env get-value AI_GATEWAY_NAME
 $env:AI_GATEWAY_MODEL   = azd env get-value AI_GATEWAY_MODEL
-$API                    = "api-version=2025-09-01-preview"
 $GATEWAY_ID             = azd env get-value AI_GATEWAY_ID
-$GW                     = "https://management.azure.com$GATEWAY_ID"
 $env:AI_GATEWAY_URL     = azd env get-value AI_GATEWAY_URL
 Write-Host "📝 Gateway $GATEWAY in $RG, model alias $env:AI_GATEWAY_MODEL"
 Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
@@ -620,8 +610,8 @@ open [check-key.sh](infra/check-key.sh) or [check-key.ps1](infra/check-key.ps1).
 # runtime API key. Only the last four characters of the key are printed.
 #
 # Usage:
-#   export AI_GATEWAY_URL="https://<gateway>.eastus2-01.ai.gateway.azure.com"
-#   export AI_GATEWAY_MODEL="<model-alias>"
+#   export AI_GATEWAY_URL="<gateway-url>"
+#   export AI_GATEWAY_MODEL="<model-name>"
 #   export AI_GATEWAY_API_KEY="..."                 # the key to test; never commit it
 #   ./check-key.sh ["label"]                        # test AI_GATEWAY_API_KEY
 #   AI_GATEWAY_API_KEY="$OLD_KEY" ./check-key.sh "old value"
@@ -629,7 +619,7 @@ open [check-key.sh](infra/check-key.sh) or [check-key.ps1](infra/check-key.ps1).
 # Requires curl.
 set -euo pipefail
 
-: "${AI_GATEWAY_URL:?Set AI_GATEWAY_URL to https://<gateway>.eastus2-01.ai.gateway.azure.com}"
+: "${AI_GATEWAY_URL:?Set AI_GATEWAY_URL to the gateway runtime URL, for example https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com}"
 : "${AI_GATEWAY_MODEL:?Set AI_GATEWAY_MODEL to a callable model alias}"
 
 URL="${AI_GATEWAY_URL%/}/default/models/openai/v1/chat/completions"
@@ -1054,22 +1044,21 @@ if ($?) { Write-Host "🚮 API key old-notebook is deleted" }
 
 ### Suspend a key instead
 
-To block a key while you investigate, without deleting it, set its `state` to `suspended`. Calls with the key
-get `401` until you set it back to `active`. The **Verify** section expects `support-bot` to work, so set it
-back to `active` before you continue. The `aigateway` extension can't change a key's state yet, so call the Azure
-Resource Manager REST API with `az rest`:
+To block a key while you investigate, without deleting it, set its `state` to `suspended`. About 20 seconds
+later, calls with the key get `401` until you set it back to `active`. The **Verify** section expects
+`support-bot` to work, so set it back to `active` before you continue:
 
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
 # Suspend the support-bot key: calls with it get 401 until you set it back to active
-STATE="$(az rest --method patch --url "$GW/apiKeys/support-bot?$API" \
-  --body '{"properties":{"state":"suspended"}}' --query properties.state -o tsv)" &&
+STATE="$(az aigateway api-key update -g "$RG" --gateway-name "$GATEWAY" -n support-bot --state suspended \
+  --query properties.state -o tsv)" &&
   echo "🔑 API key support-bot is $STATE"
 
 # Later, set the key back to active, so that it works again
-STATE="$(az rest --method patch --url "$GW/apiKeys/support-bot?$API" \
-  --body '{"properties":{"state":"active"}}' --query properties.state -o tsv)" &&
+STATE="$(az aigateway api-key update -g "$RG" --gateway-name "$GATEWAY" -n support-bot --state active \
+  --query properties.state -o tsv)" &&
   echo "🔑 API key support-bot is $STATE"
 ```
 </details> <!-- gh -->
@@ -1078,16 +1067,14 @@ STATE="$(az rest --method patch --url "$GW/apiKeys/support-bot?$API" \
 
 ```powershell title="PowerShell"
 # Suspend the support-bot key: calls with it get 401 until you set it back to active
-# The body goes in a file, so that PowerShell passes the JSON quotes to az intact
-'{"properties":{"state":"suspended"}}' | Set-Content keystate.json
-$STATE = az rest --method patch --url "$GW/apiKeys/support-bot?$API" --body "@keystate.json" --query properties.state -o tsv
+$STATE = az aigateway api-key update -g $RG --gateway-name $GATEWAY -n support-bot --state suspended `
+  --query properties.state -o tsv
 if ($?) { Write-Host "🔑 API key support-bot is $STATE" }
 
 # Later, set the key back to active, so that it works again
-'{"properties":{"state":"active"}}' | Set-Content keystate.json
-$STATE = az rest --method patch --url "$GW/apiKeys/support-bot?$API" --body "@keystate.json" --query properties.state -o tsv
+$STATE = az aigateway api-key update -g $RG --gateway-name $GATEWAY -n support-bot --state active `
+  --query properties.state -o tsv
 if ($?) { Write-Host "🔑 API key support-bot is $STATE" }
-Remove-Item keystate.json
 ```
 </details> <!-- gh -->
 

@@ -4,7 +4,7 @@
 # how Agent 365 and gateway controls reach the caller. Requires PowerShell 7 or later.
 #
 # Usage:
-#   $env:AI_GATEWAY_URL = "https://<gateway>.eastus2-01.ai.gateway.azure.com"
+#   $env:AI_GATEWAY_URL = "<gateway-url>"
 #   $env:AI_GATEWAY_API_KEY = "..."      # never commit this value
 #   ./call-tool.ps1 [-Server learn] [-Tool <tool-name>] [-Arguments '<json-object>']
 #
@@ -18,7 +18,7 @@ param(
   [string]$Arguments = '{}'
 )
 $ErrorActionPreference = 'Stop'
-if (-not $env:AI_GATEWAY_URL) { throw 'Set $env:AI_GATEWAY_URL to https://<gateway>.eastus2-01.ai.gateway.azure.com' }
+if (-not $env:AI_GATEWAY_URL) { throw 'Set $env:AI_GATEWAY_URL to the gateway runtime URL, for example https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com' }
 if (-not $env:AI_GATEWAY_API_KEY) { throw 'Set $env:AI_GATEWAY_API_KEY to a runtime key from Access > Keys' }
 $toolArguments = $Arguments | ConvertFrom-Json -AsHashtable
 if ($toolArguments -isnot [System.Collections.IDictionary]) { throw '-Arguments must be a JSON object.' }

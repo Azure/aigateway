@@ -749,17 +749,27 @@ Select **Access** › **Entra ID**, find your assignment, and remove it.
 ### Remove the role assignment
 
 ```bash title="Bash"
-# Delete your AI Gateway Models User role assignment (a6b68e3d-…) on the gateway
-az role assignment delete --assignee "$MY_OBJECT_ID" \
-  --role "a6b68e3d-a1f0-4c60-8678-237c050cf4ea" --scope "$GATEWAY_ID" &&
-  echo "🚮 Your AI Gateway Models User role assignment on $GATEWAY is deleted"
+# Delete your AI Gateway Models User role assignment (a6b68e3d-…) on the gateway, unless Verify already removed it
+ROLE_IDS="$(az role assignment list --assignee "$MY_OBJECT_ID" \
+  --role "a6b68e3d-a1f0-4c60-8678-237c050cf4ea" --scope "$GATEWAY_ID" --query "[].id" -o tsv)"
+if [ -n "$ROLE_IDS" ]; then
+  az role assignment delete --ids $ROLE_IDS &&
+    echo "🚮 Your AI Gateway Models User role assignment on $GATEWAY is deleted"
+else
+  echo "✅ You have no AI Gateway Models User role assignment on $GATEWAY to delete"
+fi
 ```
 
 ```powershell title="PowerShell"
-# Delete your AI Gateway Models User role assignment (a6b68e3d-…) on the gateway
-az role assignment delete --assignee $MY_OBJECT_ID `
-  --role "a6b68e3d-a1f0-4c60-8678-237c050cf4ea" --scope $GATEWAY_ID
-if ($?) { Write-Host "🚮 Your AI Gateway Models User role assignment on $GATEWAY is deleted" }
+# Delete your AI Gateway Models User role assignment (a6b68e3d-…) on the gateway, unless Verify already removed it
+$roleIds = @(az role assignment list --assignee $MY_OBJECT_ID `
+  --role "a6b68e3d-a1f0-4c60-8678-237c050cf4ea" --scope $GATEWAY_ID --query "[].id" -o tsv)
+if ($roleIds) {
+  az role assignment delete --ids @roleIds
+  if ($?) { Write-Host "🚮 Your AI Gateway Models User role assignment on $GATEWAY is deleted" }
+} else {
+  Write-Host "✅ You have no AI Gateway Models User role assignment on $GATEWAY to delete"
+}
 ```
 
 <!-- track: code | Code -->

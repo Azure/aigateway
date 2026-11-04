@@ -75,7 +75,7 @@ Every call that goes through AI Gateway uses the same building blocks. In this q
 
 | Building block | What it does | In this quick start |
 | :-- | :-- | :-- |
-| **Gateway** | The Azure resource (`Microsoft.ApiManagement/aigateways`) that gives your apps one runtime URL for models and tools | Your gateway, at `https://<gateway>.<location>-01.ai.gateway.azure.com` |
+| **Gateway** | The Azure resource (`Microsoft.ApiManagement/aigateways`) that gives your apps one runtime URL for models and tools | Your gateway, at `<gateway-url>` |
 | **Model provider** | A connection to a backend. The gateway signs in to it with its own managed identity, so your apps never hold a backend key | Your Foundry account. The Azure CLI and Bicep tracks name the provider `foundry-models` |
 | **Model** | A backend deployment that the gateway can route to | The Foundry deployment `gpt-6-luna` |
 | **Alias** | The name that apps send in the `model` field. The gateway routes the alias to one or more models | `<foundry-account-name>/gpt-6-luna` in the portal, `gpt-6-luna` in the Azure CLI and Bicep tracks |
@@ -440,8 +440,7 @@ role, and it sends a Microsoft Entra ID token instead of a key, as
 
 ```bash title="Bash"
 # Create a runtime API key for your app
-az aigateway api-key create --resource-group "$RG" --gateway-name "$GATEWAY" --name app-first-call \
-  --display-name app-first-call --output none &&
+az aigateway api-key create --resource-group "$RG" --gateway-name "$GATEWAY" --name app-first-call --output none &&
   echo "🔑 API key app-first-call is ready"
 
 # Read the key, the gateway's runtime URL, and the alias into environment variables
@@ -459,8 +458,7 @@ echo "🔖 Model alias: $AI_GATEWAY_MODEL"
 
 ```powershell title="PowerShell"
 # Create a runtime API key for your app
-az aigateway api-key create --resource-group $RG --gateway-name $GATEWAY --name app-first-call `
-  --display-name app-first-call --output none
+az aigateway api-key create --resource-group $RG --gateway-name $GATEWAY --name app-first-call --output none
 if ($?) { Write-Host "🔑 API key app-first-call is ready" }
 
 # Read the key, the gateway's runtime URL, and the alias into environment variables
@@ -475,7 +473,7 @@ Write-Host "🔖 Model alias: $env:AI_GATEWAY_MODEL"
 </details> <!-- gh -->
 
 > **Checkpoint:** the commands printed `🔖 Alias gpt-6-luna is ready` and your gateway's runtime URL, for example
-> `🌐 Runtime URL: https://aigw-abc123.eastus2-01.ai.gateway.azure.com`.
+> `🌐 Runtime URL: https://aigw-abc12-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com`.
 
 ### Make your first call
 
@@ -601,7 +599,7 @@ param apiKeyName string = 'app-first-call'
 
 var foundryUserRoleId = '53ca6127-db72-4b80-b1b0-d745d6d5456d'
 
-// 1. The gateway in the Consumption SKU, with a system-assigned managed identity, then its companion connector
+// 1. The gateway in the Standard SKU, with a system-assigned managed identity, then its companion connector
 //    gateway.
 #disable-next-line BCP081
 resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' = {
@@ -612,7 +610,7 @@ resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' = {
     type: 'SystemAssigned'
   }
   sku: {
-    name: 'Consumption'
+    name: 'Standard'
   }
   properties: {}
 }
@@ -847,7 +845,7 @@ Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) c
 </details> <!-- gh -->
 
 > **Checkpoint:** `azd up` ended with `SUCCESS`, and the last commands printed your gateway's runtime URL, for example
-> `🌐 Runtime URL: https://aigw-abc123.eastus2-01.ai.gateway.azure.com`.
+> `🌐 Runtime URL: https://aigw-abc12-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com`.
 
 ### Make your first call
 

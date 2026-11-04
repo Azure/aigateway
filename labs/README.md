@@ -110,9 +110,9 @@ Token limits, budgets, content safety, and gateway-wide baselines.
 | # | Lab | Level | Time | Tracks | Notebook |
 | :-: | :-- | :-- | --: | :-- | :-: |
 | 06 | [Throttle tokens per caller with token limits](06-token-limits/README.md) | Beginner | 25 min | Portal · CLI · REST · Bicep | [📓](06-token-limits/06-token-limits.ipynb) |
-| 07 | [Enforce cost budgets with per-caller overrides](07-cost-budgets/README.md) | Intermediate | 30 min | Portal · REST · Bicep |  |
+| 07 | [Enforce cost budgets with per-caller overrides](07-cost-budgets/README.md) | Intermediate | 30 min | Portal · CLI · Bicep |  |
 | 08 | [Screen prompts and responses with content safety](08-content-safety/README.md) | Beginner | 20 min | Portal · CLI · REST · Bicep |  |
-| 09 | [Set gateway-wide policy baselines](09-gateway-baselines/README.md) | Intermediate | 25 min | Portal · REST · Bicep |  |
+| 09 | [Set gateway-wide policy baselines](09-gateway-baselines/README.md) | Intermediate | 25 min | Portal · CLI · Bicep |  |
 
 ### Security & identity
 
@@ -130,8 +130,8 @@ Dashboards, traces, OpenTelemetry, and chargeback.
 
 | # | Lab | Level | Time | Tracks | Notebook |
 | :-: | :-- | :-- | --: | :-- | :-: |
-| 13 | [Monitor usage, cost, and traces](13-monitoring/README.md) | Beginner | 25 min | Portal · Bicep |  |
-| 14 | [Attribute tokens and cost with OpenTelemetry](14-otel-chargeback/README.md) | Advanced | 35 min | Portal · REST · Bicep |  |
+| 13 | [Monitor usage, cost, and traces](13-monitoring/README.md) | Beginner | 25 min | Portal · CLI · Bicep |  |
+| 14 | [Attribute tokens and cost with OpenTelemetry](14-otel-chargeback/README.md) | Advanced | 35 min | Portal · CLI · Bicep |  |
 
 ### Agents
 

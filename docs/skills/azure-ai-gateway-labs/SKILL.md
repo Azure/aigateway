@@ -74,7 +74,7 @@ Before you create, change, or delete Azure resources, confirm the subscription a
 | Track | Marker id | How to use it |
 | :-- | :-- | :-- |
 | Portal | `portal` | Click-by-click steps in the AI Gateway portal. You can't run them from a shell, so guide the user through them one screen at a time. |
-| Azure CLI | `cli` | `az aigateway` commands (extension 1.0.0b15 or later), plus `az rest` calls to Azure Resource Manager for what the extension can't do yet, in Bash and PowerShell variants. This is the easiest track for an agent to run. |
+| Azure CLI | `cli` | `az aigateway` commands (extension 1.0.0b22 or later), plus `az rest` calls to Azure Resource Manager for what the extension can't do yet, in Bash and PowerShell variants. This is the easiest track for an agent to run. |
 | REST API | `rest` | Raw Azure Resource Manager requests, for users who script against the API themselves. |
 | Bicep + azd | `iac` | A self-contained azd template in the lab folder (`azure.yaml` and `infra/main.bicep`): clone the repo, run `azd up` in the lab folder to create a new resource group with its own gateway, model, and the lab's feature, read the outputs with `azd env get-value`, change settings with `azd env set` and `azd provision`, and delete everything with `azd down --purge --force`. Lab 09 labels its track **Policy as code** (JSON policies applied by a script), and lab 21 **Bicep** (`az deployment sub create` with parameter files). |
 | Code | `code` | Python, TypeScript, and .NET clients, and agent frameworks, calling the gateway at runtime. |
@@ -83,8 +83,8 @@ Before you create, change, or delete Azure resources, confirm the subscription a
 ## Facts to rely on
 
 - The gateway is the `Microsoft.ApiManagement/aigateways` resource, API version `2025-09-01-preview`. Never use
-  `Microsoft.ApiManagement/service`. In Bicep, set `sku: { name: 'Consumption' }` (without it, the gateway is
-  created in the `Premium` SKU; `az aigateway create` sets `Consumption`) and no publisher properties, and add a
+  `Microsoft.ApiManagement/service`. In Bicep, set `sku: { name: 'Standard' }`, the only SKU the service accepts
+  (`az aigateway create` omits `sku`, so the service default `Standard` applies), and no publisher properties, and add a
   `Microsoft.Web/connectorGateways` resource with the same name (API version `2026-05-01-preview`) that depends on
   the gateway. Put `#disable-next-line BCP081` before each `aigateways` and `connectorGateways` resource
   declaration, because Bicep has no types for them. Gateway names are at most 24 characters, and a subscription
@@ -94,24 +94,27 @@ Before you create, change, or delete Azure resources, confirm the subscription a
   (display names; `az account list-locations` maps them to `--location` names), as in the Setup guide's
   **Find the available regions**. The portal can offer fewer regions than the CLI and Bicep. Templates that deploy
   Foundry models need a region where those models are available too.
-- The CLI track uses the `az aigateway` extension 1.0.0b15 or later (the Setup guide installs it) for gateways,
-  providers, models (`model create --deployment-config "{resourceId:…,modelName:…}"`), aliases, model policies
-  (`model policy set-token-limit`, `set-content-safety`, `remove`), API keys, and MCP servers.
-  `az aigateway api-key create` needs `--display-name`, secrets come from `api-key list-secrets`, rotation uses
-  `api-key regenerate --key-type primary|secondary`, and `model-alias set` creates an alias or updates the
-  existing one. `--token-counter-key` takes one or more values, such as `Identity IPAddress`.
-  `model-provider update --foundry` and `--custom` merge a partial JSON value into the provider's settings, and
-  `az aigateway create` and `update` take `--sku Consumption|Premium`. The track keeps `az rest` for what the
-  extension can't do yet: gateway and workspace policies, telemetry exporters, MCP versions, tool rules and
-  `failureMode`, network settings after creation, API key `state`, and the connector gateway. Only connector-based
-  MCP tools use the connector gateway: the CLI doesn't
-  create it, the portal creates it when you first add a connector backend, and the quick start's CLI track skips it.
+- The CLI track uses the `az aigateway` extension 1.0.0b22 or later (the Setup guide installs it) for gateways
+  (including `network update`), providers, models (`model create --deployment-config "{resourceId:…,modelName:…}"`),
+  aliases, model policies (`model policy set-token-limit`, `set-content-safety`, `set-cost-limit`, `remove`),
+  Gateway scope policies (`az aigateway policy`), telemetry exporters (`az aigateway telemetry-exporter`), API keys,
+  and MCP servers. `az aigateway create` takes no `--sku`, secrets come from `api-key list-secrets`, rotation uses
+  `api-key regenerate --key-type primary|secondary`, `api-key update --state suspended|active` pauses a key, and
+  `model-alias set` creates an alias or updates the existing one. `--token-counter-key` takes one or more values,
+  such as `Identity IPAddress`. `model-provider update --foundry` and `--custom` merge a partial JSON value into the
+  provider's settings, and `mcp update --versions` and `--endpoints` change only what you pass. Don't use
+  `model create --foundry-resource-id --deployment`: it crashes in 1.0.0b22. The track keeps `az rest` for what the
+  extension can't do yet: the connector gateway, MCP tool rules (`allowList`, `blocked`, `accessState`) and
+  `failureMode`, and writing a whole policy array from a file. Only connector-based MCP tools use the connector
+  gateway: the CLI doesn't create it, the portal creates it when you first add a connector backend, and the quick start's CLI track skips it.
   Tracks that call `az rest` set `GATEWAY_ID` (from `az aigateway show`),
   `WS` (`https://management.azure.com$GATEWAY_ID/workspaces/default`), and `API`
   (`api-version=2025-09-01-preview`) once. A `PATCH` replaces whole arrays such as `properties.policies`, so read,
   edit, then write.
-- The runtime URL is `https://` plus `properties.frontend.defaultHostname`, which looks like
-  `https://<gateway>.<region>-01.ai.gateway.azure.com`. A new gateway with no models answers `404`.
+- The runtime URL is `https://` plus `properties.frontend.defaultHostname`: the name's first 10 characters
+  (without a trailing hyphen), a hyphen, a 13-character hash, and `.<region>-01.ai.gateway.azure.com`, for example
+  `https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com` for `aigw-labs-001`. Always read it from the
+  gateway, never build it from the name, and the labs write it as `<gateway-url>`. A new gateway with no models answers `404`.
 - Models: `<runtime URL>/default/models/openai/v1` serves OpenAI Chat Completions and Responses.
   `<runtime URL>/default/models/anthropic/v1/messages` serves Anthropic Messages.
 - The labs use `gpt-6-luna` (version `2026-09-22`, `GlobalStandard`) from Foundry. It's a reasoning model: Chat
@@ -170,9 +173,9 @@ Each entry shows the level, time, tracks, and the labs it needs.
 ### Governance & cost
 
 - **06** [Throttle tokens per caller with token limits](https://azure.github.io/ai-gateway/labs/06-token-limits/index.md) `06-token-limits` (Beginner, 25 min · Portal, CLI, REST, Bicep, Notebook · needs 02): Cap how many tokens each app, agent, or user can consume per minute, hour, or day, and watch the gateway answer with 429 and Retry-After before your backend capacity runs out.
-- **07** [Enforce cost budgets with per-caller overrides](https://azure.github.io/ai-gateway/labs/07-cost-budgets/index.md) `07-cost-budgets` (Intermediate, 30 min · Portal, REST, Bicep · needs 06, 10): Give every app, agent, and user a dollar budget per hour, day, or month, raise or lower it for specific API keys and Microsoft Entra identities, and watch the gateway answer 403 LlmCostQuotaExceeded once a caller's estimated spend runs out.
+- **07** [Enforce cost budgets with per-caller overrides](https://azure.github.io/ai-gateway/labs/07-cost-budgets/index.md) `07-cost-budgets` (Intermediate, 30 min · Portal, CLI, Bicep · needs 06, 10): Give every app, agent, and user a dollar budget per hour, day, or month, raise or lower it for specific API keys and Microsoft Entra identities, and watch the gateway answer 403 LlmCostQuotaExceeded once a caller's estimated spend runs out.
 - **08** [Screen prompts and responses with content safety](https://azure.github.io/ai-gateway/labs/08-content-safety/index.md) `08-content-safety` (Beginner, 20 min · Portal, CLI, REST, Bicep · needs 02): Add a content safety policy that screens prompts, tool inputs, and responses for hate, self-harm, sexual, and violent content, tune each category's threshold, and see how blocked calls return 400.
-- **09** [Set gateway-wide policy baselines](https://azure.github.io/ai-gateway/labs/09-gateway-baselines/index.md) `09-gateway-baselines` (Intermediate, 25 min · Portal, REST, Bicep · needs 06, 08): Apply a baseline of token limit, request rate limit, content safety, and IP filter policies at Gateway scope so every model and MCP server, including the ones you add later, starts with the same guardrails, then layer stricter asset policies on top.
+- **09** [Set gateway-wide policy baselines](https://azure.github.io/ai-gateway/labs/09-gateway-baselines/index.md) `09-gateway-baselines` (Intermediate, 25 min · Portal, CLI, Bicep · needs 06, 08): Apply a baseline of token limit, request rate limit, content safety, and IP filter policies at Gateway scope so every model and MCP server, including the ones you add later, starts with the same guardrails, then layer stricter asset policies on top.
 
 ### Security & identity
 
@@ -182,8 +185,8 @@ Each entry shows the level, time, tracks, and the labs it needs.
 
 ### Observability & FinOps
 
-- **13** [Monitor usage, cost, and traces](https://azure.github.io/ai-gateway/labs/13-monitoring/index.md) `13-monitoring` (Beginner, 25 min · Portal, Bicep · needs 02): Send the gateway's OpenTelemetry metrics, logs, and traces to Application Insights, then use the built-in Monitoring dashboard to see usage, estimated cost per model and API key, policy impact, and gateway-aware traces.
-- **14** [Attribute tokens and cost with OpenTelemetry](https://azure.github.io/ai-gateway/labs/14-otel-chargeback/index.md) `14-otel-chargeback` (Advanced, 35 min · Portal, REST, Bicep · needs 13, 11): Export Microsoft Entra token claims with the gateway's logs, traces, and token metrics, then turn observed tokens into a per-tenant, per-app, and per-key chargeback report with KQL, PromQL, and a small Python script.
+- **13** [Monitor usage, cost, and traces](https://azure.github.io/ai-gateway/labs/13-monitoring/index.md) `13-monitoring` (Beginner, 25 min · Portal, CLI, Bicep · needs 02): Send the gateway's OpenTelemetry metrics, logs, and traces to Application Insights, then use the built-in Monitoring dashboard to see usage, estimated cost per model and API key, policy impact, and gateway-aware traces.
+- **14** [Attribute tokens and cost with OpenTelemetry](https://azure.github.io/ai-gateway/labs/14-otel-chargeback/index.md) `14-otel-chargeback` (Advanced, 35 min · Portal, CLI, Bicep · needs 13, 11): Export Microsoft Entra token claims with the gateway's logs, traces, and token metrics, then turn observed tokens into a per-tenant, per-app, and per-key chargeback report with KQL, PromQL, and a small Python script.
 
 ### Agents
 

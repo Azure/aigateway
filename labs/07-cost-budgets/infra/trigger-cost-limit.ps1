@@ -4,15 +4,15 @@
 # budget, cost, or remaining, so you can spot the remaining-budget header.
 #
 # Usage:
-#   $env:AI_GATEWAY_URL = "https://<gateway>.eastus2-01.ai.gateway.azure.com"
+#   $env:AI_GATEWAY_URL = "<gateway-url>"
 #   $env:AI_GATEWAY_API_KEY = "..."      # never commit this value
-#   ./trigger-cost-limit.ps1 -Model <model-alias> [-Requests 10]
+#   ./trigger-cost-limit.ps1 -Model <model-name> [-Requests 10]
 param(
   [Parameter(Mandatory = $true)][string]$Model,
   [int]$Requests = 10
 )
 $ErrorActionPreference = 'Stop'
-if (-not $env:AI_GATEWAY_URL) { throw 'Set $env:AI_GATEWAY_URL to https://<gateway>.eastus2-01.ai.gateway.azure.com' }
+if (-not $env:AI_GATEWAY_URL) { throw 'Set $env:AI_GATEWAY_URL to the gateway runtime URL, for example https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com' }
 if (-not $env:AI_GATEWAY_API_KEY) { throw 'Set $env:AI_GATEWAY_API_KEY to a runtime key from Access > Keys' }
 
 $uri = "$($env:AI_GATEWAY_URL.TrimEnd('/'))/default/models/openai/v1/chat/completions"

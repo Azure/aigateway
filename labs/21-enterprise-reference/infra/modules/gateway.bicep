@@ -1,4 +1,4 @@
-// The AI Gateway itself: a Microsoft.ApiManagement/aigateways resource in the Consumption SKU with a system-assigned
+// The AI Gateway itself: a Microsoft.ApiManagement/aigateways resource in the Standard SKU with a system-assigned
 // managed identity, the companion connector gateway (created after it, as in the reference sample), and the Foundry
 // User role for the gateway identity on every Foundry account it calls.
 targetScope = 'resourceGroup'
@@ -6,7 +6,7 @@ targetScope = 'resourceGroup'
 @description('Location of the gateway. Pick one where AI Gateway is available. List them with az provider show --namespace Microsoft.ApiManagement (Setup guide, Find the available regions).')
 param location string
 
-@description('Gateway name, max 24 characters. It becomes the first label of the runtime host name, https://<name>.<region>-01.ai.gateway.azure.com.')
+@description('Gateway name, max 24 characters. Its first 10 characters start the runtime host name.')
 @maxLength(24)
 param gatewayName string
 
@@ -28,7 +28,7 @@ resource aiGateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' = {
     type: 'SystemAssigned'
   }
   sku: {
-    name: 'Consumption'
+    name: 'Standard'
   }
   properties: empty(backendSubnetId) ? {} : { backend: { subnet: { id: backendSubnetId } } }
 }

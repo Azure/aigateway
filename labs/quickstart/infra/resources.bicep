@@ -24,7 +24,7 @@ param apiKeyName string = 'app-first-call'
 
 var foundryUserRoleId = '53ca6127-db72-4b80-b1b0-d745d6d5456d'
 
-// 1. The gateway in the Consumption SKU, with a system-assigned managed identity, then its companion connector
+// 1. The gateway in the Standard SKU, with a system-assigned managed identity, then its companion connector
 //    gateway.
 #disable-next-line BCP081
 resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' = {
@@ -35,7 +35,7 @@ resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' = {
     type: 'SystemAssigned'
   }
   sku: {
-    name: 'Consumption'
+    name: 'Standard'
   }
   properties: {}
 }

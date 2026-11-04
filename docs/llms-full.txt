@@ -125,12 +125,12 @@ az aigateway version
 
 > **Checkpoint**
 > The installer printed `📦 aigateway extension … is installed`, and `az aigateway version` prints the extension
-> version and the API version it calls, `2025-09-01-preview`. The labs need version `1.0.0b15` or later; run the
+> version and the API version it calls, `2025-09-01-preview`. The labs need version `1.0.0b22` or later; run the
 > installer again to upgrade an older one.
 
 > [!NOTE]
 > The labs use `az aigateway` commands wherever the extension covers an operation. A few operations, such as
-> gateway-wide policies, telemetry exporters, and the connector gateway, aren't in the extension yet. For those,
+> the connector gateway and an MCP server's tool rules, aren't in the extension yet. For those,
 > the labs call the Azure Resource Manager REST API with `az rest` and say why.
 
 ## Register the resource providers
@@ -365,7 +365,7 @@ Every call that goes through AI Gateway uses the same building blocks. In this q
 
 | Building block | What it does | In this quick start |
 | :-- | :-- | :-- |
-| **Gateway** | The Azure resource (`Microsoft.ApiManagement/aigateways`) that gives your apps one runtime URL for models and tools | Your gateway, at `https://<gateway>.<location>-01.ai.gateway.azure.com` |
+| **Gateway** | The Azure resource (`Microsoft.ApiManagement/aigateways`) that gives your apps one runtime URL for models and tools | Your gateway, at `<gateway-url>` |
 | **Model provider** | A connection to a backend. The gateway signs in to it with its own managed identity, so your apps never hold a backend key | Your Foundry account. The Azure CLI and Bicep tracks name the provider `foundry-models` |
 | **Model** | A backend deployment that the gateway can route to | The Foundry deployment `gpt-6-luna` |
 | **Alias** | The name that apps send in the `model` field. The gateway routes the alias to one or more models | `<foundry-account-name>/gpt-6-luna` in the portal, `gpt-6-luna` in the Azure CLI and Bicep tracks |
@@ -701,8 +701,7 @@ role, and it sends a Microsoft Entra ID token instead of a key, as
 
 ```bash title="Bash"
 # Create a runtime API key for your app
-az aigateway api-key create --resource-group "$RG" --gateway-name "$GATEWAY" --name app-first-call \
-  --display-name app-first-call --output none &&
+az aigateway api-key create --resource-group "$RG" --gateway-name "$GATEWAY" --name app-first-call --output none &&
   echo "🔑 API key app-first-call is ready"
 
 # Read the key, the gateway's runtime URL, and the alias into environment variables
@@ -717,8 +716,7 @@ echo "🔖 Model alias: $AI_GATEWAY_MODEL"
 
 ```powershell title="PowerShell"
 # Create a runtime API key for your app
-az aigateway api-key create --resource-group $RG --gateway-name $GATEWAY --name app-first-call `
-  --display-name app-first-call --output none
+az aigateway api-key create --resource-group $RG --gateway-name $GATEWAY --name app-first-call --output none
 if ($?) { Write-Host "🔑 API key app-first-call is ready" }
 
 # Read the key, the gateway's runtime URL, and the alias into environment variables
@@ -732,7 +730,7 @@ Write-Host "🔖 Model alias: $env:AI_GATEWAY_MODEL"
 ```
 
 > **Checkpoint:** the commands printed `🔖 Alias gpt-6-luna is ready` and your gateway's runtime URL, for example
-> `🌐 Runtime URL: https://aigw-abc123.eastus2-01.ai.gateway.azure.com`.
+> `🌐 Runtime URL: https://aigw-abc12-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com`.
 
 ### Make your first call
 
@@ -884,7 +882,7 @@ Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) c
 ```
 
 > **Checkpoint:** `azd up` ended with `SUCCESS`, and the last commands printed your gateway's runtime URL, for example
-> `🌐 Runtime URL: https://aigw-abc123.eastus2-01.ai.gateway.azure.com`.
+> `🌐 Runtime URL: https://aigw-abc12-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com`.
 
 ### Make your first call
 
@@ -1002,7 +1000,7 @@ This lab is a guided reading. You don't need to deploy anything.
 
 The gateway sits on the path of every model call and every tool call. It has two faces:
 
-- **Data plane**: the runtime endpoints your code calls, at `https://<gateway>.eastus2-01.ai.gateway.azure.com`.
+- **Data plane**: the runtime endpoints your code calls, at `<gateway-url>`.
 - **Control plane**: the product portal at [ai.gateway.azure.com](https://ai.gateway.azure.com) and the Azure
   Resource Manager API for the `Microsoft.ApiManagement/aigateways` resource type, which you call with the
   `az aigateway` Azure CLI extension, Bicep, or any REST client.
@@ -1013,7 +1011,7 @@ you can keep business APIs in API Management and send model and tool traffic thr
 
 | Building block | What it is | Example |
 |---|---|---|
-| **Gateway** | An Azure AI Gateway resource (`Microsoft.ApiManagement/aigateways`) in your subscription | `https://<gateway>.eastus2-01.ai.gateway.azure.com` |
+| **Gateway** | An Azure AI Gateway resource (`Microsoft.ApiManagement/aigateways`) in your subscription | `<gateway-url>` |
 | **Backend model** | A model at a provider, such as a Foundry deployment or an Anthropic model | `gpt-6-luna` at Microsoft Foundry |
 | **Alias** | The stable, gateway-wide name clients send in the `model` field | `chat` |
 | **MCP server** | One governed MCP endpoint that federates tools from one or more sources | `/default/toolservers/<server-name>/mcp` |
@@ -1297,11 +1295,11 @@ are the name, the region, and the resource group.
 |---|---|
 | Resource type | `Microsoft.ApiManagement/aigateways` (API version `2025-09-01-preview`), plus `Microsoft.Web/connectorGateways` with the same name |
 | Regions | The list grows over time. List them as in [Find the available regions](../SETUP.md#find-the-available-regions) |
-| Name | 1–24 characters: letters, digits, and hyphens. It becomes the first label of the runtime host name |
-| Runtime URL | `https://` + `properties.frontend.defaultHostname`, for example `https://<gateway>.eastus2-01.ai.gateway.azure.com` |
+| Name | 1–24 characters: letters, digits, and hyphens. Its first 10 characters start the runtime host name |
+| Runtime URL | `https://` + `properties.frontend.defaultHostname`: the name's first 10 characters, a hyphen, a 13-character hash, and `.<region>-01.ai.gateway.azure.com`. A gateway named `aigw-labs-001` in East US 2 answers at a URL like `https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com`. Always read it from the gateway; you can't build it from the name |
 | Runtime routes | Models under `/default/models/…`, MCP servers under `/default/toolservers/<server>/mcp` |
 | Outbound identity | A system-assigned managed identity, used to call Foundry and other Microsoft Entra–protected backends |
-| SKU | `Consumption` or `Premium`. The labs use `Consumption`, the default of `az aigateway create --sku`, which the Bicep templates set too. A template that omits `sku` creates a `Premium` gateway |
+| SKU | `Standard`, the default for the portal, `az aigateway create`, and templates that omit `sku`. The labs use `Standard`, and their Bicep templates set it explicitly |
 | Provisioning time | A few minutes, often less |
 
 Everything you publish later lives in the gateway's `default` workspace. That's why every runtime route
@@ -1330,8 +1328,8 @@ gateway switcher in the top bar and start creating a new one from there.
 In **Create AI gateway**, enter a globally unique **Name** of 24 characters or fewer, or select
 **Generate a new name**. Then choose the subscription, a **Resource group** (**New** or **Existing**), and the
 **Region**. Under **Advanced**, keep **Enable system-assigned managed identity** selected, **Public network access** set to **Enabled**, and
-**Public routing**. **Private routing** connects the gateway to private backends through a virtual network and
-can only be chosen at creation. [Lab 18](../18-private-networking/README.md) covers it.
+**Public routing**. **Private routing** connects the gateway to private backends through a virtual network. You can
+also add it later under **Networking**. [Lab 18](../18-private-networking/README.md) covers it.
 
 ![What to choose in Create AI gateway: a unique name, a subscription, a resource group, and a region, with the Advanced defaults kept](../assets/diagrams/create-gateway.svg "Fill in the basics, keep the Advanced defaults, then select Create gateway.")
 
@@ -1394,25 +1392,25 @@ Remove-Item body.json
 
 ### Create the AI gateway
 
-`az aigateway create` only needs the name, the region, and the managed identity. `--sku` picks `Consumption`, the
-default, or `Premium`, and there's no capacity or publisher to set. The command waits until provisioning finishes,
-usually within a few minutes.
+`az aigateway create` only needs the name, the region, and the managed identity. Without `--sku`, the gateway gets
+the service's default SKU, `Standard`, like a gateway that you create in the portal. There's no capacity or
+publisher to set. The command waits until provisioning finishes, usually within a few minutes.
 
 ```bash title="Bash"
-# Create the gateway in the Consumption SKU with a system-assigned managed identity, and wait until it's provisioned
-az aigateway create -g "$RG" -n "$GATEWAY" --location "$LOCATION" --sku Consumption --system-assigned true -o none &&
+# Create the gateway in the default Standard SKU with a system-assigned managed identity, and wait until it's ready
+az aigateway create -g "$RG" -n "$GATEWAY" --location "$LOCATION" --system-assigned true -o none &&
   echo "🚀 Gateway $GATEWAY is ready in $LOCATION"
 ```
 
 ```powershell title="PowerShell"
-# Create the gateway in the Consumption SKU with a system-assigned managed identity, and wait until it's provisioned
-az aigateway create -g $RG -n $GATEWAY --location $LOCATION --sku Consumption --system-assigned true -o none
+# Create the gateway in the default Standard SKU with a system-assigned managed identity, and wait until it's ready
+az aigateway create -g $RG -n $GATEWAY --location $LOCATION --system-assigned true -o none
 if ($?) { Write-Host "🚀 Gateway $GATEWAY is ready in $LOCATION" }
 ```
 
 > [!TIP]
 > Add `--no-wait` to return right away, then run `az aigateway wait -g "$RG" -n "$GATEWAY" --created` when you
-> need the gateway. To change the SKU later, run `az aigateway update -g "$RG" -n "$GATEWAY" --sku Premium`.
+> need the gateway.
 
 ### Read the runtime URL and identity
 
@@ -1433,7 +1431,7 @@ az aigateway show -g $RG -n $GATEWAY `
 ```
 
 > **Checkpoint**
-> The table shows the `Consumption` SKU, `Succeeded`, a `Host` like `<gateway>.eastus2-01.ai.gateway.azure.com`,
+> The table shows the `Standard` SKU, `Succeeded`, a `Host` like `aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com`,
 > and a `PrincipalId` GUID.
 
 <!-- track: iac | Bicep + azd -->
@@ -1444,9 +1442,9 @@ group and the gateway, so you don't need the variables.
 ### Review the template
 
 `infra/gateway.bicep` declares the gateway. It follows the AI Gateway [reference sample](https://github.com/Azure-Samples/simple-foundry-hosted-agent-python-aigateway/blob/main/infra/ai-gateway/main.bicep). It creates the AI gateway
-(`Microsoft.ApiManagement/aigateways`) in the `Consumption` SKU with a system-assigned identity, then a
+(`Microsoft.ApiManagement/aigateways`) in the `Standard` SKU with a system-assigned identity, then a
 `Microsoft.Web/connectorGateways` resource with the same name. There's no capacity or publisher to set. Keep both
-resources together in your own templates, and set `sku`: without it, the gateway is created in the `Premium` SKU.
+resources together in your own templates. `Standard` is also the default when a template omits `sku`.
 
 | Parameter | Description |
 |---|---|
@@ -1537,7 +1535,7 @@ Write-Host "👤 Gateway identity: $(azd env get-value AI_GATEWAY_PRINCIPAL_ID)"
 
 > **Checkpoint**
 > `azd up` ended with `SUCCESS`. The commands print a runtime URL like
-> `🌐 Runtime URL: https://aigw-<suffix>.eastus2-01.ai.gateway.azure.com`, and `👤 Gateway identity:` with a
+> `🌐 Runtime URL: https://aigw-x7k2q-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com`, and `👤 Gateway identity:` with a
 > principal ID GUID.
 
 <!-- /tracks -->
@@ -2025,10 +2023,11 @@ To publish more deployments, repeat this step and the next one for each name tha
 returns.
 
 > [!TIP]
-> `az aigateway model create --foundry-resource-id "$FOUNDRY_ID" --deployment "$DEPLOYMENT"` does the last three
-> steps in one command, like the portal import: it grants the gateway's identity **Foundry User** on the account,
-> creates a provider named after the account, and registers the deployment. You can run it again safely. It doesn't
-> publish an alias, so you still run the next step. This lab creates each piece itself so you see how they fit together.
+> `az aigateway model-provider create -g "$RG" --gateway-name "$GATEWAY" -n "$PROVIDER" --foundry-resource-id "$FOUNDRY_ID"`
+> does the last three steps in one command for every deployment in the account, like the portal import: it grants
+> the gateway's identity **Foundry User** on the account, creates the provider, and registers each deployment. You
+> can run it again safely. It doesn't publish an alias, so you still run the next step. The
+> [quick start](../quickstart/README.md) uses it. This lab creates each piece itself so you see how they fit together.
 
 ### Publish an alias
 
@@ -2066,11 +2065,11 @@ matters when two people create the same alias at the same time.
 ### Create a runtime API key
 
 `api-key create` returns metadata only. Read the generated value with `list-secrets` straight into a variable so
-it never appears on screen. The service assigns the key's display name itself, so any `--display-name` works.
+it never appears on screen.
 
 ```bash title="Bash"
 # Create a runtime API key for your app, which prints its name and state but not its value
-az aigateway api-key create -g "$RG" --gateway-name "$GATEWAY" -n app-first-call --display-name app-first-call \
+az aigateway api-key create -g "$RG" --gateway-name "$GATEWAY" -n app-first-call \
   --query "{name:name, state:properties.state}" &&
   echo "🔑 API key app-first-call is ready"
 
@@ -2082,7 +2081,7 @@ echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not sh
 
 ```powershell title="PowerShell"
 # Create a runtime API key for your app, which prints its name and state but not its value
-az aigateway api-key create -g $RG --gateway-name $GATEWAY -n app-first-call --display-name app-first-call `
+az aigateway api-key create -g $RG --gateway-name $GATEWAY -n app-first-call `
   --query "{name:name, state:properties.state}"
 if ($?) { Write-Host "🔑 API key app-first-call is ready" }
 
@@ -2755,7 +2754,7 @@ Clients only ever see the gateway URL, their runtime key, and the alias. The pro
 In this lab each alias points to one backend model. To split traffic across several backend models by priority
 and weight, see [Route an alias across models by priority and weight](../22-model-routing/README.md).
 
-Each interface has its own route under `https://<gateway>.eastus2-01.ai.gateway.azure.com/default/models`:
+Each interface has its own route under `<gateway-url>/default/models`:
 
 | Interface | Route |
 |---|---|
@@ -2844,7 +2843,7 @@ If discovery fails or times out, you can still add the models by hand. Select **
 > **Checkpoint**
 > **Models** lists the two Claude models of the `Anthropic` provider and the aliases `support-chat` and
 > `anthropic/claude-sonnet-5-5`. Open a model: its **Overview** shows the Anthropic Messages endpoint,
-> `https://<gateway>.eastus2-01.ai.gateway.azure.com/default/models/anthropic/v1/messages`.
+> `<gateway-url>/default/models/anthropic/v1/messages`.
 
 <!-- track: cli | Azure CLI -->
 
@@ -5102,7 +5101,7 @@ Learn MCP server, so agents get tools through the same front door they already u
 - A runtime API key, for example `app-first-call` from [lab 02](../02-first-model-call/README.md). If you don't have
   one yet, create it in the portal under **Access** › **Keys**, or, after
   you set the variables below, run
-  `az aigateway api-key create -g "$RG" --gateway-name "$GATEWAY" -n app-first-call --display-name app-first-call`
+  `az aigateway api-key create -g "$RG" --gateway-name "$GATEWAY" -n app-first-call`
   and read its value with
   `az aigateway api-key list-secrets -g "$RG" --gateway-name "$GATEWAY" -n app-first-call --query primaryKey -o tsv`.
 - For the Code track: Python 3.10 or later and, optionally, VS Code.
@@ -5116,12 +5115,6 @@ Set these variables once. Every track and the **Verify** section reuse them.
 export RG="<resource-group>"
 export GATEWAY="<gateway>"
 echo "📝 Gateway $GATEWAY in $RG"
-
-# Read the gateway's resource ID, for the management API calls that later sections make with az rest
-export API="api-version=2025-09-01-preview"
-export GATEWAY_ID="$(az aigateway show -g "$RG" -n "$GATEWAY" --query id -o tsv)"
-export WS="https://management.azure.com$GATEWAY_ID/workspaces/default"
-echo "🆔 Gateway: $GATEWAY_ID"
 
 # Read the gateway's runtime URL, which MCP clients call
 export AI_GATEWAY_URL="https://$(az aigateway show -g "$RG" -n "$GATEWAY" --query properties.frontend.defaultHostname -o tsv)"
@@ -5138,12 +5131,6 @@ $RG         = "<resource-group>"
 $GATEWAY    = "<gateway>"
 Write-Host "📝 Gateway $GATEWAY in $RG"
 
-# Read the gateway's resource ID, for the management API calls that later sections make with az rest
-$API        = "api-version=2025-09-01-preview"
-$GATEWAY_ID = az aigateway show -g $RG -n $GATEWAY --query id -o tsv
-$WS         = "https://management.azure.com$GATEWAY_ID/workspaces/default"
-Write-Host "🆔 Gateway: $GATEWAY_ID"
-
 # Read the gateway's runtime URL, which MCP clients call
 $env:AI_GATEWAY_URL = "https://$(az aigateway show -g $RG -n $GATEWAY --query properties.frontend.defaultHostname -o tsv)"
 Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
@@ -5157,7 +5144,7 @@ Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) c
 
 An **MCP server** in AI Gateway is a federation point. You give it one or more **backends**, and the gateway
 publishes all their tools at one Streamable HTTP endpoint:
-`https://<gateway>.eastus2-01.ai.gateway.azure.com/default/toolservers/<server-name>/mcp`.
+`<gateway-url>/default/toolservers/<server-name>/mcp`.
 
 | Backend type | What you provide | What clients see |
 |---|---|---|
@@ -5524,28 +5511,26 @@ list, or update the backend.
 
 ### Set the versions
 
-The `aigateway` extension doesn't set MCP protocol versions yet, so call the Azure Resource Manager REST API with
-`az rest`. A `PATCH` that sends only `properties.versions` keeps the backends, tool rules, and policies as they are.
+`az aigateway mcp update --versions` takes a space-separated list and replaces the server's list. The backends,
+tool rules, and policies stay as they are.
 
 ```bash title="Bash"
-# Pin learn to MCP version 2025-06-18 with a PATCH that changes only properties.versions
-az rest --method patch --url "$WS/toolServers/learn?$API" \
-  --body '{"properties": {"versions": ["2025-06-18"]}}' --query properties.versions &&
+# Pin learn to MCP version 2025-06-18, and print the list that the server keeps
+az aigateway mcp update -g "$RG" --gateway-name "$GATEWAY" -n learn --versions 2025-06-18 \
+  --query properties.versions &&
   echo "📝 MCP server learn supports only MCP version 2025-06-18"
 ```
 
 ```powershell title="PowerShell"
-# Write the request body to a file, so that PowerShell passes the JSON to az unchanged
-@{ properties = @{ versions = @('2025-06-18') } } | ConvertTo-Json -Depth 5 -Compress | Set-Content -Path body.json
-
-# Pin learn to MCP version 2025-06-18 with a PATCH that changes only properties.versions
-az rest --method patch --url "$WS/toolServers/learn?$API" --body '@body.json' --query properties.versions
+# Pin learn to MCP version 2025-06-18, and print the list that the server keeps
+az aigateway mcp update -g $RG --gateway-name $GATEWAY -n learn --versions 2025-06-18 `
+  --query properties.versions
 if ($?) { Write-Host "📝 MCP server learn supports only MCP version 2025-06-18" }
-Remove-Item body.json
 ```
 
-Unlike the portal, the API doesn't ask the backends which versions they support. If you list a version that a
-backend can't speak, the `PATCH` succeeds and clients that negotiate that version fail. See
+Unlike the portal, the CLI doesn't ask the backends which versions they support. If you list a version that a
+backend can't speak, the update succeeds and clients that negotiate that version fail. A version that the gateway
+doesn't know fails with `Unsupported MCP protocol version`. See
 [Troubleshooting](../TROUBLESHOOTING.md#lab-04-federate-mcp-tools).
 
 <!-- track: iac | Bicep + azd -->
@@ -5591,7 +5576,8 @@ to change the versions later, set another list.
 
 ### Check the negotiated version
 
-Ask for an older version. The gateway answers with the version it will use:
+A new list takes about 15 seconds to reach the runtime. Until then, the gateway still answers with the previous
+list. Ask for an older version. The gateway answers with the version it will use:
 
 ```bash title="Bash"
 # Send an initialize request that asks for 2025-03-26, with your runtime key in api-key
@@ -5735,7 +5721,7 @@ Expected output (descriptions are shortened, and the tool list can change as the
 
 ```text
 🔧 Tools on learn:
-MCP endpoint: https://<gateway>.eastus2-01.ai.gateway.azure.com/default/toolservers/learn/mcp
+MCP endpoint: <gateway-url>/default/toolservers/learn/mcp
 Server: <server-name-reported-by-the-gateway>  protocol: <negotiated-version>
 
 Tool                                          Description
@@ -7240,13 +7226,13 @@ summary: Give every app, agent, and user a dollar budget per hour, day, or month
 category: governance
 level: Intermediate
 duration: 30
-tracks: [portal, rest, iac]
+tracks: [portal, cli, iac]
 order: 7
 illustration: diagrams/policy-scopes.svg
 tags: [costLimit, budget, FinOps, LlmCostQuotaExceeded, "403", overrides, Entra ID, chargeback]
 objectives:
   - Explain how a cost limit estimates spend and counts it per caller in fixed calendar windows
-  - Add a daily cost limit to a model in the portal or with the REST API
+  - Add a daily cost limit to a model in the portal or with the Azure CLI
   - Give specific API keys and Microsoft Entra identities their own budget with overrides
   - Declare a budgeted alias, its API keys, and their overrides with Bicep and azd
   - Trigger a 403 LlmCostQuotaExceeded response, find the remaining budget header, and review estimated spend in Monitoring
@@ -7296,10 +7282,8 @@ export GATEWAY="<gateway>"                 # 24 characters or fewer
 export PROVIDER="<provider-name>"          # for example foundry-models
 export MODEL="<model-name>"                # the backend model name under that provider
 
-# Read the gateway's resource ID, and build the management URL of its default workspace for the az rest calls
-export API="api-version=2025-09-01-preview"
+# Read the gateway's resource ID, which the key commands use
 export GATEWAY_ID="$(az aigateway show -g "$RG" -n "$GATEWAY" --query id -o tsv)"
-export WS="https://management.azure.com$GATEWAY_ID/workspaces/default"
 echo "🆔 Gateway: $GATEWAY_ID"
 
 # Read the gateway's runtime URL, which apps call
@@ -7323,10 +7307,8 @@ $GATEWAY    = "<gateway>"                 # 24 characters or fewer
 $PROVIDER   = "<provider-name>"           # for example foundry-models
 $MODEL      = "<model-name>"              # the backend model name under that provider
 
-# Read the gateway's resource ID, and build the management URL of its default workspace for the az rest calls
-$API        = "api-version=2025-09-01-preview"
+# Read the gateway's resource ID, which the key commands use
 $GATEWAY_ID = az aigateway show -g $RG -n $GATEWAY --query id -o tsv
-$WS         = "https://management.azure.com$GATEWAY_ID/workspaces/default"
 Write-Host "🆔 Gateway: $GATEWAY_ID"
 
 # Read the gateway's runtime URL, which apps call
@@ -7374,9 +7356,9 @@ that model, or at **Gateway** scope to track **one budget per caller across all 
 ## Add a cost limit to the model
 
 Pick one track. Each one produces the same default budget: **$5 per day for each caller identity**. The portal and
-REST tracks put it on your model. The Bicep + azd track creates a new gateway and puts it on a new alias of the model.
-The portal and Bicep + azd tracks also add the overrides for specific callers. The REST track points to the portal
-for them.
+Azure CLI tracks put it on your model. The Bicep + azd track creates a new gateway and puts it on a new alias of the
+model. The portal and Bicep + azd tracks also add the overrides for specific callers. The Azure CLI track points to
+the portal for them.
 
 <!-- track: portal | Portal -->
 
@@ -7446,98 +7428,55 @@ Select **Create**. Back in **Policies**, open the new **Cost limit** to review i
 > The **Cost limit** details page shows **Budget amount** $5.00, **Renewal period** **Daily**, **Budget
 > counted by** **Caller identity**, and your model under **Applies to**. Select **Edit** to see your overrides.
 
-<!-- track: rest | REST API -->
+<!-- track: cli | Azure CLI -->
 
-### Read the current policies
+### Set the cost limit
 
-This track calls the Azure Resource Manager REST API with `az rest`, because the `aigateway` extension doesn't
-set cost limits. Policies live inline in the model's `properties.policies` array. A `PATCH` **replaces the
-whole array**, so always read it first and keep the policies you didn't mean to change.
-
-```bash
-# Read your subscription ID, and build the management URL of your model, which holds its policies
-SUB="$(az account show --query id -o tsv)"
-URL="https://management.azure.com/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.ApiManagement/aigateways/$GATEWAY/workspaces/default/modelProviders/$PROVIDER/models/$MODEL?api-version=2025-09-01-preview"
-echo "🆔 Subscription: $SUB"
-
-# Read the model's current policies, so that you know what the merge must keep
-echo "🔐 Policies on $MODEL:"
-az rest --method get --url "$URL" --query properties.policies
-```
-
-### Add or update the cost limit and keep everything else
-
-A cost limit carries a stable `id`. Editing the amount of an existing policy **keeps its accumulated spend**,
-so the merge below updates an existing `costLimit` in place (keeping its `id` and any overrides) and only
-creates a new one, with a fresh GUID, when none exists.
+Policies live in the model's `properties.policies` array. `az aigateway model policy set-cost-limit` adds a cost
+limit, or updates the one that's there, and keeps every other policy on the model. An update changes only the
+flags you pass: the policy keeps its `id`, its overrides, and the spend it has counted so far.
 
 ```bash title="Bash"
-# Choose the default budget: 5 US dollars for each caller, renewed every day
-BUDGET=5
-PERIOD=day
-
-# Read the policies, then update the cost limit in place, keeping its id and overrides,
-# or add a new one with a fresh GUID when there's none
-POLICIES="$(az rest --method get --url "$URL" | jq -c \
-  --argjson amount "$BUDGET" --arg period "$PERIOD" --arg id "$(uuidgen | tr 'A-Z' 'a-z')" '
-  .properties.policies // [] | . as $p
-  | if any($p[]; .type == "costLimit")
-    then [$p[] | if .type == "costLimit"
-                 then (.amount = $amount | .period = $period | .counterKey = ["identity"])
-                 else . end]
-    else $p + [{"type":"costLimit","id":$id,"amount":$amount,"period":$period,"counterKey":["identity"]}]
-    end')"
-
-# Send the merged array back: a PATCH replaces the whole policies array
-az rest --method patch --url "$URL" --body "{\"properties\":{\"policies\":$POLICIES}}" --output none &&
-  echo "🔐 Cost limit of \$$BUDGET per $PERIOD for each caller is on $MODEL"
+# Add a cost limit to the model: 5 US dollars per day, with its own counter for each caller identity
+az aigateway model policy set-cost-limit -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL" \
+  --amount 5 --period day --counter-key identity --output none &&
+  echo "🔐 Cost limit of \$5 per day for each caller is on $MODEL"
 ```
 
 ```powershell title="PowerShell"
-# Choose the default budget: 5 US dollars for each caller, renewed every day
-$BUDGET = 5
-$PERIOD = 'day'
-
-# Read your subscription ID, and build the management URL of your model, which holds its policies
-$SUB = az account show --query id -o tsv
-$URL = "https://management.azure.com/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.ApiManagement/aigateways/$GATEWAY/workspaces/default/modelProviders/$PROVIDER/models/$MODEL`?api-version=2025-09-01-preview"
-Write-Host "🆔 Subscription: $SUB"
-
-# Read the policies, then update the cost limit in place, keeping its id and overrides,
-# or add a new one with a fresh GUID when there's none
-$current  = az rest --method get --url $URL | ConvertFrom-Json
-$policies = @($current.properties.policies | Where-Object { $_ })
-$cost     = $policies | Where-Object { $_.type -eq 'costLimit' } | Select-Object -First 1
-if ($cost) {
-  $cost | Add-Member -NotePropertyName amount -NotePropertyValue $BUDGET -Force
-  $cost | Add-Member -NotePropertyName period -NotePropertyValue $PERIOD -Force
-  $cost | Add-Member -NotePropertyName counterKey -NotePropertyValue @('identity') -Force
-} else {
-  $policies += [pscustomobject]@{
-    type = 'costLimit'; id = [guid]::NewGuid().ToString(); amount = $BUDGET; period = $PERIOD; counterKey = @('identity')
-  }
-}
-
-# Send the merged array back from a file, which keeps the JSON quotes intact: a PATCH replaces the whole array
-$body = @{ properties = @{ policies = $policies } } | ConvertTo-Json -Depth 10 -Compress
-$body | Set-Content -Path patch.json
-az rest --method patch --url $URL --body '@patch.json' --output none
-if ($?) { Write-Host "🔐 Cost limit of `$$BUDGET per $PERIOD for each caller is on $MODEL" }
-Remove-Item patch.json
+# Add a cost limit to the model: 5 US dollars per day, with its own counter for each caller identity
+az aigateway model policy set-cost-limit -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER -n $MODEL `
+  --amount 5 --period day --counter-key identity --output none
+if ($?) { Write-Host "🔐 Cost limit of `$5 per day for each caller is on $MODEL" }
 ```
 
-`period` accepts `hour`, `day`, `week`, `month`, or `year`. `counterKey` is an array: `["identity"]`, or
-`["ipAddress"]` to count per client IP address.
+`--period` accepts `hour`, `day`, `week`, `month`, or `year`. `--counter-key` accepts `identity`, or `ipAddress` to
+count per client IP address. A new cost limit gets the `id` `default` unless you pass `--id`.
 
 ### Add overrides in the portal
 
 Configure overrides for API keys and Microsoft Entra identities in the portal: select **Policies**, open the
-**Cost limit**, select **Edit**, and use the **Overrides** step as described in the portal track. The merge
-above keeps those overrides when you change the amount later.
+**Cost limit**, select **Edit**, and use the **Overrides** step as described in the portal track. The command
+above keeps those overrides when you change the amount later. Its `--overrides` argument doesn't accept override
+objects yet.
+
+### Confirm the policy
+
+```bash title="Bash"
+# List the model's policies, to check the cost limit
+echo "🔐 Policies on ${MODEL}:"
+az aigateway model policy list -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL" -o json
+```
+
+```powershell title="PowerShell"
+# List the model's policies, to check the cost limit
+Write-Host "🔐 Policies on ${MODEL}:"
+az aigateway model policy list -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER -n $MODEL -o json
+```
 
 > **Checkpoint**
-> Running the `GET` again returns your other policies unchanged plus one `costLimit` entry with its `id`,
-> `"amount": 5.0`, `"period": "day"`, `"counterKey": ["identity"]`, and `"scope": "resource"`.
+> The output lists your other policies unchanged plus one `costLimit` entry with its `id`, `"amount": 5.0`,
+> `"period": "day"`, `"counterKey": ["identity"]`, and `"scope": "resource"`.
 
 <!-- track: iac | Bicep + azd -->
 
@@ -7690,14 +7629,15 @@ key (which has no override), and watch the gateway switch from `200` to `403`.
 
 ### Lower the budget for the test
 
-In the portal, open the **Cost limit**, select **Edit**, set **Budget amount** to `0.01`, and **Save**. On the
-REST track, run the merge again with `BUDGET=0.01` (PowerShell: `$BUDGET = 0.01`).
+A call to `gpt-6-luna` costs about $0.0001, so a budget of `0.001` is spent after about ten calls. For a more
+expensive model, use `0.01`. In the portal, open the **Cost limit**, select **Edit**, set **Budget amount** to
+`0.001`, and **Save**. On the Azure CLI track, run **Set the cost limit** again with `--amount 0.001`. The new
+budget reaches the gateway within about a minute, so wait before you run the requests.
 
-If your model is an inexpensive mini or nano model, use `0.001` so a handful of calls is enough. Because
-editing keeps accumulated spend, the very first request might already be blocked if `app-dev` spent more than
-the new budget earlier today.
+Because editing keeps accumulated spend, the very first request might already be blocked if `app-dev` spent more
+than the new budget earlier today.
 
-On the Bicep + azd track, a call to `gpt-6-luna` costs about $0.0001, so set the budget to `0.001`:
+On the Bicep + azd track, set the budget to `0.001` too:
 
 ```bash title="Bash"
 # Lower the default budget to $0.001 for each caller, in the azd environment
@@ -7756,7 +7696,8 @@ Request  Status  Error code               Tokens used  Budget headers
 left of the budget. On a cost limit attached to the model, the headers start with `x-cost-` instead. A blocked
 call has no error code in its body, so the script prints `-`, and `…-retry-after` gives the seconds until the caller
 can try again. How many calls succeed depends on the model's price. A call or two more than you expect is the
-small overshoot described in [How it works](#how-it-works).
+small overshoot described in [How it works](#how-it-works). If all 10 requests return `200`, run the script again:
+the spend so far still counts.
 
 ### Inspect one blocked response
 
@@ -7828,9 +7769,8 @@ the spend the gateway estimated, and the dashboard attributes it to individual A
 
 - **Cap spend across all models.** Add a second **Cost limit** with **Gateway** scope, for example $200
   **Monthly**. Each caller then has one budget across every model, including models you import later. With
-  REST, run the same merge against the gateway workspace:
-  `https://management.azure.com/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.ApiManagement/aigateways/$GATEWAY/workspaces/default?api-version=2025-09-01-preview`
-  (`"${WS}?$API"` from the variable block).
+  the Azure CLI, run `az aigateway policy set-cost-limit -g "$RG" --gateway-name "$GATEWAY" --amount 200 --period month
+  --counter-key identity`.
 - **Combine with token limits.** Keep a per-minute **Token rate limit** to smooth bursts and a **Cost limit**
   to cap spend. Both are checked on every request, and either one can block.
 - **Budget by role or app.** Use **Custom token claim combination** overrides, for example a `roles` claim with
@@ -7840,7 +7780,7 @@ the spend the gateway estimated, and the dashboard attributes it to individual A
 
 ## Clean up
 
-A $0.01 budget blocks real traffic. Delete the policy, or raise it to a production value, before you continue.
+A $0.001 budget blocks real traffic. Delete the policy, or raise it to a production value, before you continue.
 Raising the amount takes effect immediately, because the accumulated spend is kept and compared with the new
 budget.
 
@@ -7851,20 +7791,25 @@ budget.
 Select **Policies**, open the **Cost limit** you created, and select **Delete**, or select **Edit** and set a
 production **Budget amount**. If you created runtime keys only for this lab, revoke them in **Access** › **Keys**.
 
-<!-- track: rest | REST API -->
+<!-- track: cli | Azure CLI -->
 
 ### Remove the cost limit
 
-```bash
-# Read the policies, and keep every one except the cost limit
-POLICIES="$(az rest --method get --url "$URL" | jq -c '[(.properties.policies // [])[] | select(.type != "costLimit")]')"
-
-# Send the array back without the cost limit: a PATCH replaces the whole policies array
-az rest --method patch --url "$URL" --body "{\"properties\":{\"policies\":$POLICIES}}" --output none &&
+```bash title="Bash"
+# Remove only the cost limit from the model, and keep every other policy
+az aigateway model policy remove -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL" \
+  --remove-cost-limit true --output none &&
   echo "🚮 Cost limit is removed from $MODEL"
 ```
 
-To keep the policy instead, run the merge again with a production budget, for example `BUDGET=100`.
+```powershell title="PowerShell"
+# Remove only the cost limit from the model, and keep every other policy
+az aigateway model policy remove -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER -n $MODEL `
+  --remove-cost-limit true --output none
+if ($?) { Write-Host "🚮 Cost limit is removed from $MODEL" }
+```
+
+To keep the policy instead, run **Set the cost limit** again with a production budget, for example `--amount 100`.
 
 <!-- track: iac | Bicep + azd -->
 
@@ -8471,7 +8416,7 @@ summary: Apply a baseline of token limit, request rate limit, content safety, an
 category: governance
 level: Intermediate
 duration: 25
-tracks: [portal, rest, iac]
+tracks: [portal, cli, iac]
 order: 9
 illustration: diagrams/policy-scopes.svg
 tags: [Gateway scope, baseline, tokenLimit, requestRateLimit, contentSafety, ipFilter, "403", policy as code]
@@ -8598,9 +8543,9 @@ protection can't be set at Gateway scope; it applies to individual MCP servers.
 
 ## Apply the baseline
 
-Pick one track. Each track creates the same four policies at **Gateway** scope. The `aigateway` extension
-doesn't set Gateway scope policies yet, so both scripted tracks call the Azure Resource Manager REST API with
-`az rest` against the gateway's `default` workspace.
+Pick one track. Each track creates the same four policies at **Gateway** scope. The Azure CLI track sets them
+with one `az aigateway policy set` command. The Policy as code track keeps them in a reviewed file and applies
+the whole file with a script.
 
 <!-- track: portal | Portal -->
 
@@ -8657,99 +8602,76 @@ before you select **Create**.
 > **Policies** lists four policies whose scope is **Gateway**: **Token rate limit**, **Request rate limit**,
 > **Content safety**, and **IP filter**.
 
-<!-- track: rest | REST API -->
+<!-- track: cli | Azure CLI -->
 
-### Read the Gateway scope policies
+### Set the baseline
 
-Gateway scope policies live inline in the `properties.policies` array of the gateway's `default` workspace.
-A `PATCH` **replaces the whole array**, so always read it first and keep the policies you didn't mean to
-change.
-
-```bash title="Bash"
-# Read your subscription ID, and build the management URL of the gateway's default workspace
-SUB="$(az account show --query id -o tsv)"
-URL="https://management.azure.com/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.ApiManagement/aigateways/$GATEWAY/workspaces/default?api-version=2025-09-01-preview"
-echo "🆔 Subscription: $SUB"
-
-# Read the Gateway scope policies, so that you know what the merge must keep
-echo "🔐 Gateway scope policies on $GATEWAY:"
-az rest --method get --url "$URL" --query properties.policies
-```
-
-```powershell title="PowerShell"
-# Read your subscription ID, and build the management URL of the gateway's default workspace
-$SUB = az account show --query id -o tsv
-$URL = "https://management.azure.com/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.ApiManagement/aigateways/$GATEWAY/workspaces/default`?api-version=2025-09-01-preview"
-Write-Host "🆔 Subscription: $SUB"
-
-# Read the Gateway scope policies, so that you know what the merge must keep
-Write-Host "🔐 Gateway scope policies on ${GATEWAY}:"
-az rest --method get --url $URL --query properties.policies
-```
-
-### Merge the baseline and keep everything else
-
-The baseline replaces any existing policy of the same four types and keeps every other entry, such as a
-Gateway scope cost limit.
+`az aigateway policy set` creates or updates all four policies at **Gateway** scope in one call. It replaces a
+policy of the same type and keeps every other Gateway scope policy, such as a cost limit. `--allowed-ips` takes a
+list in brackets, so the command removes any spaces from your ranges.
 
 ```bash title="Bash"
-# Build the four baseline policies, with your ranges in the IP filter
-BASELINE="$(jq -cn --arg cidrs "$ALLOWED_CIDRS" '[
-  {"type":"tokenLimit","count":100000,"period":"minute","counterKey":["identity"],"scope":"workspace"},
-  {"type":"requestRateLimit","callsPerPeriod":600,"periodSeconds":60,"counterKey":["identity"],"scope":"workspace"},
-  {"type":"contentSafety","hateSeverity":"Medium","violenceSeverity":"Medium","sexualSeverity":"Medium","selfHarmSeverity":"Medium"},
-  {"type":"ipFilter","action":"Allow","cidrRanges":($cidrs | split(",") | map(gsub("\\s"; "")) | map(select(length > 0)))}
-]')"
+# Check the ranges that the IP filter will allow
+echo "🔐 IP filter allows: $ALLOWED_CIDRS"
 
-# Check the allowed ranges before you apply
-echo "🔐 IP filter in the baseline:"
-jq '.[] | select(.type == "ipFilter")' <<<"$BASELINE"
-
-# Read the policies, drop any policy of the four baseline types, and add the baseline
-POLICIES="$(az rest --method get --url "$URL" | jq -c --argjson baseline "$BASELINE" '
-  [(.properties.policies // [])[] | select(.type | IN($baseline[].type) | not)] + $baseline')"
-
-# Send the merged array back: a PATCH replaces the whole policies array
-az rest --method patch --url "$URL" --body "{\"properties\":{\"policies\":$POLICIES}}" --output none &&
+# Set the token limit, request rate limit, content safety, and IP filter at Gateway scope
+az aigateway policy set -g "$RG" --gateway-name "$GATEWAY" --output none \
+  --token-limit 100000 --token-period minute --token-counter-key Identity \
+  --rate-limit 600 --period-seconds 60 --rate-counter-key Identity \
+  --content-safety Medium \
+  --action Allow --allowed-ips "[${ALLOWED_CIDRS// /}]" &&
   echo "🔐 Baseline of four policies is on $GATEWAY at Gateway scope"
 ```
 
 ```powershell title="PowerShell"
-# Build the four baseline policies, with your ranges in the IP filter
-$baseline = @(
-  [pscustomobject]@{ type = 'tokenLimit'; count = 100000; period = 'minute'; counterKey = @('identity'); scope = 'workspace' }
-  [pscustomobject]@{ type = 'requestRateLimit'; callsPerPeriod = 600; periodSeconds = 60; counterKey = @('identity'); scope = 'workspace' }
-  [pscustomobject]@{ type = 'contentSafety'; hateSeverity = 'Medium'; violenceSeverity = 'Medium'; sexualSeverity = 'Medium'; selfHarmSeverity = 'Medium' }
-  [pscustomobject]@{ type = 'ipFilter'; action = 'Allow'; cidrRanges = @($env:ALLOWED_CIDRS -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ }) }
-)
+# Check the ranges that the IP filter will allow
+Write-Host "🔐 IP filter allows: $env:ALLOWED_CIDRS"
 
-# Check the allowed ranges before you apply
-Write-Host "🔐 IP filter in the baseline:"
-$baseline | Where-Object type -eq 'ipFilter' | ConvertTo-Json
-
-# Read the policies, drop any policy of the four baseline types, and add the baseline
-$current  = az rest --method get --url $URL | ConvertFrom-Json
-$policies = @($current.properties.policies | Where-Object { $_ -and $_.type -notin $baseline.type })
-$policies += $baseline
-
-# Send the merged array back from a file, which keeps the JSON quotes intact: a PATCH replaces the whole array
-$body = @{ properties = @{ policies = $policies } } | ConvertTo-Json -Depth 10 -Compress
-$body | Set-Content -Path patch.json
-az rest --method patch --url $URL --body '@patch.json' --output none
+# Set the token limit, request rate limit, content safety, and IP filter at Gateway scope
+az aigateway policy set -g $RG --gateway-name $GATEWAY --output none `
+  --token-limit 100000 --token-period minute --token-counter-key Identity `
+  --rate-limit 600 --period-seconds 60 --rate-counter-key Identity `
+  --content-safety Medium `
+  --action Allow --allowed-ips "[$($env:ALLOWED_CIDRS -replace '\s')]"
 if ($?) { Write-Host "🔐 Baseline of four policies is on $GATEWAY at Gateway scope" }
-Remove-Item patch.json
+```
+
+### Review the Gateway scope policies
+
+```bash title="Bash"
+# List every policy at Gateway scope, one per line
+echo "🔐 Gateway scope policies on $GATEWAY:"
+az aigateway policy list -g "$RG" --gateway-name "$GATEWAY" --query "[].{Policy: type, Scope: scope}" -o table
+```
+
+```powershell title="PowerShell"
+# List every policy at Gateway scope, one per line
+Write-Host "🔐 Gateway scope policies on ${GATEWAY}:"
+az aigateway policy list -g $RG --gateway-name $GATEWAY --query "[].{Policy: type, Scope: scope}" -o table
+```
+
+Expected output, plus a row for every other Gateway scope policy you already had:
+
+```text
+🔐 Gateway scope policies on aigw-contoso:
+Policy            Scope
+----------------  ---------
+tokenLimit        workspace
+contentSafety     resource
+requestRateLimit  workspace
+ipFilter          resource
 ```
 
 > [!NOTE]
-> When you create a token or request rate limit at **Gateway** scope, the portal writes `"scope": "workspace"`
-> into the policy object. The REST and Policy as code tracks include the same field so that every track creates
-> the same policy. `counterKey` is an array: `["identity"]` gives each API key or Entra caller its own counter.
-> If the API rejects a field, create the policy once in the portal, then copy its shape from the `GET` response.
+> Run `az aigateway policy list` without `--query` to see each policy's settings. The token and request rate
+> limits have `"counterKey": ["identity"]`, which gives each API key or Entra caller its own counter. The CLI
+> stores the IP filter action as `"allow"` in lowercase, and the portal shows it as **Allow listed IPs only**.
+> To change one policy later, use `az aigateway policy set-token-limit`, `set-rate-limit`,
+> `set-content-safety`, or `set-ip-filter`. Each keeps the other policies.
 
 > **Checkpoint**
-> Running the `GET` again returns your other policies unchanged plus `tokenLimit` and `requestRateLimit` entries
-> with `"counterKey": ["identity"]` and `"scope": "workspace"`, and `contentSafety` and `ipFilter` entries
-> with your ranges in `cidrRanges`. The service adds `"scope": "resource"` to the last two.
+> `az aigateway policy list` returns `tokenLimit`, `requestRateLimit`, `contentSafety`, and `ipFilter`, with
+> your ranges in `cidrRanges`, plus any other Gateway scope policies you had.
 
 <!-- track: iac | Policy as code -->
 
@@ -8758,8 +8680,9 @@ Remove-Item patch.json
 Gateway scope policies live on the gateway's `default` workspace. The sample Bicep templates only reference
 that workspace as `existing`. Declaring it in your own template would send a `PUT` that replaces the whole
 workspace resource, including settings that the template doesn't list. Instead, keep the baseline in a policy
-file that goes through code review, and apply it with a script that does the same `GET`, merge, and `PATCH` as
-the REST track.
+file that goes through code review, and apply it with a script. The `az aigateway policy` commands set policies
+from flags, so the script reads the workspace's `properties.policies` array with `az rest`, merges the file
+into it, and writes the array back.
 
 ### Review the policy file
 
@@ -8858,7 +8781,13 @@ Reply:  A gateway-wide policy baseline is a default set of rules that applies to
 ```
 
 Your call passed all four baseline policies: your IP address is on the allow list, you're far below both rate
-limits, and the prompt is benign. If you completed
+limits, and the prompt is benign.
+
+> [!WARNING]
+> If `check-call` keeps returning `403`, the gateway sees a different public IP address than `api.ipify.org`
+> reported. A VPN, a corporate proxy, or a client such as Global Secure Access can send your Azure traffic
+> through another egress address. Add your organization's egress ranges to `ALLOWED_CIDRS` and apply the
+> baseline again, or run the lab from Azure Cloud Shell, where both addresses match. If you completed
 [Federate MCP tools behind one endpoint](../04-federate-mcp-tools/README.md), run
 `../04-federate-mcp-tools/infra/list-tools.sh learn` (PowerShell:
 `../04-federate-mcp-tools/infra/list-tools.ps1 -Server learn`). The MCP server is covered by the same IP
@@ -8887,18 +8816,20 @@ Then send a burst with the script from lab 06:
 
 ```bash title="Bash"
 # Send a burst of eight requests with the script from lab 06
-echo "🚦 Expect 429 Too Many Requests after three or four requests:"
+echo "🚦 Expect 429 Too Many Requests once the 1,000-token allowance runs out:"
 ../06-token-limits/infra/trigger-token-limit.sh "$AI_GATEWAY_MODEL" 8
 ```
 
 ```powershell title="PowerShell"
 # Send a burst of eight requests with the script from lab 06
-Write-Host "🚦 Expect 429 Too Many Requests after three or four requests:"
+Write-Host "🚦 Expect 429 Too Many Requests once the 1,000-token allowance runs out:"
 ../06-token-limits/infra/trigger-token-limit.ps1 -Model $env:AI_GATEWAY_MODEL -Requests 8
 ```
 
-After three or four requests, the gateway returns `429`. The baseline allows 100,000 tokens per minute, but the
-model's tighter limit is evaluated too, and it blocks. Remove the model limit and run the burst again:
+Once the 1,000-token allowance runs out, usually after four to six requests, the gateway returns `429`. A fast
+burst can go a few hundred tokens past the budget before the first `429`. The baseline allows 100,000 tokens per
+minute, but the model's tighter limit is evaluated too, and it blocks. If every request returns `200`, wait a
+minute for the new limit to reach the gateway and run the burst again. Remove the model limit and run the burst again:
 
 ```bash title="Bash"
 # Remove only the token limit from the model, and keep its other policies
@@ -8922,13 +8853,16 @@ Point the allow list at a documentation address that can't be yours, call the mo
 
 - **Portal:** in **Policies**, select **Edit** on the **IP filter** policy, set the ranges to
   `203.0.113.10/32`, and save.
+- **Azure CLI:** `az aigateway policy set-ip-filter -g "$RG" --gateway-name "$GATEWAY" --action Allow --allowed-ips "[203.0.113.10/32]" --output none`
 - **Script (Bash):** `ALLOWED_CIDRS="203.0.113.10/32" ./infra/apply-baseline.sh`
 - **Script (PowerShell):** `./infra/apply-baseline.ps1 -ResourceGroup $RG -Gateway $GATEWAY -AllowedCidrs "203.0.113.10/32"`
 
-Run `check-call` again. It now returns `Status: 403`, and the request never reaches the model. Restore your
-range in the portal, or run the script again without the override (`./infra/apply-baseline.sh`, or the
-PowerShell script without `-AllowedCidrs`), and check that `check-call` returns `200`. If you still see the old
-result, wait a minute and retry.
+Wait about a minute, then run `check-call` again. It now returns `Status: 403`, and the request never reaches
+the model. Restore your range in the portal, with the same `set-ip-filter` command and
+`--allowed-ips "[${ALLOWED_CIDRS// /}]"`, or by running the script again without the override
+(`./infra/apply-baseline.sh`, or the PowerShell script without `-AllowedCidrs`). Then check that `check-call`
+returns `200`. Policy changes take up to a minute to reach the gateway, so if you still see the old result, wait
+and retry.
 
 ### Watch outcomes in Monitoring
 
@@ -8969,21 +8903,25 @@ policies and replace the IP filter with your organization's egress ranges.
 Select **Policies**. For each of the four policies with **Gateway** scope, select **Delete**. Remove the
 **IP filter** first.
 
-<!-- track: rest | REST API -->
+<!-- track: cli | Azure CLI -->
 
 ### Remove the baseline
 
-```bash
-# Read the Gateway scope policies and drop the four baseline types, so that the others stay
-POLICIES="$(az rest --method get --url "$URL" | jq -c '[(.properties.policies // [])[]
-  | select(.type | IN("tokenLimit","requestRateLimit","contentSafety","ipFilter") | not)]')"
-
-# Send the remaining policies back: a PATCH replaces the whole policies array
-az rest --method patch --url "$URL" --body "{\"properties\":{\"policies\":$POLICIES}}" --output none &&
+```bash title="Bash"
+# Remove the four baseline policies from Gateway scope, and keep every other policy
+az aigateway policy remove -g "$RG" --gateway-name "$GATEWAY" --output none \
+  --remove-token-limit true --remove-rate-limit true --remove-content-safety true --remove-ip-filter true &&
   echo "🚮 Baseline is removed from $GATEWAY"
 ```
 
-Every other Gateway scope policy stays.
+```powershell title="PowerShell"
+# Remove the four baseline policies from Gateway scope, and keep every other policy
+az aigateway policy remove -g $RG --gateway-name $GATEWAY --output none `
+  --remove-token-limit true --remove-rate-limit true --remove-content-safety true --remove-ip-filter true
+if ($?) { Write-Host "🚮 Baseline is removed from $GATEWAY" }
+```
+
+Every other Gateway scope policy, such as a cost limit, stays.
 
 <!-- track: iac | Policy as code -->
 
@@ -9080,13 +9018,10 @@ Set these variables once. Every track and the **Verify** section reuse them.
 # Name your gateway, its resource group, and the model alias that the checks in this lab call
 export RG="<resource-group>"
 export GATEWAY="<gateway>"
-export AI_GATEWAY_MODEL="<model-alias>"      # an alias you can call, for example the one from lab 02
+export AI_GATEWAY_MODEL="<model-name>"      # an alias you can call, for example the one from lab 02
 # export KEY_VAULT="<key-vault>"             # optional: uncomment to keep key values in Key Vault
 
-# Read the gateway's resource ID and runtime URL, and set the management URL and API version for the az rest calls
-export API="api-version=2025-09-01-preview"
-export GATEWAY_ID="$(az aigateway show -g "$RG" -n "$GATEWAY" --query id -o tsv)"
-export GW="https://management.azure.com$GATEWAY_ID"
+# Read the gateway's runtime URL
 export AI_GATEWAY_URL="https://$(az aigateway show -g "$RG" -n "$GATEWAY" --query properties.frontend.defaultHostname -o tsv)"
 echo "📝 Gateway $GATEWAY in $RG, model alias $AI_GATEWAY_MODEL"
 echo "🌐 Runtime URL: $AI_GATEWAY_URL"
@@ -9096,13 +9031,10 @@ echo "🌐 Runtime URL: $AI_GATEWAY_URL"
 # Name your gateway, its resource group, and the model alias that the checks in this lab call
 $RG                   = "<resource-group>"
 $GATEWAY              = "<gateway>"
-$env:AI_GATEWAY_MODEL = "<model-alias>"      # an alias you can call, for example the one from lab 02
+$env:AI_GATEWAY_MODEL = "<model-name>"      # an alias you can call, for example the one from lab 02
 # $KEY_VAULT          = "<key-vault>"        # optional: uncomment to keep key values in Key Vault
 
-# Read the gateway's resource ID and runtime URL, and set the management URL and API version for the az rest calls
-$API        = "api-version=2025-09-01-preview"
-$GATEWAY_ID = az aigateway show -g $RG -n $GATEWAY --query id -o tsv
-$GW         = "https://management.azure.com$GATEWAY_ID"
+# Read the gateway's runtime URL
 $env:AI_GATEWAY_URL = "https://$(az aigateway show -g $RG -n $GATEWAY --query properties.frontend.defaultHostname -o tsv)"
 Write-Host "📝 Gateway $GATEWAY in $RG, model alias $env:AI_GATEWAY_MODEL"
 Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
@@ -9165,7 +9097,7 @@ That's why every app, agent, or user should get its own key.
 | Create a key | **Create API key** | `create` | Declare the key |
 | Read a value | **View keys** (primary value) | `list-secrets` (primary and secondary values) | — (never an output) |
 | Rotate | **Rotate key** (primary value) | `regenerate --key-type primary` or `--key-type secondary` | — |
-| Block temporarily | — | `az rest` `PATCH` with `state` set to `suspended`, then back to `active` | — |
+| Block temporarily | — | `update --state suspended`, then `--state active` | — |
 | Revoke | **Delete** | `delete` | — (removing the key from the template doesn't delete it) |
 
 The gateway also has a built-in key named `master`. Don't hand it out; create named keys instead.
@@ -9214,12 +9146,12 @@ Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) c
 
 ### Create the keys
 
-`create` needs a display name, but the service replaces it with its own, so identify keys by `name`.
+The service gives each key its own display name, so identify keys by `name`.
 
 ```bash title="Bash"
 # Create one runtime API key for each caller: the web app, the agent, and the notebook whose key leaks
 for KEY in app-dev support-bot old-notebook; do
-  az aigateway api-key create -g "$RG" --gateway-name "$GATEWAY" -n "$KEY" --display-name "$KEY" -o none &&
+  az aigateway api-key create -g "$RG" --gateway-name "$GATEWAY" -n "$KEY" -o none &&
     echo "🔑 API key $KEY is ready"
 done
 
@@ -9231,7 +9163,7 @@ az aigateway api-key list -g "$RG" --gateway-name "$GATEWAY" --query "[].{name:n
 ```powershell title="PowerShell"
 # Create one runtime API key for each caller: the web app, the agent, and the notebook whose key leaks
 foreach ($key in "app-dev", "support-bot", "old-notebook") {
-  az aigateway api-key create -g $RG --gateway-name $GATEWAY -n $key --display-name $key -o none
+  az aigateway api-key create -g $RG --gateway-name $GATEWAY -n $key -o none
   if ($?) { Write-Host "🔑 API key $key is ready" }
 }
 
@@ -9329,13 +9261,11 @@ Set the variables that the next sections and **Verify** use from azd's environme
 key from the gateway, so that it never shows on screen.
 
 ```bash title="Bash"
-# Read azd's outputs into the variables that the next sections use, and set the management URL for the az rest calls
+# Read azd's outputs into the variables that the next sections use
 export RG="$(azd env get-value AZURE_RESOURCE_GROUP)"
 export GATEWAY="$(azd env get-value AI_GATEWAY_NAME)"
 export AI_GATEWAY_MODEL="$(azd env get-value AI_GATEWAY_MODEL)"
-export API="api-version=2025-09-01-preview"
 export GATEWAY_ID="$(azd env get-value AI_GATEWAY_ID)"
-export GW="https://management.azure.com$GATEWAY_ID"
 export AI_GATEWAY_URL="$(azd env get-value AI_GATEWAY_URL)"
 echo "📝 Gateway $GATEWAY in $RG, model alias $AI_GATEWAY_MODEL"
 echo "🌐 Runtime URL: $AI_GATEWAY_URL"
@@ -9351,13 +9281,11 @@ az aigateway api-key list -g "$RG" --gateway-name "$GATEWAY" --query "[].{name:n
 ```
 
 ```powershell title="PowerShell"
-# Read azd's outputs into the variables that the next sections use, and set the management URL for the az rest calls
+# Read azd's outputs into the variables that the next sections use
 $RG                     = azd env get-value AZURE_RESOURCE_GROUP
 $GATEWAY                = azd env get-value AI_GATEWAY_NAME
 $env:AI_GATEWAY_MODEL   = azd env get-value AI_GATEWAY_MODEL
-$API                    = "api-version=2025-09-01-preview"
 $GATEWAY_ID             = azd env get-value AI_GATEWAY_ID
-$GW                     = "https://management.azure.com$GATEWAY_ID"
 $env:AI_GATEWAY_URL     = azd env get-value AI_GATEWAY_URL
 Write-Host "📝 Gateway $GATEWAY in $RG, model alias $env:AI_GATEWAY_MODEL"
 Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
@@ -9691,35 +9619,32 @@ if ($?) { Write-Host "🚮 API key old-notebook is deleted" }
 
 ### Suspend a key instead
 
-To block a key while you investigate, without deleting it, set its `state` to `suspended`. Calls with the key
-get `401` until you set it back to `active`. The **Verify** section expects `support-bot` to work, so set it
-back to `active` before you continue. The `aigateway` extension can't change a key's state yet, so call the Azure
-Resource Manager REST API with `az rest`:
+To block a key while you investigate, without deleting it, set its `state` to `suspended`. About 20 seconds
+later, calls with the key get `401` until you set it back to `active`. The **Verify** section expects
+`support-bot` to work, so set it back to `active` before you continue:
 
 ```bash title="Bash"
 # Suspend the support-bot key: calls with it get 401 until you set it back to active
-STATE="$(az rest --method patch --url "$GW/apiKeys/support-bot?$API" \
-  --body '{"properties":{"state":"suspended"}}' --query properties.state -o tsv)" &&
+STATE="$(az aigateway api-key update -g "$RG" --gateway-name "$GATEWAY" -n support-bot --state suspended \
+  --query properties.state -o tsv)" &&
   echo "🔑 API key support-bot is $STATE"
 
 # Later, set the key back to active, so that it works again
-STATE="$(az rest --method patch --url "$GW/apiKeys/support-bot?$API" \
-  --body '{"properties":{"state":"active"}}' --query properties.state -o tsv)" &&
+STATE="$(az aigateway api-key update -g "$RG" --gateway-name "$GATEWAY" -n support-bot --state active \
+  --query properties.state -o tsv)" &&
   echo "🔑 API key support-bot is $STATE"
 ```
 
 ```powershell title="PowerShell"
 # Suspend the support-bot key: calls with it get 401 until you set it back to active
-# The body goes in a file, so that PowerShell passes the JSON quotes to az intact
-'{"properties":{"state":"suspended"}}' | Set-Content keystate.json
-$STATE = az rest --method patch --url "$GW/apiKeys/support-bot?$API" --body "@keystate.json" --query properties.state -o tsv
+$STATE = az aigateway api-key update -g $RG --gateway-name $GATEWAY -n support-bot --state suspended `
+  --query properties.state -o tsv
 if ($?) { Write-Host "🔑 API key support-bot is $STATE" }
 
 # Later, set the key back to active, so that it works again
-'{"properties":{"state":"active"}}' | Set-Content keystate.json
-$STATE = az rest --method patch --url "$GW/apiKeys/support-bot?$API" --body "@keystate.json" --query properties.state -o tsv
+$STATE = az aigateway api-key update -g $RG --gateway-name $GATEWAY -n support-bot --state active `
+  --query properties.state -o tsv
 if ($?) { Write-Host "🔑 API key support-bot is $STATE" }
-Remove-Item keystate.json
 ```
 
 The commands print the new state: `🔑 API key support-bot is suspended`, and then
@@ -10681,17 +10606,27 @@ Select **Access** › **Entra ID**, find your assignment, and remove it.
 ### Remove the role assignment
 
 ```bash title="Bash"
-# Delete your AI Gateway Models User role assignment (a6b68e3d-…) on the gateway
-az role assignment delete --assignee "$MY_OBJECT_ID" \
-  --role "a6b68e3d-a1f0-4c60-8678-237c050cf4ea" --scope "$GATEWAY_ID" &&
-  echo "🚮 Your AI Gateway Models User role assignment on $GATEWAY is deleted"
+# Delete your AI Gateway Models User role assignment (a6b68e3d-…) on the gateway, unless Verify already removed it
+ROLE_IDS="$(az role assignment list --assignee "$MY_OBJECT_ID" \
+  --role "a6b68e3d-a1f0-4c60-8678-237c050cf4ea" --scope "$GATEWAY_ID" --query "[].id" -o tsv)"
+if [ -n "$ROLE_IDS" ]; then
+  az role assignment delete --ids $ROLE_IDS &&
+    echo "🚮 Your AI Gateway Models User role assignment on $GATEWAY is deleted"
+else
+  echo "✅ You have no AI Gateway Models User role assignment on $GATEWAY to delete"
+fi
 ```
 
 ```powershell title="PowerShell"
-# Delete your AI Gateway Models User role assignment (a6b68e3d-…) on the gateway
-az role assignment delete --assignee $MY_OBJECT_ID `
-  --role "a6b68e3d-a1f0-4c60-8678-237c050cf4ea" --scope $GATEWAY_ID
-if ($?) { Write-Host "🚮 Your AI Gateway Models User role assignment on $GATEWAY is deleted" }
+# Delete your AI Gateway Models User role assignment (a6b68e3d-…) on the gateway, unless Verify already removed it
+$roleIds = @(az role assignment list --assignee $MY_OBJECT_ID `
+  --role "a6b68e3d-a1f0-4c60-8678-237c050cf4ea" --scope $GATEWAY_ID --query "[].id" -o tsv)
+if ($roleIds) {
+  az role assignment delete --ids @roleIds
+  if ($?) { Write-Host "🚮 Your AI Gateway Models User role assignment on $GATEWAY is deleted" }
+} else {
+  Write-Host "✅ You have no AI Gateway Models User role assignment on $GATEWAY to delete"
+}
 ```
 
 <!-- track: code | Code -->
@@ -11551,13 +11486,13 @@ summary: Send the gateway's OpenTelemetry metrics, logs, and traces to Applicati
 category: observability
 level: Beginner
 duration: 25
-tracks: [portal, iac]
+tracks: [portal, cli, iac]
 order: 13
 illustration: diagrams/observability.svg
 tags: [OpenTelemetry, OTLP, Application Insights, traces, estimated cost, KQL, GenAI semantic conventions]
 objectives:
   - Explain how the gateway exports metrics, logs, and traces independently over OTLP
-  - Connect the gateway to Application Insights in the portal, or with Bicep and azd
+  - Connect the gateway to Application Insights in the portal, with the Azure CLI, or with Bicep and azd
   - Read health, outcomes, policy impact, tokens, and estimated cost on the Monitoring dashboard
   - Follow one request through the trace waterfall, including its policy child spans
   - Query gateway telemetry in Log Analytics with KQL
@@ -11601,12 +11536,8 @@ export RG="<resource-group>"
 export GATEWAY="<gateway>"
 export AI_GATEWAY_MODEL="<model-name>"     # a callable alias, for example the one you used in lab 02
 
-# Build the management URL of the gateway's default workspace for az rest, and read the gateway's runtime URL
-export API="api-version=2025-09-01-preview"
-export GATEWAY_ID="$(az aigateway show -g "$RG" -n "$GATEWAY" --query id -o tsv)"
-export WS="https://management.azure.com$GATEWAY_ID/workspaces/default"
+# Read the gateway's runtime URL
 export AI_GATEWAY_URL="https://$(az aigateway show -g "$RG" -n "$GATEWAY" --query properties.frontend.defaultHostname -o tsv)"
-echo "🆔 Gateway ID: $GATEWAY_ID"
 echo "🌐 Runtime URL: $AI_GATEWAY_URL"
 
 # Paste the runtime key you created in Access › Keys, without showing it: don't commit it or write it to a file
@@ -11620,12 +11551,8 @@ $RG      = "<resource-group>"
 $GATEWAY = "<gateway>"
 $env:AI_GATEWAY_MODEL = "<model-name>"     # a callable alias, for example the one you used in lab 02
 
-# Build the management URL of the gateway's default workspace for az rest, and read the gateway's runtime URL
-$API        = "api-version=2025-09-01-preview"
-$GATEWAY_ID = az aigateway show -g $RG -n $GATEWAY --query id -o tsv
-$WS         = "https://management.azure.com$GATEWAY_ID/workspaces/default"
+# Read the gateway's runtime URL
 $env:AI_GATEWAY_URL = "https://$(az aigateway show -g $RG -n $GATEWAY --query properties.frontend.defaultHostname -o tsv)"
-Write-Host "🆔 Gateway ID: $GATEWAY_ID"
 Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
 
 # Paste the runtime key you created in Access › Keys, without showing it: don't commit it or write it to a file
@@ -11658,7 +11585,7 @@ then reconcile with provider billing or Azure Cost Management for financial repo
 
 ## Connect Application Insights
 
-Pick one track. Both end with the gateway exporting all three signals to an Application Insights resource named
+Pick one track. Each ends with the gateway exporting all three signals to an Application Insights resource named
 `<gateway>-insights`.
 
 <!-- track: portal | Portal -->
@@ -11701,6 +11628,157 @@ the denied operation.
 > **Checkpoint**
 > The **Monitoring** page shows the **Overview**, **Models**, **Tools**, **Policies**, and **Traces** tabs, with
 > **Open in Azure portal** and **Settings** in the header.
+
+<!-- track: cli | Azure CLI -->
+
+### Create the destination
+
+Create what the wizard's **New Azure Application Insights resource** creates: a Log Analytics workspace and a
+workspace-based Application Insights component, named after the gateway and in its region. `az monitor app-insights`
+comes from the `application-insights` extension, which the Azure CLI offers to install the first time.
+
+```bash title="Bash"
+# Read the gateway's region, so that the destination lives next to it
+LOCATION="$(az aigateway show -g "$RG" -n "$GATEWAY" --query location -o tsv)"
+echo "📍 Region: $LOCATION"
+
+# Create the Log Analytics workspace that stores the spans and logs, and keep its ID for the queries
+export LAW_CUSTOMER_ID="$(az monitor log-analytics workspace create -g "$RG" -n "$GATEWAY-logs" -l "$LOCATION" \
+  --query customerId -o tsv)" &&
+  echo "📊 Log Analytics workspace $GATEWAY-logs is ready"
+
+# Create the Application Insights component on that workspace
+az monitor app-insights component create -g "$RG" -a "$GATEWAY-insights" -l "$LOCATION" --kind web \
+  --application-type web --workspace "$GATEWAY-logs" -o none &&
+  echo "📊 Application Insights $GATEWAY-insights is ready"
+```
+
+```powershell title="PowerShell"
+# Read the gateway's region, so that the destination lives next to it
+$LOCATION = az aigateway show -g $RG -n $GATEWAY --query location -o tsv
+Write-Host "📍 Region: $LOCATION"
+
+# Create the Log Analytics workspace that stores the spans and logs, and keep its ID for the queries
+$LAW_CUSTOMER_ID = az monitor log-analytics workspace create -g $RG -n "$GATEWAY-logs" -l $LOCATION `
+  --query customerId -o tsv
+if ($?) { Write-Host "📊 Log Analytics workspace $GATEWAY-logs is ready" }
+
+# Create the Application Insights component on that workspace
+az monitor app-insights component create -g $RG -a "$GATEWAY-insights" -l $LOCATION --kind web `
+  --application-type web --workspace "$GATEWAY-logs" -o none
+if ($?) { Write-Host "📊 Application Insights $GATEWAY-insights is ready" }
+```
+
+### Turn on OTLP ingestion
+
+The component reports OTLP endpoints only after you turn on ingestion into an Azure Monitor workspace. Azure then
+creates a managed resource group, `ai_<component>_<id>_managed`, with the Data Collection Rule and the Azure Monitor
+workspace for the metrics. `az monitor app-insights` has no flag for this setting, so set the component's
+`AzureMonitorWorkspaceIngestionMode` property with `az resource update`, then read the endpoints back. It takes about
+ten seconds.
+
+```bash title="Bash"
+# Turn on OTLP ingestion, which creates the Data Collection Rule and the OTLP endpoints
+COMPONENT_ID="$(az resource update -g "$RG" -n "$GATEWAY-insights" --resource-type Microsoft.Insights/components \
+  --api-version 2020-02-02 --set properties.AzureMonitorWorkspaceIngestionMode=Enabled --query id -o tsv)" &&
+  echo "📊 OTLP ingestion is on for $GATEWAY-insights"
+
+# Read the Data Collection Rule and the OTLP endpoint of each signal from the component
+otlp() { az resource show --ids "$COMPONENT_ID" --api-version 2020-02-02 --query "properties.$1" -o tsv; }
+DCR_ID="$(otlp DataCollectionRuleResourceId)"
+METRICS_URL="$(otlp OTLPMetricsEndpoint)"
+LOGS_URL="$(otlp OTLPLogsEndpoint)"
+TRACES_URL="$(otlp OTLPTracesEndpoint)"
+echo "🆔 Data Collection Rule: ${DCR_ID##*/}"
+echo "🌐 Metrics endpoint: ${METRICS_URL%%/dataCollectionRules/*}"
+echo "🌐 Logs and traces endpoint: ${LOGS_URL%%/dataCollectionRules/*}"
+```
+
+```powershell title="PowerShell"
+# Turn on OTLP ingestion, which creates the Data Collection Rule and the OTLP endpoints
+$COMPONENT_ID = az resource update -g $RG -n "$GATEWAY-insights" --resource-type Microsoft.Insights/components `
+  --api-version 2020-02-02 --set properties.AzureMonitorWorkspaceIngestionMode=Enabled --query id -o tsv
+if ($?) { Write-Host "📊 OTLP ingestion is on for $GATEWAY-insights" }
+
+# Read the Data Collection Rule and the OTLP endpoint of each signal from the component
+function otlp($name) { az resource show --ids $COMPONENT_ID --api-version 2020-02-02 --query "properties.$name" -o tsv }
+$DCR_ID      = otlp DataCollectionRuleResourceId
+$METRICS_URL = otlp OTLPMetricsEndpoint
+$LOGS_URL    = otlp OTLPLogsEndpoint
+$TRACES_URL  = otlp OTLPTracesEndpoint
+Write-Host "🆔 Data Collection Rule: $(Split-Path $DCR_ID -Leaf)"
+Write-Host "🌐 Metrics endpoint: $(($METRICS_URL -split '/dataCollectionRules/')[0])"
+Write-Host "🌐 Logs and traces endpoint: $(($LOGS_URL -split '/dataCollectionRules/')[0])"
+```
+
+### Let the gateway publish
+
+The gateway exports with its system-assigned managed identity, which needs **Monitoring Metrics Publisher** on the
+Data Collection Rule. The wizard's **Assign Monitoring Metrics Publisher role** step does the same.
+
+```bash title="Bash"
+# Read the gateway's managed identity, which signs the telemetry export
+PRINCIPAL_ID="$(az aigateway show -g "$RG" -n "$GATEWAY" --query identity.principalId -o tsv)"
+echo "👤 Gateway identity: $PRINCIPAL_ID"
+
+# Let the identity publish to the Data Collection Rule
+az role assignment create --assignee-object-id "$PRINCIPAL_ID" --assignee-principal-type ServicePrincipal \
+  --role "Monitoring Metrics Publisher" --scope "$DCR_ID" -o none &&
+  echo "🔐 The gateway can publish to the Data Collection Rule"
+```
+
+```powershell title="PowerShell"
+# Read the gateway's managed identity, which signs the telemetry export
+$PRINCIPAL_ID = az aigateway show -g $RG -n $GATEWAY --query identity.principalId -o tsv
+Write-Host "👤 Gateway identity: $PRINCIPAL_ID"
+
+# Let the identity publish to the Data Collection Rule
+az role assignment create --assignee-object-id $PRINCIPAL_ID --assignee-principal-type ServicePrincipal `
+  --role "Monitoring Metrics Publisher" --scope $DCR_ID -o none
+if ($?) { Write-Host "🔐 The gateway can publish to the Data Collection Rule" }
+```
+
+### Create the telemetry exporter
+
+`az aigateway telemetry-exporter create` creates what the wizard's **Create telemetry exporter** step creates: an
+exporter named `appinsights`, of kind `OpenTelemetry`, that sends each signal to its OTLP endpoint with the gateway's
+managed identity. `--telemetry` adds the recommended token claims: `tid` and `oid` on every signal, and `appid` and
+`azp` on logs and traces.
+
+```bash title="Bash"
+# Export metrics, logs, and traces to the component's OTLP endpoints, signed with the gateway's managed identity
+az aigateway telemetry-exporter create -g "$RG" --gateway-name "$GATEWAY" -n appinsights --kind OpenTelemetry \
+  --application-insights "{resourceId:'$COMPONENT_ID'}" --payload-capture false \
+  --open-telemetry "{metricsEndpoint:'$METRICS_URL',logsEndpoint:'$LOGS_URL',tracesEndpoint:'$TRACES_URL',credentials:{managedIdentity:{resource:'https://monitor.azure.com'}}}" \
+  --telemetry "{attributes:[{source:{kind:claims,value:tid},signals:[logs,traces,metrics]},{source:{kind:claims,value:oid},signals:[logs,traces,metrics]},{source:{kind:claims,value:appid},signals:[logs,traces]},{source:{kind:claims,value:azp},signals:[logs,traces]}]}" \
+  -o none &&
+  echo "📊 Telemetry exporter appinsights sends metrics, logs, and traces to $GATEWAY-insights"
+
+# List the gateway's telemetry exporters, with the kind of each one
+echo "📊 Telemetry exporters on $GATEWAY:"
+az aigateway telemetry-exporter list -g "$RG" --gateway-name "$GATEWAY" --query "[].{name:name, kind:properties.kind}" -o table
+```
+
+```powershell title="PowerShell"
+# Export metrics, logs, and traces to the component's OTLP endpoints, signed with the gateway's managed identity
+az aigateway telemetry-exporter create -g $RG --gateway-name $GATEWAY -n appinsights --kind OpenTelemetry `
+  --application-insights "{resourceId:'$COMPONENT_ID'}" --payload-capture false `
+  --open-telemetry "{metricsEndpoint:'$METRICS_URL',logsEndpoint:'$LOGS_URL',tracesEndpoint:'$TRACES_URL',credentials:{managedIdentity:{resource:'https://monitor.azure.com'}}}" `
+  --telemetry "{attributes:[{source:{kind:claims,value:tid},signals:[logs,traces,metrics]},{source:{kind:claims,value:oid},signals:[logs,traces,metrics]},{source:{kind:claims,value:appid},signals:[logs,traces]},{source:{kind:claims,value:azp},signals:[logs,traces]}]}" `
+  -o none
+if ($?) { Write-Host "📊 Telemetry exporter appinsights sends metrics, logs, and traces to $GATEWAY-insights" }
+
+# List the gateway's telemetry exporters, with the kind of each one
+Write-Host "📊 Telemetry exporters on ${GATEWAY}:"
+az aigateway telemetry-exporter list -g $RG --gateway-name $GATEWAY --query "[].{name:name, kind:properties.kind}" -o table
+```
+
+To change the exporter later, such as to turn on `--payload-capture`, run `az aigateway telemetry-exporter update`
+with the same name and only the settings that change.
+
+> **Checkpoint**
+> The list shows one exporter, `appinsights`, of kind `OpenTelemetry`. In the portal, the gateway's **Monitoring**
+> page shows the **Overview**, **Models**, **Tools**, **Policies**, and **Traces** tabs.
 
 <!-- track: iac | Bicep + azd -->
 
@@ -11795,9 +11873,7 @@ the gateway, so that it never shows on screen. The last command lists the gatewa
 export RG="$(azd env get-value AZURE_RESOURCE_GROUP)"
 export GATEWAY="$(azd env get-value AI_GATEWAY_NAME)"
 export AI_GATEWAY_MODEL="$(azd env get-value AI_GATEWAY_MODEL)"
-export API="api-version=2025-09-01-preview"
 export GATEWAY_ID="$(azd env get-value AI_GATEWAY_ID)"
-export WS="https://management.azure.com$GATEWAY_ID/workspaces/default"
 export AI_GATEWAY_URL="$(azd env get-value AI_GATEWAY_URL)"
 export LAW_CUSTOMER_ID="$(azd env get-value LOG_ANALYTICS_CUSTOMER_ID)"
 echo "📝 Gateway $GATEWAY in $RG"
@@ -11810,9 +11886,9 @@ export AI_GATEWAY_API_KEY="$(az aigateway api-key list-secrets --ids "$GATEWAY_I
   --query primaryKey --output tsv)"
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 
-# List the gateway's telemetry exporters with az rest, because the aigateway extension doesn't manage them yet
+# List the gateway's telemetry exporters, with the kind of each one
 echo "📊 Telemetry exporters on $GATEWAY:"
-az rest --url "$WS/telemetryExporters?$API" --query "value[].{name:name, kind:properties.kind}" -o table
+az aigateway telemetry-exporter list -g "$RG" --gateway-name "$GATEWAY" --query "[].{name:name, kind:properties.kind}" -o table
 ```
 
 ```powershell title="PowerShell"
@@ -11820,9 +11896,7 @@ az rest --url "$WS/telemetryExporters?$API" --query "value[].{name:name, kind:pr
 $RG                     = azd env get-value AZURE_RESOURCE_GROUP
 $GATEWAY                = azd env get-value AI_GATEWAY_NAME
 $env:AI_GATEWAY_MODEL   = azd env get-value AI_GATEWAY_MODEL
-$API                    = "api-version=2025-09-01-preview"
 $GATEWAY_ID             = azd env get-value AI_GATEWAY_ID
-$WS                     = "https://management.azure.com$GATEWAY_ID/workspaces/default"
 $env:AI_GATEWAY_URL     = azd env get-value AI_GATEWAY_URL
 $LAW_CUSTOMER_ID        = azd env get-value LOG_ANALYTICS_CUSTOMER_ID
 Write-Host "📝 Gateway $GATEWAY in $RG"
@@ -11835,9 +11909,9 @@ $env:AI_GATEWAY_API_KEY = az aigateway api-key list-secrets --ids "$GATEWAY_ID/a
   --query primaryKey --output tsv
 Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) characters, not shown)"
 
-# List the gateway's telemetry exporters with az rest, because the aigateway extension doesn't manage them yet
+# List the gateway's telemetry exporters, with the kind of each one
 Write-Host "📊 Telemetry exporters on ${GATEWAY}:"
-az rest --url "$WS/telemetryExporters?$API" --query "value[].{name:name, kind:properties.kind}" -o table
+az aigateway telemetry-exporter list -g $RG --gateway-name $GATEWAY --query "[].{name:name, kind:properties.kind}" -o table
 ```
 
 > **Checkpoint**
@@ -11999,7 +12073,7 @@ On GitHub, open [infra/queries.kql](infra/queries.kql).
 
 To run a query from the command line instead, pass the workspace's customer ID to
 `az monitor log-analytics query`. The command comes from the `log-analytics` extension, which the Azure CLI offers to
-install the first time. On the Bicep + azd track, `LAW_CUSTOMER_ID` already holds the ID. Otherwise, set it to the
+install the first time. On the Azure CLI and Bicep + azd tracks, `LAW_CUSTOMER_ID` already holds the ID. Otherwise, set it to the
 **Workspace ID** on the workspace's **Overview** page. This short query counts the model calls of the last hour by
 alias and status code:
 
@@ -12041,22 +12115,21 @@ with **1H** selected. **Model calls** grows by at least five.
 Open **Settings**. All three signals point at your Application Insights resource, and the dashboard doesn't show
 "Enable all telemetry signals".
 
-To check the exporter from the CLI, list the gateway's telemetry exporters. The `aigateway` extension doesn't
-manage telemetry exporters yet, so call the Azure Resource Manager REST API with `az rest`:
+To check the exporter from the CLI, list the gateway's telemetry exporters:
 
 ```bash title="Bash"
 # List the gateway's telemetry exporters, with the kind of each one
 echo "📊 Telemetry exporters on $GATEWAY:"
-az rest --url "$WS/telemetryExporters?$API" --query "value[].{name:name, kind:properties.kind}" -o table
+az aigateway telemetry-exporter list -g "$RG" --gateway-name "$GATEWAY" --query "[].{name:name, kind:properties.kind}" -o table
 ```
 
 ```powershell title="PowerShell"
 # List the gateway's telemetry exporters, with the kind of each one
 Write-Host "📊 Telemetry exporters on ${GATEWAY}:"
-az rest --url "$WS/telemetryExporters?$API" --query "value[].{name:name, kind:properties.kind}" -o table
+az aigateway telemetry-exporter list -g $RG --gateway-name $GATEWAY --query "[].{name:name, kind:properties.kind}" -o table
 ```
 
-The exporter that the portal and the Bicep + azd track create has kind `OpenTelemetry`. Kind `applicationInsights` is the legacy exporter
+The exporter that every track creates has kind `OpenTelemetry`. Kind `applicationInsights` is the legacy exporter
 from [Troubleshooting](../TROUBLESHOOTING.md#lab-13-monitoring).
 
 <!-- /steps -->
@@ -12092,6 +12165,37 @@ doesn't delete the destination.
 In the [Azure portal](https://portal.azure.com), delete the `<gateway>-insights` Application Insights resource and its
 Log Analytics workspace if nothing else uses them. Enabling OTLP can also create an Azure Monitor workspace and a
 Data Collection Rule for the metrics. Check the resource group for them and delete them if they're unused.
+
+<!-- track: cli | Azure CLI -->
+
+### Delete the exporter and the destination
+
+Delete the exporter first, so that the gateway stops exporting, then the component and the workspace. Azure deletes
+the component's managed resource group, with the Data Collection Rule, along with the component.
+
+```bash title="Bash"
+# Stop the export by deleting the gateway's telemetry exporter
+az aigateway telemetry-exporter delete -g "$RG" --gateway-name "$GATEWAY" -n appinsights --yes &&
+  echo "🚮 Telemetry exporter appinsights is deleted"
+
+# Delete the Application Insights component and the Log Analytics workspace, without a recovery period
+az monitor app-insights component delete -g "$RG" -a "$GATEWAY-insights" &&
+  echo "🚮 Application Insights $GATEWAY-insights is deleted"
+az monitor log-analytics workspace delete -g "$RG" -n "$GATEWAY-logs" --force --yes &&
+  echo "🚮 Log Analytics workspace $GATEWAY-logs is deleted"
+```
+
+```powershell title="PowerShell"
+# Stop the export by deleting the gateway's telemetry exporter
+az aigateway telemetry-exporter delete -g $RG --gateway-name $GATEWAY -n appinsights --yes
+if ($?) { Write-Host "🚮 Telemetry exporter appinsights is deleted" }
+
+# Delete the Application Insights component and the Log Analytics workspace, without a recovery period
+az monitor app-insights component delete -g $RG -a "$GATEWAY-insights"
+if ($?) { Write-Host "🚮 Application Insights $GATEWAY-insights is deleted" }
+az monitor log-analytics workspace delete -g $RG -n "$GATEWAY-logs" --force --yes
+if ($?) { Write-Host "🚮 Log Analytics workspace $GATEWAY-logs is deleted" }
+```
 
 <!-- track: iac | Bicep + azd -->
 
@@ -12131,7 +12235,7 @@ summary: Export Microsoft Entra token claims with the gateway's logs, traces, an
 category: observability
 level: Advanced
 duration: 35
-tracks: [portal, rest, iac]
+tracks: [portal, cli, iac]
 order: 14
 status: new
 illustration: diagrams/observability.svg
@@ -12177,18 +12281,14 @@ Set these variables once. If you named the Application Insights resource differe
 `$GATEWAY-insights`.
 
 ```bash title="Bash"
-# Name your gateway and the alias to call, and pin the API version of the REST calls
+# Name your gateway and the alias to call
 export RG="<resource-group>"
 export GATEWAY="<gateway>"
 export AI_GATEWAY_MODEL="<model-name>"     # a callable alias
-export API="api-version=2025-09-01-preview"
 echo "📝 Gateway $GATEWAY in $RG, alias $AI_GATEWAY_MODEL"
 
-# Read the gateway's resource ID, the URL of its default workspace for the REST calls, and its runtime URL
-export GATEWAY_ID="$(az aigateway show -g "$RG" -n "$GATEWAY" --query id -o tsv)"
-export WS="https://management.azure.com$GATEWAY_ID/workspaces/default"
+# Read the gateway's runtime URL
 export AI_GATEWAY_URL="https://$(az aigateway show -g "$RG" -n "$GATEWAY" --query properties.frontend.defaultHostname -o tsv)"
-echo "🆔 Gateway: $GATEWAY_ID"
 echo "🌐 Runtime URL: $AI_GATEWAY_URL"
 
 # Read your API key without showing it, and export it for the scripts
@@ -12203,18 +12303,14 @@ echo "🆔 Log Analytics workspace: $LAW_ID"
 ```
 
 ```powershell title="PowerShell"
-# Name your gateway and the alias to call, and pin the API version of the REST calls
+# Name your gateway and the alias to call
 $RG      = "<resource-group>"
 $GATEWAY = "<gateway>"
 $env:AI_GATEWAY_MODEL = "<model-name>"     # a callable alias
-$API     = "api-version=2025-09-01-preview"
 Write-Host "📝 Gateway $GATEWAY in $RG, alias $env:AI_GATEWAY_MODEL"
 
-# Read the gateway's resource ID, the URL of its default workspace for the REST calls, and its runtime URL
-$GATEWAY_ID = az aigateway show -g $RG -n $GATEWAY --query id -o tsv
-$WS         = "https://management.azure.com$GATEWAY_ID/workspaces/default"
+# Read the gateway's runtime URL
 $env:AI_GATEWAY_URL = "https://$(az aigateway show -g $RG -n $GATEWAY --query properties.frontend.defaultHostname -o tsv)"
-Write-Host "🆔 Gateway: $GATEWAY_ID"
 Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
 
 # Read your API key without showing it, and keep it in an environment variable for the scripts
@@ -12279,37 +12375,62 @@ claim needs at least one signal.
 > **Add claim** adds a row (the placeholder suggests `cost_center`) that starts with **Logs** and **Traces**.
 > Only add claims that your callers' tokens carry. The next section shows how to check.
 
-<!-- track: rest | REST API -->
+<!-- track: cli | Azure CLI -->
 
 ### Read the current configuration
 
-The claim attributes live on the gateway's telemetry exporter. The `aigateway` extension doesn't manage telemetry
-exporters yet, so call the Azure Resource Manager REST API with `az rest`. List the exporters and their claims:
+The claim attributes live on the gateway's telemetry exporter, in its `telemetry.attributes` list. Show the claims
+of the `appinsights` exporter that lab 13 created, with the signals of each one:
 
 ```bash title="Bash"
-# List the gateway's telemetry exporters, with the kind of each one and the token claims it exports
-echo "📊 Telemetry exporters and their claims:"
-az rest --method get --url "$WS/telemetryExporters?$API" \
-  --query "value[].{name:name, kind:properties.kind, claims:properties.telemetry.attributes}"
+# Show the token claims that the gateway's exporter adds to its telemetry, with the signals of each one
+echo "📊 Token claims of the appinsights exporter:"
+az aigateway telemetry-exporter show -g "$RG" --gateway-name "$GATEWAY" -n appinsights \
+  --query "properties.telemetry.attributes[].{claim:source.value, signals:join(', ', signals)}" -o table
 ```
 
 ```powershell title="PowerShell"
-# List the gateway's telemetry exporters, with the kind of each one and the token claims it exports
-Write-Host "📊 Telemetry exporters and their claims:"
-az rest --method get --url "$WS/telemetryExporters?$API" `
-  --query "value[].{name:name, kind:properties.kind, claims:properties.telemetry.attributes}"
+# Show the token claims that the gateway's exporter adds to its telemetry, with the signals of each one
+Write-Host "📊 Token claims of the appinsights exporter:"
+az aigateway telemetry-exporter show -g $RG --gateway-name $GATEWAY -n appinsights `
+  --query "properties.telemetry.attributes[].{claim:source.value, signals:join(', ', signals)}" -o table
 ```
 
-Expected output: one exporter of kind `OpenTelemetry`, usually named `appinsights`, whose claims list `tid`, `oid`,
-`appid`, and `azp`, each with its `signals`. A kind of `applicationInsights` is the legacy exporter. Reconfigure
-monitoring as in [Monitor usage, cost, and traces](../13-monitoring/README.md) first.
+Expected output: `tid` and `oid` with `logs, traces, metrics`, and `appid` and `azp` with `logs, traces`. If the
+exporter isn't found, list the exporters with `az aigateway telemetry-exporter list` and use the name of the one
+whose kind is `OpenTelemetry`. Without one, reconfigure monitoring as in
+[Monitor usage, cost, and traces](../13-monitoring/README.md) first.
 
-### Change it in the portal
+### Add metrics for the client app
 
-Make the change in the portal: open **Monitoring** › **Settings** › **Logging** › **Token claim attributes** and
-select **Metrics** for `appid` and `azp`. To automate it, declare the claims in the exporter's
-`telemetry.attributes` list, as the **Bicep + azd** track does. Then run the `GET` again. Both claims now list
-`metrics` in their `signals`.
+`--telemetry` replaces the whole list of claims, so pass all four, with `metrics` added for `appid` and `azp`. The
+exporter keeps its other settings.
+
+```bash title="Bash"
+# Export all four claims to logs, traces, and metrics, so that token and cost metrics can be split by client app
+az aigateway telemetry-exporter update -g "$RG" --gateway-name "$GATEWAY" -n appinsights -o none \
+  --telemetry "{attributes:[{source:{kind:claims,value:tid},signals:[logs,traces,metrics]},{source:{kind:claims,value:oid},signals:[logs,traces,metrics]},{source:{kind:claims,value:appid},signals:[logs,traces,metrics]},{source:{kind:claims,value:azp},signals:[logs,traces,metrics]}]}" &&
+  echo "📊 appid and azp now export to logs, traces, and metrics"
+
+# Show the claims again
+az aigateway telemetry-exporter show -g "$RG" --gateway-name "$GATEWAY" -n appinsights \
+  --query "properties.telemetry.attributes[].{claim:source.value, signals:join(', ', signals)}" -o table
+```
+
+```powershell title="PowerShell"
+# Export all four claims to logs, traces, and metrics, so that token and cost metrics can be split by client app
+az aigateway telemetry-exporter update -g $RG --gateway-name $GATEWAY -n appinsights -o none `
+  --telemetry "{attributes:[{source:{kind:claims,value:tid},signals:[logs,traces,metrics]},{source:{kind:claims,value:oid},signals:[logs,traces,metrics]},{source:{kind:claims,value:appid},signals:[logs,traces,metrics]},{source:{kind:claims,value:azp},signals:[logs,traces,metrics]}]}"
+if ($?) { Write-Host "📊 appid and azp now export to logs, traces, and metrics" }
+
+# Show the claims again
+az aigateway telemetry-exporter show -g $RG --gateway-name $GATEWAY -n appinsights `
+  --query "properties.telemetry.attributes[].{claim:source.value, signals:join(', ', signals)}" -o table
+```
+
+To export a custom claim, such as `cost_center`, add an entry such as
+`{source:{kind:claims,value:cost_center},signals:[logs,traces]}` to the list. Check that your callers' tokens carry it
+first, as the next section shows.
 
 <!-- track: iac | Bicep + azd -->
 
@@ -12383,16 +12504,14 @@ regions](../SETUP.md#find-the-available-regions).
 ### Read the outputs and the key
 
 Set the variables that the next sections use from azd's environment values, and read the key from the gateway, so
-that it never shows on screen. The last command lists the exporter's claims.
+that it never shows on screen. The last command shows the exporter's claims.
 
 ```bash title="Bash"
-# Read the names and URLs that azd up created, and pin the API version of the REST calls
+# Read the names and URLs that azd up created
 export RG="$(azd env get-value AZURE_RESOURCE_GROUP)"
 export GATEWAY="$(azd env get-value AI_GATEWAY_NAME)"
 export AI_GATEWAY_MODEL="$(azd env get-value AI_GATEWAY_MODEL)"
-export API="api-version=2025-09-01-preview"
 export GATEWAY_ID="$(azd env get-value AI_GATEWAY_ID)"
-export WS="https://management.azure.com$GATEWAY_ID/workspaces/default"
 export AI_GATEWAY_URL="$(azd env get-value AI_GATEWAY_URL)"
 echo "📝 Gateway $GATEWAY in $RG, alias $AI_GATEWAY_MODEL"
 echo "🌐 Runtime URL: $AI_GATEWAY_URL"
@@ -12408,20 +12527,18 @@ LAW_ID="$(azd env get-value LOG_ANALYTICS_WORKSPACE_ID)"
 echo "🆔 Application Insights: $APPI_ID"
 echo "🆔 Log Analytics workspace: $LAW_ID"
 
-# List the gateway's telemetry exporters, with the kind of each one and the token claims it exports
-echo "📊 Telemetry exporters and their claims:"
-az rest --method get --url "$WS/telemetryExporters?$API" \
-  --query "value[].{name:name, kind:properties.kind, claims:properties.telemetry.attributes}"
+# Show the token claims that the gateway's exporter adds to its telemetry, with the signals of each one
+echo "📊 Token claims of the appinsights exporter:"
+az aigateway telemetry-exporter show -g "$RG" --gateway-name "$GATEWAY" -n appinsights \
+  --query "properties.telemetry.attributes[].{claim:source.value, signals:join(', ', signals)}" -o table
 ```
 
 ```powershell title="PowerShell"
-# Read the names and URLs that azd up created, and pin the API version of the REST calls
+# Read the names and URLs that azd up created
 $RG                     = azd env get-value AZURE_RESOURCE_GROUP
 $GATEWAY                = azd env get-value AI_GATEWAY_NAME
 $env:AI_GATEWAY_MODEL   = azd env get-value AI_GATEWAY_MODEL
-$API                    = "api-version=2025-09-01-preview"
 $GATEWAY_ID             = azd env get-value AI_GATEWAY_ID
-$WS                     = "https://management.azure.com$GATEWAY_ID/workspaces/default"
 $env:AI_GATEWAY_URL     = azd env get-value AI_GATEWAY_URL
 Write-Host "📝 Gateway $GATEWAY in $RG, alias $env:AI_GATEWAY_MODEL"
 Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
@@ -12437,21 +12554,20 @@ $LAW_ID                 = azd env get-value LOG_ANALYTICS_WORKSPACE_ID
 Write-Host "🆔 Application Insights: $APPI_ID"
 Write-Host "🆔 Log Analytics workspace: $LAW_ID"
 
-# List the gateway's telemetry exporters, with the kind of each one and the token claims it exports
-Write-Host "📊 Telemetry exporters and their claims:"
-az rest --method get --url "$WS/telemetryExporters?$API" `
-  --query "value[].{name:name, kind:properties.kind, claims:properties.telemetry.attributes}"
+# Show the token claims that the gateway's exporter adds to its telemetry, with the signals of each one
+Write-Host "📊 Token claims of the appinsights exporter:"
+az aigateway telemetry-exporter show -g $RG --gateway-name $GATEWAY -n appinsights `
+  --query "properties.telemetry.attributes[].{claim:source.value, signals:join(', ', signals)}" -o table
 ```
 
-Expected output: `azd up` ended with `SUCCESS`, and the list shows one exporter, `appinsights`, of kind
-`OpenTelemetry`, whose claims list `tid`, `oid`, `appid`, and `azp`, each with `logs`, `traces`, and `metrics` in
-its `signals`.
+Expected output: `azd up` ended with `SUCCESS`, and the table lists `tid`, `oid`, `appid`, and `azp`, each with
+`logs, traces, metrics`.
 
 ### Change the claims
 
 Each `azd provision` applies the claims in `infra/main.bicep` again. To go back to the recommended preset, without
-metrics for the client app, set `CLIENT_APP_METRICS` to `false` and provision. Then run the `GET` again: `appid` and
-`azp` list only `logs` and `traces`. If you try it now, set it back to `true` and provision again before you continue,
+metrics for the client app, set `CLIENT_APP_METRICS` to `false` and provision. Then show the claims again: `appid`
+and `azp` list only `logs` and `traces`. If you try it now, set it back to `true` and provision again before you continue,
 so that the PromQL section can split metrics by client app.
 
 ```bash title="Bash"
@@ -12476,7 +12592,7 @@ if ($?) { Write-Host "🚀 Provisioned: appid and azp export to logs and traces 
 
 To export a custom claim, such as `cost_center`, add an entry to the `claimAttributes` list in `infra/main.bicep`
 and run `azd provision`. Check that your callers' tokens carry it first, as the next section shows. For the chargeback
-report, follow the **REST API** track: it uses the variables you set here.
+report, follow the **Azure CLI** track: it uses the variables you set here.
 
 <!-- /tracks -->
 
@@ -12606,37 +12722,33 @@ python infra/chargeback_report.py usage.csv prices.json --by Tenant,ClientApp,Ap
 if ($?) { Write-Host "📄 Report saved to chargeback.csv" }
 ```
 
-<!-- track: rest | REST API -->
+<!-- track: cli | Azure CLI -->
 
 ### Run the query
 
-Send the query to the Log Analytics query API through Azure Resource Manager and save the response:
+Run the query file on the Log Analytics workspace and save the rows. The CLI reads the query from the file after
+`@`.
 
 ```bash title="Bash"
-# Wrap the KQL query in a JSON request body, in a file because the query spans many lines
-jq -n --rawfile q infra/chargeback.kql '{query: $q}' > query.json &&
-  echo "📄 Query body written to query.json"
+# Read the workspace ID that queries use, from the Log Analytics workspace behind Application Insights
+LAW_CUSTOMER_ID="$(az monitor log-analytics workspace show --ids "$LAW_ID" --query customerId -o tsv)"
 
-# Run the query on the Log Analytics workspace through Azure Resource Manager, and save the response
-az rest --method post \
-  --url "https://management.azure.com${LAW_ID}/query?api-version=2017-10-01" \
-  --body @query.json > usage.json &&
+# Run the chargeback query on the workspace, and save the rows
+az monitor log-analytics query -w "$LAW_CUSTOMER_ID" --analytics-query @infra/chargeback.kql -o json > usage.json &&
   echo "📄 Usage by caller saved to usage.json"
 ```
 
 ```powershell title="PowerShell"
-# Wrap the KQL query in a JSON request body, in a file because the query spans many lines
-@{ query = Get-Content infra/chargeback.kql -Raw } | ConvertTo-Json | Set-Content query.json
-if ($?) { Write-Host "📄 Query body written to query.json" }
+# Read the workspace ID that queries use, from the Log Analytics workspace behind Application Insights
+$LAW_CUSTOMER_ID = az monitor log-analytics workspace show --ids $LAW_ID --query customerId -o tsv
 
-# Run the query on the Log Analytics workspace through Azure Resource Manager, and save the response
-az rest --method post `
-  --url "https://management.azure.com$LAW_ID/query?api-version=2017-10-01" `
-  --body "@query.json" | Set-Content usage.json
+# Run the chargeback query on the workspace, and save the rows
+az monitor log-analytics query -w $LAW_CUSTOMER_ID --analytics-query "@infra/chargeback.kql" -o json |
+  Set-Content usage.json
 if ($?) { Write-Host "📄 Usage by caller saved to usage.json" }
 ```
 
-The response holds a `tables` array with `columns` and `rows`, which the report script reads directly.
+The file holds one JSON object per row, which the report script reads directly.
 
 ### Price it
 
@@ -12747,6 +12859,10 @@ Expected output: rows per model, token type, and caller. Your Entra rows carry y
 > `prompt_tokens_details.cached_tokens`) next to input and output, so a plain sum double counts. Use the total
 > type if there is one, otherwise input plus output. Cached tokens are usually a subset of input tokens.
 
+The names follow the API of each call: Chat Completions reports `prompt_tokens` and `completion_tokens`, while
+Responses reports `input_tokens` and `output_tokens`. `gen_ai.response.model` is the model name that the provider
+returned, so one deployment can show up as `gpt-6-luna-2026-09-22` for Chat Completions and `gpt-6-luna` for Responses.
+
 ### Query estimated cost
 
 Replace `azure.ai_gateway.client.token.usage` with `azure.ai_gateway.client.token.cost` and run the query again. Each
@@ -12809,24 +12925,29 @@ In **Monitoring** › **Settings** › **Logging** › **Token claim attributes*
 
 Delete `usage.csv`, `prices.json`, and `chargeback.csv` from the lab folder.
 
-<!-- track: rest | REST API -->
+<!-- track: cli | Azure CLI -->
 
-### Restore the preset
-
-In **Monitoring** › **Settings** › **Logging** › **Token claim attributes**, clear **Metrics** for `appid` and
-`azp`, then run the `GET` from the start of the lab to confirm both claims list only `logs` and `traces`.
-
-### Delete the exported files
+### Restore the preset and delete the exported files
 
 ```bash title="Bash"
-# Delete the query, the usage, the price list, and the report, because they hold tenant and object IDs
-rm -f query.json usage.json prices.json chargeback.csv &&
+# Export the client app claims, appid and azp, to logs and traces only, as in the recommended preset
+az aigateway telemetry-exporter update -g "$RG" --gateway-name "$GATEWAY" -n appinsights -o none \
+  --telemetry "{attributes:[{source:{kind:claims,value:tid},signals:[logs,traces,metrics]},{source:{kind:claims,value:oid},signals:[logs,traces,metrics]},{source:{kind:claims,value:appid},signals:[logs,traces]},{source:{kind:claims,value:azp},signals:[logs,traces]}]}" &&
+  echo "📊 appid and azp export to logs and traces only"
+
+# Delete the usage, the price list, and the report, because they hold tenant and object IDs
+rm -f usage.json prices.json chargeback.csv &&
   echo "🚮 The exported files are deleted"
 ```
 
 ```powershell title="PowerShell"
-# Delete the query, the usage, the price list, and the report, because they hold tenant and object IDs
-Remove-Item query.json, usage.json, prices.json, chargeback.csv -ErrorAction SilentlyContinue
+# Export the client app claims, appid and azp, to logs and traces only, as in the recommended preset
+az aigateway telemetry-exporter update -g $RG --gateway-name $GATEWAY -n appinsights -o none `
+  --telemetry "{attributes:[{source:{kind:claims,value:tid},signals:[logs,traces,metrics]},{source:{kind:claims,value:oid},signals:[logs,traces,metrics]},{source:{kind:claims,value:appid},signals:[logs,traces]},{source:{kind:claims,value:azp},signals:[logs,traces]}]}"
+if ($?) { Write-Host "📊 appid and azp export to logs and traces only" }
+
+# Delete the usage, the price list, and the report, because they hold tenant and object IDs
+Remove-Item usage.json, prices.json, chargeback.csv -ErrorAction SilentlyContinue
 Write-Host "🚮 The exported files are deleted"
 ```
 
@@ -12837,14 +12958,14 @@ Write-Host "🚮 The exported files are deleted"
 In the `ai-gateway/labs/14-otel-chargeback` folder, delete the files the report created:
 
 ```bash title="Bash"
-# Delete the query, the usage, the price list, and the report, because they hold tenant and object IDs
-rm -f query.json usage.json prices.json chargeback.csv &&
+# Delete the usage, the price list, and the report, because they hold tenant and object IDs
+rm -f usage.json prices.json chargeback.csv &&
   echo "🚮 The exported files are deleted"
 ```
 
 ```powershell title="PowerShell"
-# Delete the query, the usage, the price list, and the report, because they hold tenant and object IDs
-Remove-Item query.json, usage.json, prices.json, chargeback.csv -ErrorAction SilentlyContinue
+# Delete the usage, the price list, and the report, because they hold tenant and object IDs
+Remove-Item usage.json, prices.json, chargeback.csv -ErrorAction SilentlyContinue
 Write-Host "🚮 The exported files are deleted"
 ```
 
@@ -12941,13 +13062,14 @@ that leaves the agent. Changing a model, a policy, or a tool list then needs no 
 | Framework | Model client | MCP tools | Model API |
 |---|---|---|---|
 | Microsoft Agent Framework | `OpenAIChatClient` | `MCPStreamableHTTPTool` | Responses |
-| OpenAI Agents SDK | `OpenAIChatCompletionsModel` with `AsyncOpenAI` | `MCPServerStreamableHttp` | Chat Completions |
-| LangChain and LangGraph | `ChatOpenAI` | `MultiServerMCPClient` (langchain-mcp-adapters) | Chat Completions |
+| OpenAI Agents SDK | `OpenAIResponsesModel` with `AsyncOpenAI` | `MCPServerStreamableHttp` | Responses |
+| LangChain and LangGraph | `ChatOpenAI` with `use_responses_api=True` | `MultiServerMCPClient` (langchain-mcp-adapters) | Responses |
 
-All three use the same two endpoints. The gateway serves both model APIs on the model endpoint:
+All three use the same two endpoints. The model endpoint also serves Chat Completions, but some reasoning models
+only accept function tools on Responses, so the samples use Responses:
 
-- Model: `https://<gateway>.eastus2-01.ai.gateway.azure.com/default/models/openai/v1`
-- MCP: `https://<gateway>.eastus2-01.ai.gateway.azure.com/default/toolservers/<server-name>/mcp`
+- Model: `<gateway-url>/default/models/openai/v1`
+- MCP: `<gateway-url>/default/toolservers/<server-name>/mcp`
 
 ## Set up the samples
 
@@ -13043,7 +13165,7 @@ client = AsyncOpenAI(
     api_key=api_key,
 )
 # ...
-model=OpenAIChatCompletionsModel(model=model, openai_client=client),
+model=OpenAIResponsesModel(model=model, openai_client=client),
 ```
 
 ```python title="LangGraph"
@@ -13051,6 +13173,7 @@ model = ChatOpenAI(
     model=model_name,
     base_url=f"{gateway_url}/default/models/openai/v1",
     api_key=api_key,
+    use_responses_api=True,
 )
 ```
 
@@ -13126,7 +13249,7 @@ async with mcp_tool:
 agent = Agent(
     name="docs-agent",
     instructions=INSTRUCTIONS,
-    model=OpenAIChatCompletionsModel(model=model, openai_client=client),
+    model=OpenAIResponsesModel(model=model, openai_client=client),
     mcp_servers=[mcp_server],
 )
 result = await Runner.run(agent, question)
@@ -13136,7 +13259,7 @@ print(result.final_output)
 ```python title="LangGraph"
 agent = create_agent(model, tools, system_prompt=INSTRUCTIONS)
 result = await agent.ainvoke({"messages": [{"role": "user", "content": question}]})
-print(result["messages"][-1].content)
+print(result["messages"][-1].text)
 ```
 
 `create_agent` from LangChain builds a LangGraph graph that loops between the model and the tools. LangGraph keeps
@@ -13171,7 +13294,7 @@ python langgraph_agent.py
 echo "🤖 The LangGraph agent's answer is above"
 ```
 
-Expected output: a line such as `Model <model-name> and MCP server learn through https://<gateway>.eastus2-01.ai.gateway.azure.com`
+Expected output: a line such as `Model <model-name> and MCP server learn through <gateway-url>`
 (the LangGraph sample also prints how many tools it loaded), then a short answer about AI Gateway that cites
 Microsoft Learn URLs. The answer differs between runs and frameworks.
 
@@ -13369,8 +13492,8 @@ read -rsp "hosted-agent key: " AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY &
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 
 # Set the gateway's runtime URL from its Overview page, and the alias that the agent sends as its model
-export AI_GATEWAY_URL="https://<gateway>.<region>-01.ai.gateway.azure.com"
-export AI_GATEWAY_MODEL="<model-alias>"    # the alias from lab 02
+export AI_GATEWAY_URL="<gateway-url>"
+export AI_GATEWAY_MODEL="<model-name>"    # the alias from lab 02
 echo "🌐 Runtime URL: $AI_GATEWAY_URL"
 echo "🔖 Model alias: $AI_GATEWAY_MODEL"
 ```
@@ -13381,8 +13504,8 @@ $env:AI_GATEWAY_API_KEY = Read-Host "hosted-agent key" -MaskInput
 Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) characters, not shown)"
 
 # Set the gateway's runtime URL from its Overview page, and the alias that the agent sends as its model
-$env:AI_GATEWAY_URL = "https://<gateway>.<region>-01.ai.gateway.azure.com"
-$env:AI_GATEWAY_MODEL = "<model-alias>"    # the alias from lab 02
+$env:AI_GATEWAY_URL = "<gateway-url>"
+$env:AI_GATEWAY_MODEL = "<model-name>"    # the alias from lab 02
 Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
 Write-Host "🔖 Model alias: $env:AI_GATEWAY_MODEL"
 ```
@@ -13395,7 +13518,7 @@ Write-Host "🔖 Model alias: $env:AI_GATEWAY_MODEL"
 # Set your resource group, your gateway, and the alias that the agent sends as its model
 export RG="<resource-group>"
 export GATEWAY="<gateway>"
-export AI_GATEWAY_MODEL="<model-alias>"    # the alias from lab 02
+export AI_GATEWAY_MODEL="<model-name>"    # the alias from lab 02
 echo "📝 Gateway $GATEWAY in $RG, alias $AI_GATEWAY_MODEL"
 
 # Read the gateway's runtime URL, which the agent calls for its model and its tools
@@ -13407,7 +13530,7 @@ echo "🌐 Runtime URL: $AI_GATEWAY_URL"
 # Set your resource group, your gateway, and the alias that the agent sends as its model
 $RG                   = "<resource-group>"
 $GATEWAY              = "<gateway>"
-$env:AI_GATEWAY_MODEL = "<model-alias>"    # the alias from lab 02
+$env:AI_GATEWAY_MODEL = "<model-name>"    # the alias from lab 02
 Write-Host "📝 Gateway $GATEWAY in $RG, alias $env:AI_GATEWAY_MODEL"
 
 # Read the gateway's runtime URL, which the agent calls for its model and its tools
@@ -13422,7 +13545,7 @@ appears on screen.
 
 ```bash title="Bash"
 # Create the hosted-agent key, which makes the agent a caller identity of its own
-az aigateway api-key create -g "$RG" --gateway-name "$GATEWAY" -n hosted-agent --display-name hosted-agent -o none &&
+az aigateway api-key create -g "$RG" --gateway-name "$GATEWAY" -n hosted-agent -o none &&
   echo "🔑 API key hosted-agent is ready"
 
 # Read the key's value straight into a variable, so that it never shows on screen
@@ -13433,7 +13556,7 @@ echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not sh
 
 ```powershell title="PowerShell"
 # Create the hosted-agent key, which makes the agent a caller identity of its own
-az aigateway api-key create -g $RG --gateway-name $GATEWAY -n hosted-agent --display-name hosted-agent -o none
+az aigateway api-key create -g $RG --gateway-name $GATEWAY -n hosted-agent -o none
 if ($?) { Write-Host "🔑 API key hosted-agent is ready" }
 
 # Read the key's value straight into a variable, so that it never shows on screen
@@ -13472,11 +13595,12 @@ azd ext install microsoft.foundry &&
 ### Create an azd environment
 
 The environment name also names the resource group, `rg-<env>`, and the Foundry project. Choose a region where
-Foundry Hosted Agents are available, for example `eastus2`.
+Foundry Hosted Agents are available, for example `eastus2`. The environment uses the subscription that the Azure CLI
+signed in to, the same one as your gateway.
 
 ```bash
 # Create the azd environment, which also names the resource group, rg-aigw-lab16, and the Foundry project
-azd env new aigw-lab16 --location eastus2 &&
+azd env new aigw-lab16 --location eastus2 --subscription "$(az account show --query id -o tsv)" &&
   echo "📝 azd environment aigw-lab16 deploys to eastus2"
 ```
 
@@ -13741,7 +13865,7 @@ if ($?) { Write-Host "🔐 Token limit of 1,000 tokens per minute per caller ide
 
 ### Trigger the limit
 
-Wait about 30 seconds for the policy to apply, then invoke the hosted agent twice:
+Wait about a minute for the policy to apply, then invoke the hosted agent twice:
 
 ```bash
 # Invoke the hosted agent twice, each time in a new conversation: the first invoke uses well over 1,000 tokens
@@ -13758,7 +13882,8 @@ ERROR: agent failed (server_error): (... Error code: 429 - {'statusCode': 429, '
 ```
 
 The counter belongs to the `hosted-agent` key. Your other apps, with their own keys, keep their full allowance on
-the same alias. For more on limits, see
+the same alias. The wait in the message can be several minutes, because the first invoke spent several times the
+1,000-token budget. For more on limits, see
 [Throttle tokens per caller with token limits](../06-token-limits/README.md).
 
 ### Remove the limit
@@ -13829,7 +13954,7 @@ you can reuse its name:
 
 ```bash
 # Delete the resource group with the Foundry resource and the hosted agent, and purge the soft-deleted resource
-azd down --purge &&
+azd down --purge --force &&
   echo "🚮 The Foundry resource group and the hosted agent are deleted"
 ```
 
@@ -13912,7 +14037,7 @@ export AI_GATEWAY_URL="https://$(az aigateway show -g "$RG" -n "$GATEWAY" --quer
 echo "🌐 Runtime URL: $AI_GATEWAY_URL"
 
 # Create an API key for this app, so that you can revoke it on its own later
-az aigateway api-key create -g "$RG" --gateway-name "$GATEWAY" -n app-coding-agent --display-name app-coding-agent -o none &&
+az aigateway api-key create -g "$RG" --gateway-name "$GATEWAY" -n app-coding-agent -o none &&
   echo "🔑 API key app-coding-agent is ready"
 
 # Read the key into an environment variable, so that it never shows on screen
@@ -13934,7 +14059,7 @@ $env:AI_GATEWAY_URL = "https://$(az aigateway show -g $RG -n $GATEWAY --query pr
 Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
 
 # Create an API key for this app, so that you can revoke it on its own later
-az aigateway api-key create -g $RG --gateway-name $GATEWAY -n app-coding-agent --display-name app-coding-agent -o none
+az aigateway api-key create -g $RG --gateway-name $GATEWAY -n app-coding-agent -o none
 if ($?) { Write-Host "🔑 API key app-coding-agent is ready" }
 
 # Read the key into an environment variable, so that it never shows on screen
@@ -14030,8 +14155,8 @@ Install ai-gateway from Customize.
 
 ```bash title="Gemini CLI"
 # Install the plugin as a Gemini CLI extension, straight from the GitHub repository
-gemini extensions install https://github.com/Azure/ai-gateway
-echo "📦 The ai-gateway extension is installed in Gemini CLI"
+gemini extensions install https://github.com/Azure/ai-gateway &&
+  echo "📦 The ai-gateway extension is installed in Gemini CLI"
 ```
 
 The marketplace is named `azure` and the plugin `ai-gateway`.
@@ -14132,7 +14257,7 @@ Read the code before you run it again or commit it. Check that:
   [Publish models from any provider behind stable aliases](../03-multi-provider-aliases/README.md).
 - The key comes from `AI_GATEWAY_API_KEY` and goes in the `api-key` header. No key value appears in code,
   `README.md`, or config files, and `.env.example` holds only a placeholder.
-- `.gitignore` lists `.env`.
+- If the plugin wrote a `.env` file, `.gitignore` lists it.
 - The app calls only the gateway's runtime URL, never `management.azure.com`.
 - For a scaffolded agent: `requirements.txt` pins `github-copilot-sdk>=1.0.0`, each MCP server lists the selected
   tools by name instead of `"*"`, and tool permission requests wait for your approval.
@@ -14140,7 +14265,8 @@ Read the code before you run it again or commit it. Check that:
 ### Run the app
 
 `build` already ran the code once and reported the result. Run it yourself from the shell where you set
-`AI_GATEWAY_API_KEY`, using the command in the generated `README.md`. For a Python project, that's usually:
+`AI_GATEWAY_API_KEY`, using the command that `build` reported or the generated `README.md`. If the project has a
+`requirements.txt`, install its packages in a virtual environment first:
 
 ```bash title="Bash"
 # Create a virtual environment in .venv and activate it, so that the packages stay out of your global Python
@@ -14162,7 +14288,8 @@ pip install -r requirements.txt
 if ($?) { Write-Host "📦 The packages in requirements.txt are installed" }
 ```
 
-Then start the entry point that the README names, for example `python summarize.py ticket.txt`.
+Then start the entry point, for example `python summarize_ticket.py ticket.txt`. A script that uses only the
+Python standard library has no `requirements.txt`, so run it directly.
 
 <!-- /steps -->
 
@@ -14197,11 +14324,14 @@ Expect `HTTP 200` (`200` in PowerShell).
 
 ### Check that no secret can be committed
 
-Run this in the project folder. It checks that Git ignores `.env` and that your key appears in no other file.
+Run this in the project folder. It checks that Git ignores `.env`, if the plugin wrote one, and that your key
+appears in no other file.
 
 ```bash title="Bash"
-# Check that Git ignores .env, the file that holds your key
-git check-ignore -q .env && echo "✅ .env is ignored" || echo "🚨 .env is not ignored"
+# If the plugin wrote a .env file, the file that holds your key, check that Git ignores it
+if [ ! -e .env ]; then echo "✅ No .env file"
+elif git check-ignore -q .env; then echo "✅ .env is ignored"
+else echo "🚨 .env is not ignored"; fi
 
 # Search every other file for your key, skipping .git, .venv, and node_modules, and list any file that holds it
 if grep -rIlF --exclude=.env --exclude-dir=.git --exclude-dir=.venv --exclude-dir=node_modules -- "$AI_GATEWAY_API_KEY" .; then
@@ -14212,8 +14342,9 @@ fi
 ```
 
 ```powershell title="PowerShell"
-# Check that Git ignores .env, the file that holds your key
-git check-ignore -q .env; if ($LASTEXITCODE -eq 0) { Write-Host "✅ .env is ignored" } else { Write-Host "🚨 .env is not ignored" }
+# If the plugin wrote a .env file, the file that holds your key, check that Git ignores it
+if (-not (Test-Path .env)) { Write-Host "✅ No .env file" } else {
+  git check-ignore -q .env; if ($LASTEXITCODE -eq 0) { Write-Host "✅ .env is ignored" } else { Write-Host "🚨 .env is not ignored" } }
 
 # Search every other file for your key, skipping .git, .venv, and node_modules, and list any file that holds it
 $hits = Get-ChildItem -Recurse -File -Force |
@@ -14222,8 +14353,9 @@ $hits = Get-ChildItem -Recurse -File -Force |
 if ($hits) { Write-Host "🚨 The key appears in:"; $hits.Path } else { Write-Host "✅ No key in project files" }
 ```
 
-Expect `✅ .env is ignored` and `✅ No key in project files`. If the plugin wrote a different key to `.env`, run the
-check again with that key in `AI_GATEWAY_API_KEY`.
+Expect `✅ .env is ignored`, or `✅ No .env file` when the code reads the key only from your environment, and
+`✅ No key in project files`. If the plugin wrote a different key to `.env`, run the check again with that key in
+`AI_GATEWAY_API_KEY`.
 
 <!-- /steps -->
 
@@ -14236,7 +14368,7 @@ check again with that key in `AI_GATEWAY_API_KEY`.
 
 VS Code reads MCP servers from `.vscode/mcp.json`. To give agent mode the tools that you federated in
 [Federate MCP tools behind one endpoint](../04-federate-mcp-tools/README.md), save this file as
-`.vscode/mcp.json` in your project. Replace `https://<gateway>.eastus2-01.ai.gateway.azure.com` with your gateway
+`.vscode/mcp.json` in your project. Replace `<gateway-url>` with your gateway
 URL (`echo $AI_GATEWAY_URL`) and `learn` with any tool server name that discover listed. To copy a tool server's
 exact MCP URL, run
 `az aigateway mcp show -g "$RG" --gateway-name "$GATEWAY" -n learn --query "properties.gatewayEndpoints[0].url" -o tsv`.
@@ -14291,8 +14423,8 @@ Optionally, remove the plugin. In Cursor, remove it where you installed it.
 
 ```bash title="Gemini CLI"
 # Remove the ai-gateway extension from Gemini CLI
-gemini extensions uninstall ai-gateway
-echo "🚮 The ai-gateway extension is removed from Gemini CLI"
+gemini extensions uninstall ai-gateway &&
+  echo "🚮 The ai-gateway extension is removed from Gemini CLI"
 ```
 
 ## Next steps
@@ -14380,10 +14512,8 @@ export PROVIDER="foundry-models"                  # the gateway's Foundry provid
 export MODEL="gpt-6-astra"                        # the deployment, the backend model, and the alias
 export KEY_NAME="github-copilot"                  # the runtime key that Copilot uses
 
-# Read the gateway's resource ID and runtime URL, and build the management URL that the az rest calls use
-export API="api-version=2025-09-01-preview"
+# Read the gateway's resource ID and runtime URL
 export GATEWAY_ID="$(az aigateway show -g "$RG" -n "$GATEWAY" --query id -o tsv)"
-export GW="https://management.azure.com$GATEWAY_ID"
 export AI_GATEWAY_URL="https://$(az aigateway show -g "$RG" -n "$GATEWAY" --query properties.frontend.defaultHostname -o tsv)"
 export AI_GATEWAY_MODEL="$MODEL"
 echo "📝 Gateway $GATEWAY in $RG, with Foundry account $FOUNDRY_ACCOUNT in $FOUNDRY_RG"
@@ -14401,10 +14531,8 @@ $PROVIDER        = "foundry-models"               # the gateway's Foundry provid
 $MODEL           = "gpt-6-astra"                  # the deployment, the backend model, and the alias
 $KEY_NAME        = "github-copilot"               # the runtime key that Copilot uses
 
-# Read the gateway's resource ID and runtime URL, and build the management URL that the az rest calls use
-$API        = "api-version=2025-09-01-preview"
+# Read the gateway's resource ID and runtime URL
 $GATEWAY_ID = az aigateway show -g $RG -n $GATEWAY --query id -o tsv
-$GW         = "https://management.azure.com$GATEWAY_ID"
 $env:AI_GATEWAY_URL   = "https://$(az aigateway show -g $RG -n $GATEWAY --query properties.frontend.defaultHostname -o tsv)"
 $env:AI_GATEWAY_MODEL = $MODEL
 Write-Host "📝 Gateway $GATEWAY in $RG, with Foundry account $FOUNDRY_ACCOUNT in $FOUNDRY_RG"
@@ -14639,12 +14767,12 @@ matters when two people create the same alias at the same time.
 ### Create the key for Copilot
 
 `api-key create` returns metadata only. Read the value with `list-secrets` straight into a variable, so it never
-appears on screen. The service assigns the key's display name itself, so any `--display-name` works.
+appears on screen.
 
 ```bash title="Bash"
 # Create the runtime key that Copilot uses, and show its state
 echo "🔑 API key github-copilot and its state:"
-az aigateway api-key create -g "$RG" --gateway-name "$GATEWAY" -n "$KEY_NAME" --display-name "GitHub Copilot" \
+az aigateway api-key create -g "$RG" --gateway-name "$GATEWAY" -n "$KEY_NAME" \
   --query "{name:name, state:properties.state}"
 
 # Read the key's value straight into a variable, so that it never shows on screen
@@ -14656,7 +14784,7 @@ echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not sh
 ```powershell title="PowerShell"
 # Create the runtime key that Copilot uses, and show its state
 Write-Host "🔑 API key github-copilot and its state:"
-az aigateway api-key create -g $RG --gateway-name $GATEWAY -n $KEY_NAME --display-name "GitHub Copilot" `
+az aigateway api-key create -g $RG --gateway-name $GATEWAY -n $KEY_NAME `
   --query "{name:name, state:properties.state}"
 
 # Read the key's value straight into an environment variable, so that it never shows on screen
@@ -14764,10 +14892,8 @@ export PROVIDER="$(azd env get-value AI_GATEWAY_PROVIDER)"
 export MODEL="$(azd env get-value AI_GATEWAY_BACKEND_MODEL)"
 export KEY_NAME="$(azd env get-value AI_GATEWAY_KEY_NAME)"
 
-# Read the gateway's resource ID, runtime URL, and alias, and build the management URL that the az rest calls use
-export API="api-version=2025-09-01-preview"
+# Read the gateway's resource ID, runtime URL, and alias
 export GATEWAY_ID="$(azd env get-value AI_GATEWAY_ID)"
-export GW="https://management.azure.com$GATEWAY_ID"
 export AI_GATEWAY_URL="$(azd env get-value AI_GATEWAY_URL)"
 export AI_GATEWAY_MODEL="$(azd env get-value AI_GATEWAY_MODEL)"
 
@@ -14792,10 +14918,8 @@ $PROVIDER               = azd env get-value AI_GATEWAY_PROVIDER
 $MODEL                  = azd env get-value AI_GATEWAY_BACKEND_MODEL
 $KEY_NAME               = azd env get-value AI_GATEWAY_KEY_NAME
 
-# Read the gateway's resource ID, runtime URL, and alias, and build the management URL that the az rest calls use
-$API                    = "api-version=2025-09-01-preview"
+# Read the gateway's resource ID, runtime URL, and alias
 $GATEWAY_ID             = azd env get-value AI_GATEWAY_ID
-$GW                     = "https://management.azure.com$GATEWAY_ID"
 $env:AI_GATEWAY_URL     = azd env get-value AI_GATEWAY_URL
 $env:AI_GATEWAY_MODEL   = azd env get-value AI_GATEWAY_MODEL
 
@@ -15301,6 +15425,8 @@ azd env get-value AI_GATEWAY_MCP_URL
 
 <!-- /tracks -->
 
+<!-- steps -->
+
 ### Test the MCP endpoint
 
 Save the endpoint, then list its tools the way Copilot does: a JSON-RPC `tools/list` request with the key in the
@@ -15344,6 +15470,8 @@ learn_microsoft_docs_fetch
 
 Each name starts with the backend's namespace, `learn`. The Learn server can add tools over time, and **Allow all
 tools** publishes them too.
+
+<!-- /steps -->
 
 ## Add the Learn tools to VS Code
 
@@ -15682,13 +15810,12 @@ higher than the output tokens: that's the context that the agent sends with ever
 
 ### Cut Copilot off by suspending the key
 
-Suspend the key, then run the CLI again. The settings are unchanged, but the gateway now rejects the key. The
-`aigateway` extension doesn't change a key's state yet, so call the Azure Resource Manager REST API with `az rest`:
+Suspend the key, then run the CLI again. The settings are unchanged, but the gateway now rejects the key.
 
 ```bash title="Bash"
-# Suspend the github-copilot key with the Azure Resource Manager REST API
-STATE="$(az rest --method patch --url "$GW/apiKeys/$KEY_NAME?$API" \
-  --body '{"properties":{"state":"suspended"}}' --query properties.state -o tsv)" &&
+# Suspend the github-copilot key: calls with it get 401 until you set it back to active
+STATE="$(az aigateway api-key update -g "$RG" --gateway-name "$GATEWAY" -n "$KEY_NAME" --state suspended \
+  --query properties.state -o tsv)" &&
   echo "🔑 API key github-copilot is $STATE"
 
 # Give the gateway time to apply the change
@@ -15701,9 +15828,9 @@ cd ~/contoso-calc && copilot -p "Say hi"
 ```
 
 ```powershell title="PowerShell"
-# Suspend the github-copilot key with the Azure Resource Manager REST API, with the body in a file to keep its quotes
-'{"properties":{"state":"suspended"}}' | Set-Content keystate.json
-$STATE = az rest --method patch --url "$GW/apiKeys/$KEY_NAME`?$API" --body "@keystate.json" --query properties.state -o tsv
+# Suspend the github-copilot key: calls with it get 401 until you set it back to active
+$STATE = az aigateway api-key update -g $RG --gateway-name $GATEWAY -n $KEY_NAME --state suspended `
+  --query properties.state -o tsv
 if ($?) { Write-Host "🔑 API key github-copilot is $STATE" }
 
 # Give the gateway time to apply the change
@@ -15737,8 +15864,8 @@ in every surface.
 
 ```bash title="Bash"
 # Turn the github-copilot key back on
-STATE="$(az rest --method patch --url "$GW/apiKeys/$KEY_NAME?$API" \
-  --body '{"properties":{"state":"active"}}' --query properties.state -o tsv)" &&
+STATE="$(az aigateway api-key update -g "$RG" --gateway-name "$GATEWAY" -n "$KEY_NAME" --state active \
+  --query properties.state -o tsv)" &&
   echo "🔑 API key github-copilot is $STATE"
 
 # Give the gateway time to apply the change
@@ -15751,11 +15878,10 @@ copilot -p "Say hi in three words"
 ```
 
 ```powershell title="PowerShell"
-# Turn the github-copilot key back on, then remove the body file
-'{"properties":{"state":"active"}}' | Set-Content keystate.json
-$STATE = az rest --method patch --url "$GW/apiKeys/$KEY_NAME`?$API" --body "@keystate.json" --query properties.state -o tsv
+# Turn the github-copilot key back on
+$STATE = az aigateway api-key update -g $RG --gateway-name $GATEWAY -n $KEY_NAME --state active `
+  --query properties.state -o tsv
 if ($?) { Write-Host "🔑 API key github-copilot is $STATE" }
-Remove-Item keystate.json
 
 # Give the gateway time to apply the change
 Write-Host "⏳ Waiting 30 seconds for the key change to apply"
@@ -15937,7 +16063,7 @@ order: 18
 illustration: diagrams/private-networking.svg
 tags: [VNet integration, private routing, private endpoint, private DNS, NSG, backend subnet, Foundry, ipFilter]
 objectives:
-  - Explain which private networking options AI Gateway supports today, and why private routing is chosen at creation
+  - Explain which private networking options AI Gateway supports today, and how to add or remove private routing
   - Prepare a delegated integration subnet with an NSG that passes the gateway's subnet checks
   - Create a gateway with private routing through that subnet
   - Give Foundry a private endpoint and private DNS, turn off its public access, and prove the gateway still reaches it
@@ -16084,19 +16210,19 @@ if ($?) { Write-Host "📦 Resource group $RG is ready in $LOCATION" }
 ## How it works
 
 A gateway has two network directions. **Inbound**, clients call the gateway's frontend on
-`https://<gateway>.<region>-01.ai.gateway.azure.com`. **Outbound**, the gateway calls models, MCP servers, and
+`<gateway-url>`. **Outbound**, the gateway calls models, MCP servers, and
 APIs. With **private routing**, the gateway joins a dedicated, delegated subnet in your virtual network and sends
 its outbound calls through it, so it can reach backends on private IPs. When a backend's private DNS zones are
 linked to that virtual network, the gateway resolves the backend's usual host name to its private endpoint IP.
 
-You choose private routing when you create the gateway, and you can't add, change, or remove it afterwards: "Virtual
-network integration for Azure AI Gateway can only be configured during creation." Most connectivity problems
-after that are DNS: the gateway must resolve each backend to its private IP.
+You can choose private routing when you create the gateway, or add, change, or remove it later: select
+**Networking** in the portal, or run `az aigateway network update`. Each change takes a minute or two. Most
+connectivity problems after that are DNS: the gateway must resolve each backend to its private IP.
 
 | Piece | Direction | Available today | Where you set it | Key values |
 |---|---|---|---|---|
 | Integration subnet | Outbound | Yes | Your virtual network | At least `/27` (`/24` recommended), same subscription and region as the gateway, dedicated to one gateway, delegated to `Microsoft.App/environments`, NSG allows outbound TCP 443 to `Storage` and `AzureKeyVault` |
-| Private routing | Outbound | Yes, at creation only | **Create AI gateway** › **Advanced** › **Private routing** | `properties.backend.subnet.id` set to the integration subnet |
+| Private routing | Outbound | Yes, at creation or later | **Create AI gateway** › **Advanced** › **Private routing**, or **Networking** › **Outbound** | `properties.backend.subnet.id` set to the integration subnet (`az aigateway create` or `network update` with `--subnet`) |
 | Backend private endpoints | Outbound | Yes | Each backend, plus its private DNS zones linked to the virtual network | Foundry uses the `account` group ID |
 | Gateway private endpoint | Inbound | Not yet | — | The gateway has no private link resources |
 | Public network access | Inbound | Always **Enabled** | — | **Disabled** is "Unavailable until private frontend access is supported" |
@@ -16230,8 +16356,8 @@ deployment. Its `publicNetworkAccess` parameter starts as `Enabled`, and you tur
 
 ## Create the gateway with private routing
 
-Private routing is part of the create request. Select the integration subnet now: if you skip it, the only way to
-add it later is to create another gateway.
+This lab puts private routing in the create request, so the new gateway uses the integration subnet from its first
+call. To add private routing to a gateway that already exists, see **Go further**.
 
 <!-- track: portal | Portal -->
 
@@ -16301,8 +16427,8 @@ provisioning finishes, usually within a few minutes.
 SUBNET_ID="$(az network vnet subnet show -g "$RG" --vnet-name "$VNET" -n "$INTEGRATION_SUBNET" --query id -o tsv)"
 echo "🆔 Integration subnet: $SUBNET_ID"
 
-# Create the gateway with a system-assigned managed identity and private routing through the integration subnet,
-# which you can't change later; the command waits until provisioning finishes
+# Create the gateway with a system-assigned managed identity and private routing through the integration subnet;
+# the command waits until provisioning finishes
 az aigateway create -g "$RG" -n "$GATEWAY" --location "$LOCATION" --system-assigned true \
   --subnet "$SUBNET_ID" -o none &&
   echo "🚀 Gateway $GATEWAY is ready, with private routing through $INTEGRATION_SUBNET"
@@ -16313,8 +16439,8 @@ az aigateway create -g "$RG" -n "$GATEWAY" --location "$LOCATION" --system-assig
 $SUBNET_ID = az network vnet subnet show -g $RG --vnet-name $VNET -n $INTEGRATION_SUBNET --query id -o tsv
 Write-Host "🆔 Integration subnet: $SUBNET_ID"
 
-# Create the gateway with a system-assigned managed identity and private routing through the integration subnet,
-# which you can't change later; the command waits until provisioning finishes
+# Create the gateway with a system-assigned managed identity and private routing through the integration subnet;
+# the command waits until provisioning finishes
 az aigateway create -g $RG -n $GATEWAY --location $LOCATION --system-assigned true `
   --subnet $SUBNET_ID -o none
 if ($?) { Write-Host "🚀 Gateway $GATEWAY is ready, with private routing through $INTEGRATION_SUBNET" }
@@ -16448,13 +16574,13 @@ az aigateway show -g $RG -n $GATEWAY `
 ```
 
 The commands print the runtime URL, for example
-`🌐 Runtime URL: https://<private-gateway>.eastus2-01.ai.gateway.azure.com`, and then the gateway's settings:
+`🌐 Runtime URL: https://aigw-x7k2q-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com`, and then the gateway's settings:
 
 ```json
 {
   "state": "Succeeded",
   "backendSubnet": "/subscriptions/<subscription-id>/resourceGroups/rg-ai-gateway-private/providers/Microsoft.Network/virtualNetworks/vnet-aigw/subnets/snet-aigw-integration",
-  "host": "<private-gateway>.eastus2-01.ai.gateway.azure.com"
+  "host": "aigw-x7k2q-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com"
 }
 ```
 
@@ -16678,7 +16804,7 @@ it never appears on screen.
 
 ```bash title="Bash"
 # Create a runtime API key for your app
-az aigateway api-key create -g "$RG" --gateway-name "$GATEWAY" -n "$KEY_NAME" --display-name "$KEY_NAME" -o none &&
+az aigateway api-key create -g "$RG" --gateway-name "$GATEWAY" -n "$KEY_NAME" -o none &&
   echo "🔑 API key private-net-lab is ready"
 
 # Read the key straight into a variable, so that it never shows on screen, and set the alias for the next calls
@@ -16691,7 +16817,7 @@ echo "🔖 Model alias: $AI_GATEWAY_MODEL"
 
 ```powershell title="PowerShell"
 # Create a runtime API key for your app
-az aigateway api-key create -g $RG --gateway-name $GATEWAY -n $KEY_NAME --display-name $KEY_NAME -o none
+az aigateway api-key create -g $RG --gateway-name $GATEWAY -n $KEY_NAME -o none
 if ($?) { Write-Host "🔑 API key private-net-lab is ready" }
 
 # Read the key straight into a variable, so that it never shows on screen, and set the alias for the next calls
@@ -16802,12 +16928,13 @@ The change can take a few minutes to apply.
 ### Check the gateway's private routing
 
 ```bash
-# Show the subnet that the gateway's outbound calls go through
-echo "🔒 Gateway $GATEWAY routes its outbound calls through this subnet:"
-az aigateway show -g "$RG" -n "$GATEWAY" --query "properties.backend.subnet.id" -o tsv
+# Show the gateway's network settings: the routing type and the subnet that its outbound calls go through
+echo "🔒 Network settings of gateway ${GATEWAY}:"
+az aigateway network show -g "$RG" -n "$GATEWAY" \
+  --query "{routing:virtualNetworkType, subnet:virtualNetworkConfiguration.subnetResourceId}" -o json
 ```
 
-The output ends with `/virtualNetworks/vnet-aigw/subnets/snet-aigw-integration`.
+The output shows `"routing": "External"`, and `subnet` ends with `/virtualNetworks/vnet-aigw/subnets/snet-aigw-integration`.
 
 ### Check name resolution for Foundry
 
@@ -16882,6 +17009,11 @@ anymore, but the gateway can.
 
 ## Go further
 
+- **Add private routing to an existing gateway.** In the portal, select **Networking**. Under **Outbound**, choose
+  **Private routing**, select the virtual network and the integration subnet, and save. To remove it, choose
+  **Public routing** and save. With the Azure CLI, run
+  `az aigateway network update -g "$RG" -n "$GATEWAY" --subnet "$SUBNET_ID"`, or `--disable-vnet-integration` to
+  remove it. The subnet needs the same preparation as in this lab, and the change takes a minute or two.
 - **Filter who can call the gateway.** While the frontend stays public, add a gateway-wide `ipFilter` policy
   (`action: Allow` with your egress `cidrRanges`) next to keys or Microsoft Entra ID. See
   [Set gateway-wide policy baselines](../09-gateway-baselines/README.md).
@@ -17311,7 +17443,7 @@ Write-Host "🔧 Tool call on $MCP_SERVER with your user token:"
 ```text title="Expected output"
 🔧 Tool call on learn with your user token:
 Delegated token for the signed-in user (scp: ...)
-MCP endpoint: https://<gateway>.eastus2-01.ai.gateway.azure.com/default/toolservers/learn/mcp
+MCP endpoint: <gateway-url>/default/toolservers/learn/mcp
 tools/list: HTTP 200, <n> tools (discovery isn't evaluated)
 tools/call: learn_microsoft_docs_search with query: What is Azure API Management?
 HTTP status: 200
@@ -17845,7 +17977,7 @@ Write-Host "🔧 Tools on MCP server ${MCP_SERVER}:"
 
 ```text title="Expected output"
 🔧 Tools on MCP server learn:
-MCP endpoint: https://<gateway>.eastus2-01.ai.gateway.azure.com/default/toolservers/learn/mcp
+MCP endpoint: <gateway-url>/default/toolservers/learn/mcp
 tools/list: HTTP 200
   learn_microsoft_docs_search
   learn_microsoft_code_sample_search
@@ -18002,7 +18134,7 @@ Write-Host "🚦 Expect 403 AccessBlockedByGateway from MCP server ${MCP_SERVER}
 
 ```text title="Expected output"
 🚦 Expect 403 AccessBlockedByGateway from MCP server learn:
-MCP endpoint: https://<gateway>.eastus2-01.ai.gateway.azure.com/default/toolservers/learn/mcp
+MCP endpoint: <gateway-url>/default/toolservers/learn/mcp
 initialize: HTTP 403 (x-correlation-id: <guid>)
 {
   "error": {
@@ -18148,8 +18280,8 @@ baseline, prove it works with a smoke test, and wire it all into GitHub Actions.
   [Call backends with managed identities](../12-backend-identity/README.md). This lab builds on what you learned
   there, not on the resources you created: it deploys a new, separate environment.
 - The Azure CLI installs Bicep the first time you deploy. The smoke test reads the gateway and a key with the
-  `aigateway` extension. The extension can't set gateway-scope policies yet, so the baseline script calls the
-  management API with `az rest`.
+  `aigateway` extension. Its `az aigateway policy` commands set one policy at a time from flags, so to apply the
+  whole baseline from a file, the baseline script calls the management API with `az rest`.
 - **Owner**, or **Contributor** plus **Role Based Access Control Administrator**, on the subscription. The
   template creates two resource groups and several role assignments.
 - Quota for `gpt-6-luna` with the `GlobalStandard` SKU in the region you deploy to. The dev environment uses
@@ -18251,8 +18383,8 @@ portal-only overrides, and the spend it has already counted.
 
 > [!NOTE]
 > The portal writes `"scope": "workspace"` on Gateway scope rate and cost limits, so `baselines.json` does too.
-> If the API rejects a field, create the policy once in the portal at **Gateway** scope, read the workspace with
-> `az rest`, and copy that shape into `baselines.json`.
+> If the API rejects a field, create the policy once in the portal at **Gateway** scope, read it with
+> `az aigateway policy list`, and copy that shape into `baselines.json`.
 
 ### Observability: the destination in Bicep, the connection in the portal
 
@@ -18272,8 +18404,8 @@ deployments leave that connection alone. The sample's exporter is still availabl
 - **Two resource groups.** `rg-<env>-<token>-gateway` holds the gateway and its monitoring, and
   `rg-<env>-<token>-foundrymodels` holds model capacity. You can secure, scale, and delete them separately, and
   only the gateway's identity needs access to Foundry.
-- **A unique gateway name.** The gateway is `aigw-<token>`, which becomes
-  `https://aigw-<token>.<region>-01.ai.gateway.azure.com`. Set `aiGatewayName` to choose your own: up to 24
+- **A unique gateway name.** The gateway is `aigw-<token>`. Its runtime URL starts with the name's first 10
+  characters and a hash, like `https://aigw-abcde-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com`. Set `aiGatewayName` to choose your own: up to 24
   letters, digits, and hyphens, starting with a letter.
 - **Tags.** Resource groups and top-level resources get `environment` and `workload: ai-gateway`, plus the
   `tags` from the parameter file, such as `costCenter`.
@@ -18327,9 +18459,10 @@ On GitHub, open [infra/modules/gateway.bicep](infra/modules/gateway.bicep).
 > [!WARNING]
 > Each deployment sends a `PUT` for the gateway with exactly the properties in `gateway.bicep`. If you change
 > gateway settings outside Bicep, add them to this module. Otherwise, the next deployment can reset them.
-> Outbound virtual network integration is the exception: you can set it only when the gateway is created.
-> `gateway.bicep` accepts it as `backendSubnetId`, but `main.bicep` doesn't pass it. To use it, add a parameter
-> to `main.bicep` before the first deployment and keep passing the same subnet on every later deployment. See
+> Outbound virtual network integration is the exception: a deployment that doesn't set it keeps the gateway's
+> current private routing. `gateway.bicep` accepts it as `backendSubnetId`, but `main.bicep` doesn't pass it. To
+> use it, add a parameter to `main.bicep`, or set it in the portal under **Networking** or with
+> `az aigateway network update --subnet`. See
 > [Lock down backend traffic with private networking](../18-private-networking/README.md).
 
 `models.bicep` declares the model-level policies right on the backend model, so they're versioned with it:
@@ -18451,7 +18584,7 @@ Expected output:
 
 ```text
 📝 Gateway aigw-<token> in rg-aigw-dev-<token>-gateway
-🌐 Runtime URL: https://aigw-<token>.eastus2-01.ai.gateway.azure.com
+🌐 Runtime URL: https://aigw-abcde-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com
 🔖 Model alias: chat
 🏭 Foundry account aimodels-<token> in rg-aigw-dev-<token>-foundrymodels
 ```
@@ -18752,7 +18885,7 @@ Expected output (the tool list can change as the Learn server evolves):
 
 ```text
 📊 Smoke test of the chat alias and the learn MCP server:
-Gateway: https://aigw-<token>.eastus2-01.ai.gateway.azure.com
+Gateway: https://aigw-abcde-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com
 Model  : HTTP 200, model=<model>, reply=ok, total_tokens=<n>
 Tools  : HTTP 200, 3 tools on learn
          learn_microsoft_docs_search
@@ -18865,11 +18998,12 @@ test a few more times if the charts are still empty.
   it too.
 - **Go keyless everywhere.** Remove entries from `appNames`, move apps to Entra groups in `modelUsers` and
   `toolUsers`, and follow [Go keyless with Microsoft Entra ID and RBAC](../11-entra-rbac/README.md).
-- **Keep backend traffic private.** Create the gateway with outbound virtual network integration, and give the
+- **Keep backend traffic private.** Give the gateway outbound virtual network integration, and give the
   Foundry account a private endpoint, as in
   [Lock down backend traffic with private networking](../18-private-networking/README.md). Pass the integration
-  subnet to `gateway.bicep` as `backendSubnetId` on the first deployment. Inbound private endpoints and turning
-  off the gateway's public endpoint aren't available for AI Gateway yet.
+  subnet to `gateway.bicep` as `backendSubnetId`, or add it to the running gateway with
+  `az aigateway network update --subnet`. Inbound private endpoints and turning off the gateway's public endpoint
+  aren't available for AI Gateway yet.
 - **Protect and govern tools.** Add [Agent 365 tool threat protection](../19-tool-threat-protection/README.md)
   to sensitive MCP servers in the portal, and [govern MCP servers with Agent 365](../20-agent-365-governance/README.md).
 - **Charge back by team.** Attribute tokens and cost to callers with
@@ -18990,7 +19124,7 @@ Quick start: [Your first model call in 5 minutes](quickstart/README.md)
 | Deploy with azd up | `InvalidResourceGroupLocation` from `azd up` | The resource group `rg-<environment name>` already exists in another region | Run `azd env new` with a new environment name, or delete the old resource group. |
 | Make your first call | `403` or `404` from the gateway in the first minute | The gateway's role on the Foundry account, or the new alias, is still taking effect | Wait a minute and call again. |
 | Make your first call | `403` from the backend that doesn't go away | The gateway's managed identity has no role on the Foundry account | Run the import in the Azure CLI track's **Publish the model** step again, which grants the role, or assign the gateway **Foundry User** on the account. Then wait a few minutes. |
-| Make your first call | `401` | The key is missing, wrong, or in the wrong header | Send it in the `api-key` header, or as `Authorization: Bearer <key>`. In the portal, copy it again from **Access** › **Keys**. |
+| Make your first call | `401`: `Missing or invalid Entra ID token, or missing Data.All scope` | The key is missing, wrong, or in the wrong header. The message mentions Entra ID even when you use a key | Send it in the `api-key` header, or as `Authorization: Bearer <key>`. In the portal, copy it again from **Access** › **Keys**. |
 | Make your first call | `400` that mentions authentication | The request has both an `api-key` and an `Authorization` header | Send only one of them. |
 | Start creating the gateway<br>Deploy the model in Foundry<br>Deploy with azd up | `The subscription is not registered to use namespace` | A resource provider isn't registered yet | [Register the resource providers](SETUP.md#register-the-resource-providers), then try again. |
 | Make your first call (Azure CLI, Bicep + azd) | `404` with `Resource not found` from the gateway | The alias is missing, or the URL path is wrong | Run the alias command in **Publish the model**: the import adds models but no aliases. Call `<runtime URL>/default/models/openai/v1/chat/completions`. |
@@ -19017,7 +19151,7 @@ Lab 01: [Provision your AI Gateway](01-provision-gateway/README.md)
 | Watch it provision<br>Create the AI gateway<br>Deploy with azd up | `RequestDisallowedByAzure`: `The selected region is currently not accepting new customers` | The region has AI Gateway, but your subscription can't create new resources there | Pick another region from the list. |
 | Enter the gateway details<br>Create the AI gateway | The name is rejected | Gateway names are globally unique and limited to 24 characters: letters, digits, and hyphens, starting with a letter | Pick another name that follows the rules. |
 | Watch it provision<br>Create the AI gateway<br>Deploy with azd up | `AIGatewaySubscriptionGatewayLimitExceeded`: `…has reached the maximum of 5 AI Gateway resources allowed in this region.` | The subscription already has five gateways in `$LOCATION` | Delete a gateway you no longer need, or create this one in another available region. |
-| Deploy with azd up | `InvalidSkuName`: `Supported AI Gateway SKU names are 'Premium' and 'Consumption'.` | Your template sets another `sku.name`, such as `AIGateway` from older samples | Set `sku: { name: 'Consumption' }`, as [`infra/gateway.bicep`](01-provision-gateway/infra/gateway.bicep) does. |
+| Deploy with azd up | `InvalidSkuName`: `The supported AI Gateway SKU name is 'Standard'.` | Your template or command sets another SKU, such as `Consumption`, `Premium`, or `AIGateway` from older samples | Set `sku: { name: 'Standard' }`, as [`infra/gateway.bicep`](01-provision-gateway/infra/gateway.bicep) does, or omit `--sku` in `az aigateway create`. |
 | Create the connector gateway<br>Create the AI gateway<br>Deploy with azd up | `MissingSubscriptionRegistration` | A resource provider isn't registered in the subscription | [Register the resource providers](SETUP.md#register-the-resource-providers), or ask your subscription administrator. |
 | Call the runtime URL | `Could not resolve host` when you call the URL | Provisioning or DNS isn't finished | Run `az aigateway wait -g "$RG" -n "$GATEWAY" --created` and retry. |
 | Create the AI gateway<br>Call the runtime URL | `'aigateway' is misspelled or not recognized by the system` | The `aigateway` extension isn't installed | [Install the `aigateway` extension](SETUP.md#install-the-aigateway-extension), then run `az aigateway version`. |
@@ -19049,6 +19183,7 @@ Lab 03: [Publish models from any provider behind stable aliases](03-multi-provid
 | Call both aliases | An authentication error from Anthropic in the response body | The stored provider key is wrong or expired, or **Include Bearer** is selected for Anthropic | Update the provider's API key and clear **Authentication scheme**. |
 | Call both aliases | `400` that mentions `anthropic-version` | The request doesn't send the `anthropic-version` header | Add `anthropic-version: 2023-06-01`. |
 | Call both aliases | `404` or a "model not found" error | The `model` value doesn't exactly match an alias, or you called the OpenAI route for an Anthropic model | Copy the alias from **Models**, and call `/default/models/anthropic/v1/messages`. |
+| Call both aliases | `404` with an empty body from both Anthropic aliases, while `gpt-6-luna` works | A service issue in the current preview: the gateway adds its `/anthropic` route segment to the provider's endpoint path, so Anthropic gets `/anthropic/v1/messages` and answers `404` | Your setup is right, and no endpoint value works around it. Finish the other steps with `gpt-6-luna`, and check the [AI Gateway changelog](https://ai.gateway.azure.com/docs/) for the fix. |
 | Choose the models and their aliases<br>Add the batch-chat alias | "Callable aliases must be unique" | Another alias in the gateway already uses that name | Pick a different alias, or retarget the existing one. |
 
 ## Lab 04: Federate MCP tools
@@ -19111,8 +19246,9 @@ Lab 07: [Enforce cost budgets with per-caller overrides](07-cost-budgets/README.
 | Prove the override and the per-caller counters | An Entra override doesn't apply | An earlier override matched first, the caller used an API key, or you entered a service principal's application ID | Remove the earlier override and add them again in the order you want. Call with an Entra token. Use the service principal's **object ID**. |
 | Set the default budget | **Caller IP address** can't be selected in **Counter dimensions** | The policy has overrides | Remove all overrides, or keep **Caller identity**. |
 | Run the requests | `429` instead of `403` | A **Token rate limit** or **Request rate limit** blocked the call, or the backend ran out of capacity | See [Throttle tokens per caller with token limits](06-token-limits/README.md). |
-| Add or update the cost limit and keep everything else<br>Remove the cost limit | Other policies vanished after the REST call | `PATCH` replaces the whole `policies` array | Always `GET`, merge, then `PATCH`, as shown in the REST track. |
-| Add or update the cost limit and keep everything else | `ValidationError` with target `counterKey` | `counterKey` is a string such as `"Identity"`, or it's missing | Send an array, for example `"counterKey": ["identity"]`. A cost limit always needs `counterKey`. |
+| Set the cost limit<br>Remove the cost limit | `'set-cost-limit' is misspelled or not recognized by the system` | The `aigateway` extension is older than `1.0.0b22`, the first version these labs use for `az aigateway model policy` | Run `az extension update --name aigateway`, as described in the [Setup guide](SETUP.md#install-the-aigateway-extension). |
+| Add overrides in the portal | `--overrides` fails with `has no field apiKeyResourceId` or a similar schema error | In `1.0.0b22`, `--overrides` doesn't accept override objects | Add the overrides in the portal, or use the Bicep + azd track, which declares them. `set-cost-limit` keeps them when you change the amount later. |
+| Lower the budget for the test<br>Run the requests | Every request returns `200` right after you lowered the budget | A policy change takes up to a minute to reach the gateway | Wait a minute and run the script again. The spend so far still counts. |
 
 ## Lab 08: Content safety
 
@@ -19133,14 +19269,17 @@ Lab 09: [Set gateway-wide policy baselines](09-gateway-baselines/README.md)
 
 | Step | Symptom | Likely cause | Fix |
 |---|---|---|---|
-| Call the model from your IP address<br>Layer a stricter model policy | Every call returns `403` | Your public IP address changed (new network, VPN, or hotspot), or your network reaches the gateway from a different address than the one `api.ipify.org` reported | Check `curl -s https://api.ipify.org` again and update the IP filter. If you use a proxy or split-tunnel VPN, ask your network team for the egress ranges. Management calls still work, so you can always fix the list. |
+| Call the model from your IP address<br>Layer a stricter model policy | Every call returns `403` | Your public IP address changed (new network, VPN, or hotspot), or your traffic to Azure leaves from a different address than the one `api.ipify.org` reported. A VPN, a corporate proxy, or a client such as Global Secure Access can do that | Check `curl -s https://api.ipify.org` again and update the IP filter. If you use a proxy, a VPN, or Global Secure Access, ask your network team for the egress ranges, or run the lab from Azure Cloud Shell. Management calls still work, so you can always fix the list. |
+| See the IP filter block a call (optional) | `check-call` still returns `200` after you set `203.0.113.10/32`, or still `403` after you restore your range | Policy changes take up to a minute to reach the gateway | Wait a minute and run `check-call` again. |
 | Watch outcomes in Monitoring | Teammates, pipelines, or hosted agents get `403` | Their egress addresses aren't on the allow list | Add their CIDR ranges, or remove the IP filter until you know them. |
 | Call the model from your IP address<br>Layer a stricter model policy | Ordinary prompts return `400` | Content safety blocked them, from the baseline or from a stricter asset policy | Review every **Content safety** policy that covers the asset in **Policies**, and retest with representative prompts. |
 | Layer a stricter model policy | `429` much earlier than the baseline allows | A tighter token or request rate limit on the model, alias, or MCP server applies | Review **Policies** for every limit that covers the asset. The lowest applicable limit wins. |
-| Merge the baseline and keep everything else<br>Apply it | The `PATCH` returns a validation error about `counterKey` or `scope` | `counterKey` is a string such as `"Identity"` instead of an array, or the shape differs from what the API version expects | Use `"counterKey": ["identity"]`. If it still fails, create that policy once in the portal at **Gateway** scope, read the shape with the `GET`, and use it in your script or policy file. |
+| Set the baseline<br>See the IP filter block a call (optional) | `ipFilter.cidrRanges entries must be valid CIDR ranges` | An entry has no prefix length, such as `198.51.100.7` instead of `198.51.100.7/32`, or `--allowed-ips` contains a space | Use CIDR notation for every entry, and pass the list without spaces, for example `--allowed-ips "[198.51.100.7/32,203.0.113.0/24]"`. |
+| Set the baseline<br>Remove the baseline | `'policy' is misspelled or not recognized by the system` | The `aigateway` extension is older than `1.0.0b22`, the first version these labs use for the Gateway scope `policy` commands | Run `az extension update --name aigateway`, as described in the [Setup guide](SETUP.md#install-the-aigateway-extension). |
+| Apply it | The `PATCH` returns a validation error about `counterKey` or `scope` | `counterKey` is a string such as `"Identity"` instead of an array, or the shape differs from what the API version expects | Use `"counterKey": ["identity"]`. If it still fails, create that policy once in the portal at **Gateway** scope, read the shape with the `GET`, and use it in your script or policy file. |
 | Preview the change<br>Apply it<br>See the IP filter block a call (optional) | `Set ALLOWED_CIDRS ...` or `Use CIDR notation ...` from the script | `ALLOWED_CIDRS` is empty, or an entry has no prefix length | Set it to comma-separated CIDR ranges, for example `"$MY_IP/32"`. |
-| Merge the baseline and keep everything else<br>Remove the baseline (REST API) | Other Gateway scope policies vanished after the REST call | `PATCH` replaces the whole `policies` array | Always `GET`, merge, then `PATCH`, as shown in the REST track and the script. |
-| Merge the baseline and keep everything else<br>Preview the change<br>Apply it | `jq: command not found` | `jq` isn't installed | Install `jq`, or use the PowerShell commands. |
+| Apply it<br>Remove the baseline | Other Gateway scope policies vanished after you called the management API yourself | `PATCH` replaces the whole `policies` array | Use the `az aigateway policy` commands, which keep the other policies, or always `GET`, merge, then `PATCH`, as the script does. |
+| Preview the change<br>Apply it | `jq: command not found` | `jq` isn't installed | Install `jq`, or use the PowerShell commands. |
 
 ## Lab 10: Runtime API keys
 
@@ -19155,6 +19294,7 @@ Lab 10: [Issue and rotate runtime API keys](10-api-keys/README.md)
 | Move the client to the secondary value<br>Run the checks<br>Check that the rotated key still works | `check-key` prints `not checked` with `HTTP 404` | The gateway doesn't know the alias in `AI_GATEWAY_MODEL`, so it never checked the key | Set `AI_GATEWAY_MODEL` to an alias from **Models**, for example the one from lab 02. |
 | Check that the rotated key still works | A key that worked gets `401`, and nobody rotated it | The key is `suspended` | Check `state` with the list command, and set it back to `active` if the suspension is over. |
 | Move the client to the secondary value<br>Run the checks<br>Check that the rotated key still works | `check-key` prints `key accepted, but the call failed` | The key works, but `AI_GATEWAY_MODEL` isn't an alias you can call, or a policy blocked the request | Set `AI_GATEWAY_MODEL` to an alias from **Models**, for example the one from lab 02. |
+| Save the current value<br>Regenerate the unused secondary value<br>Regenerate the primary value | `Forbidden`, `ForbiddenByConnection`: "Public network access is disabled and request is not from a trusted service nor via an approved private link." | An Azure Policy in your organization turns off public network access on new key vaults, and keeps it off even after `az keyvault update --public-network-access Enabled` | Ask your Azure administrator for a policy exemption for the lab's resource group, or run the Key Vault commands from a network that reaches the vault through a private endpoint. |
 | Regenerate the unused secondary value<br>Regenerate the primary value<br>Load the app-dev key | `Forbidden` from `az keyvault secret set` or `secret show` | You have no data-plane role on the vault, or the role assignment hasn't applied yet | Assign **Key Vault Secrets Officer** on the vault and wait a few minutes. |
 | Any step | Monitoring shows no caller identities | Monitoring isn't configured, or the time range has no traffic | Complete [Monitor usage, cost, and traces](13-monitoring/README.md), send requests with each key, and widen the time range. |
 
@@ -19203,7 +19343,7 @@ Lab 14: [Attribute tokens and cost with OpenTelemetry](14-otel-chargeback/README
 
 | Step | Symptom | Likely cause | Fix |
 |---|---|---|---|
-| Open the token claim attributes<br>Change it in the portal | No **Token claim attributes** section in **Settings** | The exporter is the legacy `applicationInsights` kind | Disable monitoring and configure it again, as in [Monitor usage, cost, and traces](13-monitoring/README.md). |
+| Open the token claim attributes<br>Add metrics for the client app (Portal) | No **Token claim attributes** section in **Settings** | The exporter is the legacy `applicationInsights` kind | Disable monitoring and configure it again, as in [Monitor usage, cost, and traces](13-monitoring/README.md). |
 | Call the gateway as two callers | The `entra` rows return `401` or `403` | Wrong token audience, or no **AI Gateway Models User** role yet | Get the token for `https://azure-api.net/aigateway`, check the role assignment, wait a few minutes, and get a new token. |
 | Find your callers in Monitoring<br>Compare the report with the dashboard | Entra callers show as **Unattributed** on **Models** | `tid` or `oid` isn't exported to **Metrics** | Select **Metrics** for both and send new traffic. Earlier requests stay unattributed. |
 | Run the query | The chargeback query returns no rows | Telemetry hasn't arrived, the **Logs** signal is off, or your API reports usage under other names | Wait a few minutes, then run `OTelLogs \| where TimeGenerated > ago(1h) \| take 5` and compare the `Attributes` with the query. |
@@ -19221,6 +19361,7 @@ Lab 15: [Connect agent frameworks to models and tools](15-agent-frameworks/READM
 | Run each sample | A `4xx` error that mentions the model | `AI_GATEWAY_MODEL` isn't a callable alias | Copy the alias exactly from the model's **Aliases** tab. |
 | Run each sample | The agent answers without citing any URL | The MCP server publishes no tools, or tool controls block them | Run `list_tools.py` from [Federate MCP tools behind one endpoint](04-federate-mcp-tools/README.md) and check the server's tool controls. |
 | Run each sample | `429` responses | A token limit or rate limit on the alias, MCP server, or gateway | Expected when a policy applies. Wait for `Retry-After`, or raise the limit. |
+| Run each sample | `400`: `Function tools with reasoning_effort are not supported for gpt-6-luna in /v1/chat/completions` | An older copy of a sample calls Chat Completions with tools on a reasoning model | Pull the latest samples, which call the Responses API. Or send `reasoning_effort: "none"` with Chat Completions. |
 | Run each sample<br>Prove the gateway is in the path | `ModuleNotFoundError` | The virtual environment isn't active | Activate `.venv` and run `pip install -r requirements.txt` again. |
 
 ## Lab 16: Foundry hosted agent
@@ -19235,6 +19376,7 @@ Lab 16: [Deploy a Foundry hosted agent behind AI Gateway](16-foundry-hosted-agen
 | Ask a question<br>Invoke the hosted agent | `404` from the model endpoint | `AI_GATEWAY_MODEL` doesn't match an alias | Copy the alias exactly from the model's **Aliases** tab, run `azd env set AI_GATEWAY_MODEL`, then `azd deploy`. |
 | Ask a question<br>Invoke the hosted agent<br>Trigger the limit | `429` "Token limit is exceeded" | A token limit on the alias, such as the one from this lab | Wait for the time in the message, or remove the policy. |
 | Ask a question<br>Invoke the hosted agent | `429` from tool calls | A request rate limit on the `learn` server, for example from [Control which tools agents can call](05-mcp-tool-controls/README.md) | Wait for the `Retry-After` time, or remove the policy from the MCP server. |
+| Create an azd environment<br>Provision and deploy | `AZURE_SUBSCRIPTION_ID is required` or `no default response for prompt 'Select an Azure Subscription to use'` | azd runs without prompts in a script, a CI job, or a coding agent, so it can't ask for the subscription | Run `azd env new` with `--subscription "$(az account show --query id -o tsv)"`, as the lab does, or `azd env set AZURE_SUBSCRIPTION_ID` before `azd up`. |
 | Start the agent<br>Invoke the hosted agent | `RuntimeError: Set AI_GATEWAY_URL` | An azd environment value is missing | Run `azd env set` for the missing value, then `azd ai agent run` or `azd deploy`. |
 | Invoke the hosted agent | The hosted agent still uses an old value | Foundry reads environment variables when the agent version is created | Run `azd deploy` after every `azd env set`. |
 | Provision and deploy | `[CodeError] [tool.poetry] section not found` during deployment | A `pyproject.toml` without a lock file was added to `src/gateway-agent` | Keep `requirements.txt` as the dependency file, or commit a `uv.lock` next to `pyproject.toml`. |
@@ -19266,11 +19408,11 @@ Lab 18: [Lock down backend traffic with private networking](18-private-networkin
 | Choose private routing<br>Create the gateway in the integration subnet<br>Deploy with azd up | The create dialog flags the subnet, or the create request fails with a subnet error | The subnet is in another subscription or region, smaller than `/27`, not delegated to `Microsoft.App/environments`, used by another gateway or resource, or its NSG lacks the 443 rules | Fix each item. The NSG needs outbound TCP 443 allow rules to the `Storage` and `AzureKeyVault` service tags. |
 | Choose private routing<br>Create the gateway in the integration subnet<br>Deploy with azd up | The create request fails with `AIGatewaySubnetNotDelegated`: "Virtual network integration with subnet ID '…' requires the subnet to be delegated to 'Microsoft.App/environments'." | The subnet isn't delegated, or it's delegated to another service, such as `Microsoft.Web/serverFarms` | Delegate the subnet to `Microsoft.App/environments`, then create the gateway again. |
 | Choose private routing | The portal's subnet check shows a warning: "Subnet delegated to Microsoft.Web/serverFarms" | The portal check still expects the old delegation | Expected. Keep `Microsoft.App/environments` and continue. |
-| Create the gateway in the integration subnet<br>Disable public network access on Foundry (Bicep + azd) | "Virtual network integration for Azure AI Gateway can only be configured during creation." | You tried to add, change, or remove private routing on an existing gateway | Create a new gateway with private routing. |
+| Create the gateway in the integration subnet<br>Disable public network access on Foundry (Bicep + azd) | "Virtual network integration for Azure AI Gateway can only be configured during creation." | An older service version, or an older Azure CLI extension, that couldn't change private routing on an existing gateway | Update the extension with `az extension update --name aigateway`, then use **Networking** › **Outbound** in the portal or `az aigateway network update --subnet` (or `--disable-vnet-integration`). The change takes a minute or two. |
 | Call the model through the gateway | Model calls through the new gateway fail after you turn off Foundry public access | The gateway resolves Foundry to its public IP: the zones aren't linked to the integrated virtual network, the private endpoint has no DNS zone group, or the gateway was created without private routing | Check the `A` records and zone links, and confirm that `properties.backend.subnet.id` points to the integration subnet. |
 | Disable public network access on Foundry | The gateway from the earlier labs, or another app, now gets `403` from Foundry | It reaches Foundry over the internet, and Foundry's public access is disabled | Expected. Use a dedicated Foundry resource for this lab, or re-enable public access when you finish. |
 | Create a runtime API key<br>Check the model and the key<br>Call the model through the gateway | The first call after the import returns `401` or `403` from the backend | The **Foundry User** role assignment hasn't propagated yet | Wait a few minutes, and confirm that the role is assigned to the new gateway's principal ID on the Foundry resource. |
-| Enter the gateway details | **Public network access** › **Disabled** is greyed out, or a `PATCH` to `Disabled` doesn't stick | Private frontend access isn't available for AI Gateway yet | Expected. Protect the public endpoint with keys or Microsoft Entra ID and an `ipFilter` policy. |
+| Enter the gateway details | **Public network access** › **Disabled** is greyed out, or `az aigateway network update --public-network-access Disabled` (or a `PATCH`) succeeds but `publicNetworkAccess` stays empty and the endpoint stays public | Private frontend access isn't available for AI Gateway yet | Expected. Protect the public endpoint with keys or Microsoft Entra ID and an `ipFilter` policy. |
 | Delete the lab's resources<br>Delete everything azd created | Deleting the resource group or the virtual network fails because the subnet is in use | The service is still releasing the gateway's integration subnet | Wait a few minutes after the gateway is gone, then delete again. |
 
 ## Lab 19: Tool threat protection
@@ -19348,6 +19490,7 @@ Lab 24: [Use your gateway's models and tools in GitHub Copilot](24-github-copilo
 
 | Step | Symptom | Likely cause | Fix |
 |---|---|---|---|
+| Deploy the model in Foundry<br>Deploy with azd up | `InsufficientQuota`: `The deployment requires 100 quota units, but only 0 quota units are available` | The subscription's Global Standard capacity for `gpt-6-astra` in the region is used up | In the Azure CLI track, deploy with `--sku-name DataZoneStandard`. With azd, run `azd env set BYOK_MODEL_SKU DataZoneStandard` and `azd up` again. Or deploy in another region. |
 | Pick the model and run an agent task<br>Ask a quick question<br>Run a sample<br>Start a session on gpt-6-astra<br>Turn Copilot back on | `HTTP 401` or "Authentication failed with provider" | The key is wrong, suspended, or deleted, or the new key isn't active yet | Check the key's state in **Access** › **Keys**, wait a minute after you create it, and paste it again. |
 | Run a sample | `400` on every request from a custom client | The request sends both `Authorization` and `api-key` | Send one of them. Copilot sends `Authorization: Bearer` only. |
 | Pick the model and run an agent task<br>Ask a quick question<br>Run a sample<br>Start a session on gpt-6-astra | `404`, or a "model not found" error | The model name isn't an alias on the gateway, for example the portal import's `<foundry-account-name>/gpt-6-astra` | Publish the `gpt-6-astra` alias, or set the model ID to the alias that exists. |
@@ -19359,6 +19502,7 @@ Lab 24: [Use your gateway's models and tools in GitHub Copilot](24-github-copilo
 | Run an agent task | The CLI's first interactive prompt doesn't respond | A slow first connection | Press <kbd>Ctrl</kbd>+<kbd>C</kbd> and send the prompt again. |
 | Pick the model and run an agent task | Two **GPT-6 Astra** entries in VS Code's model picker | Copilot's built-in model and yours share a name | Give yours a distinct `name`, such as `GPT-6 Astra (AI Gateway)`. |
 | Start the server<br>Check the tools in a session<br>Run a sample with the tools<br>Check the server | The MCP server doesn't start, or returns `401` | The key is sent as a bearer token, or `${AI_GATEWAY_API_KEY}` is empty where the CLI or the app runs | Send the key in the `api-key` header. Export `AI_GATEWAY_API_KEY` in the terminal, or make it available to the app and reopen it. |
+| Test the MCP endpoint | `jq: error … Cannot iterate over null` right after you create the server | The new `learn` server is still taking effect, so the reply has no `result` | Wait a minute and run the step again. |
 | Use the tools in one-shot mode | `copilot -p` doesn't use the Learn tools, or says they were denied | One-shot mode can't ask for approval | Add `--allow-tool='ai-gateway-learn'`. |
 | Run a task with the tools<br>Use the tools in one-shot mode<br>Run a sample with the tools | A task with the Learn tools hits `429` or uses many tokens | Each Learn result is 25 to 50 KB | Ask for fewer lookups, publish fewer tools, or raise the token limit. |
 | Check the tools | VS Code lists MCP servers that you didn't add | VS Code discovers servers configured in other apps | Set `chat.mcp.discovery.enabled` to `false`. |

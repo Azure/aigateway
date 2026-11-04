@@ -8,8 +8,8 @@
 // Usage (Node.js 22.18 or later runs TypeScript directly; on older versions use `npx tsx call-with-entra.ts`):
 //   npm install
 //   az login
-//   export AI_GATEWAY_URL="https://<gateway>.eastus2-01.ai.gateway.azure.com"
-//   export AI_GATEWAY_MODEL="<model-alias>"
+//   export AI_GATEWAY_URL="<gateway-url>"
+//   export AI_GATEWAY_MODEL="<model-name>"
 //   node call-with-entra.ts
 import { DefaultAzureCredential, getBearerTokenProvider } from "@azure/identity";
 import OpenAI from "openai";

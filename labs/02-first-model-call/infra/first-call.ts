@@ -3,8 +3,8 @@
 //
 // Usage (Node.js 22.18 or later runs TypeScript directly; on older versions use `npx tsx first-call.ts`):
 //   npm install
-//   export AI_GATEWAY_URL="https://<gateway>.eastus2-01.ai.gateway.azure.com"
-//   export AI_GATEWAY_MODEL="<model-alias>"
+//   export AI_GATEWAY_URL="<gateway-url>"
+//   export AI_GATEWAY_MODEL="<model-name>"
 //   export AI_GATEWAY_API_KEY="..."      // never commit this value
 //   node first-call.ts
 import OpenAI from "openai";

@@ -75,7 +75,7 @@ export const quickstart = () => svgDoc('quickstart', {
 
 export const createGateway = () => svgDoc('create-gateway', {
   title: 'What to choose in Create AI gateway',
-  desc: 'Basics: a globally unique name of 24 characters or fewer, a subscription where you can create API Management and connector gateways, a new or existing resource group, and a region where AI Gateway is available. Advanced: keep the system-assigned managed identity enabled, public network access enabled, and public routing. Private routing is for virtual network backends and can only be chosen at creation. Then select Create gateway; provisioning takes a few minutes and Home opens with a setup guide.',
+  desc: 'Basics: a globally unique name of 24 characters or fewer, a subscription where you can create API Management and connector gateways, a new or existing resource group, and a region where AI Gateway is available. Advanced: keep the system-assigned managed identity enabled, public network access enabled, and public routing. Private routing is for virtual network backends, and you can also add it later under Networking. Then select Create gateway; provisioning takes a few minutes and Home opens with a setup guide.',
   h: 424,
   body: () => {
     const row = (x, y, lbl, chips, help) => {

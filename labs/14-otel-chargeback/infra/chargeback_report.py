@@ -1,7 +1,8 @@
 """Turn AI Gateway token usage into a chargeback report.
 
-Input is the result of chargeback.kql, in either form:
-  - a CSV file exported from Log Analytics (Export > CSV), or
+Input is the result of chargeback.kql, in any of these forms:
+  - a CSV file exported from Log Analytics (Export > CSV),
+  - the JSON rows of the Azure CLI (az monitor log-analytics query ... -o json > usage.json), or
   - the JSON response of the Log Analytics query API (az rest ... /query > usage.json).
 
 Prices come from a JSON price list (see prices.example.json). The report is an estimate:
@@ -28,7 +29,10 @@ NUMERIC = ("Requests", "InputTokens", "CachedInputTokens", "OutputTokens")
 
 def load_usage(path: Path) -> list[dict]:
     text = path.read_text(encoding="utf-8-sig")
-    if text.lstrip().startswith("{"):
+    if text.lstrip().startswith("["):
+        # Azure CLI: [{"Tenant": ..., "InputTokens": "123", ...}], with every value as a string
+        rows = [{k: v for k, v in row.items() if k != "TableName"} for row in json.loads(text)]
+    elif text.lstrip().startswith("{"):
         # Log Analytics query API: {"tables": [{"columns": [{"name": ...}], "rows": [[...]]}]}
         table = json.loads(text)["tables"][0]
         names = [c["name"] for c in table["columns"]]

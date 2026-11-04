@@ -3,8 +3,8 @@ Responses API. Each stream prints text as it arrives and then the token usage fr
 
 Usage:
   pip install -r requirements.txt
-  export AI_GATEWAY_URL="https://<gateway>.eastus2-01.ai.gateway.azure.com"
-  export AI_GATEWAY_MODEL="<model-alias>"
+  export AI_GATEWAY_URL="<gateway-url>"
+  export AI_GATEWAY_MODEL="<model-name>"
   export AI_GATEWAY_API_KEY="..."      # never commit this value
   python stream.py
 """

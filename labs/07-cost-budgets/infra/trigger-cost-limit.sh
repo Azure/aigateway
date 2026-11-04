@@ -5,14 +5,14 @@
 # budget, cost, or remaining, so you can spot the remaining-budget header.
 #
 # Usage:
-#   export AI_GATEWAY_URL="https://<gateway>.eastus2-01.ai.gateway.azure.com"
+#   export AI_GATEWAY_URL="<gateway-url>"
 #   export AI_GATEWAY_API_KEY="..."      # never commit this value
-#   ./trigger-cost-limit.sh <model-alias> [requests]
+#   ./trigger-cost-limit.sh <model-name> [requests]
 set -euo pipefail
 
 MODEL="${1:?Pass the callable model alias as the first argument}"
 REQUESTS="${2:-10}"
-: "${AI_GATEWAY_URL:?Set AI_GATEWAY_URL to https://<gateway>.eastus2-01.ai.gateway.azure.com}"
+: "${AI_GATEWAY_URL:?Set AI_GATEWAY_URL to the gateway runtime URL, for example https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com}"
 : "${AI_GATEWAY_API_KEY:?Set AI_GATEWAY_API_KEY to a runtime key from Access > Keys}"
 
 URL="${AI_GATEWAY_URL%/}/default/models/openai/v1/chat/completions"

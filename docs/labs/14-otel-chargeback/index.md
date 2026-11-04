@@ -4,7 +4,7 @@ summary: Export Microsoft Entra token claims with the gateway's logs, traces, an
 category: observability
 level: Advanced
 duration: 35
-tracks: [portal, rest, iac]
+tracks: [portal, cli, iac]
 order: 14
 status: new
 illustration: diagrams/observability.svg
@@ -50,18 +50,14 @@ Set these variables once. If you named the Application Insights resource differe
 `$GATEWAY-insights`.
 
 ```bash title="Bash"
-# Name your gateway and the alias to call, and pin the API version of the REST calls
+# Name your gateway and the alias to call
 export RG="<resource-group>"
 export GATEWAY="<gateway>"
 export AI_GATEWAY_MODEL="<model-name>"     # a callable alias
-export API="api-version=2025-09-01-preview"
 echo "📝 Gateway $GATEWAY in $RG, alias $AI_GATEWAY_MODEL"
 
-# Read the gateway's resource ID, the URL of its default workspace for the REST calls, and its runtime URL
-export GATEWAY_ID="$(az aigateway show -g "$RG" -n "$GATEWAY" --query id -o tsv)"
-export WS="https://management.azure.com$GATEWAY_ID/workspaces/default"
+# Read the gateway's runtime URL
 export AI_GATEWAY_URL="https://$(az aigateway show -g "$RG" -n "$GATEWAY" --query properties.frontend.defaultHostname -o tsv)"
-echo "🆔 Gateway: $GATEWAY_ID"
 echo "🌐 Runtime URL: $AI_GATEWAY_URL"
 
 # Read your API key without showing it, and export it for the scripts
@@ -76,18 +72,14 @@ echo "🆔 Log Analytics workspace: $LAW_ID"
 ```
 
 ```powershell title="PowerShell"
-# Name your gateway and the alias to call, and pin the API version of the REST calls
+# Name your gateway and the alias to call
 $RG      = "<resource-group>"
 $GATEWAY = "<gateway>"
 $env:AI_GATEWAY_MODEL = "<model-name>"     # a callable alias
-$API     = "api-version=2025-09-01-preview"
 Write-Host "📝 Gateway $GATEWAY in $RG, alias $env:AI_GATEWAY_MODEL"
 
-# Read the gateway's resource ID, the URL of its default workspace for the REST calls, and its runtime URL
-$GATEWAY_ID = az aigateway show -g $RG -n $GATEWAY --query id -o tsv
-$WS         = "https://management.azure.com$GATEWAY_ID/workspaces/default"
+# Read the gateway's runtime URL
 $env:AI_GATEWAY_URL = "https://$(az aigateway show -g $RG -n $GATEWAY --query properties.frontend.defaultHostname -o tsv)"
-Write-Host "🆔 Gateway: $GATEWAY_ID"
 Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
 
 # Read your API key without showing it, and keep it in an environment variable for the scripts
@@ -152,37 +144,62 @@ claim needs at least one signal.
 > **Add claim** adds a row (the placeholder suggests `cost_center`) that starts with **Logs** and **Traces**.
 > Only add claims that your callers' tokens carry. The next section shows how to check.
 
-<!-- track: rest | REST API -->
+<!-- track: cli | Azure CLI -->
 
 ### Read the current configuration
 
-The claim attributes live on the gateway's telemetry exporter. The `aigateway` extension doesn't manage telemetry
-exporters yet, so call the Azure Resource Manager REST API with `az rest`. List the exporters and their claims:
+The claim attributes live on the gateway's telemetry exporter, in its `telemetry.attributes` list. Show the claims
+of the `appinsights` exporter that lab 13 created, with the signals of each one:
 
 ```bash title="Bash"
-# List the gateway's telemetry exporters, with the kind of each one and the token claims it exports
-echo "📊 Telemetry exporters and their claims:"
-az rest --method get --url "$WS/telemetryExporters?$API" \
-  --query "value[].{name:name, kind:properties.kind, claims:properties.telemetry.attributes}"
+# Show the token claims that the gateway's exporter adds to its telemetry, with the signals of each one
+echo "📊 Token claims of the appinsights exporter:"
+az aigateway telemetry-exporter show -g "$RG" --gateway-name "$GATEWAY" -n appinsights \
+  --query "properties.telemetry.attributes[].{claim:source.value, signals:join(', ', signals)}" -o table
 ```
 
 ```powershell title="PowerShell"
-# List the gateway's telemetry exporters, with the kind of each one and the token claims it exports
-Write-Host "📊 Telemetry exporters and their claims:"
-az rest --method get --url "$WS/telemetryExporters?$API" `
-  --query "value[].{name:name, kind:properties.kind, claims:properties.telemetry.attributes}"
+# Show the token claims that the gateway's exporter adds to its telemetry, with the signals of each one
+Write-Host "📊 Token claims of the appinsights exporter:"
+az aigateway telemetry-exporter show -g $RG --gateway-name $GATEWAY -n appinsights `
+  --query "properties.telemetry.attributes[].{claim:source.value, signals:join(', ', signals)}" -o table
 ```
 
-Expected output: one exporter of kind `OpenTelemetry`, usually named `appinsights`, whose claims list `tid`, `oid`,
-`appid`, and `azp`, each with its `signals`. A kind of `applicationInsights` is the legacy exporter. Reconfigure
-monitoring as in [Monitor usage, cost, and traces](../13-monitoring/README.md) first.
+Expected output: `tid` and `oid` with `logs, traces, metrics`, and `appid` and `azp` with `logs, traces`. If the
+exporter isn't found, list the exporters with `az aigateway telemetry-exporter list` and use the name of the one
+whose kind is `OpenTelemetry`. Without one, reconfigure monitoring as in
+[Monitor usage, cost, and traces](../13-monitoring/README.md) first.
 
-### Change it in the portal
+### Add metrics for the client app
 
-Make the change in the portal: open **Monitoring** › **Settings** › **Logging** › **Token claim attributes** and
-select **Metrics** for `appid` and `azp`. To automate it, declare the claims in the exporter's
-`telemetry.attributes` list, as the **Bicep + azd** track does. Then run the `GET` again. Both claims now list
-`metrics` in their `signals`.
+`--telemetry` replaces the whole list of claims, so pass all four, with `metrics` added for `appid` and `azp`. The
+exporter keeps its other settings.
+
+```bash title="Bash"
+# Export all four claims to logs, traces, and metrics, so that token and cost metrics can be split by client app
+az aigateway telemetry-exporter update -g "$RG" --gateway-name "$GATEWAY" -n appinsights -o none \
+  --telemetry "{attributes:[{source:{kind:claims,value:tid},signals:[logs,traces,metrics]},{source:{kind:claims,value:oid},signals:[logs,traces,metrics]},{source:{kind:claims,value:appid},signals:[logs,traces,metrics]},{source:{kind:claims,value:azp},signals:[logs,traces,metrics]}]}" &&
+  echo "📊 appid and azp now export to logs, traces, and metrics"
+
+# Show the claims again
+az aigateway telemetry-exporter show -g "$RG" --gateway-name "$GATEWAY" -n appinsights \
+  --query "properties.telemetry.attributes[].{claim:source.value, signals:join(', ', signals)}" -o table
+```
+
+```powershell title="PowerShell"
+# Export all four claims to logs, traces, and metrics, so that token and cost metrics can be split by client app
+az aigateway telemetry-exporter update -g $RG --gateway-name $GATEWAY -n appinsights -o none `
+  --telemetry "{attributes:[{source:{kind:claims,value:tid},signals:[logs,traces,metrics]},{source:{kind:claims,value:oid},signals:[logs,traces,metrics]},{source:{kind:claims,value:appid},signals:[logs,traces,metrics]},{source:{kind:claims,value:azp},signals:[logs,traces,metrics]}]}"
+if ($?) { Write-Host "📊 appid and azp now export to logs, traces, and metrics" }
+
+# Show the claims again
+az aigateway telemetry-exporter show -g $RG --gateway-name $GATEWAY -n appinsights `
+  --query "properties.telemetry.attributes[].{claim:source.value, signals:join(', ', signals)}" -o table
+```
+
+To export a custom claim, such as `cost_center`, add an entry such as
+`{source:{kind:claims,value:cost_center},signals:[logs,traces]}` to the list. Check that your callers' tokens carry it
+first, as the next section shows.
 
 <!-- track: iac | Bicep + azd -->
 
@@ -256,16 +273,14 @@ regions](../SETUP.md#find-the-available-regions).
 ### Read the outputs and the key
 
 Set the variables that the next sections use from azd's environment values, and read the key from the gateway, so
-that it never shows on screen. The last command lists the exporter's claims.
+that it never shows on screen. The last command shows the exporter's claims.
 
 ```bash title="Bash"
-# Read the names and URLs that azd up created, and pin the API version of the REST calls
+# Read the names and URLs that azd up created
 export RG="$(azd env get-value AZURE_RESOURCE_GROUP)"
 export GATEWAY="$(azd env get-value AI_GATEWAY_NAME)"
 export AI_GATEWAY_MODEL="$(azd env get-value AI_GATEWAY_MODEL)"
-export API="api-version=2025-09-01-preview"
 export GATEWAY_ID="$(azd env get-value AI_GATEWAY_ID)"
-export WS="https://management.azure.com$GATEWAY_ID/workspaces/default"
 export AI_GATEWAY_URL="$(azd env get-value AI_GATEWAY_URL)"
 echo "📝 Gateway $GATEWAY in $RG, alias $AI_GATEWAY_MODEL"
 echo "🌐 Runtime URL: $AI_GATEWAY_URL"
@@ -281,20 +296,18 @@ LAW_ID="$(azd env get-value LOG_ANALYTICS_WORKSPACE_ID)"
 echo "🆔 Application Insights: $APPI_ID"
 echo "🆔 Log Analytics workspace: $LAW_ID"
 
-# List the gateway's telemetry exporters, with the kind of each one and the token claims it exports
-echo "📊 Telemetry exporters and their claims:"
-az rest --method get --url "$WS/telemetryExporters?$API" \
-  --query "value[].{name:name, kind:properties.kind, claims:properties.telemetry.attributes}"
+# Show the token claims that the gateway's exporter adds to its telemetry, with the signals of each one
+echo "📊 Token claims of the appinsights exporter:"
+az aigateway telemetry-exporter show -g "$RG" --gateway-name "$GATEWAY" -n appinsights \
+  --query "properties.telemetry.attributes[].{claim:source.value, signals:join(', ', signals)}" -o table
 ```
 
 ```powershell title="PowerShell"
-# Read the names and URLs that azd up created, and pin the API version of the REST calls
+# Read the names and URLs that azd up created
 $RG                     = azd env get-value AZURE_RESOURCE_GROUP
 $GATEWAY                = azd env get-value AI_GATEWAY_NAME
 $env:AI_GATEWAY_MODEL   = azd env get-value AI_GATEWAY_MODEL
-$API                    = "api-version=2025-09-01-preview"
 $GATEWAY_ID             = azd env get-value AI_GATEWAY_ID
-$WS                     = "https://management.azure.com$GATEWAY_ID/workspaces/default"
 $env:AI_GATEWAY_URL     = azd env get-value AI_GATEWAY_URL
 Write-Host "📝 Gateway $GATEWAY in $RG, alias $env:AI_GATEWAY_MODEL"
 Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
@@ -310,21 +323,20 @@ $LAW_ID                 = azd env get-value LOG_ANALYTICS_WORKSPACE_ID
 Write-Host "🆔 Application Insights: $APPI_ID"
 Write-Host "🆔 Log Analytics workspace: $LAW_ID"
 
-# List the gateway's telemetry exporters, with the kind of each one and the token claims it exports
-Write-Host "📊 Telemetry exporters and their claims:"
-az rest --method get --url "$WS/telemetryExporters?$API" `
-  --query "value[].{name:name, kind:properties.kind, claims:properties.telemetry.attributes}"
+# Show the token claims that the gateway's exporter adds to its telemetry, with the signals of each one
+Write-Host "📊 Token claims of the appinsights exporter:"
+az aigateway telemetry-exporter show -g $RG --gateway-name $GATEWAY -n appinsights `
+  --query "properties.telemetry.attributes[].{claim:source.value, signals:join(', ', signals)}" -o table
 ```
 
-Expected output: `azd up` ended with `SUCCESS`, and the list shows one exporter, `appinsights`, of kind
-`OpenTelemetry`, whose claims list `tid`, `oid`, `appid`, and `azp`, each with `logs`, `traces`, and `metrics` in
-its `signals`.
+Expected output: `azd up` ended with `SUCCESS`, and the table lists `tid`, `oid`, `appid`, and `azp`, each with
+`logs, traces, metrics`.
 
 ### Change the claims
 
 Each `azd provision` applies the claims in `infra/main.bicep` again. To go back to the recommended preset, without
-metrics for the client app, set `CLIENT_APP_METRICS` to `false` and provision. Then run the `GET` again: `appid` and
-`azp` list only `logs` and `traces`. If you try it now, set it back to `true` and provision again before you continue,
+metrics for the client app, set `CLIENT_APP_METRICS` to `false` and provision. Then show the claims again: `appid`
+and `azp` list only `logs` and `traces`. If you try it now, set it back to `true` and provision again before you continue,
 so that the PromQL section can split metrics by client app.
 
 ```bash title="Bash"
@@ -349,7 +361,7 @@ if ($?) { Write-Host "🚀 Provisioned: appid and azp export to logs and traces 
 
 To export a custom claim, such as `cost_center`, add an entry to the `claimAttributes` list in `infra/main.bicep`
 and run `azd provision`. Check that your callers' tokens carry it first, as the next section shows. For the chargeback
-report, follow the **REST API** track: it uses the variables you set here.
+report, follow the **Azure CLI** track: it uses the variables you set here.
 
 <!-- /tracks -->
 
@@ -479,37 +491,33 @@ python infra/chargeback_report.py usage.csv prices.json --by Tenant,ClientApp,Ap
 if ($?) { Write-Host "📄 Report saved to chargeback.csv" }
 ```
 
-<!-- track: rest | REST API -->
+<!-- track: cli | Azure CLI -->
 
 ### Run the query
 
-Send the query to the Log Analytics query API through Azure Resource Manager and save the response:
+Run the query file on the Log Analytics workspace and save the rows. The CLI reads the query from the file after
+`@`.
 
 ```bash title="Bash"
-# Wrap the KQL query in a JSON request body, in a file because the query spans many lines
-jq -n --rawfile q infra/chargeback.kql '{query: $q}' > query.json &&
-  echo "📄 Query body written to query.json"
+# Read the workspace ID that queries use, from the Log Analytics workspace behind Application Insights
+LAW_CUSTOMER_ID="$(az monitor log-analytics workspace show --ids "$LAW_ID" --query customerId -o tsv)"
 
-# Run the query on the Log Analytics workspace through Azure Resource Manager, and save the response
-az rest --method post \
-  --url "https://management.azure.com${LAW_ID}/query?api-version=2017-10-01" \
-  --body @query.json > usage.json &&
+# Run the chargeback query on the workspace, and save the rows
+az monitor log-analytics query -w "$LAW_CUSTOMER_ID" --analytics-query @infra/chargeback.kql -o json > usage.json &&
   echo "📄 Usage by caller saved to usage.json"
 ```
 
 ```powershell title="PowerShell"
-# Wrap the KQL query in a JSON request body, in a file because the query spans many lines
-@{ query = Get-Content infra/chargeback.kql -Raw } | ConvertTo-Json | Set-Content query.json
-if ($?) { Write-Host "📄 Query body written to query.json" }
+# Read the workspace ID that queries use, from the Log Analytics workspace behind Application Insights
+$LAW_CUSTOMER_ID = az monitor log-analytics workspace show --ids $LAW_ID --query customerId -o tsv
 
-# Run the query on the Log Analytics workspace through Azure Resource Manager, and save the response
-az rest --method post `
-  --url "https://management.azure.com$LAW_ID/query?api-version=2017-10-01" `
-  --body "@query.json" | Set-Content usage.json
+# Run the chargeback query on the workspace, and save the rows
+az monitor log-analytics query -w $LAW_CUSTOMER_ID --analytics-query "@infra/chargeback.kql" -o json |
+  Set-Content usage.json
 if ($?) { Write-Host "📄 Usage by caller saved to usage.json" }
 ```
 
-The response holds a `tables` array with `columns` and `rows`, which the report script reads directly.
+The file holds one JSON object per row, which the report script reads directly.
 
 ### Price it
 
@@ -620,6 +628,10 @@ Expected output: rows per model, token type, and caller. Your Entra rows carry y
 > `prompt_tokens_details.cached_tokens`) next to input and output, so a plain sum double counts. Use the total
 > type if there is one, otherwise input plus output. Cached tokens are usually a subset of input tokens.
 
+The names follow the API of each call: Chat Completions reports `prompt_tokens` and `completion_tokens`, while
+Responses reports `input_tokens` and `output_tokens`. `gen_ai.response.model` is the model name that the provider
+returned, so one deployment can show up as `gpt-6-luna-2026-09-22` for Chat Completions and `gpt-6-luna` for Responses.
+
 ### Query estimated cost
 
 Replace `azure.ai_gateway.client.token.usage` with `azure.ai_gateway.client.token.cost` and run the query again. Each
@@ -682,24 +694,29 @@ In **Monitoring** › **Settings** › **Logging** › **Token claim attributes*
 
 Delete `usage.csv`, `prices.json`, and `chargeback.csv` from the lab folder.
 
-<!-- track: rest | REST API -->
+<!-- track: cli | Azure CLI -->
 
-### Restore the preset
-
-In **Monitoring** › **Settings** › **Logging** › **Token claim attributes**, clear **Metrics** for `appid` and
-`azp`, then run the `GET` from the start of the lab to confirm both claims list only `logs` and `traces`.
-
-### Delete the exported files
+### Restore the preset and delete the exported files
 
 ```bash title="Bash"
-# Delete the query, the usage, the price list, and the report, because they hold tenant and object IDs
-rm -f query.json usage.json prices.json chargeback.csv &&
+# Export the client app claims, appid and azp, to logs and traces only, as in the recommended preset
+az aigateway telemetry-exporter update -g "$RG" --gateway-name "$GATEWAY" -n appinsights -o none \
+  --telemetry "{attributes:[{source:{kind:claims,value:tid},signals:[logs,traces,metrics]},{source:{kind:claims,value:oid},signals:[logs,traces,metrics]},{source:{kind:claims,value:appid},signals:[logs,traces]},{source:{kind:claims,value:azp},signals:[logs,traces]}]}" &&
+  echo "📊 appid and azp export to logs and traces only"
+
+# Delete the usage, the price list, and the report, because they hold tenant and object IDs
+rm -f usage.json prices.json chargeback.csv &&
   echo "🚮 The exported files are deleted"
 ```
 
 ```powershell title="PowerShell"
-# Delete the query, the usage, the price list, and the report, because they hold tenant and object IDs
-Remove-Item query.json, usage.json, prices.json, chargeback.csv -ErrorAction SilentlyContinue
+# Export the client app claims, appid and azp, to logs and traces only, as in the recommended preset
+az aigateway telemetry-exporter update -g $RG --gateway-name $GATEWAY -n appinsights -o none `
+  --telemetry "{attributes:[{source:{kind:claims,value:tid},signals:[logs,traces,metrics]},{source:{kind:claims,value:oid},signals:[logs,traces,metrics]},{source:{kind:claims,value:appid},signals:[logs,traces]},{source:{kind:claims,value:azp},signals:[logs,traces]}]}"
+if ($?) { Write-Host "📊 appid and azp export to logs and traces only" }
+
+# Delete the usage, the price list, and the report, because they hold tenant and object IDs
+Remove-Item usage.json, prices.json, chargeback.csv -ErrorAction SilentlyContinue
 Write-Host "🚮 The exported files are deleted"
 ```
 
@@ -710,14 +727,14 @@ Write-Host "🚮 The exported files are deleted"
 In the `ai-gateway/labs/14-otel-chargeback` folder, delete the files the report created:
 
 ```bash title="Bash"
-# Delete the query, the usage, the price list, and the report, because they hold tenant and object IDs
-rm -f query.json usage.json prices.json chargeback.csv &&
+# Delete the usage, the price list, and the report, because they hold tenant and object IDs
+rm -f usage.json prices.json chargeback.csv &&
   echo "🚮 The exported files are deleted"
 ```
 
 ```powershell title="PowerShell"
-# Delete the query, the usage, the price list, and the report, because they hold tenant and object IDs
-Remove-Item query.json, usage.json, prices.json, chargeback.csv -ErrorAction SilentlyContinue
+# Delete the usage, the price list, and the report, because they hold tenant and object IDs
+Remove-Item usage.json, prices.json, chargeback.csv -ErrorAction SilentlyContinue
 Write-Host "🚮 The exported files are deleted"
 ```
 

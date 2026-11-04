@@ -75,8 +75,8 @@ baseline, prove it works with a smoke test, and wire it all into GitHub Actions.
   [Call backends with managed identities](../12-backend-identity/README.md). This lab builds on what you learned
   there, not on the resources you created: it deploys a new, separate environment.
 - The Azure CLI installs Bicep the first time you deploy. The smoke test reads the gateway and a key with the
-  `aigateway` extension. The extension can't set gateway-scope policies yet, so the baseline script calls the
-  management API with `az rest`.
+  `aigateway` extension. Its `az aigateway policy` commands set one policy at a time from flags, so to apply the
+  whole baseline from a file, the baseline script calls the management API with `az rest`.
 - **Owner**, or **Contributor** plus **Role Based Access Control Administrator**, on the subscription. The
   template creates two resource groups and several role assignments.
 - Quota for `gpt-6-luna` with the `GlobalStandard` SKU in the region you deploy to. The dev environment uses
@@ -184,8 +184,8 @@ portal-only overrides, and the spend it has already counted.
 
 > [!NOTE]
 > The portal writes `"scope": "workspace"` on Gateway scope rate and cost limits, so `baselines.json` does too.
-> If the API rejects a field, create the policy once in the portal at **Gateway** scope, read the workspace with
-> `az rest`, and copy that shape into `baselines.json`.
+> If the API rejects a field, create the policy once in the portal at **Gateway** scope, read it with
+> `az aigateway policy list`, and copy that shape into `baselines.json`.
 
 ### Observability: the destination in Bicep, the connection in the portal
 
@@ -205,8 +205,8 @@ deployments leave that connection alone. The sample's exporter is still availabl
 - **Two resource groups.** `rg-<env>-<token>-gateway` holds the gateway and its monitoring, and
   `rg-<env>-<token>-foundrymodels` holds model capacity. You can secure, scale, and delete them separately, and
   only the gateway's identity needs access to Foundry.
-- **A unique gateway name.** The gateway is `aigw-<token>`, which becomes
-  `https://aigw-<token>.<region>-01.ai.gateway.azure.com`. Set `aiGatewayName` to choose your own: up to 24
+- **A unique gateway name.** The gateway is `aigw-<token>`. Its runtime URL starts with the name's first 10
+  characters and a hash, like `https://aigw-abcde-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com`. Set `aiGatewayName` to choose your own: up to 24
   letters, digits, and hyphens, starting with a letter.
 - **Tags.** Resource groups and top-level resources get `environment` and `workload: ai-gateway`, plus the
   `tags` from the parameter file, such as `costCenter`.
@@ -286,7 +286,7 @@ param principalId string = ''
 @description('Extra tags merged into the default tags on every resource group and resource.')
 param tags object = {}
 
-@description('Gateway name, max 24 characters. Defaults to aigw-<token>. It becomes https://<name>.<region>-01.ai.gateway.azure.com.')
+@description('Gateway name, max 24 characters. Defaults to aigw-<token>. Its first 10 characters start the runtime host name.')
 param aiGatewayName string = ''
 
 @description('Foundry model name to deploy.')
@@ -516,7 +516,7 @@ only add child resources to it.
 <details><summary>Show all 63 lines</summary>
 
 ```bicep
-// The AI Gateway itself: a Microsoft.ApiManagement/aigateways resource in the Consumption SKU with a system-assigned
+// The AI Gateway itself: a Microsoft.ApiManagement/aigateways resource in the Standard SKU with a system-assigned
 // managed identity, the companion connector gateway (created after it, as in the reference sample), and the Foundry
 // User role for the gateway identity on every Foundry account it calls.
 targetScope = 'resourceGroup'
@@ -524,7 +524,7 @@ targetScope = 'resourceGroup'
 @description('Location of the gateway. Pick one where AI Gateway is available. List them with az provider show --namespace Microsoft.ApiManagement (Setup guide, Find the available regions).')
 param location string
 
-@description('Gateway name, max 24 characters. It becomes the first label of the runtime host name, https://<name>.<region>-01.ai.gateway.azure.com.')
+@description('Gateway name, max 24 characters. Its first 10 characters start the runtime host name.')
 @maxLength(24)
 param gatewayName string
 
@@ -546,7 +546,7 @@ resource aiGateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' = {
     type: 'SystemAssigned'
   }
   sku: {
-    name: 'Consumption'
+    name: 'Standard'
   }
   properties: empty(backendSubnetId) ? {} : { backend: { subnet: { id: backendSubnetId } } }
 }
@@ -589,9 +589,10 @@ On GitHub, open [infra/modules/gateway.bicep](infra/modules/gateway.bicep).
 > [!WARNING]
 > Each deployment sends a `PUT` for the gateway with exactly the properties in `gateway.bicep`. If you change
 > gateway settings outside Bicep, add them to this module. Otherwise, the next deployment can reset them.
-> Outbound virtual network integration is the exception: you can set it only when the gateway is created.
-> `gateway.bicep` accepts it as `backendSubnetId`, but `main.bicep` doesn't pass it. To use it, add a parameter
-> to `main.bicep` before the first deployment and keep passing the same subnet on every later deployment. See
+> Outbound virtual network integration is the exception: a deployment that doesn't set it keeps the gateway's
+> current private routing. `gateway.bicep` accepts it as `backendSubnetId`, but `main.bicep` doesn't pass it. To
+> use it, add a parameter to `main.bicep`, or set it in the portal under **Networking** or with
+> `az aigateway network update --subnet`. See
 > [Lock down backend traffic with private networking](../18-private-networking/README.md).
 
 `models.bicep` declares the model-level policies right on the backend model, so they're versioned with it:
@@ -906,7 +907,7 @@ Expected output:
 
 ```text
 📝 Gateway aigw-<token> in rg-aigw-dev-<token>-gateway
-🌐 Runtime URL: https://aigw-<token>.eastus2-01.ai.gateway.azure.com
+🌐 Runtime URL: https://aigw-abcde-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com
 🔖 Model alias: chat
 🏭 Foundry account aimodels-<token> in rg-aigw-dev-<token>-foundrymodels
 ```
@@ -983,8 +984,8 @@ if ($?) { Write-Host "🔐 Gateway baseline is applied to $env:GATEWAY" }
 #     fields you set in the portal. Updating a costLimit this way keeps its accumulated spend.
 #   - A baseline whose type doesn't exist is appended. A new costLimit gets a fresh, stable id.
 #   - Policies of other types (for example ones you added in the portal) are left untouched.
-# Running it twice gives the same result. The aigateway CLI extension can't set gateway-scope policies yet, so the
-# script calls the management API with az rest.
+# Running it twice gives the same result. The az aigateway policy commands set one policy at a time from flags, so
+# to write the whole array from a file, the script calls the management API with az rest.
 #
 # Usage:
 #   export RG="<gateway-resource-group>" GATEWAY="<gateway-name>"
@@ -1438,7 +1439,7 @@ Expected output (the tool list can change as the Learn server evolves):
 
 ```text
 📊 Smoke test of the chat alias and the learn MCP server:
-Gateway: https://aigw-<token>.eastus2-01.ai.gateway.azure.com
+Gateway: https://aigw-abcde-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com
 Model  : HTTP 200, model=<model>, reply=ok, total_tokens=<n>
 Tools  : HTTP 200, 3 tools on learn
          learn_microsoft_docs_search
@@ -1563,11 +1564,12 @@ test a few more times if the charts are still empty.
   it too.
 - **Go keyless everywhere.** Remove entries from `appNames`, move apps to Entra groups in `modelUsers` and
   `toolUsers`, and follow [Go keyless with Microsoft Entra ID and RBAC](../11-entra-rbac/README.md).
-- **Keep backend traffic private.** Create the gateway with outbound virtual network integration, and give the
+- **Keep backend traffic private.** Give the gateway outbound virtual network integration, and give the
   Foundry account a private endpoint, as in
   [Lock down backend traffic with private networking](../18-private-networking/README.md). Pass the integration
-  subnet to `gateway.bicep` as `backendSubnetId` on the first deployment. Inbound private endpoints and turning
-  off the gateway's public endpoint aren't available for AI Gateway yet.
+  subnet to `gateway.bicep` as `backendSubnetId`, or add it to the running gateway with
+  `az aigateway network update --subnet`. Inbound private endpoints and turning off the gateway's public endpoint
+  aren't available for AI Gateway yet.
 - **Protect and govern tools.** Add [Agent 365 tool threat protection](../19-tool-threat-protection/README.md)
   to sensitive MCP servers in the portal, and [govern MCP servers with Agent 365](../20-agent-365-governance/README.md).
 - **Charge back by team.** Attribute tokens and cost to callers with

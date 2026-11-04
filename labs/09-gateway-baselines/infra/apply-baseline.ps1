@@ -46,7 +46,8 @@ if (-not $Remove -and $ipFilters.Count -gt 0) {
   foreach ($filter in $ipFilters) { $filter.cidrRanges = $cidrs }
 }
 
-# The aigateway extension doesn't set Gateway scope policies yet, so the script calls the REST API with az rest.
+# The az aigateway policy commands set policies from flags, so to apply the whole file the script calls the
+# management API with az rest.
 $gatewayId = az aigateway show -g $ResourceGroup -n $Gateway --query id -o tsv
 if ($LASTEXITCODE -ne 0 -or -not $gatewayId) {
   throw "Couldn't find gateway $Gateway. Sign in with az login and install the aigateway extension first."

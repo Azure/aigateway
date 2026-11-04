@@ -3,8 +3,8 @@ Chat Completions. The SDK sends the gateway key as a bearer token, which the mod
 
 Usage:
   pip install -r requirements.txt
-  export AI_GATEWAY_URL="https://<gateway>.eastus2-01.ai.gateway.azure.com"
-  export AI_GATEWAY_MODEL="<model-alias>"
+  export AI_GATEWAY_URL="<gateway-url>"
+  export AI_GATEWAY_MODEL="<model-name>"
   export AI_GATEWAY_API_KEY="..."      # never commit this value
   python first-call.py
 """

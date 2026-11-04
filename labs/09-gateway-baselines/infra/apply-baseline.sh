@@ -47,7 +47,8 @@ if [ "$MODE" != "remove" ] && jq -e 'any(.[]; .type == "ipFilter")' >/dev/null <
   fi
 fi
 
-# The aigateway extension doesn't set Gateway scope policies yet, so the script calls the REST API with az rest.
+# The az aigateway policy commands set policies from flags, so to apply the whole file the script calls the
+# management API with az rest.
 GATEWAY_ID="$(az aigateway show -g "$RG" -n "$GATEWAY" --query id -o tsv)"
 URL="https://management.azure.com$GATEWAY_ID/workspaces/default?api-version=2025-09-01-preview"
 

@@ -1,7 +1,7 @@
 """List, and optionally call, the tools that an AI Gateway MCP server publishes.
 
 Usage:
-    export AI_GATEWAY_URL="https://<gateway>.eastus2-01.ai.gateway.azure.com"
+    export AI_GATEWAY_URL="<gateway-url>"
     export AI_GATEWAY_API_KEY="..."      # never commit this value
     python list_tools.py [server-name] [tool-name] [query]
 
@@ -27,7 +27,7 @@ def endpoint(server: str) -> str:
         return os.environ["AI_GATEWAY_MCP_ENDPOINT"]
     base = os.environ.get("AI_GATEWAY_URL")
     if not base:
-        sys.exit("Set AI_GATEWAY_URL to https://<gateway>.eastus2-01.ai.gateway.azure.com")
+        sys.exit("Set AI_GATEWAY_URL to the gateway runtime URL, for example https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com")
     return f"{base.rstrip('/')}/default/toolservers/{server}/mcp"
 
 

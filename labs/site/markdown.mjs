@@ -38,6 +38,7 @@ export const PLACEHOLDERS = {
   'subscription-id': 'Subscription ID',
   'resource-group': 'Resource group',
   'gateway': 'Gateway name',
+  'gateway-url': 'Runtime URL',
   'location': 'Region',
   'model-name': 'Model alias',
   'provider-name': 'Model provider',

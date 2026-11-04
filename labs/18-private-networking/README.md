@@ -9,7 +9,7 @@ order: 18
 illustration: diagrams/private-networking.svg
 tags: [VNet integration, private routing, private endpoint, private DNS, NSG, backend subnet, Foundry, ipFilter]
 objectives:
-  - Explain which private networking options AI Gateway supports today, and why private routing is chosen at creation
+  - Explain which private networking options AI Gateway supports today, and how to add or remove private routing
   - Prepare a delegated integration subnet with an NSG that passes the gateway's subnet checks
   - Create a gateway with private routing through that subnet
   - Give Foundry a private endpoint and private DNS, turn off its public access, and prove the gateway still reaches it
@@ -33,7 +33,7 @@ prereqs:
 
 **You'll learn to**
 
-- Explain which private networking options AI Gateway supports today, and why private routing is chosen at creation
+- Explain which private networking options AI Gateway supports today, and how to add or remove private routing
 - Prepare a delegated integration subnet with an NSG that passes the gateway's subnet checks
 - Create a gateway with private routing through that subnet
 - Give Foundry a private endpoint and private DNS, turn off its public access, and prove the gateway still reaches it
@@ -193,19 +193,19 @@ if ($?) { Write-Host "📦 Resource group $RG is ready in $LOCATION" }
 ## How it works
 
 A gateway has two network directions. **Inbound**, clients call the gateway's frontend on
-`https://<gateway>.<region>-01.ai.gateway.azure.com`. **Outbound**, the gateway calls models, MCP servers, and
+`<gateway-url>`. **Outbound**, the gateway calls models, MCP servers, and
 APIs. With **private routing**, the gateway joins a dedicated, delegated subnet in your virtual network and sends
 its outbound calls through it, so it can reach backends on private IPs. When a backend's private DNS zones are
 linked to that virtual network, the gateway resolves the backend's usual host name to its private endpoint IP.
 
-You choose private routing when you create the gateway, and you can't add, change, or remove it afterwards: "Virtual
-network integration for Azure AI Gateway can only be configured during creation." Most connectivity problems
-after that are DNS: the gateway must resolve each backend to its private IP.
+You can choose private routing when you create the gateway, or add, change, or remove it later: select
+**Networking** in the portal, or run `az aigateway network update`. Each change takes a minute or two. Most
+connectivity problems after that are DNS: the gateway must resolve each backend to its private IP.
 
 | Piece | Direction | Available today | Where you set it | Key values |
 |---|---|---|---|---|
 | Integration subnet | Outbound | Yes | Your virtual network | At least `/27` (`/24` recommended), same subscription and region as the gateway, dedicated to one gateway, delegated to `Microsoft.App/environments`, NSG allows outbound TCP 443 to `Storage` and `AzureKeyVault` |
-| Private routing | Outbound | Yes, at creation only | **Create AI gateway** › **Advanced** › **Private routing** | `properties.backend.subnet.id` set to the integration subnet |
+| Private routing | Outbound | Yes, at creation or later | **Create AI gateway** › **Advanced** › **Private routing**, or **Networking** › **Outbound** | `properties.backend.subnet.id` set to the integration subnet (`az aigateway create` or `network update` with `--subnet`) |
 | Backend private endpoints | Outbound | Yes | Each backend, plus its private DNS zones linked to the virtual network | Foundry uses the `account` group ID |
 | Gateway private endpoint | Inbound | Not yet | — | The gateway has no private link resources |
 | Public network access | Inbound | Always **Enabled** | — | **Disabled** is "Unavailable until private frontend access is supported" |
@@ -758,8 +758,8 @@ output deploymentName string = deployment.name
 
 ## Create the gateway with private routing
 
-Private routing is part of the create request. Select the integration subnet now: if you skip it, the only way to
-add it later is to create another gateway.
+This lab puts private routing in the create request, so the new gateway uses the integration subnet from its first
+call. To add private routing to a gateway that already exists, see **Go further**.
 
 <!-- track: portal | Portal -->
 <details open><summary><b>🖥️ Portal</b></summary> <!-- gh -->
@@ -840,8 +840,8 @@ provisioning finishes, usually within a few minutes.
 SUBNET_ID="$(az network vnet subnet show -g "$RG" --vnet-name "$VNET" -n "$INTEGRATION_SUBNET" --query id -o tsv)"
 echo "🆔 Integration subnet: $SUBNET_ID"
 
-# Create the gateway with a system-assigned managed identity and private routing through the integration subnet,
-# which you can't change later; the command waits until provisioning finishes
+# Create the gateway with a system-assigned managed identity and private routing through the integration subnet;
+# the command waits until provisioning finishes
 az aigateway create -g "$RG" -n "$GATEWAY" --location "$LOCATION" --system-assigned true \
   --subnet "$SUBNET_ID" -o none &&
   echo "🚀 Gateway $GATEWAY is ready, with private routing through $INTEGRATION_SUBNET"
@@ -855,8 +855,8 @@ az aigateway create -g "$RG" -n "$GATEWAY" --location "$LOCATION" --system-assig
 $SUBNET_ID = az network vnet subnet show -g $RG --vnet-name $VNET -n $INTEGRATION_SUBNET --query id -o tsv
 Write-Host "🆔 Integration subnet: $SUBNET_ID"
 
-# Create the gateway with a system-assigned managed identity and private routing through the integration subnet,
-# which you can't change later; the command waits until provisioning finishes
+# Create the gateway with a system-assigned managed identity and private routing through the integration subnet;
+# the command waits until provisioning finishes
 az aigateway create -g $RG -n $GATEWAY --location $LOCATION --system-assigned true `
   --subnet $SUBNET_ID -o none
 if ($?) { Write-Host "🚀 Gateway $GATEWAY is ready, with private routing through $INTEGRATION_SUBNET" }
@@ -1012,13 +1012,13 @@ az aigateway show -g $RG -n $GATEWAY `
 </details> <!-- gh -->
 
 The commands print the runtime URL, for example
-`🌐 Runtime URL: https://<private-gateway>.eastus2-01.ai.gateway.azure.com`, and then the gateway's settings:
+`🌐 Runtime URL: https://aigw-x7k2q-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com`, and then the gateway's settings:
 
 ```json
 {
   "state": "Succeeded",
   "backendSubnet": "/subscriptions/<subscription-id>/resourceGroups/rg-ai-gateway-private/providers/Microsoft.Network/virtualNetworks/vnet-aigw/subnets/snet-aigw-integration",
-  "host": "<private-gateway>.eastus2-01.ai.gateway.azure.com"
+  "host": "aigw-x7k2q-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com"
 }
 ```
 
@@ -1277,7 +1277,7 @@ it never appears on screen.
 
 ```bash title="Bash"
 # Create a runtime API key for your app
-az aigateway api-key create -g "$RG" --gateway-name "$GATEWAY" -n "$KEY_NAME" --display-name "$KEY_NAME" -o none &&
+az aigateway api-key create -g "$RG" --gateway-name "$GATEWAY" -n "$KEY_NAME" -o none &&
   echo "🔑 API key private-net-lab is ready"
 
 # Read the key straight into a variable, so that it never shows on screen, and set the alias for the next calls
@@ -1293,7 +1293,7 @@ echo "🔖 Model alias: $AI_GATEWAY_MODEL"
 
 ```powershell title="PowerShell"
 # Create a runtime API key for your app
-az aigateway api-key create -g $RG --gateway-name $GATEWAY -n $KEY_NAME --display-name $KEY_NAME -o none
+az aigateway api-key create -g $RG --gateway-name $GATEWAY -n $KEY_NAME -o none
 if ($?) { Write-Host "🔑 API key private-net-lab is ready" }
 
 # Read the key straight into a variable, so that it never shows on screen, and set the alias for the next calls
@@ -1414,12 +1414,13 @@ The change can take a few minutes to apply.
 ### Check the gateway's private routing
 
 ```bash
-# Show the subnet that the gateway's outbound calls go through
-echo "🔒 Gateway $GATEWAY routes its outbound calls through this subnet:"
-az aigateway show -g "$RG" -n "$GATEWAY" --query "properties.backend.subnet.id" -o tsv
+# Show the gateway's network settings: the routing type and the subnet that its outbound calls go through
+echo "🔒 Network settings of gateway ${GATEWAY}:"
+az aigateway network show -g "$RG" -n "$GATEWAY" \
+  --query "{routing:virtualNetworkType, subnet:virtualNetworkConfiguration.subnetResourceId}" -o json
 ```
 
-The output ends with `/virtualNetworks/vnet-aigw/subnets/snet-aigw-integration`.
+The output shows `"routing": "External"`, and `subnet` ends with `/virtualNetworks/vnet-aigw/subnets/snet-aigw-integration`.
 
 ### Check name resolution for Foundry
 
@@ -1506,6 +1507,11 @@ anymore, but the gateway can.
 
 ## Go further
 
+- **Add private routing to an existing gateway.** In the portal, select **Networking**. Under **Outbound**, choose
+  **Private routing**, select the virtual network and the integration subnet, and save. To remove it, choose
+  **Public routing** and save. With the Azure CLI, run
+  `az aigateway network update -g "$RG" -n "$GATEWAY" --subnet "$SUBNET_ID"`, or `--disable-vnet-integration` to
+  remove it. The subnet needs the same preparation as in this lab, and the change takes a minute or two.
 - **Filter who can call the gateway.** While the frontend stays public, add a gateway-wide `ipFilter` policy
   (`action: Allow` with your egress `cidrRanges`) next to keys or Microsoft Entra ID. See
   [Set gateway-wide policy baselines](../09-gateway-baselines/README.md).

@@ -4,13 +4,13 @@ summary: Give every app, agent, and user a dollar budget per hour, day, or month
 category: governance
 level: Intermediate
 duration: 30
-tracks: [portal, rest, iac]
+tracks: [portal, cli, iac]
 order: 7
 illustration: diagrams/policy-scopes.svg
 tags: [costLimit, budget, FinOps, LlmCostQuotaExceeded, "403", overrides, Entra ID, chargeback]
 objectives:
   - Explain how a cost limit estimates spend and counts it per caller in fixed calendar windows
-  - Add a daily cost limit to a model in the portal or with the REST API
+  - Add a daily cost limit to a model in the portal or with the Azure CLI
   - Give specific API keys and Microsoft Entra identities their own budget with overrides
   - Declare a budgeted alias, its API keys, and their overrides with Bicep and azd
   - Trigger a 403 LlmCostQuotaExceeded response, find the remaining budget header, and review estimated spend in Monitoring
@@ -60,10 +60,8 @@ export GATEWAY="<gateway>"                 # 24 characters or fewer
 export PROVIDER="<provider-name>"          # for example foundry-models
 export MODEL="<model-name>"                # the backend model name under that provider
 
-# Read the gateway's resource ID, and build the management URL of its default workspace for the az rest calls
-export API="api-version=2025-09-01-preview"
+# Read the gateway's resource ID, which the key commands use
 export GATEWAY_ID="$(az aigateway show -g "$RG" -n "$GATEWAY" --query id -o tsv)"
-export WS="https://management.azure.com$GATEWAY_ID/workspaces/default"
 echo "🆔 Gateway: $GATEWAY_ID"
 
 # Read the gateway's runtime URL, which apps call
@@ -87,10 +85,8 @@ $GATEWAY    = "<gateway>"                 # 24 characters or fewer
 $PROVIDER   = "<provider-name>"           # for example foundry-models
 $MODEL      = "<model-name>"              # the backend model name under that provider
 
-# Read the gateway's resource ID, and build the management URL of its default workspace for the az rest calls
-$API        = "api-version=2025-09-01-preview"
+# Read the gateway's resource ID, which the key commands use
 $GATEWAY_ID = az aigateway show -g $RG -n $GATEWAY --query id -o tsv
-$WS         = "https://management.azure.com$GATEWAY_ID/workspaces/default"
 Write-Host "🆔 Gateway: $GATEWAY_ID"
 
 # Read the gateway's runtime URL, which apps call
@@ -138,9 +134,9 @@ that model, or at **Gateway** scope to track **one budget per caller across all 
 ## Add a cost limit to the model
 
 Pick one track. Each one produces the same default budget: **$5 per day for each caller identity**. The portal and
-REST tracks put it on your model. The Bicep + azd track creates a new gateway and puts it on a new alias of the model.
-The portal and Bicep + azd tracks also add the overrides for specific callers. The REST track points to the portal
-for them.
+Azure CLI tracks put it on your model. The Bicep + azd track creates a new gateway and puts it on a new alias of the
+model. The portal and Bicep + azd tracks also add the overrides for specific callers. The Azure CLI track points to
+the portal for them.
 
 <!-- track: portal | Portal -->
 
@@ -210,98 +206,55 @@ Select **Create**. Back in **Policies**, open the new **Cost limit** to review i
 > The **Cost limit** details page shows **Budget amount** $5.00, **Renewal period** **Daily**, **Budget
 > counted by** **Caller identity**, and your model under **Applies to**. Select **Edit** to see your overrides.
 
-<!-- track: rest | REST API -->
+<!-- track: cli | Azure CLI -->
 
-### Read the current policies
+### Set the cost limit
 
-This track calls the Azure Resource Manager REST API with `az rest`, because the `aigateway` extension doesn't
-set cost limits. Policies live inline in the model's `properties.policies` array. A `PATCH` **replaces the
-whole array**, so always read it first and keep the policies you didn't mean to change.
-
-```bash
-# Read your subscription ID, and build the management URL of your model, which holds its policies
-SUB="$(az account show --query id -o tsv)"
-URL="https://management.azure.com/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.ApiManagement/aigateways/$GATEWAY/workspaces/default/modelProviders/$PROVIDER/models/$MODEL?api-version=2025-09-01-preview"
-echo "🆔 Subscription: $SUB"
-
-# Read the model's current policies, so that you know what the merge must keep
-echo "🔐 Policies on $MODEL:"
-az rest --method get --url "$URL" --query properties.policies
-```
-
-### Add or update the cost limit and keep everything else
-
-A cost limit carries a stable `id`. Editing the amount of an existing policy **keeps its accumulated spend**,
-so the merge below updates an existing `costLimit` in place (keeping its `id` and any overrides) and only
-creates a new one, with a fresh GUID, when none exists.
+Policies live in the model's `properties.policies` array. `az aigateway model policy set-cost-limit` adds a cost
+limit, or updates the one that's there, and keeps every other policy on the model. An update changes only the
+flags you pass: the policy keeps its `id`, its overrides, and the spend it has counted so far.
 
 ```bash title="Bash"
-# Choose the default budget: 5 US dollars for each caller, renewed every day
-BUDGET=5
-PERIOD=day
-
-# Read the policies, then update the cost limit in place, keeping its id and overrides,
-# or add a new one with a fresh GUID when there's none
-POLICIES="$(az rest --method get --url "$URL" | jq -c \
-  --argjson amount "$BUDGET" --arg period "$PERIOD" --arg id "$(uuidgen | tr 'A-Z' 'a-z')" '
-  .properties.policies // [] | . as $p
-  | if any($p[]; .type == "costLimit")
-    then [$p[] | if .type == "costLimit"
-                 then (.amount = $amount | .period = $period | .counterKey = ["identity"])
-                 else . end]
-    else $p + [{"type":"costLimit","id":$id,"amount":$amount,"period":$period,"counterKey":["identity"]}]
-    end')"
-
-# Send the merged array back: a PATCH replaces the whole policies array
-az rest --method patch --url "$URL" --body "{\"properties\":{\"policies\":$POLICIES}}" --output none &&
-  echo "🔐 Cost limit of \$$BUDGET per $PERIOD for each caller is on $MODEL"
+# Add a cost limit to the model: 5 US dollars per day, with its own counter for each caller identity
+az aigateway model policy set-cost-limit -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL" \
+  --amount 5 --period day --counter-key identity --output none &&
+  echo "🔐 Cost limit of \$5 per day for each caller is on $MODEL"
 ```
 
 ```powershell title="PowerShell"
-# Choose the default budget: 5 US dollars for each caller, renewed every day
-$BUDGET = 5
-$PERIOD = 'day'
-
-# Read your subscription ID, and build the management URL of your model, which holds its policies
-$SUB = az account show --query id -o tsv
-$URL = "https://management.azure.com/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.ApiManagement/aigateways/$GATEWAY/workspaces/default/modelProviders/$PROVIDER/models/$MODEL`?api-version=2025-09-01-preview"
-Write-Host "🆔 Subscription: $SUB"
-
-# Read the policies, then update the cost limit in place, keeping its id and overrides,
-# or add a new one with a fresh GUID when there's none
-$current  = az rest --method get --url $URL | ConvertFrom-Json
-$policies = @($current.properties.policies | Where-Object { $_ })
-$cost     = $policies | Where-Object { $_.type -eq 'costLimit' } | Select-Object -First 1
-if ($cost) {
-  $cost | Add-Member -NotePropertyName amount -NotePropertyValue $BUDGET -Force
-  $cost | Add-Member -NotePropertyName period -NotePropertyValue $PERIOD -Force
-  $cost | Add-Member -NotePropertyName counterKey -NotePropertyValue @('identity') -Force
-} else {
-  $policies += [pscustomobject]@{
-    type = 'costLimit'; id = [guid]::NewGuid().ToString(); amount = $BUDGET; period = $PERIOD; counterKey = @('identity')
-  }
-}
-
-# Send the merged array back from a file, which keeps the JSON quotes intact: a PATCH replaces the whole array
-$body = @{ properties = @{ policies = $policies } } | ConvertTo-Json -Depth 10 -Compress
-$body | Set-Content -Path patch.json
-az rest --method patch --url $URL --body '@patch.json' --output none
-if ($?) { Write-Host "🔐 Cost limit of `$$BUDGET per $PERIOD for each caller is on $MODEL" }
-Remove-Item patch.json
+# Add a cost limit to the model: 5 US dollars per day, with its own counter for each caller identity
+az aigateway model policy set-cost-limit -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER -n $MODEL `
+  --amount 5 --period day --counter-key identity --output none
+if ($?) { Write-Host "🔐 Cost limit of `$5 per day for each caller is on $MODEL" }
 ```
 
-`period` accepts `hour`, `day`, `week`, `month`, or `year`. `counterKey` is an array: `["identity"]`, or
-`["ipAddress"]` to count per client IP address.
+`--period` accepts `hour`, `day`, `week`, `month`, or `year`. `--counter-key` accepts `identity`, or `ipAddress` to
+count per client IP address. A new cost limit gets the `id` `default` unless you pass `--id`.
 
 ### Add overrides in the portal
 
 Configure overrides for API keys and Microsoft Entra identities in the portal: select **Policies**, open the
-**Cost limit**, select **Edit**, and use the **Overrides** step as described in the portal track. The merge
-above keeps those overrides when you change the amount later.
+**Cost limit**, select **Edit**, and use the **Overrides** step as described in the portal track. The command
+above keeps those overrides when you change the amount later. Its `--overrides` argument doesn't accept override
+objects yet.
+
+### Confirm the policy
+
+```bash title="Bash"
+# List the model's policies, to check the cost limit
+echo "🔐 Policies on ${MODEL}:"
+az aigateway model policy list -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL" -o json
+```
+
+```powershell title="PowerShell"
+# List the model's policies, to check the cost limit
+Write-Host "🔐 Policies on ${MODEL}:"
+az aigateway model policy list -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER -n $MODEL -o json
+```
 
 > **Checkpoint**
-> Running the `GET` again returns your other policies unchanged plus one `costLimit` entry with its `id`,
-> `"amount": 5.0`, `"period": "day"`, `"counterKey": ["identity"]`, and `"scope": "resource"`.
+> The output lists your other policies unchanged plus one `costLimit` entry with its `id`, `"amount": 5.0`,
+> `"period": "day"`, `"counterKey": ["identity"]`, and `"scope": "resource"`.
 
 <!-- track: iac | Bicep + azd -->
 
@@ -454,14 +407,15 @@ key (which has no override), and watch the gateway switch from `200` to `403`.
 
 ### Lower the budget for the test
 
-In the portal, open the **Cost limit**, select **Edit**, set **Budget amount** to `0.01`, and **Save**. On the
-REST track, run the merge again with `BUDGET=0.01` (PowerShell: `$BUDGET = 0.01`).
+A call to `gpt-6-luna` costs about $0.0001, so a budget of `0.001` is spent after about ten calls. For a more
+expensive model, use `0.01`. In the portal, open the **Cost limit**, select **Edit**, set **Budget amount** to
+`0.001`, and **Save**. On the Azure CLI track, run **Set the cost limit** again with `--amount 0.001`. The new
+budget reaches the gateway within about a minute, so wait before you run the requests.
 
-If your model is an inexpensive mini or nano model, use `0.001` so a handful of calls is enough. Because
-editing keeps accumulated spend, the very first request might already be blocked if `app-dev` spent more than
-the new budget earlier today.
+Because editing keeps accumulated spend, the very first request might already be blocked if `app-dev` spent more
+than the new budget earlier today.
 
-On the Bicep + azd track, a call to `gpt-6-luna` costs about $0.0001, so set the budget to `0.001`:
+On the Bicep + azd track, set the budget to `0.001` too:
 
 ```bash title="Bash"
 # Lower the default budget to $0.001 for each caller, in the azd environment
@@ -520,7 +474,8 @@ Request  Status  Error code               Tokens used  Budget headers
 left of the budget. On a cost limit attached to the model, the headers start with `x-cost-` instead. A blocked
 call has no error code in its body, so the script prints `-`, and `…-retry-after` gives the seconds until the caller
 can try again. How many calls succeed depends on the model's price. A call or two more than you expect is the
-small overshoot described in [How it works](#how-it-works).
+small overshoot described in [How it works](#how-it-works). If all 10 requests return `200`, run the script again:
+the spend so far still counts.
 
 ### Inspect one blocked response
 
@@ -592,9 +547,8 @@ the spend the gateway estimated, and the dashboard attributes it to individual A
 
 - **Cap spend across all models.** Add a second **Cost limit** with **Gateway** scope, for example $200
   **Monthly**. Each caller then has one budget across every model, including models you import later. With
-  REST, run the same merge against the gateway workspace:
-  `https://management.azure.com/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.ApiManagement/aigateways/$GATEWAY/workspaces/default?api-version=2025-09-01-preview`
-  (`"${WS}?$API"` from the variable block).
+  the Azure CLI, run `az aigateway policy set-cost-limit -g "$RG" --gateway-name "$GATEWAY" --amount 200 --period month
+  --counter-key identity`.
 - **Combine with token limits.** Keep a per-minute **Token rate limit** to smooth bursts and a **Cost limit**
   to cap spend. Both are checked on every request, and either one can block.
 - **Budget by role or app.** Use **Custom token claim combination** overrides, for example a `roles` claim with
@@ -604,7 +558,7 @@ the spend the gateway estimated, and the dashboard attributes it to individual A
 
 ## Clean up
 
-A $0.01 budget blocks real traffic. Delete the policy, or raise it to a production value, before you continue.
+A $0.001 budget blocks real traffic. Delete the policy, or raise it to a production value, before you continue.
 Raising the amount takes effect immediately, because the accumulated spend is kept and compared with the new
 budget.
 
@@ -615,20 +569,25 @@ budget.
 Select **Policies**, open the **Cost limit** you created, and select **Delete**, or select **Edit** and set a
 production **Budget amount**. If you created runtime keys only for this lab, revoke them in **Access** › **Keys**.
 
-<!-- track: rest | REST API -->
+<!-- track: cli | Azure CLI -->
 
 ### Remove the cost limit
 
-```bash
-# Read the policies, and keep every one except the cost limit
-POLICIES="$(az rest --method get --url "$URL" | jq -c '[(.properties.policies // [])[] | select(.type != "costLimit")]')"
-
-# Send the array back without the cost limit: a PATCH replaces the whole policies array
-az rest --method patch --url "$URL" --body "{\"properties\":{\"policies\":$POLICIES}}" --output none &&
+```bash title="Bash"
+# Remove only the cost limit from the model, and keep every other policy
+az aigateway model policy remove -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL" \
+  --remove-cost-limit true --output none &&
   echo "🚮 Cost limit is removed from $MODEL"
 ```
 
-To keep the policy instead, run the merge again with a production budget, for example `BUDGET=100`.
+```powershell title="PowerShell"
+# Remove only the cost limit from the model, and keep every other policy
+az aigateway model policy remove -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER -n $MODEL `
+  --remove-cost-limit true --output none
+if ($?) { Write-Host "🚮 Cost limit is removed from $MODEL" }
+```
+
+To keep the policy instead, run **Set the cost limit** again with a production budget, for example `--amount 100`.
 
 <!-- track: iac | Bicep + azd -->
 

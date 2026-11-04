@@ -1,6 +1,6 @@
 // Registers the public Microsoft Learn MCP server as a federated MCP server in an existing AI Gateway. main.bicep calls
 // it after lab 01's gateway template, and you can also deploy it on its own to a gateway you already have.
-// Clients call one governed endpoint, https://<gateway>.eastus2-01.ai.gateway.azure.com/default/toolservers/<serverName>/mcp,
+// Clients call one governed endpoint, <gateway-url>/default/toolservers/<serverName>/mcp,
 // and the gateway publishes each backend's tools with a namespace prefix (<namespace>_<tool>).
 // Set secondNamespace to add the same public server as a second, optional backend and see namespacing at work.
 // Set supportedVersions to pin the MCP protocol versions that clients can negotiate.

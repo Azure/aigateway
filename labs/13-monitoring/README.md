@@ -4,13 +4,13 @@ summary: Send the gateway's OpenTelemetry metrics, logs, and traces to Applicati
 category: observability
 level: Beginner
 duration: 25
-tracks: [portal, iac]
+tracks: [portal, cli, iac]
 order: 13
 illustration: diagrams/observability.svg
 tags: [OpenTelemetry, OTLP, Application Insights, traces, estimated cost, KQL, GenAI semantic conventions]
 objectives:
   - Explain how the gateway exports metrics, logs, and traces independently over OTLP
-  - Connect the gateway to Application Insights in the portal, or with Bicep and azd
+  - Connect the gateway to Application Insights in the portal, with the Azure CLI, or with Bicep and azd
   - Read health, outcomes, policy impact, tokens, and estimated cost on the Monitoring dashboard
   - Follow one request through the trace waterfall, including its policy child spans
   - Query gateway telemetry in Log Analytics with KQL
@@ -28,12 +28,12 @@ prereqs:
 
 | ⏱️ Time | 📶 Level | 🧭 Tracks | ✅ Before you start |
 | :-- | :-- | :-- | :-- |
-| 25 min | Beginner | Portal · Bicep + azd | [02 · First model call](../02-first-model-call/README.md) |
+| 25 min | Beginner | Portal · Azure CLI · Bicep + azd | [02 · First model call](../02-first-model-call/README.md) |
 
 **You'll learn to**
 
 - Explain how the gateway exports metrics, logs, and traces independently over OTLP
-- Connect the gateway to Application Insights in the portal, or with Bicep and azd
+- Connect the gateway to Application Insights in the portal, with the Azure CLI, or with Bicep and azd
 - Read health, outcomes, policy impact, tokens, and estimated cost on the Monitoring dashboard
 - Follow one request through the trace waterfall, including its policy child spans
 - Query gateway telemetry in Log Analytics with KQL
@@ -89,12 +89,8 @@ export RG="<resource-group>"
 export GATEWAY="<gateway>"
 export AI_GATEWAY_MODEL="<model-name>"     # a callable alias, for example the one you used in lab 02
 
-# Build the management URL of the gateway's default workspace for az rest, and read the gateway's runtime URL
-export API="api-version=2025-09-01-preview"
-export GATEWAY_ID="$(az aigateway show -g "$RG" -n "$GATEWAY" --query id -o tsv)"
-export WS="https://management.azure.com$GATEWAY_ID/workspaces/default"
+# Read the gateway's runtime URL
 export AI_GATEWAY_URL="https://$(az aigateway show -g "$RG" -n "$GATEWAY" --query properties.frontend.defaultHostname -o tsv)"
-echo "🆔 Gateway ID: $GATEWAY_ID"
 echo "🌐 Runtime URL: $AI_GATEWAY_URL"
 
 # Paste the runtime key you created in Access › Keys, without showing it: don't commit it or write it to a file
@@ -111,12 +107,8 @@ $RG      = "<resource-group>"
 $GATEWAY = "<gateway>"
 $env:AI_GATEWAY_MODEL = "<model-name>"     # a callable alias, for example the one you used in lab 02
 
-# Build the management URL of the gateway's default workspace for az rest, and read the gateway's runtime URL
-$API        = "api-version=2025-09-01-preview"
-$GATEWAY_ID = az aigateway show -g $RG -n $GATEWAY --query id -o tsv
-$WS         = "https://management.azure.com$GATEWAY_ID/workspaces/default"
+# Read the gateway's runtime URL
 $env:AI_GATEWAY_URL = "https://$(az aigateway show -g $RG -n $GATEWAY --query properties.frontend.defaultHostname -o tsv)"
-Write-Host "🆔 Gateway ID: $GATEWAY_ID"
 Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
 
 # Paste the runtime key you created in Access › Keys, without showing it: don't commit it or write it to a file
@@ -150,7 +142,7 @@ then reconcile with provider billing or Azure Cost Management for financial repo
 
 ## Connect Application Insights
 
-Pick one track. Both end with the gateway exporting all three signals to an Application Insights resource named
+Pick one track. Each ends with the gateway exporting all three signals to an Application Insights resource named
 `<gateway>-insights`.
 
 <!-- track: portal | Portal -->
@@ -194,6 +186,183 @@ the denied operation.
 > **Checkpoint**
 > The **Monitoring** page shows the **Overview**, **Models**, **Tools**, **Policies**, and **Traces** tabs, with
 > **Open in Azure portal** and **Settings** in the header.
+
+</details> <!-- gh -->
+<!-- track: cli | Azure CLI -->
+<details><summary><b>⌨️ Azure CLI</b></summary> <!-- gh -->
+
+### Create the destination
+
+Create what the wizard's **New Azure Application Insights resource** creates: a Log Analytics workspace and a
+workspace-based Application Insights component, named after the gateway and in its region. `az monitor app-insights`
+comes from the `application-insights` extension, which the Azure CLI offers to install the first time.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Read the gateway's region, so that the destination lives next to it
+LOCATION="$(az aigateway show -g "$RG" -n "$GATEWAY" --query location -o tsv)"
+echo "📍 Region: $LOCATION"
+
+# Create the Log Analytics workspace that stores the spans and logs, and keep its ID for the queries
+export LAW_CUSTOMER_ID="$(az monitor log-analytics workspace create -g "$RG" -n "$GATEWAY-logs" -l "$LOCATION" \
+  --query customerId -o tsv)" &&
+  echo "📊 Log Analytics workspace $GATEWAY-logs is ready"
+
+# Create the Application Insights component on that workspace
+az monitor app-insights component create -g "$RG" -a "$GATEWAY-insights" -l "$LOCATION" --kind web \
+  --application-type web --workspace "$GATEWAY-logs" -o none &&
+  echo "📊 Application Insights $GATEWAY-insights is ready"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Read the gateway's region, so that the destination lives next to it
+$LOCATION = az aigateway show -g $RG -n $GATEWAY --query location -o tsv
+Write-Host "📍 Region: $LOCATION"
+
+# Create the Log Analytics workspace that stores the spans and logs, and keep its ID for the queries
+$LAW_CUSTOMER_ID = az monitor log-analytics workspace create -g $RG -n "$GATEWAY-logs" -l $LOCATION `
+  --query customerId -o tsv
+if ($?) { Write-Host "📊 Log Analytics workspace $GATEWAY-logs is ready" }
+
+# Create the Application Insights component on that workspace
+az monitor app-insights component create -g $RG -a "$GATEWAY-insights" -l $LOCATION --kind web `
+  --application-type web --workspace "$GATEWAY-logs" -o none
+if ($?) { Write-Host "📊 Application Insights $GATEWAY-insights is ready" }
+```
+</details> <!-- gh -->
+
+### Turn on OTLP ingestion
+
+The component reports OTLP endpoints only after you turn on ingestion into an Azure Monitor workspace. Azure then
+creates a managed resource group, `ai_<component>_<id>_managed`, with the Data Collection Rule and the Azure Monitor
+workspace for the metrics. `az monitor app-insights` has no flag for this setting, so set the component's
+`AzureMonitorWorkspaceIngestionMode` property with `az resource update`, then read the endpoints back. It takes about
+ten seconds.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Turn on OTLP ingestion, which creates the Data Collection Rule and the OTLP endpoints
+COMPONENT_ID="$(az resource update -g "$RG" -n "$GATEWAY-insights" --resource-type Microsoft.Insights/components \
+  --api-version 2020-02-02 --set properties.AzureMonitorWorkspaceIngestionMode=Enabled --query id -o tsv)" &&
+  echo "📊 OTLP ingestion is on for $GATEWAY-insights"
+
+# Read the Data Collection Rule and the OTLP endpoint of each signal from the component
+otlp() { az resource show --ids "$COMPONENT_ID" --api-version 2020-02-02 --query "properties.$1" -o tsv; }
+DCR_ID="$(otlp DataCollectionRuleResourceId)"
+METRICS_URL="$(otlp OTLPMetricsEndpoint)"
+LOGS_URL="$(otlp OTLPLogsEndpoint)"
+TRACES_URL="$(otlp OTLPTracesEndpoint)"
+echo "🆔 Data Collection Rule: ${DCR_ID##*/}"
+echo "🌐 Metrics endpoint: ${METRICS_URL%%/dataCollectionRules/*}"
+echo "🌐 Logs and traces endpoint: ${LOGS_URL%%/dataCollectionRules/*}"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Turn on OTLP ingestion, which creates the Data Collection Rule and the OTLP endpoints
+$COMPONENT_ID = az resource update -g $RG -n "$GATEWAY-insights" --resource-type Microsoft.Insights/components `
+  --api-version 2020-02-02 --set properties.AzureMonitorWorkspaceIngestionMode=Enabled --query id -o tsv
+if ($?) { Write-Host "📊 OTLP ingestion is on for $GATEWAY-insights" }
+
+# Read the Data Collection Rule and the OTLP endpoint of each signal from the component
+function otlp($name) { az resource show --ids $COMPONENT_ID --api-version 2020-02-02 --query "properties.$name" -o tsv }
+$DCR_ID      = otlp DataCollectionRuleResourceId
+$METRICS_URL = otlp OTLPMetricsEndpoint
+$LOGS_URL    = otlp OTLPLogsEndpoint
+$TRACES_URL  = otlp OTLPTracesEndpoint
+Write-Host "🆔 Data Collection Rule: $(Split-Path $DCR_ID -Leaf)"
+Write-Host "🌐 Metrics endpoint: $(($METRICS_URL -split '/dataCollectionRules/')[0])"
+Write-Host "🌐 Logs and traces endpoint: $(($LOGS_URL -split '/dataCollectionRules/')[0])"
+```
+</details> <!-- gh -->
+
+### Let the gateway publish
+
+The gateway exports with its system-assigned managed identity, which needs **Monitoring Metrics Publisher** on the
+Data Collection Rule. The wizard's **Assign Monitoring Metrics Publisher role** step does the same.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Read the gateway's managed identity, which signs the telemetry export
+PRINCIPAL_ID="$(az aigateway show -g "$RG" -n "$GATEWAY" --query identity.principalId -o tsv)"
+echo "👤 Gateway identity: $PRINCIPAL_ID"
+
+# Let the identity publish to the Data Collection Rule
+az role assignment create --assignee-object-id "$PRINCIPAL_ID" --assignee-principal-type ServicePrincipal \
+  --role "Monitoring Metrics Publisher" --scope "$DCR_ID" -o none &&
+  echo "🔐 The gateway can publish to the Data Collection Rule"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Read the gateway's managed identity, which signs the telemetry export
+$PRINCIPAL_ID = az aigateway show -g $RG -n $GATEWAY --query identity.principalId -o tsv
+Write-Host "👤 Gateway identity: $PRINCIPAL_ID"
+
+# Let the identity publish to the Data Collection Rule
+az role assignment create --assignee-object-id $PRINCIPAL_ID --assignee-principal-type ServicePrincipal `
+  --role "Monitoring Metrics Publisher" --scope $DCR_ID -o none
+if ($?) { Write-Host "🔐 The gateway can publish to the Data Collection Rule" }
+```
+</details> <!-- gh -->
+
+### Create the telemetry exporter
+
+`az aigateway telemetry-exporter create` creates what the wizard's **Create telemetry exporter** step creates: an
+exporter named `appinsights`, of kind `OpenTelemetry`, that sends each signal to its OTLP endpoint with the gateway's
+managed identity. `--telemetry` adds the recommended token claims: `tid` and `oid` on every signal, and `appid` and
+`azp` on logs and traces.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Export metrics, logs, and traces to the component's OTLP endpoints, signed with the gateway's managed identity
+az aigateway telemetry-exporter create -g "$RG" --gateway-name "$GATEWAY" -n appinsights --kind OpenTelemetry \
+  --application-insights "{resourceId:'$COMPONENT_ID'}" --payload-capture false \
+  --open-telemetry "{metricsEndpoint:'$METRICS_URL',logsEndpoint:'$LOGS_URL',tracesEndpoint:'$TRACES_URL',credentials:{managedIdentity:{resource:'https://monitor.azure.com'}}}" \
+  --telemetry "{attributes:[{source:{kind:claims,value:tid},signals:[logs,traces,metrics]},{source:{kind:claims,value:oid},signals:[logs,traces,metrics]},{source:{kind:claims,value:appid},signals:[logs,traces]},{source:{kind:claims,value:azp},signals:[logs,traces]}]}" \
+  -o none &&
+  echo "📊 Telemetry exporter appinsights sends metrics, logs, and traces to $GATEWAY-insights"
+
+# List the gateway's telemetry exporters, with the kind of each one
+echo "📊 Telemetry exporters on $GATEWAY:"
+az aigateway telemetry-exporter list -g "$RG" --gateway-name "$GATEWAY" --query "[].{name:name, kind:properties.kind}" -o table
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Export metrics, logs, and traces to the component's OTLP endpoints, signed with the gateway's managed identity
+az aigateway telemetry-exporter create -g $RG --gateway-name $GATEWAY -n appinsights --kind OpenTelemetry `
+  --application-insights "{resourceId:'$COMPONENT_ID'}" --payload-capture false `
+  --open-telemetry "{metricsEndpoint:'$METRICS_URL',logsEndpoint:'$LOGS_URL',tracesEndpoint:'$TRACES_URL',credentials:{managedIdentity:{resource:'https://monitor.azure.com'}}}" `
+  --telemetry "{attributes:[{source:{kind:claims,value:tid},signals:[logs,traces,metrics]},{source:{kind:claims,value:oid},signals:[logs,traces,metrics]},{source:{kind:claims,value:appid},signals:[logs,traces]},{source:{kind:claims,value:azp},signals:[logs,traces]}]}" `
+  -o none
+if ($?) { Write-Host "📊 Telemetry exporter appinsights sends metrics, logs, and traces to $GATEWAY-insights" }
+
+# List the gateway's telemetry exporters, with the kind of each one
+Write-Host "📊 Telemetry exporters on ${GATEWAY}:"
+az aigateway telemetry-exporter list -g $RG --gateway-name $GATEWAY --query "[].{name:name, kind:properties.kind}" -o table
+```
+</details> <!-- gh -->
+
+To change the exporter later, such as to turn on `--payload-capture`, run `az aigateway telemetry-exporter update`
+with the same name and only the settings that change.
+
+> **Checkpoint**
+> The list shows one exporter, `appinsights`, of kind `OpenTelemetry`. In the portal, the gateway's **Monitoring**
+> page shows the **Overview**, **Models**, **Tools**, **Policies**, and **Traces** tabs.
 
 </details> <!-- gh -->
 <!-- track: iac | Bicep + azd -->
@@ -622,9 +791,7 @@ the gateway, so that it never shows on screen. The last command lists the gatewa
 export RG="$(azd env get-value AZURE_RESOURCE_GROUP)"
 export GATEWAY="$(azd env get-value AI_GATEWAY_NAME)"
 export AI_GATEWAY_MODEL="$(azd env get-value AI_GATEWAY_MODEL)"
-export API="api-version=2025-09-01-preview"
 export GATEWAY_ID="$(azd env get-value AI_GATEWAY_ID)"
-export WS="https://management.azure.com$GATEWAY_ID/workspaces/default"
 export AI_GATEWAY_URL="$(azd env get-value AI_GATEWAY_URL)"
 export LAW_CUSTOMER_ID="$(azd env get-value LOG_ANALYTICS_CUSTOMER_ID)"
 echo "📝 Gateway $GATEWAY in $RG"
@@ -637,9 +804,9 @@ export AI_GATEWAY_API_KEY="$(az aigateway api-key list-secrets --ids "$GATEWAY_I
   --query primaryKey --output tsv)"
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 
-# List the gateway's telemetry exporters with az rest, because the aigateway extension doesn't manage them yet
+# List the gateway's telemetry exporters, with the kind of each one
 echo "📊 Telemetry exporters on $GATEWAY:"
-az rest --url "$WS/telemetryExporters?$API" --query "value[].{name:name, kind:properties.kind}" -o table
+az aigateway telemetry-exporter list -g "$RG" --gateway-name "$GATEWAY" --query "[].{name:name, kind:properties.kind}" -o table
 ```
 </details> <!-- gh -->
 
@@ -650,9 +817,7 @@ az rest --url "$WS/telemetryExporters?$API" --query "value[].{name:name, kind:pr
 $RG                     = azd env get-value AZURE_RESOURCE_GROUP
 $GATEWAY                = azd env get-value AI_GATEWAY_NAME
 $env:AI_GATEWAY_MODEL   = azd env get-value AI_GATEWAY_MODEL
-$API                    = "api-version=2025-09-01-preview"
 $GATEWAY_ID             = azd env get-value AI_GATEWAY_ID
-$WS                     = "https://management.azure.com$GATEWAY_ID/workspaces/default"
 $env:AI_GATEWAY_URL     = azd env get-value AI_GATEWAY_URL
 $LAW_CUSTOMER_ID        = azd env get-value LOG_ANALYTICS_CUSTOMER_ID
 Write-Host "📝 Gateway $GATEWAY in $RG"
@@ -665,9 +830,9 @@ $env:AI_GATEWAY_API_KEY = az aigateway api-key list-secrets --ids "$GATEWAY_ID/a
   --query primaryKey --output tsv
 Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) characters, not shown)"
 
-# List the gateway's telemetry exporters with az rest, because the aigateway extension doesn't manage them yet
+# List the gateway's telemetry exporters, with the kind of each one
 Write-Host "📊 Telemetry exporters on ${GATEWAY}:"
-az rest --url "$WS/telemetryExporters?$API" --query "value[].{name:name, kind:properties.kind}" -o table
+az aigateway telemetry-exporter list -g $RG --gateway-name $GATEWAY --query "[].{name:name, kind:properties.kind}" -o table
 ```
 </details> <!-- gh -->
 
@@ -949,7 +1114,7 @@ On GitHub, open [infra/queries.kql](infra/queries.kql).
 
 To run a query from the command line instead, pass the workspace's customer ID to
 `az monitor log-analytics query`. The command comes from the `log-analytics` extension, which the Azure CLI offers to
-install the first time. On the Bicep + azd track, `LAW_CUSTOMER_ID` already holds the ID. Otherwise, set it to the
+install the first time. On the Azure CLI and Bicep + azd tracks, `LAW_CUSTOMER_ID` already holds the ID. Otherwise, set it to the
 **Workspace ID** on the workspace's **Overview** page. This short query counts the model calls of the last hour by
 alias and status code:
 
@@ -997,15 +1162,14 @@ with **1H** selected. **Model calls** grows by at least five.
 Open **Settings**. All three signals point at your Application Insights resource, and the dashboard doesn't show
 "Enable all telemetry signals".
 
-To check the exporter from the CLI, list the gateway's telemetry exporters. The `aigateway` extension doesn't
-manage telemetry exporters yet, so call the Azure Resource Manager REST API with `az rest`:
+To check the exporter from the CLI, list the gateway's telemetry exporters:
 
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
 # List the gateway's telemetry exporters, with the kind of each one
 echo "📊 Telemetry exporters on $GATEWAY:"
-az rest --url "$WS/telemetryExporters?$API" --query "value[].{name:name, kind:properties.kind}" -o table
+az aigateway telemetry-exporter list -g "$RG" --gateway-name "$GATEWAY" --query "[].{name:name, kind:properties.kind}" -o table
 ```
 </details> <!-- gh -->
 
@@ -1014,11 +1178,11 @@ az rest --url "$WS/telemetryExporters?$API" --query "value[].{name:name, kind:pr
 ```powershell title="PowerShell"
 # List the gateway's telemetry exporters, with the kind of each one
 Write-Host "📊 Telemetry exporters on ${GATEWAY}:"
-az rest --url "$WS/telemetryExporters?$API" --query "value[].{name:name, kind:properties.kind}" -o table
+az aigateway telemetry-exporter list -g $RG --gateway-name $GATEWAY --query "[].{name:name, kind:properties.kind}" -o table
 ```
 </details> <!-- gh -->
 
-The exporter that the portal and the Bicep + azd track create has kind `OpenTelemetry`. Kind `applicationInsights` is the legacy exporter
+The exporter that every track creates has kind `OpenTelemetry`. Kind `applicationInsights` is the legacy exporter
 from [Troubleshooting](../TROUBLESHOOTING.md#lab-13-monitoring).
 
 <!-- /steps -->
@@ -1055,6 +1219,45 @@ doesn't delete the destination.
 In the [Azure portal](https://portal.azure.com), delete the `<gateway>-insights` Application Insights resource and its
 Log Analytics workspace if nothing else uses them. Enabling OTLP can also create an Azure Monitor workspace and a
 Data Collection Rule for the metrics. Check the resource group for them and delete them if they're unused.
+
+</details> <!-- gh -->
+<!-- track: cli | Azure CLI -->
+<details><summary><b>⌨️ Azure CLI</b></summary> <!-- gh -->
+
+### Delete the exporter and the destination
+
+Delete the exporter first, so that the gateway stops exporting, then the component and the workspace. Azure deletes
+the component's managed resource group, with the Data Collection Rule, along with the component.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Stop the export by deleting the gateway's telemetry exporter
+az aigateway telemetry-exporter delete -g "$RG" --gateway-name "$GATEWAY" -n appinsights --yes &&
+  echo "🚮 Telemetry exporter appinsights is deleted"
+
+# Delete the Application Insights component and the Log Analytics workspace, without a recovery period
+az monitor app-insights component delete -g "$RG" -a "$GATEWAY-insights" &&
+  echo "🚮 Application Insights $GATEWAY-insights is deleted"
+az monitor log-analytics workspace delete -g "$RG" -n "$GATEWAY-logs" --force --yes &&
+  echo "🚮 Log Analytics workspace $GATEWAY-logs is deleted"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Stop the export by deleting the gateway's telemetry exporter
+az aigateway telemetry-exporter delete -g $RG --gateway-name $GATEWAY -n appinsights --yes
+if ($?) { Write-Host "🚮 Telemetry exporter appinsights is deleted" }
+
+# Delete the Application Insights component and the Log Analytics workspace, without a recovery period
+az monitor app-insights component delete -g $RG -a "$GATEWAY-insights"
+if ($?) { Write-Host "🚮 Application Insights $GATEWAY-insights is deleted" }
+az monitor log-analytics workspace delete -g $RG -n "$GATEWAY-logs" --force --yes
+if ($?) { Write-Host "🚮 Log Analytics workspace $GATEWAY-logs is deleted" }
+```
+</details> <!-- gh -->
 
 </details> <!-- gh -->
 <!-- track: iac | Bicep + azd -->

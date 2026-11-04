@@ -4,7 +4,7 @@ summary: Apply a baseline of token limit, request rate limit, content safety, an
 category: governance
 level: Intermediate
 duration: 25
-tracks: [portal, rest, iac]
+tracks: [portal, cli, iac]
 order: 9
 illustration: diagrams/policy-scopes.svg
 tags: [Gateway scope, baseline, tokenLimit, requestRateLimit, contentSafety, ipFilter, "403", policy as code]
@@ -28,7 +28,7 @@ prereqs:
 
 | ⏱️ Time | 📶 Level | 🧭 Tracks | ✅ Before you start |
 | :-- | :-- | :-- | :-- |
-| 25 min | Intermediate | Portal · REST API · Policy as code | [06 · Token limits](../06-token-limits/README.md)<br>[08 · Content safety](../08-content-safety/README.md) |
+| 25 min | Intermediate | Portal · Azure CLI · Policy as code | [06 · Token limits](../06-token-limits/README.md)<br>[08 · Content safety](../08-content-safety/README.md) |
 
 **You'll learn to**
 
@@ -169,9 +169,9 @@ protection can't be set at Gateway scope; it applies to individual MCP servers.
 
 ## Apply the baseline
 
-Pick one track. Each track creates the same four policies at **Gateway** scope. The `aigateway` extension
-doesn't set Gateway scope policies yet, so both scripted tracks call the Azure Resource Manager REST API with
-`az rest` against the gateway's `default` workspace.
+Pick one track. Each track creates the same four policies at **Gateway** scope. The Azure CLI track sets them
+with one `az aigateway policy set` command. The Policy as code track keeps them in a reviewed file and applies
+the whole file with a script.
 
 <!-- track: portal | Portal -->
 <details open><summary><b>🖥️ Portal</b></summary> <!-- gh -->
@@ -230,69 +230,27 @@ before you select **Create**.
 > **Content safety**, and **IP filter**.
 
 </details> <!-- gh -->
-<!-- track: rest | REST API -->
-<details><summary><b>🔗 REST API</b></summary> <!-- gh -->
+<!-- track: cli | Azure CLI -->
+<details><summary><b>⌨️ Azure CLI</b></summary> <!-- gh -->
 
-### Read the Gateway scope policies
+### Set the baseline
 
-Gateway scope policies live inline in the `properties.policies` array of the gateway's `default` workspace.
-A `PATCH` **replaces the whole array**, so always read it first and keep the policies you didn't mean to
-change.
-
-<details open><summary>Bash</summary> <!-- gh -->
-
-```bash title="Bash"
-# Read your subscription ID, and build the management URL of the gateway's default workspace
-SUB="$(az account show --query id -o tsv)"
-URL="https://management.azure.com/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.ApiManagement/aigateways/$GATEWAY/workspaces/default?api-version=2025-09-01-preview"
-echo "🆔 Subscription: $SUB"
-
-# Read the Gateway scope policies, so that you know what the merge must keep
-echo "🔐 Gateway scope policies on $GATEWAY:"
-az rest --method get --url "$URL" --query properties.policies
-```
-</details> <!-- gh -->
-
-<details><summary>PowerShell</summary> <!-- gh -->
-
-```powershell title="PowerShell"
-# Read your subscription ID, and build the management URL of the gateway's default workspace
-$SUB = az account show --query id -o tsv
-$URL = "https://management.azure.com/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.ApiManagement/aigateways/$GATEWAY/workspaces/default`?api-version=2025-09-01-preview"
-Write-Host "🆔 Subscription: $SUB"
-
-# Read the Gateway scope policies, so that you know what the merge must keep
-Write-Host "🔐 Gateway scope policies on ${GATEWAY}:"
-az rest --method get --url $URL --query properties.policies
-```
-</details> <!-- gh -->
-
-### Merge the baseline and keep everything else
-
-The baseline replaces any existing policy of the same four types and keeps every other entry, such as a
-Gateway scope cost limit.
+`az aigateway policy set` creates or updates all four policies at **Gateway** scope in one call. It replaces a
+policy of the same type and keeps every other Gateway scope policy, such as a cost limit. `--allowed-ips` takes a
+list in brackets, so the command removes any spaces from your ranges.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# Build the four baseline policies, with your ranges in the IP filter
-BASELINE="$(jq -cn --arg cidrs "$ALLOWED_CIDRS" '[
-  {"type":"tokenLimit","count":100000,"period":"minute","counterKey":["identity"],"scope":"workspace"},
-  {"type":"requestRateLimit","callsPerPeriod":600,"periodSeconds":60,"counterKey":["identity"],"scope":"workspace"},
-  {"type":"contentSafety","hateSeverity":"Medium","violenceSeverity":"Medium","sexualSeverity":"Medium","selfHarmSeverity":"Medium"},
-  {"type":"ipFilter","action":"Allow","cidrRanges":($cidrs | split(",") | map(gsub("\\s"; "")) | map(select(length > 0)))}
-]')"
+# Check the ranges that the IP filter will allow
+echo "🔐 IP filter allows: $ALLOWED_CIDRS"
 
-# Check the allowed ranges before you apply
-echo "🔐 IP filter in the baseline:"
-jq '.[] | select(.type == "ipFilter")' <<<"$BASELINE"
-
-# Read the policies, drop any policy of the four baseline types, and add the baseline
-POLICIES="$(az rest --method get --url "$URL" | jq -c --argjson baseline "$BASELINE" '
-  [(.properties.policies // [])[] | select(.type | IN($baseline[].type) | not)] + $baseline')"
-
-# Send the merged array back: a PATCH replaces the whole policies array
-az rest --method patch --url "$URL" --body "{\"properties\":{\"policies\":$POLICIES}}" --output none &&
+# Set the token limit, request rate limit, content safety, and IP filter at Gateway scope
+az aigateway policy set -g "$RG" --gateway-name "$GATEWAY" --output none \
+  --token-limit 100000 --token-period minute --token-counter-key Identity \
+  --rate-limit 600 --period-seconds 60 --rate-counter-key Identity \
+  --content-safety Medium \
+  --action Allow --allowed-ips "[${ALLOWED_CIDRS// /}]" &&
   echo "🔐 Baseline of four policies is on $GATEWAY at Gateway scope"
 ```
 </details> <!-- gh -->
@@ -300,42 +258,61 @@ az rest --method patch --url "$URL" --body "{\"properties\":{\"policies\":$POLIC
 <details><summary>PowerShell</summary> <!-- gh -->
 
 ```powershell title="PowerShell"
-# Build the four baseline policies, with your ranges in the IP filter
-$baseline = @(
-  [pscustomobject]@{ type = 'tokenLimit'; count = 100000; period = 'minute'; counterKey = @('identity'); scope = 'workspace' }
-  [pscustomobject]@{ type = 'requestRateLimit'; callsPerPeriod = 600; periodSeconds = 60; counterKey = @('identity'); scope = 'workspace' }
-  [pscustomobject]@{ type = 'contentSafety'; hateSeverity = 'Medium'; violenceSeverity = 'Medium'; sexualSeverity = 'Medium'; selfHarmSeverity = 'Medium' }
-  [pscustomobject]@{ type = 'ipFilter'; action = 'Allow'; cidrRanges = @($env:ALLOWED_CIDRS -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ }) }
-)
+# Check the ranges that the IP filter will allow
+Write-Host "🔐 IP filter allows: $env:ALLOWED_CIDRS"
 
-# Check the allowed ranges before you apply
-Write-Host "🔐 IP filter in the baseline:"
-$baseline | Where-Object type -eq 'ipFilter' | ConvertTo-Json
-
-# Read the policies, drop any policy of the four baseline types, and add the baseline
-$current  = az rest --method get --url $URL | ConvertFrom-Json
-$policies = @($current.properties.policies | Where-Object { $_ -and $_.type -notin $baseline.type })
-$policies += $baseline
-
-# Send the merged array back from a file, which keeps the JSON quotes intact: a PATCH replaces the whole array
-$body = @{ properties = @{ policies = $policies } } | ConvertTo-Json -Depth 10 -Compress
-$body | Set-Content -Path patch.json
-az rest --method patch --url $URL --body '@patch.json' --output none
+# Set the token limit, request rate limit, content safety, and IP filter at Gateway scope
+az aigateway policy set -g $RG --gateway-name $GATEWAY --output none `
+  --token-limit 100000 --token-period minute --token-counter-key Identity `
+  --rate-limit 600 --period-seconds 60 --rate-counter-key Identity `
+  --content-safety Medium `
+  --action Allow --allowed-ips "[$($env:ALLOWED_CIDRS -replace '\s')]"
 if ($?) { Write-Host "🔐 Baseline of four policies is on $GATEWAY at Gateway scope" }
-Remove-Item patch.json
 ```
 </details> <!-- gh -->
 
+### Review the Gateway scope policies
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# List every policy at Gateway scope, one per line
+echo "🔐 Gateway scope policies on $GATEWAY:"
+az aigateway policy list -g "$RG" --gateway-name "$GATEWAY" --query "[].{Policy: type, Scope: scope}" -o table
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# List every policy at Gateway scope, one per line
+Write-Host "🔐 Gateway scope policies on ${GATEWAY}:"
+az aigateway policy list -g $RG --gateway-name $GATEWAY --query "[].{Policy: type, Scope: scope}" -o table
+```
+</details> <!-- gh -->
+
+Expected output, plus a row for every other Gateway scope policy you already had:
+
+```text
+🔐 Gateway scope policies on aigw-contoso:
+Policy            Scope
+----------------  ---------
+tokenLimit        workspace
+contentSafety     resource
+requestRateLimit  workspace
+ipFilter          resource
+```
+
 > [!NOTE]
-> When you create a token or request rate limit at **Gateway** scope, the portal writes `"scope": "workspace"`
-> into the policy object. The REST and Policy as code tracks include the same field so that every track creates
-> the same policy. `counterKey` is an array: `["identity"]` gives each API key or Entra caller its own counter.
-> If the API rejects a field, create the policy once in the portal, then copy its shape from the `GET` response.
+> Run `az aigateway policy list` without `--query` to see each policy's settings. The token and request rate
+> limits have `"counterKey": ["identity"]`, which gives each API key or Entra caller its own counter. The CLI
+> stores the IP filter action as `"allow"` in lowercase, and the portal shows it as **Allow listed IPs only**.
+> To change one policy later, use `az aigateway policy set-token-limit`, `set-rate-limit`,
+> `set-content-safety`, or `set-ip-filter`. Each keeps the other policies.
 
 > **Checkpoint**
-> Running the `GET` again returns your other policies unchanged plus `tokenLimit` and `requestRateLimit` entries
-> with `"counterKey": ["identity"]` and `"scope": "workspace"`, and `contentSafety` and `ipFilter` entries
-> with your ranges in `cidrRanges`. The service adds `"scope": "resource"` to the last two.
+> `az aigateway policy list` returns `tokenLimit`, `requestRateLimit`, `contentSafety`, and `ipFilter`, with
+> your ranges in `cidrRanges`, plus any other Gateway scope policies you had.
 
 </details> <!-- gh -->
 <!-- track: iac | Policy as code -->
@@ -346,8 +323,9 @@ Remove-Item patch.json
 Gateway scope policies live on the gateway's `default` workspace. The sample Bicep templates only reference
 that workspace as `existing`. Declaring it in your own template would send a `PUT` that replaces the whole
 workspace resource, including settings that the template doesn't list. Instead, keep the baseline in a policy
-file that goes through code review, and apply it with a script that does the same `GET`, merge, and `PATCH` as
-the REST track.
+file that goes through code review, and apply it with a script. The `az aigateway policy` commands set policies
+from flags, so the script reads the workspace's `properties.policies` array with `az rest`, merges the file
+into it, and writes the array back.
 
 ### Review the policy file
 
@@ -441,7 +419,7 @@ if ($?) { Write-Host "🔐 Baseline of four policies is on $GATEWAY at Gateway s
 <!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
 📄 [`infra/apply-baseline.sh`](infra/apply-baseline.sh)
 
-<details><summary>Show all 78 lines</summary>
+<details><summary>Show all 79 lines</summary>
 
 ```sh
 #!/usr/bin/env bash
@@ -493,7 +471,8 @@ if [ "$MODE" != "remove" ] && jq -e 'any(.[]; .type == "ipFilter")' >/dev/null <
   fi
 fi
 
-# The aigateway extension doesn't set Gateway scope policies yet, so the script calls the REST API with az rest.
+# The az aigateway policy commands set policies from flags, so to apply the whole file the script calls the
+# management API with az rest.
 GATEWAY_ID="$(az aigateway show -g "$RG" -n "$GATEWAY" --query id -o tsv)"
 URL="https://management.azure.com$GATEWAY_ID/workspaces/default?api-version=2025-09-01-preview"
 
@@ -587,7 +566,13 @@ Reply:  A gateway-wide policy baseline is a default set of rules that applies to
 ```
 
 Your call passed all four baseline policies: your IP address is on the allow list, you're far below both rate
-limits, and the prompt is benign. If you completed
+limits, and the prompt is benign.
+
+> [!WARNING]
+> If `check-call` keeps returning `403`, the gateway sees a different public IP address than `api.ipify.org`
+> reported. A VPN, a corporate proxy, or a client such as Global Secure Access can send your Azure traffic
+> through another egress address. Add your organization's egress ranges to `ALLOWED_CIDRS` and apply the
+> baseline again, or run the lab from Azure Cloud Shell, where both addresses match. If you completed
 [Federate MCP tools behind one endpoint](../04-federate-mcp-tools/README.md), run
 `../04-federate-mcp-tools/infra/list-tools.sh learn` (PowerShell:
 `../04-federate-mcp-tools/infra/list-tools.ps1 -Server learn`). The MCP server is covered by the same IP
@@ -624,7 +609,7 @@ Then send a burst with the script from lab 06:
 
 ```bash title="Bash"
 # Send a burst of eight requests with the script from lab 06
-echo "🚦 Expect 429 Too Many Requests after three or four requests:"
+echo "🚦 Expect 429 Too Many Requests once the 1,000-token allowance runs out:"
 ../06-token-limits/infra/trigger-token-limit.sh "$AI_GATEWAY_MODEL" 8
 ```
 </details> <!-- gh -->
@@ -633,13 +618,15 @@ echo "🚦 Expect 429 Too Many Requests after three or four requests:"
 
 ```powershell title="PowerShell"
 # Send a burst of eight requests with the script from lab 06
-Write-Host "🚦 Expect 429 Too Many Requests after three or four requests:"
+Write-Host "🚦 Expect 429 Too Many Requests once the 1,000-token allowance runs out:"
 ../06-token-limits/infra/trigger-token-limit.ps1 -Model $env:AI_GATEWAY_MODEL -Requests 8
 ```
 </details> <!-- gh -->
 
-After three or four requests, the gateway returns `429`. The baseline allows 100,000 tokens per minute, but the
-model's tighter limit is evaluated too, and it blocks. Remove the model limit and run the burst again:
+Once the 1,000-token allowance runs out, usually after four to six requests, the gateway returns `429`. A fast
+burst can go a few hundred tokens past the budget before the first `429`. The baseline allows 100,000 tokens per
+minute, but the model's tighter limit is evaluated too, and it blocks. If every request returns `200`, wait a
+minute for the new limit to reach the gateway and run the burst again. Remove the model limit and run the burst again:
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -669,13 +656,16 @@ Point the allow list at a documentation address that can't be yours, call the mo
 
 - **Portal:** in **Policies**, select **Edit** on the **IP filter** policy, set the ranges to
   `203.0.113.10/32`, and save.
+- **Azure CLI:** `az aigateway policy set-ip-filter -g "$RG" --gateway-name "$GATEWAY" --action Allow --allowed-ips "[203.0.113.10/32]" --output none`
 - **Script (Bash):** `ALLOWED_CIDRS="203.0.113.10/32" ./infra/apply-baseline.sh`
 - **Script (PowerShell):** `./infra/apply-baseline.ps1 -ResourceGroup $RG -Gateway $GATEWAY -AllowedCidrs "203.0.113.10/32"`
 
-Run `check-call` again. It now returns `Status: 403`, and the request never reaches the model. Restore your
-range in the portal, or run the script again without the override (`./infra/apply-baseline.sh`, or the
-PowerShell script without `-AllowedCidrs`), and check that `check-call` returns `200`. If you still see the old
-result, wait a minute and retry.
+Wait about a minute, then run `check-call` again. It now returns `Status: 403`, and the request never reaches
+the model. Restore your range in the portal, with the same `set-ip-filter` command and
+`--allowed-ips "[${ALLOWED_CIDRS// /}]"`, or by running the script again without the override
+(`./infra/apply-baseline.sh`, or the PowerShell script without `-AllowedCidrs`). Then check that `check-call`
+returns `200`. Policy changes take up to a minute to reach the gateway, so if you still see the old result, wait
+and retry.
 
 ### Watch outcomes in Monitoring
 
@@ -718,22 +708,32 @@ Select **Policies**. For each of the four policies with **Gateway** scope, selec
 **IP filter** first.
 
 </details> <!-- gh -->
-<!-- track: rest | REST API -->
-<details><summary><b>🔗 REST API</b></summary> <!-- gh -->
+<!-- track: cli | Azure CLI -->
+<details><summary><b>⌨️ Azure CLI</b></summary> <!-- gh -->
 
 ### Remove the baseline
 
-```bash
-# Read the Gateway scope policies and drop the four baseline types, so that the others stay
-POLICIES="$(az rest --method get --url "$URL" | jq -c '[(.properties.policies // [])[]
-  | select(.type | IN("tokenLimit","requestRateLimit","contentSafety","ipFilter") | not)]')"
+<details open><summary>Bash</summary> <!-- gh -->
 
-# Send the remaining policies back: a PATCH replaces the whole policies array
-az rest --method patch --url "$URL" --body "{\"properties\":{\"policies\":$POLICIES}}" --output none &&
+```bash title="Bash"
+# Remove the four baseline policies from Gateway scope, and keep every other policy
+az aigateway policy remove -g "$RG" --gateway-name "$GATEWAY" --output none \
+  --remove-token-limit true --remove-rate-limit true --remove-content-safety true --remove-ip-filter true &&
   echo "🚮 Baseline is removed from $GATEWAY"
 ```
+</details> <!-- gh -->
 
-Every other Gateway scope policy stays.
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Remove the four baseline policies from Gateway scope, and keep every other policy
+az aigateway policy remove -g $RG --gateway-name $GATEWAY --output none `
+  --remove-token-limit true --remove-rate-limit true --remove-content-safety true --remove-ip-filter true
+if ($?) { Write-Host "🚮 Baseline is removed from $GATEWAY" }
+```
+</details> <!-- gh -->
+
+Every other Gateway scope policy, such as a cost limit, stays.
 
 </details> <!-- gh -->
 <!-- track: iac | Policy as code -->

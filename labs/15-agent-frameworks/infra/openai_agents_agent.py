@@ -1,6 +1,6 @@
 """An OpenAI Agents SDK agent whose model and MCP tool calls both go through AI Gateway.
 
-The agent uses the Chat Completions model class with an AsyncOpenAI client pointed at the gateway's
+The agent uses the Responses model class with an AsyncOpenAI client pointed at the gateway's
 OpenAI-compatible endpoint, and an MCP server connection to the gateway's MCP endpoint. The client sends the runtime
 key as its API key, and the MCP connection sends it in the api-key header.
 
@@ -13,7 +13,7 @@ import asyncio
 import os
 import sys
 
-from agents import Agent, OpenAIChatCompletionsModel, Runner, set_tracing_disabled
+from agents import Agent, OpenAIResponsesModel, Runner, set_tracing_disabled
 from agents.mcp import MCPServerStreamableHttp
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
@@ -60,7 +60,7 @@ async def main() -> None:
         agent = Agent(
             name="docs-agent",
             instructions=INSTRUCTIONS,
-            model=OpenAIChatCompletionsModel(model=model, openai_client=client),
+            model=OpenAIResponsesModel(model=model, openai_client=client),
             mcp_servers=[mcp_server],
         )
         print(f"Model {model} and MCP server {server} through {gateway_url}\n")

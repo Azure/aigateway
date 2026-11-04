@@ -31,7 +31,7 @@ param principalId string = ''
 @description('Extra tags merged into the default tags on every resource group and resource.')
 param tags object = {}
 
-@description('Gateway name, max 24 characters. Defaults to aigw-<token>. It becomes https://<name>.<region>-01.ai.gateway.azure.com.')
+@description('Gateway name, max 24 characters. Defaults to aigw-<token>. Its first 10 characters start the runtime host name.')
 param aiGatewayName string = ''
 
 @description('Foundry model name to deploy.')

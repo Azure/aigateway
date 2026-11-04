@@ -1,4 +1,4 @@
-// Provisions an Azure AI Gateway (Microsoft.ApiManagement/aigateways) in the Consumption SKU with a
+// Provisions an Azure AI Gateway (Microsoft.ApiManagement/aigateways) in the Standard SKU with a
 // system-assigned managed identity, then the companion connector gateway (Microsoft.Web/connectorGateways)
 // with the same name. This follows the AI Gateway reference sample:
 // https://github.com/Azure-Samples/simple-foundry-hosted-agent-python-aigateway/blob/main/infra/ai-gateway/main.bicep
@@ -29,7 +29,7 @@ resource aiGateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' = {
     type: 'SystemAssigned'
   }
   sku: {
-    name: 'Consumption'
+    name: 'Standard'
   }
   properties: empty(backendSubnetId) ? {} : { backend: { subnet: { id: backendSubnetId } } }
 }

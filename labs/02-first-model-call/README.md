@@ -385,10 +385,11 @@ To publish more deployments, repeat this step and the next one for each name tha
 returns.
 
 > [!TIP]
-> `az aigateway model create --foundry-resource-id "$FOUNDRY_ID" --deployment "$DEPLOYMENT"` does the last three
-> steps in one command, like the portal import: it grants the gateway's identity **Foundry User** on the account,
-> creates a provider named after the account, and registers the deployment. You can run it again safely. It doesn't
-> publish an alias, so you still run the next step. This lab creates each piece itself so you see how they fit together.
+> `az aigateway model-provider create -g "$RG" --gateway-name "$GATEWAY" -n "$PROVIDER" --foundry-resource-id "$FOUNDRY_ID"`
+> does the last three steps in one command for every deployment in the account, like the portal import: it grants
+> the gateway's identity **Foundry User** on the account, creates the provider, and registers each deployment. You
+> can run it again safely. It doesn't publish an alias, so you still run the next step. The
+> [quick start](../quickstart/README.md) uses it. This lab creates each piece itself so you see how they fit together.
 
 ### Publish an alias
 
@@ -432,13 +433,13 @@ matters when two people create the same alias at the same time.
 ### Create a runtime API key
 
 `api-key create` returns metadata only. Read the generated value with `list-secrets` straight into a variable so
-it never appears on screen. The service assigns the key's display name itself, so any `--display-name` works.
+it never appears on screen.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
 # Create a runtime API key for your app, which prints its name and state but not its value
-az aigateway api-key create -g "$RG" --gateway-name "$GATEWAY" -n app-first-call --display-name app-first-call \
+az aigateway api-key create -g "$RG" --gateway-name "$GATEWAY" -n app-first-call \
   --query "{name:name, state:properties.state}" &&
   echo "🔑 API key app-first-call is ready"
 
@@ -453,7 +454,7 @@ echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not sh
 
 ```powershell title="PowerShell"
 # Create a runtime API key for your app, which prints its name and state but not its value
-az aigateway api-key create -g $RG --gateway-name $GATEWAY -n app-first-call --display-name app-first-call `
+az aigateway api-key create -g $RG --gateway-name $GATEWAY -n app-first-call `
   --query "{name:name, state:properties.state}"
 if ($?) { Write-Host "🔑 API key app-first-call is ready" }
 
@@ -1073,15 +1074,15 @@ The script prints the HTTP status and the reply for each interface, which makes 
 # and prints the HTTP status and the model's reply for each call.
 #
 # Usage:
-#   export AI_GATEWAY_URL="https://<gateway>.eastus2-01.ai.gateway.azure.com"
-#   export AI_GATEWAY_MODEL="<model-alias>"
+#   export AI_GATEWAY_URL="<gateway-url>"
+#   export AI_GATEWAY_MODEL="<model-name>"
 #   export AI_GATEWAY_API_KEY="..."      # never commit this value
 #   ./call-model.sh ["Your prompt"]
 # Requires curl and jq.
 set -euo pipefail
 
 PROMPT="${1:-Write a one-sentence status update.}"
-: "${AI_GATEWAY_URL:?Set AI_GATEWAY_URL to https://<gateway>.eastus2-01.ai.gateway.azure.com}"
+: "${AI_GATEWAY_URL:?Set AI_GATEWAY_URL to the gateway runtime URL, for example https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com}"
 : "${AI_GATEWAY_MODEL:?Set AI_GATEWAY_MODEL to the callable model alias}"
 : "${AI_GATEWAY_API_KEY:?Set AI_GATEWAY_API_KEY to a runtime key from Access > Keys}"
 

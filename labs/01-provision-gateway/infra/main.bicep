@@ -20,7 +20,7 @@ resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
   tags: tags
 }
 
-// The lab's template: the gateway in the Consumption SKU with a system-assigned identity, then its connector gateway.
+// The lab's template: the gateway in the Standard SKU with a system-assigned identity, then its connector gateway.
 module gateway 'gateway.bicep' = {
   name: 'aigw-gateway'
   scope: rg

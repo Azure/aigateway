@@ -3,8 +3,8 @@
 # runtime API key. Only the last four characters of the key are printed.
 #
 # Usage:
-#   export AI_GATEWAY_URL="https://<gateway>.eastus2-01.ai.gateway.azure.com"
-#   export AI_GATEWAY_MODEL="<model-alias>"
+#   export AI_GATEWAY_URL="<gateway-url>"
+#   export AI_GATEWAY_MODEL="<model-name>"
 #   export AI_GATEWAY_API_KEY="..."                 # the key to test; never commit it
 #   ./check-key.sh ["label"]                        # test AI_GATEWAY_API_KEY
 #   AI_GATEWAY_API_KEY="$OLD_KEY" ./check-key.sh "old value"
@@ -12,7 +12,7 @@
 # Requires curl.
 set -euo pipefail
 
-: "${AI_GATEWAY_URL:?Set AI_GATEWAY_URL to https://<gateway>.eastus2-01.ai.gateway.azure.com}"
+: "${AI_GATEWAY_URL:?Set AI_GATEWAY_URL to the gateway runtime URL, for example https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com}"
 : "${AI_GATEWAY_MODEL:?Set AI_GATEWAY_MODEL to a callable model alias}"
 
 URL="${AI_GATEWAY_URL%/}/default/models/openai/v1/chat/completions"

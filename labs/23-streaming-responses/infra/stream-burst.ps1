@@ -3,16 +3,16 @@
 # Run it without -Usage and then with -Usage to see that a token limit counts streamed tokens either way.
 #
 # Usage (PowerShell 7.4 or later):
-#   $env:AI_GATEWAY_URL = "https://<gateway>.eastus2-01.ai.gateway.azure.com"
+#   $env:AI_GATEWAY_URL = "<gateway-url>"
 #   $env:AI_GATEWAY_API_KEY = "..."      # never commit this value
-#   ./stream-burst.ps1 -Model <model-alias> [-Requests 8] [-Usage]
+#   ./stream-burst.ps1 -Model <model-name> [-Requests 8] [-Usage]
 param(
   [Parameter(Mandatory = $true)][string]$Model,
   [int]$Requests = 8,
   [switch]$Usage
 )
 $ErrorActionPreference = 'Stop'
-if (-not $env:AI_GATEWAY_URL) { throw 'Set $env:AI_GATEWAY_URL to https://<gateway>.eastus2-01.ai.gateway.azure.com' }
+if (-not $env:AI_GATEWAY_URL) { throw 'Set $env:AI_GATEWAY_URL to the gateway runtime URL, for example https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com' }
 if (-not $env:AI_GATEWAY_API_KEY) { throw 'Set $env:AI_GATEWAY_API_KEY to a runtime key from Access > Keys' }
 
 $uri = "$($env:AI_GATEWAY_URL.TrimEnd('/'))/default/models/openai/v1/chat/completions"

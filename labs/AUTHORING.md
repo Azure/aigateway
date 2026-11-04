@@ -440,19 +440,26 @@ Keep the video optional: every step it shows must also be written in the lab.
 - Use API version `2025-09-01-preview` for `Microsoft.ApiManagement/*` resources.
 - Gateways are the dedicated `Microsoft.ApiManagement/aigateways` type, never `Microsoft.ApiManagement/service`.
   Follow the product's [reference sample](https://github.com/Azure-Samples/simple-foundry-hosted-agent-python-aigateway/blob/main/infra/ai-gateway/main.bicep), as
-  [lab 01's template](01-provision-gateway/infra/gateway.bicep) does: set `sku: { name: 'Consumption' }` (without it,
-  the gateway is created in the `Premium` SKU) and no publisher properties, then create a
+  [lab 01's template](01-provision-gateway/infra/gateway.bicep) does: set `sku: { name: 'Standard' }`, the only SKU the service
+  accepts, and no publisher properties, then create a
   `Microsoft.Web/connectorGateways` resource with the same name (API version `2026-05-01-preview`) that depends on
   the gateway. A subscription can have at most five gateways in each region.
-  Gateway names have 24 characters or fewer, and the runtime URL is `https://` plus
-  `properties.frontend.defaultHostname` (`<name>.<region>-01.ai.gateway.azure.com`).
+  Gateway names have 24 characters or fewer. The runtime URL is `https://` plus `properties.frontend.defaultHostname`: the name's first 10 characters
+  (without a trailing hyphen), a hyphen, a 13-character hash, and `.<region>-01.ai.gateway.azure.com`, for example
+  `https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com` for `aigw-labs-001`. Always read it from the
+  gateway, never build it from the name, and write it as `<gateway-url>` in commands and code.
 - Policy `counterKey` values are arrays: `counterKey: [ 'identity' ]` or `[ 'ipAddress' ]`.
-- CLI tracks use the `az aigateway` extension (1.0.0b15 or later, see
-  [Install the aigateway extension](SETUP.md#install-the-aigateway-extension)) for gateways, providers, models,
-  aliases, model policies (`model policy set-token-limit`, `set-content-safety`, `remove`), API keys (including
-  `api-key regenerate --key-type secondary`), and MCP servers. Call ARM with `az rest` only for what the extension
-  can't do yet: gateway and workspace policies, telemetry exporters, MCP versions, tool rules and `failureMode`,
-  network settings after creation, API key `state`, and the connector gateway. Say why in one sentence. Set
+- CLI tracks use the `az aigateway` extension (1.0.0b22 or later, see
+  [Install the aigateway extension](SETUP.md#install-the-aigateway-extension)) for gateways (including
+  `network update`), providers, models, aliases, model policies (`model policy set-token-limit`,
+  `set-content-safety`, `set-cost-limit`, `remove`), Gateway scope policies (`az aigateway policy`), telemetry
+  exporters, API keys (including `api-key update --state` and `api-key regenerate --key-type secondary`), and MCP
+  servers (including `mcp update --versions`). Don't pass `--sku` to `az aigateway create`: the service default,
+  `Standard`, is the only SKU it accepts. `api-key create` doesn't need `--display-name`. Create models with
+  `--deployment-config "{resourceId:…,modelName:…}"`, because `model create --foundry-resource-id --deployment`
+  crashes in 1.0.0b22, or import every deployment with `model-provider create --foundry-resource-id`. Call ARM with
+  `az rest` only for what the extension can't do yet: the connector gateway, MCP tool rules (`allowList`,
+  `blocked`, `accessState`) and `failureMode`, and writing a whole policy array from a file. Say why in one sentence. Set
   `GATEWAY_ID` with `az aigateway show`, plus `WS` (`https://management.azure.com$GATEWAY_ID/workspaces/default`)
   and `API` (`api-version=2025-09-01-preview`), only in tracks that still call `az rest`. Publish aliases with
   `model-alias set`, which creates the alias or updates it, so a step can run again. `--token-counter-key` takes one

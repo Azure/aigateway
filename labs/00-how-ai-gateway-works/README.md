@@ -75,7 +75,7 @@ This lab is a guided reading. You don't need to deploy anything.
 
 The gateway sits on the path of every model call and every tool call. It has two faces:
 
-- **Data plane**: the runtime endpoints your code calls, at `https://<gateway>.eastus2-01.ai.gateway.azure.com`.
+- **Data plane**: the runtime endpoints your code calls, at `<gateway-url>`.
 - **Control plane**: the product portal at [ai.gateway.azure.com](https://ai.gateway.azure.com) and the Azure
   Resource Manager API for the `Microsoft.ApiManagement/aigateways` resource type, which you call with the
   `az aigateway` Azure CLI extension, Bicep, or any REST client.
@@ -86,7 +86,7 @@ you can keep business APIs in API Management and send model and tool traffic thr
 
 | Building block | What it is | Example |
 |---|---|---|
-| **Gateway** | An Azure AI Gateway resource (`Microsoft.ApiManagement/aigateways`) in your subscription | `https://<gateway>.eastus2-01.ai.gateway.azure.com` |
+| **Gateway** | An Azure AI Gateway resource (`Microsoft.ApiManagement/aigateways`) in your subscription | `<gateway-url>` |
 | **Backend model** | A model at a provider, such as a Foundry deployment or an Anthropic model | `gpt-6-luna` at Microsoft Foundry |
 | **Alias** | The stable, gateway-wide name clients send in the `model` field | `chat` |
 | **MCP server** | One governed MCP endpoint that federates tools from one or more sources | `/default/toolservers/<server-name>/mcp` |

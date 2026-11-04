@@ -4,7 +4,7 @@
 # Requires PowerShell 7 or later.
 #
 # Usage:
-#   $env:AI_GATEWAY_URL = "https://<gateway>.eastus2-01.ai.gateway.azure.com"
+#   $env:AI_GATEWAY_URL = "<gateway-url>"
 #   ./call-protected-tool.ps1 -Auth token [-Server learn] [-Query "..."]   # delegated Entra token for the signed-in az user
 #   ./call-protected-tool.ps1 -Auth key   [-Server learn] [-Query "..."]   # runtime key in $env:AI_GATEWAY_API_KEY
 #
@@ -19,7 +19,7 @@ param(
   [string]$Tool
 )
 $ErrorActionPreference = 'Stop'
-if (-not $env:AI_GATEWAY_URL) { throw 'Set $env:AI_GATEWAY_URL to https://<gateway>.eastus2-01.ai.gateway.azure.com' }
+if (-not $env:AI_GATEWAY_URL) { throw 'Set $env:AI_GATEWAY_URL to the gateway runtime URL, for example https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com' }
 $uri = "$($env:AI_GATEWAY_URL.TrimEnd('/'))/default/toolservers/$Server/mcp"
 $headers = @{ Accept = 'application/json, text/event-stream' }
 

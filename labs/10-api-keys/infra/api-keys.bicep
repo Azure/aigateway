@@ -25,7 +25,7 @@ resource apiKeys 'Microsoft.ApiManagement/aigateways/apiKeys@2025-09-01-preview'
   parent: gateway
   name: name
   properties: {
-    // Like the CLI's --display-name: the service replaces it with its own, so identify keys by name.
+    // The service replaces the display name with its own, so identify keys by name.
     displayName: name
   }
 }]

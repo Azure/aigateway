@@ -181,6 +181,7 @@ const VALUE_FIELDS = [
   ['tenant-id', 'Tenant ID', '00000000-0000-0000-0000-000000000000'],
   ['resource-group', 'Resource group', 'rg-aigw-labs'],
   ['gateway', 'Gateway name', 'aigw-labs-001'],
+  ['gateway-url', 'Runtime URL', 'https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com'],
   ['location', 'Region', 'eastus2'],
   ['provider-name', 'Model provider', 'foundry'],
   ['model-name', 'Model alias', 'chat'],

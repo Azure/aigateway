@@ -99,7 +99,7 @@ Clients only ever see the gateway URL, their runtime key, and the alias. The pro
 In this lab each alias points to one backend model. To split traffic across several backend models by priority
 and weight, see [Route an alias across models by priority and weight](../22-model-routing/README.md).
 
-Each interface has its own route under `https://<gateway>.eastus2-01.ai.gateway.azure.com/default/models`:
+Each interface has its own route under `<gateway-url>/default/models`:
 
 | Interface | Route |
 |---|---|
@@ -188,7 +188,7 @@ If discovery fails or times out, you can still add the models by hand. Select **
 > **Checkpoint**
 > **Models** lists the two Claude models of the `Anthropic` provider and the aliases `support-chat` and
 > `anthropic/claude-sonnet-5-5`. Open a model: its **Overview** shows the Anthropic Messages endpoint,
-> `https://<gateway>.eastus2-01.ai.gateway.azure.com/default/models/anthropic/v1/messages`.
+> `<gateway-url>/default/models/anthropic/v1/messages`.
 
 <!-- track: cli | Azure CLI -->
 

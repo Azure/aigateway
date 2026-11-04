@@ -30,7 +30,7 @@ resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' = {
     }
   }
   sku: {
-    name: 'Consumption'
+    name: 'Standard'
   }
   properties: {}
 }

@@ -4,7 +4,7 @@
 # Every HTTP request counts as a call, including the two handshake messages.
 #
 # Usage:
-#   export AI_GATEWAY_URL="https://<gateway>.eastus2-01.ai.gateway.azure.com"
+#   export AI_GATEWAY_URL="<gateway-url>"
 #   export AI_GATEWAY_API_KEY="..."      # never commit this value
 #   ./trigger-request-rate.sh [server-name] [tools/list requests]
 #
@@ -16,7 +16,7 @@ SERVER="${1:-learn}"
 REQUESTS="${2:-8}"
 : "${AI_GATEWAY_API_KEY:?Set AI_GATEWAY_API_KEY to a runtime key from Access > Keys}"
 if [ -z "${AI_GATEWAY_MCP_ENDPOINT:-}" ]; then
-  : "${AI_GATEWAY_URL:?Set AI_GATEWAY_URL to https://<gateway>.eastus2-01.ai.gateway.azure.com}"
+  : "${AI_GATEWAY_URL:?Set AI_GATEWAY_URL to the gateway runtime URL, for example https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com}"
   AI_GATEWAY_MCP_ENDPOINT="${AI_GATEWAY_URL%/}/default/toolservers/${SERVER}/mcp"
 fi
 command -v jq >/dev/null || { echo "This script needs jq." >&2; exit 1; }

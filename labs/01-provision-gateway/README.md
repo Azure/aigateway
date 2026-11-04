@@ -136,11 +136,11 @@ are the name, the region, and the resource group.
 |---|---|
 | Resource type | `Microsoft.ApiManagement/aigateways` (API version `2025-09-01-preview`), plus `Microsoft.Web/connectorGateways` with the same name |
 | Regions | The list grows over time. List them as in [Find the available regions](../SETUP.md#find-the-available-regions) |
-| Name | 1–24 characters: letters, digits, and hyphens. It becomes the first label of the runtime host name |
-| Runtime URL | `https://` + `properties.frontend.defaultHostname`, for example `https://<gateway>.eastus2-01.ai.gateway.azure.com` |
+| Name | 1–24 characters: letters, digits, and hyphens. Its first 10 characters start the runtime host name |
+| Runtime URL | `https://` + `properties.frontend.defaultHostname`: the name's first 10 characters, a hyphen, a 13-character hash, and `.<region>-01.ai.gateway.azure.com`. A gateway named `aigw-labs-001` in East US 2 answers at a URL like `https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com`. Always read it from the gateway; you can't build it from the name |
 | Runtime routes | Models under `/default/models/…`, MCP servers under `/default/toolservers/<server>/mcp` |
 | Outbound identity | A system-assigned managed identity, used to call Foundry and other Microsoft Entra–protected backends |
-| SKU | `Consumption` or `Premium`. The labs use `Consumption`, the default of `az aigateway create --sku`, which the Bicep templates set too. A template that omits `sku` creates a `Premium` gateway |
+| SKU | `Standard`, the default for the portal, `az aigateway create`, and templates that omit `sku`. The labs use `Standard`, and their Bicep templates set it explicitly |
 | Provisioning time | A few minutes, often less |
 
 Everything you publish later lives in the gateway's `default` workspace. That's why every runtime route
@@ -170,8 +170,8 @@ gateway switcher in the top bar and start creating a new one from there.
 In **Create AI gateway**, enter a globally unique **Name** of 24 characters or fewer, or select
 **Generate a new name**. Then choose the subscription, a **Resource group** (**New** or **Existing**), and the
 **Region**. Under **Advanced**, keep **Enable system-assigned managed identity** selected, **Public network access** set to **Enabled**, and
-**Public routing**. **Private routing** connects the gateway to private backends through a virtual network and
-can only be chosen at creation. [Lab 18](../18-private-networking/README.md) covers it.
+**Public routing**. **Private routing** connects the gateway to private backends through a virtual network. You can
+also add it later under **Networking**. [Lab 18](../18-private-networking/README.md) covers it.
 
 ![What to choose in Create AI gateway: a unique name, a subscription, a resource group, and a region, with the Advanced defaults kept](../assets/diagrams/create-gateway.svg "Fill in the basics, keep the Advanced defaults, then select Create gateway.")
 
@@ -242,15 +242,15 @@ Remove-Item body.json
 
 ### Create the AI gateway
 
-`az aigateway create` only needs the name, the region, and the managed identity. `--sku` picks `Consumption`, the
-default, or `Premium`, and there's no capacity or publisher to set. The command waits until provisioning finishes,
-usually within a few minutes.
+`az aigateway create` only needs the name, the region, and the managed identity. Without `--sku`, the gateway gets
+the service's default SKU, `Standard`, like a gateway that you create in the portal. There's no capacity or
+publisher to set. The command waits until provisioning finishes, usually within a few minutes.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# Create the gateway in the Consumption SKU with a system-assigned managed identity, and wait until it's provisioned
-az aigateway create -g "$RG" -n "$GATEWAY" --location "$LOCATION" --sku Consumption --system-assigned true -o none &&
+# Create the gateway in the default Standard SKU with a system-assigned managed identity, and wait until it's ready
+az aigateway create -g "$RG" -n "$GATEWAY" --location "$LOCATION" --system-assigned true -o none &&
   echo "🚀 Gateway $GATEWAY is ready in $LOCATION"
 ```
 </details> <!-- gh -->
@@ -258,15 +258,15 @@ az aigateway create -g "$RG" -n "$GATEWAY" --location "$LOCATION" --sku Consumpt
 <details><summary>PowerShell</summary> <!-- gh -->
 
 ```powershell title="PowerShell"
-# Create the gateway in the Consumption SKU with a system-assigned managed identity, and wait until it's provisioned
-az aigateway create -g $RG -n $GATEWAY --location $LOCATION --sku Consumption --system-assigned true -o none
+# Create the gateway in the default Standard SKU with a system-assigned managed identity, and wait until it's ready
+az aigateway create -g $RG -n $GATEWAY --location $LOCATION --system-assigned true -o none
 if ($?) { Write-Host "🚀 Gateway $GATEWAY is ready in $LOCATION" }
 ```
 </details> <!-- gh -->
 
 > [!TIP]
 > Add `--no-wait` to return right away, then run `az aigateway wait -g "$RG" -n "$GATEWAY" --created` when you
-> need the gateway. To change the SKU later, run `az aigateway update -g "$RG" -n "$GATEWAY" --sku Premium`.
+> need the gateway.
 
 ### Read the runtime URL and identity
 
@@ -293,7 +293,7 @@ az aigateway show -g $RG -n $GATEWAY `
 </details> <!-- gh -->
 
 > **Checkpoint**
-> The table shows the `Consumption` SKU, `Succeeded`, a `Host` like `<gateway>.eastus2-01.ai.gateway.azure.com`,
+> The table shows the `Standard` SKU, `Succeeded`, a `Host` like `aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com`,
 > and a `PrincipalId` GUID.
 
 </details> <!-- gh -->
@@ -306,9 +306,9 @@ group and the gateway, so you don't need the variables.
 ### Review the template
 
 `infra/gateway.bicep` declares the gateway. It follows the AI Gateway [reference sample](https://github.com/Azure-Samples/simple-foundry-hosted-agent-python-aigateway/blob/main/infra/ai-gateway/main.bicep). It creates the AI gateway
-(`Microsoft.ApiManagement/aigateways`) in the `Consumption` SKU with a system-assigned identity, then a
+(`Microsoft.ApiManagement/aigateways`) in the `Standard` SKU with a system-assigned identity, then a
 `Microsoft.Web/connectorGateways` resource with the same name. There's no capacity or publisher to set. Keep both
-resources together in your own templates, and set `sku`: without it, the gateway is created in the `Premium` SKU.
+resources together in your own templates. `Standard` is also the default when a template omits `sku`.
 
 | Parameter | Description |
 |---|---|
@@ -324,7 +324,7 @@ resources together in your own templates, and set `sku`: without it, the gateway
 <details><summary>Show all 52 lines</summary>
 
 ```bicep
-// Provisions an Azure AI Gateway (Microsoft.ApiManagement/aigateways) in the Consumption SKU with a
+// Provisions an Azure AI Gateway (Microsoft.ApiManagement/aigateways) in the Standard SKU with a
 // system-assigned managed identity, then the companion connector gateway (Microsoft.Web/connectorGateways)
 // with the same name. This follows the AI Gateway reference sample:
 // https://github.com/Azure-Samples/simple-foundry-hosted-agent-python-aigateway/blob/main/infra/ai-gateway/main.bicep
@@ -355,7 +355,7 @@ resource aiGateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' = {
     type: 'SystemAssigned'
   }
   sku: {
-    name: 'Consumption'
+    name: 'Standard'
   }
   properties: empty(backendSubnetId) ? {} : { backend: { subnet: { id: backendSubnetId } } }
 }
@@ -414,7 +414,7 @@ resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
   tags: tags
 }
 
-// The lab's template: the gateway in the Consumption SKU with a system-assigned identity, then its connector gateway.
+// The lab's template: the gateway in the Standard SKU with a system-assigned identity, then its connector gateway.
 module gateway 'gateway.bicep' = {
   name: 'aigw-gateway'
   scope: rg
@@ -521,7 +521,7 @@ Write-Host "👤 Gateway identity: $(azd env get-value AI_GATEWAY_PRINCIPAL_ID)"
 
 > **Checkpoint**
 > `azd up` ended with `SUCCESS`. The commands print a runtime URL like
-> `🌐 Runtime URL: https://aigw-<suffix>.eastus2-01.ai.gateway.azure.com`, and `👤 Gateway identity:` with a
+> `🌐 Runtime URL: https://aigw-x7k2q-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com`, and `👤 Gateway identity:` with a
 > principal ID GUID.
 
 </details> <!-- gh -->

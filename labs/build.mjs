@@ -490,7 +490,7 @@ function addStepTroubleshooting(lab, html) {
     const label = [step.label, step.title].filter(Boolean).join(' › ');
     const errors = `${n} known error${n === 1 ? '' : 's'}`;
     return `<section class="step" data-step="${id}">${between}<div class="step-btns">`
-      + `<button class="step-ts" type="button" data-ts-step="${id}" data-ts-label="${escapeHtml(label)}" title="Troubleshoot this step: ${errors}, with their fixes">`
+      + `<button class="step-ts" type="button" data-ts-step="${id}" data-ts-label="${escapeHtml(label)}" title="Troubleshoot this step: ${errors}, with ${n === 1 ? 'its fix' : 'their fixes'}">`
       + `${TS_ICON}<span>Troubleshoot</span> <b>${n}</b><span class="sr-only"> known error${n === 1 ? '' : 's'} in this step</span></button>`;
   });
 }
