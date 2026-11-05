@@ -327,7 +327,7 @@ function syncSources(labs, catalog, { check = false } = {}) {
 }
 
 // Renders labs/RELEASE-NOTES.md. Each "## <date>" section is one product release: an "### <title>" heading and a
-// link to https://ai.gateway.azure.com/docs/releases/YYYY-MM-DD, then what changed in the labs.
+// link to https://ai.gateway.azure.com/docs/releases/YYYY-MM-DD, then the table that maps each change to a lab.
 async function renderReleaseNotes(site, known, rendered, guides) {
   if (!fs.existsSync(RELEASE_NOTES)) return null;
   const source = stripGitHub(fs.readFileSync(RELEASE_NOTES, 'utf8'));

@@ -566,8 +566,6 @@ as a pill on the home page. On GitHub it renders as is.
 - Under it, a table maps each product change to the lab that practices it: `| In the product | Practice it in
   the labs | Status |`, with 🆕 for a new lab, ✏️ for an updated lab, ✅ for a lab that already covered it, and
   ➖ for a change no lab covers yet. Link to the lab section (`NN-slug/README.md#anchor`) that practices it.
-- List changes to the labs under `#### Labs changes` in the newest release section at the time you make them,
-  each starting with its date in bold, newest first.
 - `npm run releases` reads the product changelog from the docs site and flags the releases the file doesn't
   mention yet, with the full text of each one's changelog entry and release page (including screenshot URLs).
   `-- --check` exits with code 1 when one is missing, `-- --page /docs/<page>` prints any product docs page,

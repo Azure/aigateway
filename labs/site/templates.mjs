@@ -565,7 +565,7 @@ export function releaseNotesPage({ rel, site, html, releases }) {
     <div class="container">
       <nav class="breadcrumb" aria-label="Breadcrumb"><a href="${rel}index.html">Home</a><span>/</span><span aria-current="page">Release notes</span></nav>
       <h1>What's new in the labs</h1>
-      <p class="lead">Every Azure AI Gateway release, and where to practice it. The labs follow the <a href="${site.docs}/releases/${releases[0]?.product || ''}" target="_blank" rel="noopener">product release notes</a>: each entry lists the new product features, the lab that covers each one, and what changed in the labs.</p>
+      <p class="lead">Every Azure AI Gateway release, and where to practice it. The labs follow the <a href="${site.docs}/releases/${releases[0]?.product || ''}" target="_blank" rel="noopener">product release notes</a>: each entry lists the new product features and the lab that covers each one.</p>
       <div class="hero-cta">
         ${releases[0] ? `<a class="btn btn-primary btn-sm rn-hero-latest" href="#${releases[0].id}" title="Latest: ${esc(releases[0].title)}">${I.sparkle}<span>Latest: ${esc(releases[0].title)}</span></a>` : ''}
         <a class="btn btn-ghost btn-sm" href="${site.repo}/blob/${site.branch}/labs/RELEASE-NOTES.md" target="_blank" rel="noopener">${I.github}View on GitHub</a>
