@@ -2,7 +2,7 @@
   "name": "ai-gateway-labs",
   "private": true,
   "version": "1.0.0",
-  "description": "Builds the Azure AI Gateway labs site (GitHub Pages, served from /docs).",
+  "description": "Builds the Azure AI Gateway labs site into /docs, which a GitHub Actions workflow publishes to GitHub Pages.",
   "type": "module",
   "scripts": {
     "build": "node build.mjs",

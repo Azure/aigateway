@@ -243,10 +243,9 @@ available regions, and cloning this repo. Each lab links to the steps it needs a
 ## Work on the labs site
 
 Each lab's `labs/<NN-slug>/README.md` is the single source of truth for both views. You write the lab once; the
-build turns it into the site in [`docs/`](../docs), which GitHub Pages serves from the `main` branch, and
-`npm run sync` adds the GitHub-only navigation, lab header, collapsible tracks, and inline code you see here. The
-generated parts sit between `<!-- gh:begin -->` and `<!-- gh:end -->` comments or end with `<!-- gh -->`; don't edit
-them, and the site ignores them.
+build turns it into the site in [`docs/`](../docs), and `npm run sync` adds the GitHub-only navigation, lab
+header, collapsible tracks, and inline code you see here. The generated parts sit between `<!-- gh:begin -->` and
+`<!-- gh:end -->` comments or end with `<!-- gh -->`; don't edit them, and the site ignores them.
 
 ```bash
 # Install the site's dependencies, once
@@ -264,6 +263,10 @@ npm run releases   # list product releases that RELEASE-NOTES.md doesn't cover y
 To publish a copy to Azure Static Web Apps (served from `/`), sign in with `az login` and run
 `npm run deploy:swa -- [app-name] [resource-group]`. It defaults to `swa-ai-gateway-labs` in `rg-ai-gateway-labs`,
 builds into the ignored `labs/.swa` folder, and deploys with the Static Web Apps CLI. `docs/` isn't touched.
+
+When a change reaches `main`, the [Publish labs site](../.github/workflows/labs-pages.yml) workflow runs
+`npm run check` and publishes the result to GitHub Pages at <https://azure.github.io/aigateway/>. You can also run
+it from the **Actions** tab.
 
 Commit both your changes under `labs/` and the regenerated `docs/` folder, and run `npm run check` before you open
 a pull request.
