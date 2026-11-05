@@ -3,7 +3,7 @@
 Create an AI Gateway, register model providers and MCP servers, and manage
 policies, keys, identities, and networking from your terminal with `az aigateway`.
 
-> Current extension release: **1.0.0b6**.
+> Current extension release: **1.0.0b22**.
 
 [Install](#install) | [Quickstart](#quickstart) | [Command reference](command-reference.md) | [AI Gateway documentation](https://aka.ms/aigateway/docs)
 
@@ -16,7 +16,7 @@ using a current Azure CLI release is recommended.
 **Bash (macOS / Linux)**
 
 ```bash
-curl -fsSL https://aka.ms/aigateway-cli-install | sh
+curl -fsSL https://aka.ms/aigateway-cli-install | bash
 ```
 
 Requires `curl` and a SHA-256 utility (`shasum` or `sha256sum`, normally
@@ -36,6 +36,12 @@ The installers download the published release, verify the wheel's SHA-256,
 and install or upgrade the `aigateway` extension. To inspect a script before
 running it, see [install.sh](install.sh) or [install.ps1](install.ps1).
 
+Running an installer again reinstalls the pinned release, including when the
+same version is already present, so a stale local build is replaced. Download
+and checksum failures leave the existing extension untouched. Once the wheel
+is verified, a same-version installation is removed before reinstalling; if
+installation fails, correct the reported error and rerun the installer.
+
 ### Verify
 
 ```bash
@@ -43,7 +49,7 @@ az aigateway version
 az aigateway --help
 ```
 
-`version` reports `extensionName: aigateway`, `extensionVersion: 1.0.0b6`,
+`version` reports `extensionName: aigateway`, `extensionVersion: 1.0.0b22`,
 and `apiVersion: 2025-09-01-preview`. Neither command needs an Azure login.
 
 ## Quickstart
@@ -87,9 +93,10 @@ az aigateway create --resource-group "$RG" --name "$GATEWAY" --location "$LOCATI
 az aigateway show --resource-group "$RG" --name "$GATEWAY" --output table
 ```
 
-Creation waits for provisioning to finish. The gateway is an Azure API Management
-resource (`Microsoft.ApiManagement/service`) with the `AIGateway` SKU; the CLI
-selects the SKU for you.
+Creation waits for provisioning to finish. The gateway is an Azure AI Gateway
+resource (`Microsoft.ApiManagement/aigateways`); omitting `--sku` lets the
+service apply its default SKU (`Standard`), or pass
+`--sku Standard|Premium|Consumption` on `create` and `update`.
 
 ### 2. Register an MCP server
 

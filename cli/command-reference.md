@@ -1,11 +1,11 @@
 # AI Gateway CLI command reference
 
-This guide covers the public command groups in **aigateway 1.0.0b6**; use your
+This guide covers the public command groups in **aigateway 1.0.0b22**; use your
 installed CLI's `--help` for the full option list and examples for each command.
 
 New to the CLI? Start with the [installation and quickstart](README.md).
 
-[Find a command](#find-a-command) | [Command groups](#command-groups) | [Arguments](#read-the-arguments) | [Model policies](#common-model-policies) | [Output and queries](#output-and-queries) | [Runtime tests](#test-models-with-additional-checks) | [Usage notes](#usage-notes)
+[Find a command](#find-a-command) | [Command groups](#command-groups) | [Arguments](#read-the-arguments) | [Model policies](#common-model-policies) | [Model aliases](#model-aliases) | [Output and queries](#output-and-queries) | [Runtime tests](#test-models-with-additional-checks) | [Usage notes](#usage-notes)
 
 ## Find a command
 
@@ -27,8 +27,7 @@ az aigateway model policy set --help
 
 Read the command summary, arguments marked `[Required]`, allowed values, and
 examples. Some commands require a choice of inputs that is explained in the
-help text rather than marked on a single argument. For example, MCP creation
-needs `--endpoints` or the optional GitHub onboarding mode.
+help text rather than marked on a single argument.
 
 To check which release you are using:
 
@@ -44,21 +43,25 @@ commands; each group and command accepts `--help`.
 | Group | Commands | Use it to |
 | --- | --- | --- |
 | Top level | `create`, `show`, `list`, `update`, `delete`, `wait`, `version` | Manage gateways and inspect the CLI version. |
-| `model-provider` | `create`, `show`, `list`, `update`, `delete` | Register model providers, including importing existing Foundry deployments. |
-| `model` | `create`, `show`, `list`, `update`, `delete` | Register and manage individual models. |
-| `model policy` | `set`, `set-token-limit`, `set-content-safety`, `list`, `remove` | Configure token limits and content safety on a model. |
+| `model-provider` | `create`, `show`, `list`, `update`, `delete`, `sync` | Register and synchronize model providers, including importing existing Foundry deployments. |
+| `model` | `create`, `show` (`get`), `list`, `update`, `delete` | Register and manage individual models. |
+| `model-alias` | `create`, `show`, `list`, `update`, `delete` | Manage callable model aliases with priority and weight routing across registered backend models. |
+| `model policy` | `set`, `set-token-limit`, `set-content-safety`, `set-cost-limit`, `list`, `remove` | Configure token limits, content safety, and cost limits on a model. |
+| `policy` | `set`, `set-token-limit`, `set-content-safety`, `set-cost-limit`, `show` (`list`), `remove` | Configure gateway-wide default policies across the default workspace. |
+| `telemetry-exporter` | `create`, `show`, `list`, `update`, `delete`, `wait` | Manage Application Insights telemetry exporters on a gateway. |
 | `mcp` | `create`, `show`, `list`, `update`, `delete`, `authorize` | Register MCP servers and start OAuth authorization where configured. |
 | `mcp source` | `add`, `list`, `remove` | Manage individual backend sources on an MCP registration. |
-| `api-key` | `create`, `show`, `list`, `delete`, `list-secrets`, `regenerate` | Manage gateway-wide client API keys. |
+| `api-key` | `create`, `show`, `list`, `update`, `delete`, `list-secrets`, `regenerate` | Manage gateway-wide client API keys. |
 | `identity` | `assign`, `show`, `remove`, `wait` | Manage identities assigned to a gateway. |
 | `network` | `show`, `update`, `wait` | Configure public access and outbound virtual network integration. |
 | `network private-endpoint-connection` | `list`, `show`, `approve`, `reject`, `delete`, `wait` | Manage gateway-side private endpoint connections. |
 
-For example, to find the options for importing a Foundry account's deployments
-through a provider:
+For example, to find the options for importing or synchronizing a Foundry
+account's deployments through a provider:
 
 ```bash
 az aigateway model-provider create --help
+az aigateway model-provider sync --help
 ```
 
 For the complete variable-based import and inspection example, see
@@ -111,15 +114,23 @@ permissions, cost considerations, and cleanup.
 | Model provider | `--resource-group "$RG" --gateway-name "$GATEWAY" --name "$PROVIDER"` |
 | API key | `--resource-group "$RG" --gateway-name "$GATEWAY" --name "$KEY_NAME"` |
 | Individual model | `--resource-group "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" --name "$MODEL"` |
+| Model alias | `--resource-group "$RG" --gateway-name "$GATEWAY" --name "$ALIAS_NAME"` |
 
 `-g` is short for `--resource-group`, and `-n` for `--name`. The meaning of
 `--name` follows the resource being operated on; it is not always the gateway.
 `KEY_NAME` identifies the API-key resource, not its secret value.
-List commands generally omit the child name. Some commands accept `--ids`
-instead of the separate resource selectors; check that command's help.
+On `model` and `model policy` commands, `--model-provider` is accepted as an
+alias for `--provider-name`. List commands generally omit the child name. You
+can also set session defaults (`az configure --defaults group="$RG" aigateway="$GATEWAY"`)
+or pipe JSON output from `az cognitiveservices account`, `az aigateway`, or
+`az aigateway model` commands into downstream `az aigateway` commands. Some
+commands accept `--ids` instead of the separate resource selectors; check that
+command's help.
 
 Create a gateway in an existing resource group (all three arguments below are
-required). Use a globally unique name for `GATEWAY`:
+required). Use a globally unique name for `GATEWAY`; omitting `--sku` lets the
+service apply its default SKU (`Standard`), or pass
+`--sku Standard|Premium|Consumption` on `create` and `update`:
 
 ```bash
 az aigateway create \
@@ -179,8 +190,10 @@ az aigateway model policy set-token-limit \
 
 `--token-limit` must be a positive integer. `--token-period` accepts `minute`,
 `hour`, or `day`; `--token-counter-key` accepts `Identity` or `IPAddress`.
-The defaults are `minute` and `Identity`. This controls token usage, not the
-number of requests.
+The defaults are `minute` and `Identity`. When updating an existing token-limit
+policy with `model policy set`, you can change `--token-period` or
+`--token-counter-key` without repeating `--token-limit`. This controls token
+usage, not the number of requests.
 
 **Content safety:** set Medium severity across the four supported categories:
 
@@ -196,15 +209,63 @@ severity for hate, self-harm, sexual, and violence. Category overrides such as
 command. Choose thresholds for your application's needs rather than treating
 these example settings as a universal recommendation.
 
-Inspect the resulting configuration:
+**Cost limit:** set a spending limit per period (`hour`, `day`, `week`, or `month`) across `All` requests, `Identity`, or `IPAddress`:
+
+```bash
+az aigateway model policy set-cost-limit \
+  -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL" \
+  --cost-limit 25.0 --cost-period day --cost-counter-key Identity
+```
+
+To apply default token, content-safety, or cost limits at the gateway level across all models in the default workspace, use `az aigateway policy set`, `set-token-limit`, `set-content-safety`, `set-cost-limit`, `show`, or `remove`.
+
+Inspect the resulting configuration, or remove one or all policies:
 
 ```bash
 az aigateway model policy list \
   -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL"
+
+az aigateway model policy remove \
+  -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL" \
+  --all --yes
 ```
 
 Policies apply to the selected gateway model only. Repeat for other models that
 need the same controls; they do not govern direct calls to the backend.
+
+## Model aliases
+
+Aliases exist on `Microsoft.ApiManagement/aigateways` gateways and let clients
+call a stable `--routing-name` (`properties.aliasName`) that routes across 1 to
+30 registered backend models using integer `priority` (`0-100`, lower handles
+requests first) and `weight` (`1-100`, relative traffic share within the same
+priority tier).
+
+Create an alias that splits traffic 50/50 across two registered backend models
+at `priority=0`, `weight=1`:
+
+```bash
+MODEL_A_ID="$(az aigateway model show -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL_A" --query id -o tsv)"
+MODEL_B_ID="$(az aigateway model show -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL_B" --query id -o tsv)"
+
+az aigateway model-alias create \
+  -g "$RG" --gateway-name "$GATEWAY" -n chat-production --routing-name contoso/chat \
+  --backend-model resource-id="$MODEL_A_ID" priority=0 weight=1 \
+  --backend-model resource-id="$MODEL_B_ID" priority=0 weight=1
+```
+
+Pass `--overwrite` to `model-alias create` to replace an existing alias with the
+same name idempotently in scripts.
+
+Rebalance to a 75/25 weighted split or shift a backend model to fallback
+`priority=1`:
+
+```bash
+az aigateway model-alias update \
+  -g "$RG" --gateway-name "$GATEWAY" -n chat-production \
+  --backend-model resource-id="$MODEL_A_ID" priority=0 weight=75 \
+  --backend-model resource-id="$MODEL_B_ID" priority=0 weight=25
+```
 
 ## Output and queries
 
@@ -474,17 +535,20 @@ Remove-Variable AI_GATEWAY_API_KEY, request, responseHeaders
   require `az login` and appropriate Azure permissions. Foundry onboarding with
   `--foundry-resource-id` also enables the gateway identity and assigns it the
   Foundry User role on the account, so the caller needs permission to create
-  role assignments there. It registers existing deployments, not new ones.
-- **Optional GitHub onboarding:** `az aigateway mcp create --github true` needs
-  GitHub CLI (`gh`) and a usable GitHub credential, even when `GH_TOKEN` is set.
-  The generic `--endpoints` path does not require `gh`.
-- **Updates:** gateway `update --tags` replaces the existing tag set. Use
-  `model policy` for token limits/content safety and `mcp source` to add or
-  remove an individual source without supplying the full endpoint array.
+  role assignments there. It registers existing deployments, not new ones. Use
+  `az aigateway model-provider sync` later to reconcile gateway models with
+  newly added or removed Foundry deployments.
+- **Updates:** gateway `update --tags` replaces the existing tag set, and
+  `update --sku Standard|Premium|Consumption` changes the gateway tier. `model-provider update --foundry`
+  and `--custom` deep-merge partial JSON updates with the existing provider
+  configuration so you do not need to re-supply unchanged fields or existing
+  API keys. Use `model policy` for token limits/content safety and `mcp source`
+  to add or remove an individual source without supplying the full endpoint array.
 - **Long-running operations:** where supported, `--no-wait` returns before
   provisioning finishes. Use the matching `wait` command with a condition such
   as `--created` or `--updated`; use `wait --help` for available conditions.
-- **Keys:** `api-key list` and `show` return metadata, not key values.
+- **Keys:** `api-key create` defaults `--display-name` to `--name` when omitted.
+  `api-key list` and `show` return metadata, not key values.
   `list-secrets` explicitly returns credentials; keep them out of terminals
   being recorded, logs, and source control. Rotate one value at a time with
   `regenerate --key-type primary` or `secondary`, moving clients before
