@@ -24,8 +24,11 @@ http.createServer((req, res) => {
     return res.end();
   }
   if (!url.pathname.startsWith(BASE)) { res.writeHead(302, { Location: BASE }); return res.end(); }
-  let file = path.join(ROOT, decodeURIComponent(url.pathname.slice(BASE.length)));
-  if (!file.startsWith(ROOT)) { res.writeHead(403); return res.end(); }
+  let rel;
+  try { rel = decodeURIComponent(url.pathname.slice(BASE.length)); } catch { res.writeHead(400); return res.end(); }
+  let file = path.join(ROOT, rel);
+  // Require a path separator after ROOT, so a sibling such as docs-private/ can't pass the check.
+  if (file !== ROOT && !file.startsWith(ROOT + path.sep)) { res.writeHead(403); return res.end(); }
   if (fs.existsSync(file) && fs.statSync(file).isDirectory()) {
     if (!url.pathname.endsWith('/')) { res.writeHead(301, { Location: `${url.pathname}/${url.search}` }); return res.end(); }
     file = path.join(file, 'index.html');

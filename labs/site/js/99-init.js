@@ -24,7 +24,7 @@ function boot() {
   run('labLinks', updateLabLinks);
   run('mermaid', () => { initMermaid(); });
   addEventListener('storage', (e) => {
-    if (e.key === 'aigw-progress') { if (LAB) updateProgressUI(); else updateLabLinks(); }
+    if (e.key === 'aigw-progress') { if (LAB) updateProgressUI(false); else updateLabLinks(); }
     if (e.key === 'aigw-setup') updateSetupUI();
   });
 }

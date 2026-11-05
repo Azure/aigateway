@@ -510,7 +510,8 @@ function initCodeTabs() {
 
 // Steps that count toward progress: outside tracks, or inside the visible track panel.
 const countedSteps = () => $$('#lab-content .step').filter((s) => { const p = s.closest('.track-panel'); return !p || !p.hidden; });
-function updateProgressUI() {
+// Pass persist = false when another tab changed the progress, so the two tabs don't keep overwriting each other's total.
+function updateProgressUI(persist = true) {
   if (!LAB) return;
   const prog = labProgress(LAB);
   const steps = countedSteps();
@@ -521,7 +522,7 @@ function updateProgressUI() {
   });
   const done = steps.filter((s) => prog.steps[s.dataset.step]).length;
   const total = steps.length;
-  if (prog.total !== total) saveLabProgress(LAB, { total });
+  if (persist && prog.total !== total) saveLabProgress(LAB, { total });
   const ratio = prog.done ? 1 : total ? done / total : 0;
   const ring = $('.ring-fill'); if (ring) ring.style.setProperty('--p', ratio);
   const label = $('#progress-label');
@@ -2087,7 +2088,7 @@ function boot() {
   run('labLinks', updateLabLinks);
   run('mermaid', () => { initMermaid(); });
   addEventListener('storage', (e) => {
-    if (e.key === 'aigw-progress') { if (LAB) updateProgressUI(); else updateLabLinks(); }
+    if (e.key === 'aigw-progress') { if (LAB) updateProgressUI(false); else updateLabLinks(); }
     if (e.key === 'aigw-setup') updateSetupUI();
   });
 }
