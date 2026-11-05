@@ -7,7 +7,7 @@
   <a href="https://azure.github.io/aigateway/"><img alt="labs site: azure.github.io/aigateway" src="https://img.shields.io/badge/labs_site-azure.github.io%2Faigateway-0078D4"></a>
   <img alt="labs: 26" src="https://img.shields.io/badge/labs-26-5C2D91">
   <img alt="learning paths: 5" src="https://img.shields.io/badge/learning_paths-5-107C10">
-  <img alt="notebooks: 6" src="https://img.shields.io/badge/notebooks-6-F37626?logo=jupyter&amp;logoColor=white">
+  <img alt="notebooks: 7" src="https://img.shields.io/badge/notebooks-7-F37626?logo=jupyter&amp;logoColor=white">
   <img alt="tracks: Portal · CLI · REST · Bicep · Code" src="https://img.shields.io/badge/tracks-Portal_%C2%B7_CLI_%C2%B7_REST_%C2%B7_Bicep_%C2%B7_Code-505050">
 </p>
 <!-- gh:end -->
@@ -110,7 +110,7 @@ Token limits, budgets, content safety, and gateway-wide baselines.
 | # | Lab | Level | Time | Tracks | Notebook |
 | :-: | :-- | :-- | --: | :-- | :-: |
 | 06 | [Throttle tokens per caller with token limits](06-token-limits/README.md) | Beginner | 25 min | Portal · CLI · REST · Bicep | [📓](06-token-limits/06-token-limits.ipynb) |
-| 07 | [Enforce cost budgets with per-caller overrides](07-cost-budgets/README.md) | Intermediate | 30 min | Portal · CLI · Bicep |  |
+| 07 | [Enforce cost budgets with per-caller overrides](07-cost-budgets/README.md) | Intermediate | 30 min | Portal · CLI · Bicep | [📓](07-cost-budgets/07-cost-budgets.ipynb) |
 | 08 | [Screen prompts and responses with content safety](08-content-safety/README.md) | Beginner | 20 min | Portal · CLI · REST · Bicep |  |
 | 09 | [Set gateway-wide policy baselines](09-gateway-baselines/README.md) | Intermediate | 25 min | Portal · CLI · Bicep |  |
 
@@ -171,6 +171,7 @@ every cell stays short.
 | 📓 [`23-streaming-responses.ipynb`](23-streaming-responses/23-streaming-responses.ipynb) | [23 · Streaming responses](23-streaming-responses/README.md) | 20 min |
 | 📓 [`04-federate-mcp-tools.ipynb`](04-federate-mcp-tools/04-federate-mcp-tools.ipynb) | [04 · Federate MCP tools](04-federate-mcp-tools/README.md) | 30 min |
 | 📓 [`06-token-limits.ipynb`](06-token-limits/06-token-limits.ipynb) | [06 · Token limits](06-token-limits/README.md) | 25 min |
+| 📓 [`07-cost-budgets.ipynb`](07-cost-budgets/07-cost-budgets.ipynb) | [07 · Cost budgets](07-cost-budgets/README.md) | 30 min |
 | 📓 [`11-entra-rbac.ipynb`](11-entra-rbac/11-entra-rbac.ipynb) | [11 · Entra ID & RBAC](11-entra-rbac/README.md) | 35 min |
 <!-- gh:end -->
 

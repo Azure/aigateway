@@ -27,6 +27,16 @@ model version, and manage MCP servers that use the 2026-07-28 MCP specification.
 
 #### Labs changes
 
+- **November 5.** The notebooks show their results as cards in the labs site's style, in light and dark themes:
+  live deployment progress, pass or fail checks, model replies with token counts, throttled responses, and a live
+  table of each request burst against the token allowance. The [lab 06](06-token-limits/06-token-limits.ipynb)
+  notebook charts each request's tokens and the running total against the allowance. The notebooks ship without
+  saved outputs, and `npm run check` enforces it. See [Notebooks](AUTHORING.md#notebooks) in the authoring guide.
+- **November 5.** [Lab 07](07-cost-budgets/README.md) has a notebook,
+  [07-cost-budgets.ipynb](07-cost-budgets/07-cost-budgets.ipynb). It deploys the budgeted alias with a $0.001 hourly
+  budget, spends it until the gateway answers `403`, charts the estimated cost of each request against the budget,
+  and proves that the `support-bot` override keeps working. The lab guide now gives the cost of a `gpt-5-mini` call
+  as measured, about $0.0004, and shows which cost headers answered and blocked calls carry.
 - **November 5.** The labs default to `gpt-5-mini` and `gpt-6.1-sol`, the latest generally available Foundry
   models, in every portal step, Bicep template, notebook, code sample, and the agent skill. Lab 24's screenshots of
   VS Code, the Copilot CLI, and the SDK still show the model picker's earlier example, GPT-6 Astra.

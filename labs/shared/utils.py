@@ -2,7 +2,11 @@
 
 Every notebook starts the same way:
 
-    import sys; sys.path.insert(0, "../shared")
+    import sys
+    from IPython.display import display
+
+    sys.path.insert(0, "../shared")
+    import brand
     import utils
 
     lab = utils.Lab("02-first-model-call")
@@ -10,7 +14,8 @@ Every notebook starts the same way:
 `Lab` reads your Azure CLI sign-in and the shared defaults, so every notebook finds the same gateway. It deploys the
 lab's own Bicep files with `az deployment group create`, the same command as the lab's Bicep track, and calls Azure
 Resource Manager for the few reads and deletes that a deployment doesn't cover. Keys and tokens stay in memory:
-nothing here prints or saves them.
+nothing here prints or saves them. Results show as cards in the labs site's style (see brand.py), and as plain text
+outside Jupyter.
 
 Override the defaults with environment variables before you start the kernel:
 
@@ -37,6 +42,8 @@ from pathlib import Path
 
 import requests
 from azure.identity import AzureCliCredential
+
+import brand
 
 ARM = "https://management.azure.com"
 AIGW_API = "2025-09-01-preview"         # Microsoft.ApiManagement/aigateways and its child resources
@@ -66,6 +73,16 @@ def az(*args: str, check: bool = True):
         errors = [line for line in result.stderr.splitlines() if line.strip() and not any(n in line for n in _NOISE)]
         raise RuntimeError(f"az {' '.join(args[:3])} failed:\n" + "\n".join(errors))
     return json.loads(result.stdout) if result.stdout.strip() else None
+
+
+def _lab_title() -> str | None:
+    """The title of the lab, from the frontmatter of the README.md next to the notebook."""
+    readme = Path("README.md")
+    if readme.exists():
+        match = re.search(r"^title:\s*(.+)$", readme.read_text(encoding="utf-8")[:2000], re.M)
+        if match:
+            return match.group(1).strip().strip("\"'")
+    return None
 
 
 def gateway_regions() -> list[str]:
@@ -123,14 +140,15 @@ class Lab:
                          "Run 01-provision-gateway.ipynb first.")
             self.gateway_url = "https://" + self.gateway["properties"]["frontend"]["defaultHostname"]
 
-        print(f"🧪 Lab:            {name}")
-        print(f"👤 User:           {self.user}")
-        print(f"🔑 Subscription:   {account['name']} ({self.subscription_id})")
-        print(f"🌍 Region:         {self.location}")
-        print(f"📁 Resource group: {self.resource_group}")
-        print(f"🚪 Gateway:        {self.gateway_name}")
+        rows = [("Signed in as", self.user), ("Subscription", account["name"]),
+                ("Subscription ID", brand.mono(self.subscription_id)), ("Region", self.location),
+                ("Resource group", brand.mono(self.resource_group)), ("Gateway", brand.mono(self.gateway_name))]
         if self.gateway_url:
-            print(f"🌐 Runtime URL:    {self.gateway_url}")
+            rows.append(("Runtime URL", brand.mono(self.gateway_url)))
+        badge = brand.chip("Gateway ready", "ok") if needs_gateway else brand.chip("Creates the gateway", "brand")
+        number = name.split("-", 1)[0]
+        sub = f"Lab {number} · {name}" if number.isdigit() else name
+        brand.show(brand.info(_lab_title() or name, rows, sub=sub, badge=badge))
 
     # Azure Resource Manager -------------------------------------------------------------------------------------
 
@@ -163,17 +181,19 @@ class Lab:
         """Delete a resource. With wait=True, poll until it's gone (gateways take about 10 minutes)."""
         name = path.rsplit("/", 1)[-1]
         if self.arm("DELETE", path, api_version=api_version) is None:
-            print(f"♻️ {name} was already deleted")
+            brand.show(brand.note(f"{name} was already deleted", "neutral"))
             return
+        status = brand.live()
+        start = time.time()
         while wait and self.arm("GET", path, api_version=api_version):
-            print(f"⏳ Deleting {name}...")
+            status.update(brand.note(f"Deleting {name} · {int(time.time() - start)} s", "wait"))
             time.sleep(30)
-        print(f"🗑️ Deleted {name}")
+        status.update(brand.note(f"Deleted {name}", "ok"))
 
     def delete_foundry_account(self):
         """Delete the lab's Foundry account, then purge it so the name is free again and nothing is billed."""
         if self.own_foundry_account:
-            print(f"ℹ️ Kept {self.foundry_account}: you brought it with AIGW_FOUNDRY_ACCOUNT")
+            brand.show(brand.note(f"Kept {self.foundry_account}: you brought it with AIGW_FOUNDRY_ACCOUNT", "neutral"))
             return
         self.delete(self.foundry_id, api_version=COGNITIVE_API)
         deleted = (f"/subscriptions/{self.subscription_id}/providers/Microsoft.CognitiveServices"
@@ -182,10 +202,11 @@ class Lab:
         for _ in range(30):   # the soft-deleted account takes a few seconds to appear
             if self.arm("GET", deleted, api_version=COGNITIVE_API):
                 self.arm("DELETE", deleted, api_version=COGNITIVE_API)
-                print(f"🚮 Purged {self.foundry_account}")
+                brand.show(brand.note(f"Purged {self.foundry_account}", "ok"))
                 return
             time.sleep(10)
-        print(f"🚨 {self.foundry_account} isn't in the soft-deleted list yet. Purge it later in the Azure portal.")
+        brand.show(brand.note(f"{self.foundry_account} isn't in the soft-deleted list yet. "
+                              "Purge it later in the Azure portal.", "warn"))
 
     def register_providers(self, *namespaces: str):
         """Register resource providers once per subscription. Registration takes a minute or two."""
@@ -193,9 +214,9 @@ class Lab:
             path = f"/subscriptions/{self.subscription_id}/providers/{namespace}"
             state = self.arm("GET", path, api_version=RESOURCES_API)["registrationState"]
             if state == "Registered":
-                print(f"♻️ {namespace} is registered")
+                brand.show(brand.note(f"{namespace} is registered", "neutral"))
                 continue
-            print(f"📦 Registering {namespace} ({state})")
+            status = brand.live(brand.note(f"Registering {namespace} ({state})", "wait"))
             self.arm("POST", f"{path}/register", api_version=RESOURCES_API)
             for _ in range(60):
                 state = self.arm("GET", path, api_version=RESOURCES_API)["registrationState"]
@@ -203,7 +224,7 @@ class Lab:
                     break
                 time.sleep(10)
             assert state == "Registered", f"{namespace} is {state}"
-            print(f"✅ {namespace} registered")
+            status.update(brand.note(f"Registered {namespace}", "ok"))
 
     def create_resource_group(self, name: str | None = None):
         """Create the resource group, tagged for clean-up, unless it exists."""
@@ -211,19 +232,19 @@ class Lab:
         path = f"/subscriptions/{self.subscription_id}/resourcegroups/{name}"
         group = self.arm("GET", path, api_version=RESOURCES_API)
         if group:
-            print(f"♻️ Resource group {name} exists in {group['location']}")
+            brand.show(brand.note(f"Resource group {name} exists in {group['location']}", "neutral"))
         else:
             self.arm("PUT", path, {"location": self.location, "tags": self.tags}, api_version=RESOURCES_API)
-            print(f"✅ Created resource group {name} in {self.location}")
+            brand.show(brand.note(f"Created resource group {name} in {self.location}", "ok"))
 
     # Bicep deployments -----------------------------------------------------------------------------------------
 
     def deploy(self, template: str, resource_group: str | None = None, timeout_minutes: int = 30, **parameters):
         """Deploy a Bicep file with `az deployment group create` and return its outputs as a dict.
 
-        Pass the template's parameters as keyword arguments. The cell shows progress while Azure Resource Manager
-        creates the resources, and the error details if the deployment fails. Deployments are idempotent: running
-        the cell again updates the same resources.
+        Pass the template's parameters as keyword arguments. A card updates in place while Azure Resource Manager
+        creates the resources, then shows the outputs, or the error details if the deployment fails. Deployments are
+        idempotent: running the cell again updates the same resources. Templates must never output secrets.
         """
         template_path = Path(template)
         if not template_path.exists():
@@ -237,7 +258,7 @@ class Lab:
         }
         with tempfile.NamedTemporaryFile("w", suffix=".parameters.json", delete=False) as file:
             json.dump(parameter_file, file)
-        print(f"🚀 Deploying {template_path.as_posix()} to {group}")
+        progress = brand.Progress(f"Deploy {template_path.as_posix()}", sub=group)
         start = time.time()
         try:
             az("deployment", "group", "create", "-g", group, "-n", name, "-f", str(template_path),
@@ -251,19 +272,22 @@ class Lab:
             deployment = self.arm("GET", path, api_version=RESOURCES_API)
             state = deployment["properties"]["provisioningState"] if deployment else "Accepted"
             elapsed = int(time.time() - start)
+            operations = self._operations(path) if deployment else []
             if state == "Succeeded":
                 break
             if state in ("Failed", "Canceled"):
-                raise RuntimeError(f"Deployment {name} {state.lower()}:\n" + "\n".join(self._failures(path)))
+                errors = self._failures(path)
+                progress.fail(state, elapsed, operations, [line.removeprefix("❌ ") for line in errors])
+                raise RuntimeError(f"Deployment {name} {state.lower()}:\n" + "\n".join(errors))
             if elapsed > timeout_minutes * 60:
+                progress.fail(state, elapsed, operations, [f"Still {state} after {timeout_minutes} minutes."])
                 raise TimeoutError(f"Deployment {name} is still {state} after {timeout_minutes} minutes.")
-            pending = [op for op in self._operations(path) if op[2] != "Succeeded"]
-            waiting = ", ".join(f"{kind} {resource}" for kind, resource, _ in pending[:3]) or state
-            print(f"⏳ {elapsed:>4} s  {waiting}")
+            progress.update(state, elapsed, operations)
             time.sleep(15)
 
-        print(f"✅ Deployed {template_path.name} in {elapsed} s")
-        return {key: value["value"] for key, value in (deployment["properties"].get("outputs") or {}).items()}
+        outputs = {key: value["value"] for key, value in (deployment["properties"].get("outputs") or {}).items()}
+        progress.done(elapsed, operations, outputs)
+        return outputs
 
     def _operations(self, deployment_path: str):
         """Return (type, name, state) for each resource in a deployment."""
@@ -331,35 +355,45 @@ def retry(call, statuses=(401, 403, 404, 429), minutes: int = 10, wait: int = 30
     from openai import APIStatusError
 
     deadline = time.time() + minutes * 60
+    waiting = brand.live()
     while True:
         try:
-            return call()
+            result = call()
         except APIStatusError as error:
             if not (error.status_code in statuses or error.status_code >= 500) or time.time() > deadline:
                 raise
-            print(f"⏳ HTTP {error.status_code}, waiting for the configuration to apply...")
+            waiting.update(brand.note(f"HTTP {error.status_code} · waiting for the configuration to apply", "wait"))
             time.sleep(wait)
+            continue
+        waiting.finish(brand.note("The configuration applied", "ok"))
+        return result
 
 
 def wait_for_status(check, expected: int, minutes: int = 10, wait: int = 30) -> int:
     """Call check(), which returns an HTTP status, until it returns the expected one or time runs out."""
     deadline = time.time() + minutes * 60
+    waiting = brand.live()
     while True:
         status = check()
         if status == expected or time.time() > deadline:
+            waiting.finish(brand.note(f"HTTP {status}", "ok" if status == expected else "warn"))
             return status
-        print(f"⏳ HTTP {status}, waiting for {expected}...")
+        waiting.update(brand.note(f"HTTP {status} · waiting for {expected}", "wait"))
         time.sleep(wait)
 
 
 def wait_for_endpoint(url: str, attempts: int = 20, wait: int = 15) -> requests.Response:
     """GET a URL, retrying while a brand-new host name doesn't resolve yet."""
+    waiting = brand.live()
     for attempt in range(1, attempts + 1):
         try:
-            return requests.get(url, timeout=30)
+            response = requests.get(url, timeout=30)
         except requests.ConnectionError:
-            print(f"⏳ Waiting for {url.split('/')[2]} to resolve ({attempt}/{attempts})")
+            waiting.update(brand.note(f"Waiting for {url.split('/')[2]} to resolve ({attempt} of {attempts})", "wait"))
             time.sleep(wait)
+            continue
+        waiting.finish(brand.note(f"{url.split('/')[2]} resolves", "ok"))
+        return response
     raise TimeoutError(f"{url} didn't answer. Check the gateway in the portal.")
 
 

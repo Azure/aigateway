@@ -157,6 +157,12 @@ function loadLabs(catalog) {
     // A build for another host (LABS_SITE_URL) points links to the labs site at that host.
     const content = stripGitHub(body).replaceAll(catalog.site.pages, BASE_URL);
     const notebook = fs.readdirSync(path.join(LABS, slug)).filter((f) => f.endsWith('.ipynb')).sort()[0] || null;
+    // Notebooks ship without outputs: saved outputs can hold keys, tokens, and subscription IDs, and they bloat diffs.
+    if (notebook) {
+      const cells = JSON.parse(fs.readFileSync(path.join(LABS, slug, notebook), 'utf8')).cells || [];
+      const ran = cells.filter((c) => c.cell_type === 'code' && ((c.outputs || []).length || c.execution_count != null)).length;
+      if (ran) warn(`${slug}: ${notebook} has saved outputs in ${ran} code cell${ran === 1 ? '' : 's'}; clear all outputs before you commit`);
+    }
     for (const k of REQUIRED) if (data[k] == null) warn(`${slug}: missing front matter "${k}"`);
     // "Do this: that" in a YAML list parses as a mapping and renders as [object Object].
     for (const k of ['objectives', 'tags', 'tracks', 'prereqs']) {

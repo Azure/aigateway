@@ -29,7 +29,7 @@ prereqs:
 
 | ⏱️ Time | 📶 Level | 🧭 Tracks | ✅ Before you start |
 | :-- | :-- | :-- | :-- |
-| 30 min | Intermediate | Portal · Azure CLI · Bicep + azd | [06 · Token limits](../06-token-limits/README.md)<br>[10 · Runtime API keys](../10-api-keys/README.md) |
+| 30 min | Intermediate | Portal · Azure CLI · Bicep + azd · Notebook | [06 · Token limits](../06-token-limits/README.md)<br>[10 · Runtime API keys](../10-api-keys/README.md) |
 
 **You'll learn to**
 
@@ -39,7 +39,7 @@ prereqs:
 - Declare a budgeted alias, its API keys, and their overrides with Bicep and azd
 - Trigger a 403 LlmCostQuotaExceeded response, find the remaining budget header, and review estimated spend in Monitoring
 
-**Follow along:** 🌐 [Interactive version](https://azure.github.io/aigateway/labs/07-cost-budgets/) with your own values filled in · 📁 [Lab files](infra/)
+**Follow along:** 🌐 [Interactive version](https://azure.github.io/aigateway/labs/07-cost-budgets/) with your own values filled in · 📓 [Jupyter notebook](07-cost-budgets.ipynb) · 📁 [Lab files](infra/)
 
 **On this page:** [Before you begin](#before-you-begin) · [How it works](#how-it-works) · [Add a cost limit to the model](#add-a-cost-limit-to-the-model) · [Verify](#verify) · [Go further](#go-further) · [Clean up](#clean-up) · [Next steps](#next-steps)
 <!-- gh:end -->
@@ -148,8 +148,8 @@ After each model response, the gateway **estimates its cost** from the tokens th
 model's public pricing, broken down by token category. A cost limit adds that estimate to the caller's
 counter for the current renewal period. Before it forwards the next request, the gateway checks the counter.
 Once spend reaches the budget, the gateway answers `403` (`LlmCostQuotaExceeded` in the product docs) with the
-message `LLM cost quota is exceeded` and never calls the backend. Responses also carry headers with the cost of the
-call and the remaining budget.
+message `LLM cost quota is exceeded` and never calls the backend. Answered responses carry a header with the
+estimated cost of the call, and blocked responses carry the remaining budget and the seconds until it renews.
 
 | Setting | Portal label | JSON field | Values |
 |---|---|---|---|
@@ -702,7 +702,7 @@ key (which has no override), and watch the gateway switch from `200` to `403`.
 
 ### Lower the budget for the test
 
-A call to `gpt-5-mini` costs about $0.0001, so a budget of `0.001` is spent after about ten calls. For a more
+A call to `gpt-5-mini` costs about $0.0004, so a budget of `0.001` is spent after about three calls. For a more
 expensive model, use `0.01`. In the portal, open the **Cost limit**, select **Edit**, set **Budget amount** to
 `0.001`, and **Save**. On the Azure CLI track, run **Set the cost limit** again with `--amount 0.001`. The new
 budget reaches the gateway within about a minute, so wait before you run the requests.
@@ -770,17 +770,19 @@ successful calls, and the header values will differ):
 ```text
 🚦 Expect 403 once app-dev's estimated spend reaches the budget:
 Request  Status  Error code               Tokens used  Budget headers
-1        200     -                        223          …; x-alias-cost-per-day-remaining=…; x-alias-cost-per-day-consumed=0.000101900
-2        200     -                        221          …; x-alias-cost-per-day-remaining=…; x-alias-cost-per-day-consumed=0.000100900
+1        200     -                        208          …; x-alias-cost-per-day-consumed=0.000374000
+2        200     -                        210          …; x-alias-cost-per-day-consumed=0.000378000
+3        200     -                        199          …; x-alias-cost-per-day-consumed=0.000356000
+4        403     -                        -            x-alias-cost-per-day-retry-after=7375; x-alias-cost-per-day-remaining=0.000000000; x-alias-cost-per-day-consumed=0.000000000
 …
-9        200     -                        …            …; x-alias-cost-per-day-remaining=0.000000000; …
-10       403     -                        -            x-alias-cost-per-day-retry-after=1837
+10       403     -                        -            x-alias-cost-per-day-retry-after=7368; x-alias-cost-per-day-remaining=0.000000000; x-alias-cost-per-day-consumed=0.000000000
 ```
 
-`x-alias-cost-per-day-consumed` is the estimated cost of the call, and `x-alias-cost-per-day-remaining` is what's
-left of the budget. On a cost limit attached to the model, the headers start with `x-cost-` instead. A blocked
-call has no error code in its body, so the script prints `-`, and `…-retry-after` gives the seconds until the caller
-can try again. How many calls succeed depends on the model's price. A call or two more than you expect is the
+`x-alias-cost-per-day-consumed` is the estimated cost of an answered call; the elided headers are the Foundry
+deployment's `x-ratelimit-*` headers. A blocked call carries `x-alias-cost-per-day-remaining`, which is `0`, and
+`…-retry-after`, the seconds until the budget renews at the start of the next day in UTC. On a cost limit attached
+to the model, the headers start with `x-cost-` instead. A blocked call has no error code in its body, so the script
+prints `-`. How many calls succeed depends on the model's price. A call or two more than you expect is the
 small overshoot described in [How it works](#how-it-works). If all 10 requests return `200`, run the script again:
 the spend so far still counts.
 

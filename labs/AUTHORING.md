@@ -508,13 +508,40 @@ cells short by importing [`shared/utils.py`](shared/utils.py):
   the reads, clean-up, and waits around a deployment. Put a new helper in `utils.py` when more than one notebook
   needs it.
 
+Notebooks show results as branded cards, never as `print` output. [`shared/brand.py`](shared/brand.py) renders
+HTML with the site's colors and fonts, follows the light or dark theme of VS Code and JupyterLab, and falls back to
+plain text outside a kernel. `utils` already uses it: `Lab` shows a card of the sign-in and the gateway, `deploy`
+shows a live progress card with the template's outputs, and the waits show one status line that updates in place.
+In a cell, `display(brand.<helper>(...))`:
+
+| Helper | Shows |
+|---|---|
+| `info(title, rows)`, `table(title, columns, rows)`, `card(title, *blocks)` | Name-value pairs, a table (number columns align right), or any blocks |
+| `note(text, tone)` | One line. Tones: `brand`, `ok`, `warn`, `bad`, `wait`, `neutral` |
+| `key(name, value, created)` | Which runtime key the notebook uses, with only its first four characters |
+| `checks(title, rows)` | A pass or fail table of `(request, status, expected[, detail])` |
+| `reply(text, title, model, tokens)` | A model's answer with the alias and the tokens used |
+| `http(status, headers, body, title)` | A response's status, headers, and body, with `Retry-After` and the cost `…-retry-after` headers highlighted |
+| `policies(alias, items)` | An alias's policies, with token limits and cost limits, and their overrides, spelled out |
+| `hits(title, results)` | Search results from a tool call |
+| `Board`, `Stream`, `live`, `wait` | Output that updates in place: a burst of requests with a token or dollar budget bar (`unit="USD"`, `stop=403`), streamed text, a status line, or a countdown |
+| `usage_chart(title, rows, limit, limit_label, unit)` | A matplotlib chart of a burst: a bar per request, the running total, and the limit that stopped it, with the data in a table below. `rows` holds `(status, tokens)`, or `(status, dollars)` with `unit="USD"` |
+
+Use `brand.mono` for IDs, URLs, and names, `brand.usd` for dollar amounts, and `brand.chip` for short labels. A
+notebook that charts adds `matplotlib` to its `%pip install` cell. `usage_chart` draws the chart in the light and
+dark themes and shows the one that matches the notebook, and `brand.use_matplotlib_style()` gives your own
+matplotlib charts the same fonts and colors. Never pass a key, a token, or a
+connection string to a helper other than `key`; a deployment card shows every output of the template, so templates
+must not output secrets either.
+
 Follow the structure of the existing notebooks:
 
 1. A Markdown intro: the H1, a one-line flow of what the notebook builds, a table of the resources it uses
    (including the Bicep files and `utils.py`), prerequisites (`az login`, Python 3.10 or later), and a note to
    select **Run All**.
 2. A `%pip install` cell with only the packages the notebook needs.
-3. **0. Initialize variables**: import `utils` from `../shared`, create the `Lab`, and set the lab's own names.
+3. **0. Initialize variables**: import `display`, then `brand` and `utils` from `../shared`, create the `Lab`, and
+   set the lab's own names.
 4. Numbered steps that mirror the lab's sections. Each step has a short Markdown explanation and a code cell that
    deploys or reuses resources, waits for the gateway to apply them, and checks the result with `assert`.
 5. **Clean up** (delete only what the notebook created), **Troubleshooting**, and **Next steps**. The
@@ -523,6 +550,8 @@ Follow the structure of the existing notebooks:
 
 Never print or save keys or tokens. Run the notebook from its lab folder, start to finish, against a real
 subscription before you commit it, then clear all outputs (`jupyter nbconvert --clear-output --inplace <file>`).
+Commit notebooks without outputs: saved outputs carry subscription IDs, names, and model answers, and they bloat
+diffs. `npm run check` fails when a notebook has saved outputs or execution counts.
 
 ## Release notes
 
