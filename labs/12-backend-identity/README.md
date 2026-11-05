@@ -38,7 +38,7 @@ prereqs:
 - Point a Foundry model provider at the user-assigned identity and prove that calls still succeed
 - Decide when a backend needs a stored API key instead
 
-**Follow along:** 🌐 [Interactive version](https://azure.github.io/ai-gateway/labs/12-backend-identity/) with your own values filled in · 📁 [Lab files](infra/)
+**Follow along:** 🌐 [Interactive version](https://azure.github.io/aigateway/labs/12-backend-identity/) with your own values filled in · 📁 [Lab files](infra/)
 
 **On this page:** [Before you begin](#before-you-begin) · [How it works](#how-it-works) · [Check the system-assigned identity](#check-the-system-assigned-identity) · [Create a user-assigned identity and give it access](#create-a-user-assigned-identity-and-give-it-access) · [Point the model provider at the identity](#point-the-model-provider-at-the-identity) · [Verify](#verify) · [Go further](#go-further) · [Clean up](#clean-up) · [Next steps](#next-steps)
 <!-- gh:end -->
@@ -711,7 +711,7 @@ everything. It takes about five minutes.
 
 ```bash title="Bash"
 # Move into the lab's folder, which holds the azd project
-cd ~/ai-gateway/labs/12-backend-identity &&
+cd ~/aigateway/labs/12-backend-identity &&
   echo "📂 Lab folder: $(pwd)"
 
 # Create an azd environment in your current subscription, so that azd doesn't prompt you
@@ -728,7 +728,7 @@ azd up &&
 
 ```powershell title="PowerShell"
 # Move into the lab's folder, which holds the azd project
-Set-Location ~/ai-gateway/labs/12-backend-identity
+Set-Location ~/aigateway/labs/12-backend-identity
 if ($?) { Write-Host "📂 Lab folder: $(Get-Location)" }
 
 # Create an azd environment in your current subscription, so that azd doesn't prompt you
@@ -1262,7 +1262,7 @@ Delete the role assignment first. Deleting the identity alone leaves an orphaned
 
 ### Delete everything azd created
 
-In the `ai-gateway/labs/12-backend-identity` folder, delete the resource group with the gateway, the Foundry account,
+In the `aigateway/labs/12-backend-identity` folder, delete the resource group with the gateway, the Foundry account,
 and the identity with its role assignment. [`--purge`](../SETUP.md#delete-what-azd-created) also purges the
 soft-deleted Foundry account. It takes about ten minutes.
 

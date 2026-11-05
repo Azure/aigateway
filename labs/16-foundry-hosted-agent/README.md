@@ -37,7 +37,7 @@ prereqs:
 - Run the agent locally with azd, then deploy it to Foundry Hosted Agents with azd up
 - Cap the agent's tokens with a gateway policy, without changing its code
 
-**Follow along:** 🌐 [Interactive version](https://azure.github.io/ai-gateway/labs/16-foundry-hosted-agent/) with your own values filled in · 📁 [Lab files](infra/)
+**Follow along:** 🌐 [Interactive version](https://azure.github.io/aigateway/labs/16-foundry-hosted-agent/) with your own values filled in · 📁 [Lab files](infra/)
 
 **On this page:** [Before you begin](#before-you-begin) · [How it works](#how-it-works) · [Give the agent its own key](#give-the-agent-its-own-key) · [Configure the azd project](#configure-the-azd-project) · [Read the agent](#read-the-agent) · [Run the agent locally](#run-the-agent-locally) · [Deploy to Foundry](#deploy-to-foundry) · [See the agent in Monitoring](#see-the-agent-in-monitoring) · [Cap the agent's tokens](#cap-the-agents-tokens) · [Verify](#verify) · [Go further](#go-further) · [Clean up](#clean-up) · [Next steps](#next-steps)
 <!-- gh:end -->
@@ -243,8 +243,8 @@ Move into the lab's `infra` folder and install the Foundry extensions for azd:
 
 ```bash
 # Move into the lab's azd project
-cd ~/ai-gateway/labs/16-foundry-hosted-agent/infra &&
-  echo "📂 Lab folder: ~/ai-gateway/labs/16-foundry-hosted-agent/infra"
+cd ~/aigateway/labs/16-foundry-hosted-agent/infra &&
+  echo "📂 Lab folder: ~/aigateway/labs/16-foundry-hosted-agent/infra"
 
 # Install the Foundry extensions for azd, which add the azd ai agent commands
 azd ext install microsoft.foundry &&

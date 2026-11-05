@@ -43,7 +43,7 @@ Foundry credential.
   Based Access Control Administrator** on the Foundry account. You also need to change the gateway, for example
   **Contributor** on its resource group.
 - For the code track: Python 3.9 or later, Node.js 22.18 or later, or the .NET 8 SDK.
-- Run the scripts and samples from the lab's folder, `~/ai-gateway/labs/02-first-model-call`.
+- Run the scripts and samples from the lab's folder, `~/aigateway/labs/02-first-model-call`.
 
 Set these variables once. Every track and the **Verify** section reuse them.
 
@@ -419,7 +419,7 @@ everything. It takes about three minutes.
 
 ```bash title="Bash"
 # Move into the lab's folder, which holds the azd project
-cd ~/ai-gateway/labs/02-first-model-call &&
+cd ~/aigateway/labs/02-first-model-call &&
   echo "📂 Lab folder: $(pwd)"
 
 # Create an azd environment in your current subscription, so that azd doesn't prompt you
@@ -433,7 +433,7 @@ azd up &&
 
 ```powershell title="PowerShell"
 # Move into the lab's folder, which holds the azd project
-Set-Location ~/ai-gateway/labs/02-first-model-call
+Set-Location ~/aigateway/labs/02-first-model-call
 if ($?) { Write-Host "📂 Lab folder: $(Get-Location)" }
 
 # Create an azd environment in your current subscription, so that azd doesn't prompt you
@@ -914,7 +914,7 @@ continue with the portal or CLI track of [lab 03](../03-multi-provider-aliases/R
 it has what that lab needs, the `gpt-6-luna` alias and the `app-first-call` key, in the resource group
 `rg-aigw-lab02`.
 
-Otherwise, in the `ai-gateway/labs/02-first-model-call` folder, delete the resource group with the gateway and the
+Otherwise, in the `aigateway/labs/02-first-model-call` folder, delete the resource group with the gateway and the
 Foundry account. [`--purge`](../SETUP.md#delete-what-azd-created) also purges the soft-deleted Foundry account. It
 takes up to fifteen minutes.
 

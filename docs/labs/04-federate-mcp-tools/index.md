@@ -44,7 +44,7 @@ Learn MCP server, so agents get tools through the same front door they already u
   `az aigateway api-key list-secrets -g "$RG" --gateway-name "$GATEWAY" -n app-first-call --query primaryKey -o tsv`.
 - For the Code track: Python 3.10 or later and, optionally, VS Code.
 - Permission to change the gateway, for example **Contributor** on the resource group.
-- Run the scripts and samples from the lab's folder, `~/ai-gateway/labs/04-federate-mcp-tools`.
+- Run the scripts and samples from the lab's folder, `~/aigateway/labs/04-federate-mcp-tools`.
 
 Set these variables once. Every track and the **Verify** section reuse them.
 
@@ -247,7 +247,7 @@ everything. It takes about three minutes.
 
 ```bash title="Bash"
 # Move into the lab's folder, which holds the azd project
-cd ~/ai-gateway/labs/04-federate-mcp-tools &&
+cd ~/aigateway/labs/04-federate-mcp-tools &&
   echo "📂 Lab folder: $(pwd)"
 
 # Create an azd environment in your current subscription, so that azd doesn't prompt you
@@ -261,7 +261,7 @@ azd up &&
 
 ```powershell title="PowerShell"
 # Move into the lab's folder, which holds the azd project
-Set-Location ~/ai-gateway/labs/04-federate-mcp-tools
+Set-Location ~/aigateway/labs/04-federate-mcp-tools
 if ($?) { Write-Host "📂 Lab folder: $(Get-Location)" }
 
 # Create an azd environment in your current subscription, so that azd doesn't prompt you
@@ -788,7 +788,7 @@ refuses to remove the last one with "Cannot remove the last source." Delete the 
 
 ### Delete everything azd created
 
-In the `ai-gateway/labs/04-federate-mcp-tools` folder, delete the resource group with the gateway, the `learn` MCP
+In the `aigateway/labs/04-federate-mcp-tools` folder, delete the resource group with the gateway, the `learn` MCP
 server, and the key. [`--purge`](../SETUP.md#delete-what-azd-created) also purges soft-deleted resources. It takes
 about ten minutes.
 

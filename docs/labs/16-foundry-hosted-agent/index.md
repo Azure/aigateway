@@ -192,8 +192,8 @@ Move into the lab's `infra` folder and install the Foundry extensions for azd:
 
 ```bash
 # Move into the lab's azd project
-cd ~/ai-gateway/labs/16-foundry-hosted-agent/infra &&
-  echo "📂 Lab folder: ~/ai-gateway/labs/16-foundry-hosted-agent/infra"
+cd ~/aigateway/labs/16-foundry-hosted-agent/infra &&
+  echo "📂 Lab folder: ~/aigateway/labs/16-foundry-hosted-agent/infra"
 
 # Install the Foundry extensions for azd, which add the azd ai agent commands
 azd ext install microsoft.foundry &&

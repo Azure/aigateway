@@ -154,30 +154,30 @@ if ($?) { Write-Host "📂 Project folder with Git: $(Get-Location)" }
 
 ### Add the plugin to your agent
 
-The plugin lives in the [Azure/ai-gateway](https://github.com/Azure/ai-gateway) repository and follows each
+The plugin lives in the [Azure/aigateway](https://github.com/Azure/aigateway) repository and follows each
 agent's plugin format. In GitHub Copilot CLI and Claude Code, start a session in the folder (`copilot` or
 `claude`) and run the slash commands. In Gemini CLI, run the command in your shell, then start `gemini` in the
 folder. In Cursor, use the dashboard, then open the folder.
 
 ```text title="GitHub Copilot CLI"
-/plugin marketplace add Azure/ai-gateway
+/plugin marketplace add Azure/aigateway
 /plugin install ai-gateway@azure
 ```
 
 ```text title="Claude Code"
-/plugin marketplace add Azure/ai-gateway
+/plugin marketplace add Azure/aigateway
 /plugin install ai-gateway@azure
 ```
 
 ```text title="Cursor"
 In the Cursor dashboard, open Plugins and select Add Marketplace.
-Import https://github.com/Azure/ai-gateway.
+Import https://github.com/Azure/aigateway.
 Install ai-gateway from Customize.
 ```
 
 ```bash title="Gemini CLI"
 # Install the plugin as a Gemini CLI extension, straight from the GitHub repository
-gemini extensions install https://github.com/Azure/ai-gateway &&
+gemini extensions install https://github.com/Azure/aigateway &&
   echo "📦 The ai-gateway extension is installed in Gemini CLI"
 ```
 

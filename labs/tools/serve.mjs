@@ -1,12 +1,14 @@
 #!/usr/bin/env node
-// Serves ../docs under /ai-gateway/ to mirror GitHub Pages. Usage: node tools/serve.mjs [port]
+// Serves ../docs under /aigateway/ to mirror GitHub Pages. Usage: node tools/serve.mjs [port]
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'docs');
-const BASE = '/ai-gateway/';
+const BASE = '/aigateway/';
+// The repo was renamed from Azure/ai-gateway, so forward old preview links to the same page.
+const LEGACY_BASE = '/ai-gateway/';
 const PORT = Number(process.argv[2] || process.env.PORT || 4173);
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
@@ -17,6 +19,10 @@ const TYPES = {
 
 http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
+  if (url.pathname.startsWith(LEGACY_BASE)) {
+    res.writeHead(301, { Location: `${BASE}${url.pathname.slice(LEGACY_BASE.length)}${url.search}` });
+    return res.end();
+  }
   if (!url.pathname.startsWith(BASE)) { res.writeHead(302, { Location: BASE }); return res.end(); }
   let file = path.join(ROOT, decodeURIComponent(url.pathname.slice(BASE.length)));
   if (!file.startsWith(ROOT)) { res.writeHead(403); return res.end(); }

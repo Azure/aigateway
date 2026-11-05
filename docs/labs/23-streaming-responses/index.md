@@ -45,7 +45,7 @@ then prove that a token limit still counts every streamed token.
 - For the PowerShell steps: PowerShell 7.4 or later.
 - For the Code track: Python 3.10 or later, or Node.js 22.18 or later.
 - Permission to change the gateway, for example **Contributor** on the resource group, for the token limit steps.
-- Run the scripts and samples from the lab's folder, `~/ai-gateway/labs/23-streaming-responses`.
+- Run the scripts and samples from the lab's folder, `~/aigateway/labs/23-streaming-responses`.
 
 Set these variables once, from the lab folder (`labs/23-streaming-responses`). Every track and the **Verify**
 section reuse them.
@@ -528,7 +528,7 @@ everything. It takes about three minutes.
 
 ```bash title="Bash"
 # Move into the lab's folder, which holds the azd project
-cd ~/ai-gateway/labs/23-streaming-responses &&
+cd ~/aigateway/labs/23-streaming-responses &&
   echo "📂 Lab folder: $(pwd)"
 
 # Create an azd environment in your current subscription, so that azd doesn't prompt you
@@ -542,7 +542,7 @@ azd up &&
 
 ```powershell title="PowerShell"
 # Move into the lab's folder, which holds the azd project
-Set-Location ~/ai-gateway/labs/23-streaming-responses
+Set-Location ~/aigateway/labs/23-streaming-responses
 if ($?) { Write-Host "📂 Lab folder: $(Get-Location)" }
 
 # Create an azd environment in your current subscription, so that azd doesn't prompt you
@@ -784,7 +784,7 @@ if ($?) { Write-Host "🚮 Alias $STREAM_ALIAS is deleted" }
 
 ### Delete everything azd created
 
-In the `ai-gateway/labs/23-streaming-responses` folder, delete the resource group with the gateway, the Foundry
+In the `aigateway/labs/23-streaming-responses` folder, delete the resource group with the gateway, the Foundry
 account, and both aliases. [`--purge`](../SETUP.md#delete-what-azd-created) also purges the soft-deleted Foundry
 account. It takes about ten minutes.
 

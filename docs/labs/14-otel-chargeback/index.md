@@ -44,7 +44,7 @@ Application Insights already collects.
 - Permission to change the gateway, for example **Contributor** on its resource group, and **Log Analytics Reader**
   on the workspace behind Application Insights.
 - Python 3.10 or later.
-- Run the scripts and samples from the lab's folder, `~/ai-gateway/labs/14-otel-chargeback`.
+- Run the scripts and samples from the lab's folder, `~/aigateway/labs/14-otel-chargeback`.
 
 Set these variables once. If you named the Application Insights resource differently in lab 13, change
 `$GATEWAY-insights`.
@@ -241,7 +241,7 @@ everything. It takes about four minutes.
 
 ```bash title="Bash"
 # Move into the lab's folder, which holds the azd project
-cd ~/ai-gateway/labs/14-otel-chargeback &&
+cd ~/aigateway/labs/14-otel-chargeback &&
   echo "📂 Lab folder: $(pwd)"
 
 # Create an azd environment in your current subscription, so that azd doesn't prompt you
@@ -255,7 +255,7 @@ azd up &&
 
 ```powershell title="PowerShell"
 # Move into the lab's folder, which holds the azd project
-Set-Location ~/ai-gateway/labs/14-otel-chargeback
+Set-Location ~/aigateway/labs/14-otel-chargeback
 if ($?) { Write-Host "📂 Lab folder: $(Get-Location)" }
 
 # Create an azd environment in your current subscription, so that azd doesn't prompt you
@@ -724,7 +724,7 @@ Write-Host "🚮 The exported files are deleted"
 
 ### Delete the exported files
 
-In the `ai-gateway/labs/14-otel-chargeback` folder, delete the files the report created:
+In the `aigateway/labs/14-otel-chargeback` folder, delete the files the report created:
 
 ```bash title="Bash"
 # Delete the usage, the price list, and the report, because they hold tenant and object IDs

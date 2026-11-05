@@ -228,18 +228,18 @@ az cognitiveservices model list --location "<location>" `
 ## Clone the labs repo
 
 The Bicep + azd tracks, the notebooks, and the code samples run from the
-[labs repo](https://github.com/Azure/ai-gateway/tree/main/labs). Clone it once into your home folder:
+[labs repo](https://github.com/Azure/aigateway/tree/main/labs). Clone it once into your home folder:
 
 ```bash title="Bash or PowerShell"
-# Clone the labs repo into your home folder, as ~/ai-gateway, where every lab expects it
+# Clone the labs repo into your home folder, as ~/aigateway, where every lab expects it
 cd ~
-git clone https://github.com/Azure/ai-gateway.git &&
-  echo "📂 The labs are in ~/ai-gateway/labs"
+git clone https://github.com/Azure/aigateway.git &&
+  echo "📂 The labs are in ~/aigateway/labs"
 ```
 
-Each lab then moves into its own folder, for example `cd ~/ai-gateway/labs/06-token-limits`. If you cloned the repo
-before, get the latest labs with `git -C ~/ai-gateway pull` instead. If you cloned it somewhere else, use that path
-instead of `~/ai-gateway`.
+Each lab then moves into its own folder, for example `cd ~/aigateway/labs/06-token-limits`. If you cloned the repo
+before, get the latest labs with `git -C ~/aigateway pull` instead. If you cloned it somewhere else, use that path
+instead of `~/aigateway`.
 
 ## Deploy a lab with azd
 
@@ -259,7 +259,7 @@ For example, for [lab 06](06-token-limits/README.md):
 
 ```bash title="Bash"
 # Move into the lab's folder, which holds its azure.yaml file and its infra/ templates
-cd ~/ai-gateway/labs/06-token-limits &&
+cd ~/aigateway/labs/06-token-limits &&
   echo "📂 Lab folder: $(pwd)"
 
 # Create an azd environment in your current subscription and region, so that azd doesn't prompt you
@@ -277,7 +277,7 @@ azd env get-value AI_GATEWAY_URL
 
 ```powershell title="PowerShell"
 # Move into the lab's folder, which holds its azure.yaml file and its infra/ templates
-cd ~/ai-gateway/labs/06-token-limits
+cd ~/aigateway/labs/06-token-limits
 if ($?) { Write-Host "📂 Lab folder: $(Get-Location)" }
 
 # Create an azd environment in your current subscription and region, so that azd doesn't prompt you

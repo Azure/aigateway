@@ -51,7 +51,7 @@ baseline, prove it works with a smoke test, and wire it all into GitHub Actions.
   repository where you can create environments and variables, the [GitHub CLI](https://cli.github.com/) signed
   in with `gh auth login`, and permission to create an app registration in Microsoft Entra ID.
 
-Run every command from this lab's folder, `~/ai-gateway/labs/21-enterprise-reference`, so the `infra/` paths
+Run every command from this lab's folder, `~/aigateway/labs/21-enterprise-reference`, so the `infra/` paths
 resolve. Set these variables once:
 
 ```bash title="Bash"

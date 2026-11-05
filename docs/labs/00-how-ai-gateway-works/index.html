@@ -9,15 +9,15 @@
 <meta property="og:description" content="A 20-minute visual tour of Azure AI Gateway. Follow one request through the gateway, meet models, aliases, MCP servers, policies, and identities, and pick the learning path that fits your role.">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Azure AI Gateway Labs">
-<meta property="og:url" content="https://azure.github.io/ai-gateway/labs/00-how-ai-gateway-works/">
-<meta property="og:image" content="https://azure.github.io/ai-gateway/assets/og-image.jpg?v=d3cc78b4">
+<meta property="og:url" content="https://azure.github.io/aigateway/labs/00-how-ai-gateway-works/">
+<meta property="og:image" content="https://azure.github.io/aigateway/assets/og-image.jpg?v=d3cc78b4">
 <meta property="og:image:type" content="image/jpeg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Azure AI Gateway Labs. Apps, agents, and code connect through one gateway to models, tools, and connectors.">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:image" content="https://azure.github.io/ai-gateway/assets/og-image.jpg?v=d3cc78b4">
-<link rel="canonical" href="https://azure.github.io/ai-gateway/labs/00-how-ai-gateway-works/">
+<meta name="twitter:image" content="https://azure.github.io/aigateway/assets/og-image.jpg?v=d3cc78b4">
+<link rel="canonical" href="https://azure.github.io/aigateway/labs/00-how-ai-gateway-works/">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#1b1a1f" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="../../assets/favicon.svg" type="image/svg+xml">
@@ -45,7 +45,7 @@
       <a class="topbar-link hide-sm" href="https://ai.gateway.azure.com/docs" target="_blank" rel="noopener">Documentation</a>
       <button class="icon-btn motion-toggle" type="button" data-motion-toggle aria-pressed="false" aria-label="Pause animations" title="Pause animations"><svg class="i" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.5"/><path d="M8.2 7.2v5.6M11.8 7.2v5.6"/></svg></button>
       <button class="icon-btn" type="button" data-theme-toggle aria-pressed="false" aria-label="Dark mode" title="Dark mode"><span class="theme-sun"><svg class="i" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="3.5"/><path d="M10 2v1.5M10 16.5V18M2 10h1.5M16.5 10H18M4.3 4.3l1.1 1.1M14.6 14.6l1.1 1.1M4.3 15.7l1.1-1.1M14.6 5.4l1.1-1.1"/></svg></span><span class="theme-moon"><svg class="i" viewBox="0 0 20 20" aria-hidden="true"><path d="M16.5 12.2A6.8 6.8 0 0 1 7.8 3.5a6.8 6.8 0 1 0 8.7 8.7Z"/></svg></span></button>
-      <a class="icon-btn hide-sm" href="https://github.com/Azure/ai-gateway" target="_blank" rel="noopener" aria-label="GitHub repository"><svg class="i i-fill" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.05-.49.05-.49.8.06 1.23.83 1.23.83.72 1.22 1.88.87 2.34.66.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 8 0Z"/></svg></a>
+      <a class="icon-btn hide-sm" href="https://github.com/Azure/aigateway" target="_blank" rel="noopener" aria-label="GitHub repository"><svg class="i i-fill" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.05-.49.05-.49.8.06 1.23.83 1.23.83.72 1.22 1.88.87 2.34.66.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 8 0Z"/></svg></a>
       <a class="btn btn-primary btn-pill btn-sm hide-xs" href="https://ai.gateway.azure.com" target="_blank" rel="noopener">Open portal</a>
     </div>
   </div>
@@ -70,15 +70,15 @@
         <span class="meta-pill"><span class="level-dots" aria-hidden="true"><i class="on"></i><i></i><i></i></span>Beginner</span>
         <span class="meta-pill"><svg class="i" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.5"/><path d="M10 5.5V10l3 2"/></svg>20 min</span>
         <span class="meta-pill meta-tracks"><span class="track-chips"><span class="track-chip" title="Portal"><svg class="i" viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="3.5" width="15" height="11" rx="2"/><path d="M7 17.5h6M10 14.5v3"/><path d="m9 7 4 2-1.7.7-.7 1.8Z"/></svg><span>Portal</span></span></span></span>
-        <span class="meta-updated">Updated <time datetime="2026-11-03">Nov 3, 2026</time></span>
+        <span class="meta-updated">Updated <time datetime="2026-11-04">Nov 4, 2026</time></span>
       </div>
       <div class="lab-actions">
         <button class="btn btn-secondary btn-sm" type="button" data-values-open><svg class="i" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h7M14 6h3M3 14h3M10 14h7"/><circle cx="12" cy="6" r="2"/><circle cx="8" cy="14" r="2"/></svg>Your values</button>
         <button class="btn btn-secondary btn-sm" type="button" data-setup-open><svg class="i" viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 3a4 4 0 0 0-3.8 5.3L3.5 13.5a1.5 1.5 0 0 0 0 2.1l.9.9a1.5 1.5 0 0 0 2.1 0l5.2-5.2A4 4 0 0 0 17 7.5l-2.3 2.3-2.3-.4-.4-2.3L14.3 4.8A4 4 0 0 0 12.5 3Z"/></svg>Setup guide<span class="setup-badge" data-setup-badge hidden></span></button>
         <button class="btn btn-ghost btn-sm" type="button" data-copy-md="index.md"><svg class="i" viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="4.5" width="16" height="11" rx="2"/><path d="M5 12.5v-5l2 2.5 2-2.5v5M13 7.5v5M11 10.5l2 2 2-2"/></svg>Copy as Markdown</button>
         <a class="btn btn-ghost btn-sm" href="#video-walkthrough" title="Narrated walkthrough: how Azure AI Gateway works (3 min)"><svg class="i" viewBox="0 0 20 20" aria-hidden="true"><path d="M6.5 4.5v11l9-5.5Z"/></svg>Watch video</a>
-        <a class="btn btn-ghost btn-sm" href="https://github.com/Azure/ai-gateway/tree/main/labs/00-how-ai-gateway-works" target="_blank" rel="noopener"><svg class="i i-fill" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.05-.49.05-.49.8.06 1.23.83 1.23.83.72 1.22 1.88.87 2.34.66.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 8 0Z"/></svg>Source</a>
-        <a class="btn btn-ghost btn-sm" href="https://github.com/Azure/ai-gateway/edit/main/labs/00-how-ai-gateway-works/README.md" target="_blank" rel="noopener"><svg class="i" viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 4 16 7.5 7.5 16H4v-3.5Z"/><path d="m11 5.5 3.5 3.5"/></svg>Edit</a>
+        <a class="btn btn-ghost btn-sm" href="https://github.com/Azure/aigateway/tree/main/labs/00-how-ai-gateway-works" target="_blank" rel="noopener"><svg class="i i-fill" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.05-.49.05-.49.8.06 1.23.83 1.23.83.72 1.22 1.88.87 2.34.66.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 8 0Z"/></svg>Source</a>
+        <a class="btn btn-ghost btn-sm" href="https://github.com/Azure/aigateway/edit/main/labs/00-how-ai-gateway-works/README.md" target="_blank" rel="noopener"><svg class="i" viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 4 16 7.5 7.5 16H4v-3.5Z"/><path d="m11 5.5 3.5 3.5"/></svg>Edit</a>
       </div>
     </header>
     <section class="lab-overview">
@@ -435,7 +435,7 @@ progress is saved in this browser.</p>
     <a class="pager-link prev" href="../../labs/quickstart/" data-pager="prev"><span class="pager-dir"><svg class="i" viewBox="0 0 20 20" aria-hidden="true"><path d="M16 10H4M8.5 5.5 4 10l4.5 4.5"/></svg>Previous</span><span class="pager-title">Quick start · Your first model call in 5 minutes</span></a>
     <a class="pager-link next" href="../../labs/01-provision-gateway/" data-pager="next"><span class="pager-dir">Next<svg class="i" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12M11.5 5.5 16 10l-4.5 4.5"/></svg></span><span class="pager-title">01 · Provision your AI Gateway</span></a>
   </nav>
-    <p class="feedback">Found a problem or have an idea? <a href="https://github.com/Azure/ai-gateway/issues/new?labels=labs&title=%5BLab%2000%5D%20" target="_blank" rel="noopener">Open an issue</a> or <a href="https://github.com/Azure/ai-gateway/edit/main/labs/00-how-ai-gateway-works/README.md" target="_blank" rel="noopener">edit this lab on GitHub</a>.</p>
+    <p class="feedback">Found a problem or have an idea? <a href="https://github.com/Azure/aigateway/issues/new?labels=labs&title=%5BLab%2000%5D%20" target="_blank" rel="noopener">Open an issue</a> or <a href="https://github.com/Azure/aigateway/edit/main/labs/00-how-ai-gateway-works/README.md" target="_blank" rel="noopener">edit this lab on GitHub</a>.</p>
   </main>
   <aside class="toc" aria-label="On this page">
     <div class="toc-inner">
@@ -464,7 +464,7 @@ progress is saved in this browser.</p>
     <div class="footer-cols">
       <div><h2>Labs</h2><a href="../../labs/">All labs</a><a href="../../index.html#paths">Learning paths</a><a href="../../index.html#use-cases">Use cases</a><a href="../../setup/">Setup guide</a><a href="../../troubleshooting/">Troubleshooting</a><a href="../../release-notes/">Release notes</a><a href="../../skills/azure-ai-gateway-labs/SKILL.md" title="azure-ai-gateway-labs: the agent skill that teaches coding agents how to use these labs">Agent skill</a></div>
       <div><h2>Product</h2><a href="https://ai.gateway.azure.com" target="_blank" rel="noopener">AI Gateway portal</a><a href="https://ai.gateway.azure.com/docs" target="_blank" rel="noopener">Documentation</a><a href="https://learn.microsoft.com/azure/ai-gateway/overview" target="_blank" rel="noopener">Microsoft Learn</a></div>
-      <div><h2>Contribute</h2><a href="https://github.com/Azure/ai-gateway" target="_blank" rel="noopener">GitHub repository</a><a href="https://github.com/Azure/ai-gateway/blob/main/labs/AUTHORING.md" target="_blank" rel="noopener">Authoring guide</a><a href="https://github.com/Azure/ai-gateway/issues/new?labels=labs" target="_blank" rel="noopener">Report an issue</a></div>
+      <div><h2>Contribute</h2><a href="https://github.com/Azure/aigateway" target="_blank" rel="noopener">GitHub repository</a><a href="https://github.com/Azure/aigateway/blob/main/labs/AUTHORING.md" target="_blank" rel="noopener">Authoring guide</a><a href="https://github.com/Azure/aigateway/issues/new?labels=labs" target="_blank" rel="noopener">Report an issue</a></div>
     </div>
   </div>
   <div class="footer-legal"><span>© 2026 Microsoft</span><a href="https://go.microsoft.com/fwlink/?LinkId=521839" target="_blank" rel="noopener">Privacy</a><a href="https://go.microsoft.com/fwlink/?LinkID=206977" target="_blank" rel="noopener">Terms of use</a><a href="https://www.microsoft.com/trademarks" target="_blank" rel="noopener">Trademarks</a></div>

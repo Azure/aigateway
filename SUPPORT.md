@@ -3,13 +3,13 @@
 ## How to file issues and get help
 
 This project uses GitHub Issues to track bugs and feature requests. Please search the
-[existing issues](https://github.com/Azure/ai-gateway/issues) before filing
+[existing issues](https://github.com/Azure/aigateway/issues) before filing
 new issues to avoid duplicates. For new issues, file your bug or feature request as a new Issue.
 
 For help and questions about using this project, please use:
 
-- **[GitHub Discussions](https://github.com/Azure/ai-gateway/discussions)** — Ask questions, share ideas, and discuss the project
-- **[GitHub Issues](https://github.com/Azure/ai-gateway/issues)** — Report bugs and request features
+- **[GitHub Discussions](https://github.com/Azure/aigateway/discussions)** — Ask questions, share ideas, and discuss the project
+- **[GitHub Issues](https://github.com/Azure/aigateway/issues)** — Report bugs and request features
 - **[Documentation](https://learn.microsoft.com/azure/ai-gateway/overview)** — Read the Azure AI Gateway documentation on Microsoft Learn
 
 ## Microsoft Support Policy

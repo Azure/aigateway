@@ -23,7 +23,7 @@ npm run releases   # product releases, and which ones labs/RELEASE-NOTES.md does
 npm run sync       # refresh the generated GitHub navigation in the READMEs and the skill catalog
 npm run build      # sync, then write ../docs
 npm run check      # strict build: must finish with zero warnings before you commit
-npm run serve      # preview at http://localhost:4173/ai-gateway/
+npm run serve      # preview at http://localhost:4173/aigateway/
 npm run deploy:swa # optional: publish to the swa-ai-gateway-labs Static Web App in rg-ai-gateway-labs
 ```
 

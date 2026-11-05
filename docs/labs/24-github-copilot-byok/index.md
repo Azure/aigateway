@@ -55,7 +55,7 @@ surfaces its tools, with the same key, so Copilot's tool calls get the same cont
   | [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli) | 1.0.103 | Nothing else. A GitHub sign-in is optional with your own model. |
   | [GitHub Copilot SDK](https://github.com/github/copilot-sdk) | 1.0.26 (TypeScript), 1.0.22 (Python) | Node.js 22.18 or later, or Python 3.11 or later, and a clone of this repository. |
   | [GitHub Copilot app](https://docs.github.com/en/copilot/get-started/quickstart-copilot-app) | Public preview | A GitHub sign-in. A Copilot plan isn't required for your own models. |
-- Run the scripts and samples from the lab's folder, `~/ai-gateway/labs/24-github-copilot-byok`.
+- Run the scripts and samples from the lab's folder, `~/aigateway/labs/24-github-copilot-byok`.
 
 > [!IMPORTANT]
 > On Copilot Business or Copilot Enterprise, an administrator must allow custom models before VS Code and the
@@ -391,7 +391,7 @@ everything. It takes about four minutes.
 
 ```bash title="Bash"
 # Move into the lab's folder, which holds the azd project
-cd ~/ai-gateway/labs/24-github-copilot-byok &&
+cd ~/aigateway/labs/24-github-copilot-byok &&
   echo "📂 Lab folder: $(pwd)"
 
 # Create an azd environment in your current subscription, so that azd doesn't prompt you
@@ -405,7 +405,7 @@ azd up &&
 
 ```powershell title="PowerShell"
 # Move into the lab's folder, which holds the azd project
-Set-Location ~/ai-gateway/labs/24-github-copilot-byok
+Set-Location ~/aigateway/labs/24-github-copilot-byok
 if ($?) { Write-Host "📂 Lab folder: $(Get-Location)" }
 
 # Create an azd environment in your current subscription, so that azd doesn't prompt you
@@ -964,7 +964,7 @@ with `az aigateway mcp show -g "$RG" --gateway-name "$GATEWAY" -n learn --query 
 
 `azd up` already deployed it: `infra/main.bicep` calls lab 04's
 [`tool-server.bicep`](../04-federate-mcp-tools/infra/tool-server.bicep), which references your gateway and declares
-one `toolServers` resource, `learn`. Print its endpoint from the lab folder (`ai-gateway/labs/24-github-copilot-byok`):
+one `toolServers` resource, `learn`. Print its endpoint from the lab folder (`aigateway/labs/24-github-copilot-byok`):
 
 ```bash title="Bash"
 # Print the endpoint of the learn MCP server that azd up deployed
@@ -1580,7 +1580,7 @@ if ($?) { Write-Host "🚮 MCP server learn is deleted" }
 
 ### Delete everything azd created
 
-In the `ai-gateway/labs/24-github-copilot-byok` folder, delete the resource group with the gateway, the `gpt-6-astra`
+In the `aigateway/labs/24-github-copilot-byok` folder, delete the resource group with the gateway, the `gpt-6-astra`
 alias, the `github-copilot` key, the `learn` MCP server, and the Foundry account with its two deployments.
 [`--purge`](../SETUP.md#delete-what-azd-created) also purges the soft-deleted Foundry account. It takes about ten
 minutes.

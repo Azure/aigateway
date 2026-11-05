@@ -274,7 +274,7 @@ the resource group and the gateway. It takes about three minutes.
 
 ```bash title="Bash"
 # Move into the lab's folder, which holds the azd project
-cd ~/ai-gateway/labs/01-provision-gateway &&
+cd ~/aigateway/labs/01-provision-gateway &&
   echo "📂 Lab folder: $(pwd)"
 
 # Create an azd environment in your current subscription, so that azd doesn't prompt you
@@ -288,7 +288,7 @@ azd up &&
 
 ```powershell title="PowerShell"
 # Move into the lab's folder, which holds the azd project
-Set-Location ~/ai-gateway/labs/01-provision-gateway
+Set-Location ~/aigateway/labs/01-provision-gateway
 if ($?) { Write-Host "📂 Lab folder: $(Get-Location)" }
 
 # Create an azd environment in your current subscription, so that azd doesn't prompt you
@@ -490,7 +490,7 @@ If you continue with the portal or CLI track of [lab 02](../02-first-model-call/
 its names instead: the resource group is `rg-aigw-lab01`, and `azd env get-value AI_GATEWAY_NAME` prints the gateway
 name.
 
-Otherwise, in the `ai-gateway/labs/01-provision-gateway` folder, delete the resource group with the gateway and its
+Otherwise, in the `aigateway/labs/01-provision-gateway` folder, delete the resource group with the gateway and its
 connector gateway. It takes up to ten minutes.
 
 ```bash

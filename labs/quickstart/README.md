@@ -34,7 +34,7 @@ prereqs: []
 - Create a gateway, publish a Foundry model behind an alias, and create a runtime API key in the portal, the Azure CLI, or Bicep with azd
 - Make your first model call through the gateway the way an app does, with an alias and a runtime API key
 
-**Follow along:** 🌐 [Interactive version](https://azure.github.io/ai-gateway/labs/quickstart/) with your own values filled in · 📁 [Lab files](infra/)
+**Follow along:** 🌐 [Interactive version](https://azure.github.io/aigateway/labs/quickstart/) with your own values filled in · 📁 [Lab files](infra/)
 
 **On this page:** [Before you begin](#before-you-begin) · [How it works](#how-it-works) · [Create a gateway and make your first call](#create-a-gateway-and-make-your-first-call) · [Next steps](#next-steps)
 <!-- gh:end -->
@@ -562,7 +562,7 @@ you.
 ### Review the template
 
 The template is a small azd project in the
-[`labs/quickstart`](https://github.com/Azure/ai-gateway/tree/main/labs/quickstart) folder of the repo: an `azure.yaml`
+[`labs/quickstart`](https://github.com/Azure/aigateway/tree/main/labs/quickstart) folder of the repo: an `azure.yaml`
 and a Bicep file for each scope. `infra/main.bicep` creates the resource group `rg-<environment name>` and passes
 unique names to `infra/resources.bicep`, which creates the building blocks in the same order as the other tracks:
 
@@ -771,7 +771,7 @@ so that azd doesn't prompt you, then provision everything with one command. It t
 
 ```bash title="Bash"
 # Move into the quick start's folder, which holds the azd project
-cd ~/ai-gateway/labs/quickstart &&
+cd ~/aigateway/labs/quickstart &&
   echo "📂 Template folder: $(pwd)"
 
 # Create an azd environment in your current subscription, so that azd doesn't prompt you
@@ -788,7 +788,7 @@ azd up &&
 
 ```powershell title="PowerShell"
 # Move into the quick start's folder, which holds the azd project
-Set-Location ~/ai-gateway/labs/quickstart
+Set-Location ~/aigateway/labs/quickstart
 if ($?) { Write-Host "📂 Template folder: $(Get-Location)" }
 
 # Create an azd environment in your current subscription, so that azd doesn't prompt you
@@ -889,7 +889,7 @@ bar: **Models**, **Access** › **Keys**, and the **Catalog** playground.
 ### Clean up
 
 To keep exploring, skip this step: [lab 03](../03-multi-provider-aliases/README.md) and the labs after it work on this
-gateway. Otherwise, in the `ai-gateway/labs/quickstart` folder, delete everything that `azd up` created. `--purge` also purges
+gateway. Otherwise, in the `aigateway/labs/quickstart` folder, delete everything that `azd up` created. `--purge` also purges
 the Foundry account, which would otherwise stay soft-deleted for 48 hours and keep counting against your quota. It
 takes about ten minutes.
 
@@ -912,7 +912,7 @@ if ($?) { Write-Host "🚮 Everything that azd up created is deleted" }
 </details> <!-- gh -->
 
 > **Checkpoint:** `azd down` ended with `SUCCESS`. The resource group `rg-aigw-quickstart` is gone, and you can delete
-> the `ai-gateway` folder.
+> the `aigateway` folder.
 
 </details> <!-- gh -->
 <!-- /tracks -->

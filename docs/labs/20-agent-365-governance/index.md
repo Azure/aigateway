@@ -43,7 +43,7 @@ enforce each decision on live traffic.
   Azure permissions of their own.
 - Permission to edit the MCP server in the AI Gateway portal, for example **Contributor** on the gateway's resource
   group, and a runtime API key from **Access** › **Keys**.
-- Run the scripts and samples from the lab's folder, `~/ai-gateway/labs/20-agent-365-governance`.
+- Run the scripts and samples from the lab's folder, `~/aigateway/labs/20-agent-365-governance`.
 
 > [!NOTE]
 > The Agent 365 integration is an emerging capability. Labels and behavior can change; see the

@@ -44,7 +44,7 @@ send the gateway's OpenTelemetry signals to Application Insights and answer all 
   create role assignments, for example **Owner** or **Role Based Access Control Administrator**. Setup grants the
   gateway's managed identity a role on the telemetry destination. To reuse an existing Application Insights
   resource, you also need **Application Insights Contributor** on it.
-- Run the scripts and samples from the lab's folder, `~/ai-gateway/labs/13-monitoring`.
+- Run the scripts and samples from the lab's folder, `~/aigateway/labs/13-monitoring`.
 
 Set these variables once. The tracks and the traffic script reuse them.
 
@@ -352,7 +352,7 @@ everything. It takes about four minutes.
 
 ```bash title="Bash"
 # Move into the lab's folder, which holds the azd project
-cd ~/ai-gateway/labs/13-monitoring &&
+cd ~/aigateway/labs/13-monitoring &&
   echo "📂 Lab folder: $(pwd)"
 
 # Create an azd environment in your current subscription, so that azd doesn't prompt you
@@ -366,7 +366,7 @@ azd up &&
 
 ```powershell title="PowerShell"
 # Move into the lab's folder, which holds the azd project
-Set-Location ~/ai-gateway/labs/13-monitoring
+Set-Location ~/aigateway/labs/13-monitoring
 if ($?) { Write-Host "📂 Lab folder: $(Get-Location)" }
 
 # Create an azd environment in your current subscription, so that azd doesn't prompt you
@@ -719,7 +719,7 @@ if ($?) { Write-Host "🚮 Log Analytics workspace $GATEWAY-logs is deleted" }
 
 ### Delete everything azd created
 
-In the `ai-gateway/labs/13-monitoring` folder, delete the resource group with the gateway, the Foundry account, the
+In the `aigateway/labs/13-monitoring` folder, delete the resource group with the gateway, the Foundry account, the
 Application Insights component, and the Log Analytics workspace. Azure deletes the component's managed resource group
 with it. [`--purge`](../SETUP.md#delete-what-azd-created) also purges the soft-deleted Foundry account. It takes about
 ten minutes.

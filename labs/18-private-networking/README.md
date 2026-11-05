@@ -39,7 +39,7 @@ prereqs:
 - Give Foundry a private endpoint and private DNS, turn off its public access, and prove the gateway still reaches it
 - Clean up in the right order, so the subnet and the Foundry resource are released
 
-**Follow along:** 🌐 [Interactive version](https://azure.github.io/ai-gateway/labs/18-private-networking/) with your own values filled in · 📁 [Lab files](infra/)
+**Follow along:** 🌐 [Interactive version](https://azure.github.io/aigateway/labs/18-private-networking/) with your own values filled in · 📁 [Lab files](infra/)
 
 **On this page:** [Before you begin](#before-you-begin) · [How it works](#how-it-works) · [Prepare the virtual network](#prepare-the-virtual-network) · [Create the gateway with private routing](#create-the-gateway-with-private-routing) · [Give Foundry a private endpoint](#give-foundry-a-private-endpoint) · [Publish a model on the new gateway](#publish-a-model-on-the-new-gateway) · [Turn off public access to Foundry](#turn-off-public-access-to-foundry) · [Verify](#verify) · [Go further](#go-further) · [Clean up](#clean-up) · [Next steps](#next-steps)
 <!-- gh:end -->
@@ -880,7 +880,7 @@ everything. It takes about seven minutes.
 
 ```bash title="Bash"
 # Move into the lab's folder, which holds the azd project
-cd ~/ai-gateway/labs/18-private-networking &&
+cd ~/aigateway/labs/18-private-networking &&
   echo "📂 Lab folder: $(pwd)"
 
 # Create an azd environment in your current subscription, so that azd doesn't prompt you
@@ -897,7 +897,7 @@ azd up &&
 
 ```powershell title="PowerShell"
 # Move into the lab's folder, which holds the azd project
-Set-Location ~/ai-gateway/labs/18-private-networking
+Set-Location ~/aigateway/labs/18-private-networking
 if ($?) { Write-Host "📂 Lab folder: $(Get-Location)" }
 
 # Create an azd environment in your current subscription, so that azd doesn't prompt you
@@ -1624,7 +1624,7 @@ if ($?) { Write-Host "🚮 Connector gateway $GATEWAY is deleted" }
 
 ### Delete everything azd created
 
-In the `ai-gateway/labs/18-private-networking` folder, delete the resource group with the gateway, the network, the
+In the `aigateway/labs/18-private-networking` folder, delete the resource group with the gateway, the network, the
 private endpoint and DNS zones, and the lab's Foundry resource. [`--purge`](../SETUP.md#delete-what-azd-created) also
 purges the soft-deleted Foundry resource. It takes about ten minutes.
 

@@ -50,7 +50,7 @@ leaked notebook key. Because every key is a separate caller identity, you can al
   one below.
 - Optional, for usage and cost per key: monitoring configured in
   [Monitor usage, cost, and traces](../13-monitoring/README.md).
-- Run the scripts and samples from the lab's folder, `~/ai-gateway/labs/10-api-keys`.
+- Run the scripts and samples from the lab's folder, `~/aigateway/labs/10-api-keys`.
 
 Set these variables once. Every track and the **Verify** section reuse them.
 
@@ -266,7 +266,7 @@ everything. It takes about three minutes.
 
 ```bash title="Bash"
 # Move into the lab's folder, which holds the azd project
-cd ~/ai-gateway/labs/10-api-keys &&
+cd ~/aigateway/labs/10-api-keys &&
   echo "📂 Lab folder: $(pwd)"
 
 # Create an azd environment named aigw-lab10 in your current subscription, so that azd doesn't prompt you
@@ -280,7 +280,7 @@ azd up &&
 
 ```powershell title="PowerShell"
 # Move into the lab's folder, which holds the azd project
-Set-Location ~/ai-gateway/labs/10-api-keys
+Set-Location ~/aigateway/labs/10-api-keys
 if ($?) { Write-Host "📂 Lab folder: $(Get-Location)" }
 
 # Create an azd environment named aigw-lab10 in your current subscription, so that azd doesn't prompt you
@@ -851,7 +851,7 @@ az aigateway api-key delete -g "$RG" --gateway-name "$GATEWAY" -n support-bot-v2
 
 ### Delete everything azd created
 
-In the `ai-gateway/labs/10-api-keys` folder, delete the resource group with the gateway, the Foundry account, and the
+In the `aigateway/labs/10-api-keys` folder, delete the resource group with the gateway, the Foundry account, and the
 keys. [`--purge`](../SETUP.md#delete-what-azd-created) also purges the soft-deleted Foundry account. It takes about
 ten minutes.
 

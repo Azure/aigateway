@@ -49,7 +49,7 @@ called.
 - Optional, for the Entra override: a user or service principal that can call the gateway with Microsoft
   Entra ID. [Go keyless with Microsoft Entra ID and RBAC](../11-entra-rbac/README.md) shows how.
 - Permission to change the gateway, for example **Contributor** on the resource group.
-- Run the scripts and samples from the lab's folder, `~/ai-gateway/labs/07-cost-budgets`.
+- Run the scripts and samples from the lab's folder, `~/aigateway/labs/07-cost-budgets`.
 
 Set these variables once. Both tracks and the **Verify** section reuse them. Use the `app-dev` key here.
 
@@ -300,7 +300,7 @@ everything. It takes about three minutes.
 
 ```bash title="Bash"
 # Move into the lab's folder, which holds the azd project
-cd ~/ai-gateway/labs/07-cost-budgets &&
+cd ~/aigateway/labs/07-cost-budgets &&
   echo "📂 Lab folder: $(pwd)"
 
 # Create an azd environment in your current subscription, so that azd doesn't prompt you
@@ -314,7 +314,7 @@ azd up &&
 
 ```powershell title="PowerShell"
 # Move into the lab's folder, which holds the azd project
-Set-Location ~/ai-gateway/labs/07-cost-budgets
+Set-Location ~/aigateway/labs/07-cost-budgets
 if ($?) { Write-Host "📂 Lab folder: $(Get-Location)" }
 
 # Create an azd environment in your current subscription, so that azd doesn't prompt you
@@ -593,7 +593,7 @@ To keep the policy instead, run **Set the cost limit** again with a production b
 
 ### Delete everything azd created
 
-In the `ai-gateway/labs/07-cost-budgets` folder, delete the resource group with the gateway, the Foundry account, the
+In the `aigateway/labs/07-cost-budgets` folder, delete the resource group with the gateway, the Foundry account, the
 keys, and the budgeted alias. [`--purge`](../SETUP.md#delete-what-azd-created) also purges the soft-deleted Foundry
 account. It takes about ten minutes.
 

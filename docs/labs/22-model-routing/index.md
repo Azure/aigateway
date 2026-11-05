@@ -44,7 +44,7 @@ apps never change the model name they send.
   in the Foundry account.
 - Optional: [Publish models from any provider behind stable aliases](../03-multi-provider-aliases/README.md)
   explains aliases in more depth.
-- Run the scripts and samples from the lab's folder, `~/ai-gateway/labs/22-model-routing`.
+- Run the scripts and samples from the lab's folder, `~/aigateway/labs/22-model-routing`.
 
 Set these variables once. Every track and the **Verify** section reuse them.
 
@@ -301,7 +301,7 @@ everything. It takes about five minutes.
 
 ```bash title="Bash"
 # Move into the lab's folder, which holds the azd project
-cd ~/ai-gateway/labs/22-model-routing &&
+cd ~/aigateway/labs/22-model-routing &&
   echo "📂 Lab folder: $(pwd)"
 
 # Create an azd environment named aigw-lab22 in your current subscription, so that azd doesn't prompt you
@@ -315,7 +315,7 @@ azd up &&
 
 ```powershell title="PowerShell"
 # Move into the lab's folder, which holds the azd project
-Set-Location ~/ai-gateway/labs/22-model-routing
+Set-Location ~/aigateway/labs/22-model-routing
 if ($?) { Write-Host "📂 Lab folder: $(Get-Location)" }
 
 # Create an azd environment named aigw-lab22 in your current subscription, so that azd doesn't prompt you
@@ -641,7 +641,7 @@ If an alias that the portal import created still points to `gpt-6.1-sol`, delete
 
 ### Delete everything azd created
 
-In the `ai-gateway/labs/22-model-routing` folder, delete the resource group with the gateway, the Foundry account and
+In the `aigateway/labs/22-model-routing` folder, delete the resource group with the gateway, the Foundry account and
 its two deployments, and the `chat` alias. [`--purge`](../SETUP.md#delete-what-azd-created) also purges the
 soft-deleted Foundry account. It takes about ten minutes.
 

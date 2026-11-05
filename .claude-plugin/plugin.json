@@ -6,8 +6,8 @@
     "name": "Microsoft",
     "url": "https://www.microsoft.com"
   },
-  "homepage": "https://github.com/Azure/ai-gateway",
-  "repository": "https://github.com/Azure/ai-gateway",
+  "homepage": "https://github.com/Azure/aigateway",
+  "repository": "https://github.com/Azure/aigateway",
   "license": "MIT",
   "keywords": ["ai-gateway", "agents", "mcp", "models", "azure", "integration"],
   "commands": ["./commands/discover.md", "./commands/build.md"],

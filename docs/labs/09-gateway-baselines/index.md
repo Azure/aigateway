@@ -41,7 +41,7 @@ and keep tighter asset policies on top of it.
 - Permission to change the gateway, for example **Contributor** on the resource group.
 - The public IP addresses or CIDR ranges your callers use. Once the IP filter is on, calls from anywhere else get
   `403`.
-- Run the scripts and samples from the lab's folder, `~/ai-gateway/labs/09-gateway-baselines`.
+- Run the scripts and samples from the lab's folder, `~/aigateway/labs/09-gateway-baselines`.
 
 Set these variables once. Every track and the **Verify** section reuse them.
 

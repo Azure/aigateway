@@ -27,6 +27,10 @@ model version, and manage MCP servers that use the 2026-07-28 MCP specification.
 
 #### Labs changes
 
+- **November 5.** The labs repo is now [Azure/aigateway](https://github.com/Azure/aigateway), and the labs site is
+  [azure.github.io/aigateway](https://azure.github.io/aigateway/). The [Setup guide](SETUP.md#clone-the-labs-repo)
+  clones it into `~/aigateway`, and every lab runs from `~/aigateway/labs/<lab>`. If you cloned `Azure/ai-gateway`
+  before, `git pull` still works, and `mv ~/ai-gateway ~/aigateway` moves it to the folder that the labs expect.
 - **November 4.** The Azure CLI tracks need `aigateway` extension 1.0.0b22 or later, which the
   [Setup guide](SETUP.md#install-the-aigateway-extension) installs, and use its new commands instead of `az rest`.
   Labs [07](07-cost-budgets/README.md#set-the-cost-limit), [09](09-gateway-baselines/README.md#set-the-baseline), and
@@ -299,5 +303,5 @@ date and title, and maps every product change to the lab where you can practice 
 don't come from a product release are listed under **Labs changes** in the release they followed.
 
 This file, [`labs/RELEASE-NOTES.md`](RELEASE-NOTES.md), is the source of truth: the labs site renders it at
-[/release-notes/](https://azure.github.io/ai-gateway/release-notes/). To check for product releases that the
+[/release-notes/](https://azure.github.io/aigateway/release-notes/). To check for product releases that the
 notes don't cover yet, run `npm run releases` in `labs/`. See [Authoring](AUTHORING.md#release-notes).

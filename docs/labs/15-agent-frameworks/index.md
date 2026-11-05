@@ -41,7 +41,7 @@ governed and observable in the same place.
 - Python 3.10 or later. The samples were tested together on Python 3.13 with the versions in
   [infra/requirements.txt](infra/requirements.txt).
 - Optional: monitoring from [Monitor usage, cost, and traces](../13-monitoring/README.md), to see the agent's calls.
-- Run the scripts and samples from the lab's folder, `~/ai-gateway/labs/15-agent-frameworks`.
+- Run the scripts and samples from the lab's folder, `~/aigateway/labs/15-agent-frameworks`.
 
 ## How it works
 

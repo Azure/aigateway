@@ -152,7 +152,7 @@ folder:
 ````markdown
 ```bash title="Bash"
 # Move into the lab's folder, which holds the azd project
-cd ~/ai-gateway/labs/<lab> &&
+cd ~/aigateway/labs/<lab> &&
   echo "📂 Lab folder: $(pwd)"
 ```
 ````

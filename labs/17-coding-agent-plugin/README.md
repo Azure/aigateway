@@ -36,7 +36,7 @@ prereqs:
 - Generate and run app code that calls the gateway with a runtime key
 - Review generated code for the right endpoint, model name, and secret handling
 
-**Follow along:** 🌐 [Interactive version](https://azure.github.io/ai-gateway/labs/17-coding-agent-plugin/) with your own values filled in · 📁 [Lab files](infra/)
+**Follow along:** 🌐 [Interactive version](https://azure.github.io/aigateway/labs/17-coding-agent-plugin/) with your own values filled in · 📁 [Lab files](infra/)
 
 **On this page:** [Before you begin](#before-you-begin) · [How it works](#how-it-works) · [Install the plugin](#install-the-plugin) · [Discover what the gateway offers](#discover-what-the-gateway-offers) · [Build an app with the gateway](#build-an-app-with-the-gateway) · [Verify](#verify) · [Go further](#go-further) · [Clean up](#clean-up) · [Next steps](#next-steps)
 <!-- gh:end -->
@@ -200,7 +200,7 @@ if ($?) { Write-Host "📂 Project folder with Git: $(Get-Location)" }
 
 ### Add the plugin to your agent
 
-The plugin lives in the [Azure/ai-gateway](https://github.com/Azure/ai-gateway) repository and follows each
+The plugin lives in the [Azure/aigateway](https://github.com/Azure/aigateway) repository and follows each
 agent's plugin format. In GitHub Copilot CLI and Claude Code, start a session in the folder (`copilot` or
 `claude`) and run the slash commands. In Gemini CLI, run the command in your shell, then start `gemini` in the
 folder. In Cursor, use the dashboard, then open the folder.
@@ -208,7 +208,7 @@ folder. In Cursor, use the dashboard, then open the folder.
 <details open><summary>GitHub Copilot CLI</summary> <!-- gh -->
 
 ```text title="GitHub Copilot CLI"
-/plugin marketplace add Azure/ai-gateway
+/plugin marketplace add Azure/aigateway
 /plugin install ai-gateway@azure
 ```
 </details> <!-- gh -->
@@ -216,7 +216,7 @@ folder. In Cursor, use the dashboard, then open the folder.
 <details><summary>Claude Code</summary> <!-- gh -->
 
 ```text title="Claude Code"
-/plugin marketplace add Azure/ai-gateway
+/plugin marketplace add Azure/aigateway
 /plugin install ai-gateway@azure
 ```
 </details> <!-- gh -->
@@ -225,7 +225,7 @@ folder. In Cursor, use the dashboard, then open the folder.
 
 ```text title="Cursor"
 In the Cursor dashboard, open Plugins and select Add Marketplace.
-Import https://github.com/Azure/ai-gateway.
+Import https://github.com/Azure/aigateway.
 Install ai-gateway from Customize.
 ```
 </details> <!-- gh -->
@@ -234,7 +234,7 @@ Install ai-gateway from Customize.
 
 ```bash title="Gemini CLI"
 # Install the plugin as a Gemini CLI extension, straight from the GitHub repository
-gemini extensions install https://github.com/Azure/ai-gateway &&
+gemini extensions install https://github.com/Azure/aigateway &&
   echo "📦 The ai-gateway extension is installed in Gemini CLI"
 ```
 </details> <!-- gh -->

@@ -39,7 +39,7 @@ this lab you publish only the approved tools, block one explicitly, and give eac
 - Complete [Federate MCP tools behind one endpoint](../04-federate-mcp-tools/README.md). You need the `learn`
   MCP server with its `learn` and `docs` backends, and a runtime API key from **Access** › **Keys**.
 - Permission to change the gateway, for example **Contributor** on the resource group.
-- Run the scripts and samples from the lab's folder, `~/ai-gateway/labs/05-mcp-tool-controls`.
+- Run the scripts and samples from the lab's folder, `~/aigateway/labs/05-mcp-tool-controls`.
 
 Set these variables once. Every track and the **Verify** section reuse them.
 
@@ -168,7 +168,7 @@ everything. It takes about three minutes.
 
 ```bash title="Bash"
 # Move into the lab's folder, which holds the azd project
-cd ~/ai-gateway/labs/05-mcp-tool-controls &&
+cd ~/aigateway/labs/05-mcp-tool-controls &&
   echo "📂 Lab folder: $(pwd)"
 
 # Create an azd environment in your current subscription, so that azd doesn't prompt you
@@ -182,7 +182,7 @@ azd up &&
 
 ```powershell title="PowerShell"
 # Move into the lab's folder, which holds the azd project
-Set-Location ~/ai-gateway/labs/05-mcp-tool-controls
+Set-Location ~/aigateway/labs/05-mcp-tool-controls
 if ($?) { Write-Host "📂 Lab folder: $(Get-Location)" }
 
 # Create an azd environment in your current subscription, so that azd doesn't prompt you
@@ -707,7 +707,7 @@ Then restore the catalog in the portal: open **MCP servers** › `learn` › **E
 
 ### Delete everything azd created
 
-In the `ai-gateway/labs/05-mcp-tool-controls` folder, delete the resource group with the gateway, the `learn` MCP
+In the `aigateway/labs/05-mcp-tool-controls` folder, delete the resource group with the gateway, the `learn` MCP
 server, and the key. [`--purge`](../SETUP.md#delete-what-azd-created) also purges soft-deleted resources. It takes
 about ten minutes.
 

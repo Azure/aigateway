@@ -17,7 +17,7 @@ platform teams enforce security, policy, networking, and observability.
 
 ## Hands-on labs
 
-**[Browse the labs → azure.github.io/ai-gateway](https://azure.github.io/ai-gateway/)**
+**[Browse the labs → azure.github.io/aigateway](https://azure.github.io/aigateway/)**
 
 26 step-by-step labs for customers and field teams. They start with the core AI gateway use cases (publishing
 models behind aliases, priority and weighted model routing, federating MCP tools, token limits and cost budgets,
@@ -71,19 +71,19 @@ directly from Git — no manual file downloads. Pick the tab for your agent:
 **Claude Code / GitHub Copilot CLI** (plugin marketplace protocol):
 
 ```
-/plugin marketplace add Azure/ai-gateway
+/plugin marketplace add Azure/aigateway
 /plugin install ai-gateway@azure
 ```
 
 **Cursor** — add this repository as a team marketplace from **Dashboard → Plugins →
-Add Marketplace → Import from Repo** (`https://github.com/Azure/ai-gateway`), then
+Add Marketplace → Import from Repo** (`https://github.com/Azure/aigateway`), then
 install **ai-gateway** from **Customize**. For local testing, symlink the repo into
 `~/.cursor/plugins/local/ai-gateway` and reload the window.
 
 **Gemini CLI**:
 
 ```
-gemini extensions install https://github.com/Azure/ai-gateway
+gemini extensions install https://github.com/Azure/aigateway
 ```
 
 ### Usage

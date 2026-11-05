@@ -48,7 +48,7 @@ allowed calls through.
 - Permission to manage policies on the gateway, for example **Contributor** on its resource group, and permission
   to create role assignments if your user doesn't have a data-plane role yet.
 - Your Azure CLI sign-in as a **user**, not a service principal.
-- Run the scripts and samples from the lab's folder, `~/ai-gateway/labs/19-tool-threat-protection`.
+- Run the scripts and samples from the lab's folder, `~/aigateway/labs/19-tool-threat-protection`.
 
 > [!NOTE]
 > Agent 365 tool threat protection is an emerging capability of Azure AI Gateway. Labels and behavior can
@@ -192,7 +192,7 @@ the policy.
 
 ```bash title="Bash"
 # Move into the lab's folder, which holds the azd project
-cd ~/ai-gateway/labs/19-tool-threat-protection &&
+cd ~/aigateway/labs/19-tool-threat-protection &&
   echo "📂 Lab folder: $(pwd)"
 
 # Create an azd environment in your current subscription, so that azd doesn't prompt you
@@ -206,7 +206,7 @@ azd up &&
 
 ```powershell title="PowerShell"
 # Move into the lab's folder, which holds the azd project
-Set-Location ~/ai-gateway/labs/19-tool-threat-protection
+Set-Location ~/aigateway/labs/19-tool-threat-protection
 if ($?) { Write-Host "📂 Lab folder: $(Get-Location)" }
 
 # Create an azd environment in your current subscription, so that azd doesn't prompt you
@@ -634,7 +634,7 @@ if ($?) { Write-Host "🚮 Your AI Gateway Tools User role on the $MCP_SERVER MC
 
 ### Delete everything azd created
 
-In the `ai-gateway/labs/19-tool-threat-protection` folder, delete the resource group with the gateway, the `learn` MCP
+In the `aigateway/labs/19-tool-threat-protection` folder, delete the resource group with the gateway, the `learn` MCP
 server, its role assignment, and the key. [`--purge`](../SETUP.md#delete-what-azd-created) also purges soft-deleted
 resources. It takes about ten minutes.
 

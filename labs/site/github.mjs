@@ -328,7 +328,7 @@ export function syncIndex(raw, { labs, catalog }) {
   const regions = {
     badges: [
       '<p align="center">',
-      `  <a href="${catalog.site.pages}">${badge('labs site', 'azure.github.io/ai-gateway', '0078D4')}</a>`,
+      `  <a href="${catalog.site.pages}">${badge('labs site', catalog.site.pages.replace(/^https?:\/\/|\/$/g, ''), '0078D4')}</a>`,
       `  ${badge('labs', labs.length, '5C2D91')}`,
       `  ${badge('learning paths', catalog.paths.length, '107C10')}`,
       `  ${badge('notebooks', notebooks.length, 'F37626', 'jupyter')}`,

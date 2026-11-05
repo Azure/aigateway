@@ -2,8 +2,8 @@
   "site": {
     "title": "Azure AI Gateway Labs",
     "tagline": "Hands-on labs to govern every model, tool, and agent from one gateway.",
-    "repo": "https://github.com/Azure/ai-gateway",
-    "pages": "https://azure.github.io/ai-gateway/",
+    "repo": "https://github.com/Azure/aigateway",
+    "pages": "https://azure.github.io/aigateway/",
     "branch": "main",
     "docs": "https://ai.gateway.azure.com/docs",
     "portal": "https://ai.gateway.azure.com",

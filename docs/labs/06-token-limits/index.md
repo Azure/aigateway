@@ -39,7 +39,7 @@ you give each caller its own token allowance at the gateway, so a noisy neighbor
 - Complete [Publish a Foundry model and make your first call](../02-first-model-call/README.md). You need a gateway, an imported
   model, a callable alias, and a runtime API key from **Access** › **Keys**.
 - Permission to change the gateway, for example **Contributor** on the resource group.
-- Run the scripts and samples from the lab's folder, `~/ai-gateway/labs/06-token-limits`.
+- Run the scripts and samples from the lab's folder, `~/aigateway/labs/06-token-limits`.
 
 Set these variables once. Every track and the **Verify** section reuse them.
 
@@ -297,7 +297,7 @@ everything. It takes about three minutes.
 
 ```bash title="Bash"
 # Move into the lab's folder, which holds the azd project
-cd ~/ai-gateway/labs/06-token-limits &&
+cd ~/aigateway/labs/06-token-limits &&
   echo "📂 Lab folder: $(pwd)"
 
 # Create an azd environment in your current subscription, so that azd doesn't prompt you
@@ -311,7 +311,7 @@ azd up &&
 
 ```powershell title="PowerShell"
 # Move into the lab's folder, which holds the azd project
-Set-Location ~/ai-gateway/labs/06-token-limits
+Set-Location ~/aigateway/labs/06-token-limits
 if ($?) { Write-Host "📂 Lab folder: $(Get-Location)" }
 
 # Create an azd environment in your current subscription, so that azd doesn't prompt you
@@ -556,7 +556,7 @@ az rest --method patch --url "$URL" --body "{\"properties\":{\"policies\":$POLIC
 
 ### Delete everything azd created
 
-In the `ai-gateway/labs/06-token-limits` folder, delete the resource group with the gateway, the Foundry account, and
+In the `aigateway/labs/06-token-limits` folder, delete the resource group with the gateway, the Foundry account, and
 the limited alias. [`--purge`](../SETUP.md#delete-what-azd-created) also purges the soft-deleted Foundry account. It
 takes about ten minutes.
 
