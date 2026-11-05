@@ -3,6 +3,7 @@
 Create an AI Gateway, register model providers and MCP servers, and manage
 policies, keys, identities, and networking from your terminal with `az aigateway`.
 
+> **Public preview**: commands and behavior may change before general availability.
 > Current extension release: **1.0.0b22**.
 
 [Install](#install) | [Quickstart](#quickstart) | [Command reference](command-reference.md) | [AI Gateway documentation](https://aka.ms/aigateway/docs)
@@ -64,17 +65,16 @@ The MCP path needs no model deployment or GitHub credential.
 
 ### Before using Azure resources
 
-You need an Azure subscription with access to AI Gateway, a supported
+You need an Azure subscription with access to the AI Gateway preview, a supported
 region, and permission to create resources in the subscription or target resource
 group (for example, Contributor at the appropriate scope). The
 `Microsoft.ApiManagement` resource provider must be registered in the subscription;
 ask your subscription administrator if registration is needed. See the
 [AI Gateway documentation](https://aka.ms/aigateway/docs) for availability.
 
-**This tutorial creates Azure resources.** For the AI Gateway tier's pricing, see the
-[AI Gateway documentation](https://aka.ms/aigateway/docs); connected services and other
-Azure resources may incur charges. Use a new, dedicated resource group and review
-pricing before proceeding.
+**This tutorial creates Azure resources.** The AI Gateway tier is currently free
+during public preview; connected services and other Azure resources may incur
+charges. Use a new, dedicated resource group and review pricing before proceeding.
 
 ### 1. Sign in and create a gateway
 

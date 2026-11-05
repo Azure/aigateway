@@ -25,7 +25,7 @@
 set -eu
 EXTENSION_NAME="aigateway"
 EXPECTED_API_VERSION="2025-09-01-preview"
-PUBLIC_WHEEL_URL="https://github.com/Azure/aigateway/releases/download/cli-v1.0.0b22/aigateway-1.0.0b22-py3-none-any.whl"
+PUBLIC_WHEEL_URL="https://github.com/Azure/ai-gateway/releases/download/cli-v1.0.0b22/aigateway-1.0.0b22-py3-none-any.whl"
 EXPECTED_SHA256="3363ee0efde6ec22f445fd11f2b6b625867c1ab49b8ab76108f6e1bfa920060a"
 UNINSTALL=0
 while [ "$#" -gt 0 ]; do
