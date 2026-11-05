@@ -71,7 +71,7 @@ gateway, tune it per category, and see what a blocked call looks like to a clien
 > need only the one-time setup above.
 
 - Complete [Publish a Foundry model and make your first call](../02-first-model-call/README.md). You need a
-  gateway, an imported model, a callable alias, and a runtime API key from **Access** › **Keys**.
+  gateway, an imported model, a callable alias, and a runtime API key from **Access** › **API keys**.
 - Permission to change the gateway, for example **Contributor** on the resource group.
 - Run the scripts and samples from the lab's folder, `~/aigateway/labs/08-content-safety`.
 
@@ -95,7 +95,7 @@ export AI_GATEWAY_MODEL="$(az aigateway model show -g "$RG" --gateway-name "$GAT
   -n "$MODEL" --query properties.deployment.modelName -o tsv)"
 echo "🔖 Model alias: $AI_GATEWAY_MODEL"
 
-# Paste the runtime key you created in Access › Keys, without showing it: don't commit it or write it to a file
+# Paste the runtime key you created in Access › API keys, without showing it: don't commit it or write it to a file
 read -rsp "AI Gateway API key: " AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 ```
@@ -119,7 +119,7 @@ $env:AI_GATEWAY_MODEL = az aigateway model show -g $RG --gateway-name $GATEWAY -
   -n $MODEL --query properties.deployment.modelName -o tsv
 Write-Host "🔖 Model alias: $env:AI_GATEWAY_MODEL"
 
-# Paste the runtime key you created in Access › Keys, without showing it: don't commit it or write it to a file
+# Paste the runtime key you created in Access › API keys, without showing it: don't commit it or write it to a file
 $env:AI_GATEWAY_API_KEY = Read-Host "AI Gateway API key" -MaskInput
 Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) characters, not shown)"
 ```
@@ -556,7 +556,7 @@ if ($?) { Write-Host "🚀 Gateway deployed: $(azd env get-value AI_GATEWAY_URL)
 ```
 </details> <!-- gh -->
 
-For another region, pick one where AI Gateway and the `gpt-6-luna` model are available, as in [Find the available
+For another region, pick one where AI Gateway and the `gpt-5-mini` model are available, as in [Find the available
 regions](../SETUP.md#find-the-available-regions).
 
 ### Read the outputs and the key
@@ -610,7 +610,7 @@ Write-Host "🔖 Model alias: $env:AI_GATEWAY_MODEL"
 </details> <!-- gh -->
 
 > **Checkpoint**
-> `azd up` ended with `SUCCESS`, and the last command printed `🔖 Model alias: gpt-6-luna-safe`.
+> `azd up` ended with `SUCCESS`, and the last command printed `🔖 Model alias: gpt-5-mini-safe`.
 > `az aigateway model-alias show -g "$RG" --gateway-name "$GATEWAY" -n "$AI_GATEWAY_MODEL" --query properties.policies`
 > returns one `contentSafety` entry with `"violenceSeverity": "Low"`, `"Medium"` for the other three categories,
 > and `"scope": "resource"`.

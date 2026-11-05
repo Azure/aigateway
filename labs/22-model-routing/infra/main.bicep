@@ -39,7 +39,7 @@ resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
   tags: tags
 }
 
-// The quick start's template: a gateway, gpt-6-luna behind the default alias, and the app-first-call key.
+// The quick start's template: a gateway, gpt-5-mini behind the default alias, and the app-first-call key.
 module base '../../quickstart/infra/resources.bicep' = {
   name: 'aigw-base'
   scope: rg

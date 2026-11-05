@@ -1,5 +1,5 @@
 // Lab 02 with azd: "azd up" creates the resource group rg-<environment name> with lab 01's gateway and this lab's
-// Foundry account and gpt-6-luna deployment, then publishes the deployment through the gateway: the Foundry User
+// Foundry account and gpt-5-mini deployment, then publishes the deployment through the gateway: the Foundry User
 // role, the model provider, the backend model, the alias, and the app-first-call key.
 // The runtime API key is never an output.
 targetScope = 'subscription'
@@ -26,7 +26,7 @@ resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
   tags: tags
 }
 
-// Lab 01's template: the gateway with a system-assigned identity, and its connector gateway.
+// Lab 01's template: the gateway with a system-assigned identity.
 module gateway '../../01-provision-gateway/infra/gateway.bicep' = {
   name: 'aigw-gateway'
   scope: rg
@@ -37,7 +37,7 @@ module gateway '../../01-provision-gateway/infra/gateway.bicep' = {
   }
 }
 
-// The backend: a Foundry account with a gpt-6-luna deployment.
+// The backend: a Foundry account with a gpt-5-mini deployment.
 module foundry 'foundry.bicep' = {
   name: 'aigw-foundry'
   scope: rg

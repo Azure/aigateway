@@ -66,7 +66,7 @@ Every later lab reuses this one-time setup. On the portal track, you need only
 - Permissions to create resources and role assignments, for example **Owner**, or **Contributor** plus
   **Role Based Access Control Administrator**. The gateway gets a role on your Foundry account, so that it can call
   the model with its own identity.
-- A region where `gpt-6-luna` is available too, because the Azure CLI and Bicep + azd tracks create the Foundry
+- A region where `gpt-5-mini` is available too, because the Azure CLI and Bicep + azd tracks create the Foundry
   account in the gateway's region. The examples use `eastus2`.
 
 ## How it works
@@ -77,8 +77,8 @@ Every call that goes through AI Gateway uses the same building blocks. In this q
 | :-- | :-- | :-- |
 | **Gateway** | The Azure resource (`Microsoft.ApiManagement/aigateways`) that gives your apps one runtime URL for models and tools | Your gateway, at `<gateway-url>` |
 | **Model provider** | A connection to a backend. The gateway signs in to it with its own managed identity, so your apps never hold a backend key | Your Foundry account. The Azure CLI and Bicep tracks name the provider `foundry-models` |
-| **Model** | A backend deployment that the gateway can route to | The Foundry deployment `gpt-6-luna` |
-| **Alias** | The name that apps send in the `model` field. The gateway routes the alias to one or more models | `<foundry-account-name>/gpt-6-luna` in the portal, `gpt-6-luna` in the Azure CLI and Bicep tracks |
+| **Model** | A backend deployment that the gateway can route to | The Foundry deployment `gpt-5-mini` |
+| **Alias** | The name that apps send in the `model` field. The gateway routes the alias to one or more models | `<foundry-account-name>/gpt-5-mini` in the portal, `gpt-5-mini` in the Azure CLI and Bicep tracks |
 | **Runtime API key** | Identifies the app that calls the gateway, for limits, cost, and monitoring. Azure RBAC with Microsoft Entra ID tokens is the keyless alternative | `app-first-call` |
 
 Your app calls the OpenAI-compatible base URL `<gateway URL>/default/models/openai/v1`, so any OpenAI SDK works with
@@ -93,13 +93,13 @@ how to clean up.
 <!-- track: portal | Portal -->
 <details open><summary><b>🖥️ Portal</b></summary> <!-- gh -->
 
-**What you need:** a browser, and a model deployment in a Microsoft Foundry account, for example `gpt-6-luna`.
+**What you need:** a browser, and a model deployment in a Microsoft Foundry account, for example `gpt-5-mini`.
 
 <details>
 <summary>No Foundry deployment yet? Create one in Cloud Shell.</summary>
 
 Open [Azure Cloud Shell](https://shell.azure.com) in Bash and paste these commands. They create a Foundry account with
-a `gpt-6-luna` deployment in a new resource group, in a minute or two. Then create the gateway in the same resource
+a `gpt-5-mini` deployment in a new resource group, in a minute or two. Then create the gateway in the same resource
 group, so that you can clean up with one command. Model inference is billed per use.
 
 ```bash title="Bash"
@@ -115,12 +115,12 @@ az cognitiveservices account create --resource-group "$RG" --name "$FOUNDRY" --l
   --kind AIServices --sku S0 --custom-domain "$FOUNDRY" --yes --output none &&
   echo "🏭 Foundry account $FOUNDRY is ready"
 
-# Deploy gpt-6-luna with 10,000 tokens per minute of Global Standard capacity
+# Deploy gpt-5-mini with 10,000 tokens per minute of Global Standard capacity
 az cognitiveservices account deployment create --resource-group "$RG" --name "$FOUNDRY" \
-  --deployment-name gpt-6-luna --model-name gpt-6-luna --model-version 2026-09-22 --model-format OpenAI \
+  --deployment-name gpt-5-mini --model-name gpt-5-mini --model-version 2025-08-07 --model-format OpenAI \
   --sku-name GlobalStandard --sku-capacity 10 --output none &&
-  echo "✨ Model deployment gpt-6-luna is ready"
-echo "✅ Create the gateway in $RG, and import gpt-6-luna from $FOUNDRY"
+  echo "✨ Model deployment gpt-5-mini is ready"
+echo "✅ Create the gateway in $RG, and import gpt-5-mini from $FOUNDRY"
 ```
 
 </details>
@@ -158,16 +158,16 @@ echo "✅ Create the gateway in $RG, and import gpt-6-luna from $FOUNDRY"
 
 2. **Add models from Microsoft Foundry** discovers the model deployments in your subscriptions and selects all of
    them. In **Resource groups**, select only the resource group of your Foundry account. Then check that **Models**
-   selects only your Foundry account with `gpt-6-luna`.
+   selects only your Foundry account with `gpt-5-mini`.
 3. Keep **Managed identity** as the **Authentication method**, with the system-assigned managed identity, and keep
    **Create an alias for each model** selected. Then select **Add models**.
 
-   ![Add models from Microsoft Foundry, filtered to one resource group, with Managed identity, Create an alias for each model, one selected Foundry account with gpt-6-luna, and the Add models button highlighted](../assets/screens/quickstart-06-import.webp "Filter by resource group, so that you import only the deployment that you need. The gateway calls Foundry with its managed identity.")
+   ![Add models from Microsoft Foundry, filtered to one resource group, with Managed identity, Create an alias for each model, one selected Foundry account with gpt-5-mini, and the Add models button highlighted](../assets/screens/quickstart-06-import.webp "Filter by resource group, so that you import only the deployment that you need. The gateway calls Foundry with its managed identity.")
 
-4. **Models** opens. The **Backend models** tab lists `gpt-6-luna`, and the **Aliases** tab shows the alias that
-   apps call: `<foundry-account-name>/gpt-6-luna`. Note the alias.
+4. **Models** opens. The **Backend models** tab lists `gpt-5-mini`, and the **Aliases** tab shows the alias that
+   apps call: `<foundry-account-name>/gpt-5-mini`. Note the alias.
 
-   ![The Aliases tab of Models with the alias aigwb92bd1/gpt-6-luna, its backend model gpt-6-luna, and its provider](../assets/screens/quickstart-07-alias.webp "Each alias is named after the Foundry account and the deployment, and routes to the backend model gpt-6-luna.")
+   ![The Aliases tab of Models with the alias aigwb92bd1/gpt-5-mini, its backend model gpt-5-mini, and its provider](../assets/screens/quickstart-07-alias.webp "Each alias is named after the Foundry account and the deployment, and routes to the backend model gpt-5-mini.")
 
 ### Create a runtime API key
 
@@ -175,16 +175,16 @@ A key is the quickest way to start. Azure RBAC is the keyless alternative: grant
 **AI Gateway Models User** role in **Access** › **Entra ID**, and it sends a Microsoft Entra ID token instead of a
 key. [Go keyless with Microsoft Entra ID and RBAC](../11-entra-rbac/README.md) shows how.
 
-1. Select **Access**, then the **Keys** tab, then **Create API key**.
+1. Select **Access**, then the **API keys** tab, then **Create API key**.
 
-   ![Access with the Keys tab, the Create API key button, and the new key app-first-call in the list](../assets/screens/quickstart-08-keys.webp "Access › Keys lists the built-in all-access subscription and your keys. After the next step, app-first-call appears here.")
+   ![Access with the API keys tab, the Create API key button, and the new key app-first-call in the list](../assets/screens/quickstart-08-keys.webp "Access › API keys lists the built-in all-access subscription and your keys. After the next step, app-first-call appears here.")
 
 2. Enter `app-first-call` as the **Key name**, then select **Create**.
 
    ![The Create API key dialog with the key name app-first-call and the Create button](../assets/screens/quickstart-09-key-create.webp "Give the key a name that identifies the app. Limits, cost, and monitoring use it.")
 
 3. In **API key created successfully**, select **Copy & done** to copy the key. Keep it somewhere safe: you paste it
-   in the next steps. You can view, rotate, or delete it later in **Access** › **Keys**.
+   in the next steps. You can view, rotate, or delete it later in **Access** › **API keys**.
 
    ![The API key created successfully dialog with a masked key, the key name, and the Copy & done button](../assets/screens/quickstart-10-key-done.webp "The key stays masked until you select Show. Copy & done copies it and closes the dialog.")
 
@@ -194,12 +194,13 @@ Call the model through the gateway in the playground, with your new key, the way
 
 1. Select **Catalog**, then select your model.
 
-   ![The Catalog with the model card aigwb92bd1/gpt-6-luna](../assets/screens/quickstart-11-catalog.webp "The Catalog lists the models and MCP servers that apps can call through this gateway.")
+   ![The Catalog with the model card aigwb92bd1/gpt-5-mini](../assets/screens/quickstart-11-catalog.webp "The Catalog lists the models and MCP servers that apps can call through this gateway.")
 
-2. Under **Authentication**, choose `app-first-call` as the **API key**, so that the playground calls the gateway
-   with your new key. Then send a prompt, for example `In one sentence, what does an AI gateway do?`.
+2. Under **Authentication**, set **Method** to **API key** if it shows **Microsoft Entra ID**. Then choose
+   `app-first-call` as the **API key**, so that the playground calls the gateway with your new key. Send a prompt,
+   for example `In one sentence, what does an AI gateway do?`.
 
-   ![The model page with the API key app-first-call, the prompt, and the model's reply](../assets/screens/quickstart-12-playground.webp "The playground calls the gateway's endpoint with the key that you choose, and shows the reply, the latency, and the tokens.")
+   ![The model page with Method set to API key, the API key app-first-call, the prompt, and the model's reply](../assets/screens/quickstart-12-playground.webp "The playground calls the gateway's endpoint with the key that you choose, and shows the reply, the latency, and the tokens.")
 
 3. Optional: to make the same call from code, select **Continue in code**. It shows the endpoint URL and snippets
    for cURL, the OpenAI SDK, LangChain, Vercel AI, the GitHub Copilot SDK, and Microsoft Agent Framework, plus a
@@ -277,7 +278,7 @@ export LOCATION="eastus2"                     # or another region from Find the 
 SUFFIX="$(openssl rand -hex 3)"
 export GATEWAY="aigw-$SUFFIX"                 # part of the runtime URL
 export FOUNDRY="aigw$SUFFIX"                  # the Foundry account and its subdomain
-export DEPLOYMENT="gpt-6-luna"
+export DEPLOYMENT="gpt-5-mini"
 export PROVIDER="foundry-models"
 
 # Read your subscription ID, and build the gateway's resource ID that later commands use
@@ -297,7 +298,7 @@ $LOCATION   = "eastus2"                       # or another region from Find the 
 $SUFFIX     = [guid]::NewGuid().ToString("N").Substring(0, 6)
 $GATEWAY    = "aigw-$SUFFIX"                  # part of the runtime URL
 $FOUNDRY    = "aigw$SUFFIX"                   # the Foundry account and its subdomain
-$DEPLOYMENT = "gpt-6-luna"
+$DEPLOYMENT = "gpt-5-mini"
 $PROVIDER   = "foundry-models"
 
 # Read your subscription ID, and build the gateway's resource ID that later commands use
@@ -311,8 +312,7 @@ Write-Host "🆔 Subscription: $SUBSCRIPTION_ID"
 ### Start creating the gateway
 
 Create a resource group, and start creating the gateway. With `--no-wait`, Azure keeps provisioning the gateway in the
-background, so you can move on right away. The portal and the Bicep template also create a companion connector gateway
-for connector-based MCP tools. The quick start doesn't use connectors, so this track skips it.
+background, so you can move on right away.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -342,7 +342,7 @@ if ($?) { Write-Host "⏳ Gateway $GATEWAY is provisioning in the background" }
 
 ### Deploy the model in Foundry
 
-While the gateway provisions, create a Foundry account with a `gpt-6-luna` deployment.
+While the gateway provisions, create a Foundry account with a `gpt-5-mini` deployment.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -353,9 +353,9 @@ export FOUNDRY_ID="$(az cognitiveservices account create --resource-group "$RG" 
   --kind AIServices --sku S0 --custom-domain "$FOUNDRY" --yes --query id --output tsv)" &&
   echo "🏭 Foundry account $FOUNDRY is ready"
 
-# Deploy gpt-6-luna with 10,000 tokens per minute of Global Standard capacity
+# Deploy gpt-5-mini with 10,000 tokens per minute of Global Standard capacity
 az cognitiveservices account deployment create --resource-group "$RG" --name "$FOUNDRY" \
-  --deployment-name "$DEPLOYMENT" --model-name gpt-6-luna --model-version 2026-09-22 --model-format OpenAI \
+  --deployment-name "$DEPLOYMENT" --model-name gpt-5-mini --model-version 2025-08-07 --model-format OpenAI \
   --sku-name GlobalStandard --sku-capacity 10 --output none &&
   echo "✨ Model deployment $DEPLOYMENT is ready"
 ```
@@ -370,9 +370,9 @@ $FOUNDRY_ID = az cognitiveservices account create --resource-group $RG --name $F
   --kind AIServices --sku S0 --custom-domain $FOUNDRY --yes --query id --output tsv
 if ($?) { Write-Host "🏭 Foundry account $FOUNDRY is ready" }
 
-# Deploy gpt-6-luna with 10,000 tokens per minute of Global Standard capacity
+# Deploy gpt-5-mini with 10,000 tokens per minute of Global Standard capacity
 az cognitiveservices account deployment create --resource-group $RG --name $FOUNDRY `
-  --deployment-name $DEPLOYMENT --model-name gpt-6-luna --model-version 2026-09-22 --model-format OpenAI `
+  --deployment-name $DEPLOYMENT --model-name gpt-5-mini --model-version 2025-08-07 --model-format OpenAI `
   --sku-name GlobalStandard --sku-capacity 10 --output none
 if ($?) { Write-Host "✨ Model deployment $DEPLOYMENT is ready" }
 ```
@@ -472,7 +472,7 @@ Write-Host "🔖 Model alias: $env:AI_GATEWAY_MODEL"
 ```
 </details> <!-- gh -->
 
-> **Checkpoint:** the commands printed `🔖 Alias gpt-6-luna is ready` and your gateway's runtime URL, for example
+> **Checkpoint:** the commands printed `🔖 Alias gpt-5-mini is ready` and your gateway's runtime URL, for example
 > `🌐 Runtime URL: https://aigw-abc12-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com`.
 
 ### Make your first call
@@ -512,7 +512,7 @@ if ($?) { Write-Host "🤖 $($reply.choices[0].message.content)" }
 > role on the Foundry account is still taking effect. Wait a minute and run the call again.
 
 To see what you created, open the [AI Gateway portal](https://ai.gateway.azure.com) and select your gateway in the top
-bar: **Models**, **Access** › **Keys**, and the **Catalog** playground.
+bar: **Models**, **Access** › **API keys**, and the **Catalog** playground.
 
 ### Clean up
 
@@ -570,7 +570,7 @@ unique names to `infra/resources.bicep`, which creates the building blocks in th
 <!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
 📄 [`infra/resources.bicep`](infra/resources.bicep)
 
-<details><summary>Show all 184 lines</summary>
+<details><summary>Show all 169 lines</summary>
 
 ```bicep
 // The building blocks of the quick start, the same ones that the portal and Azure CLI tracks create:
@@ -588,8 +588,8 @@ param gatewayName string
 @description('Foundry account name, also its custom subdomain. It must be globally unique.')
 param foundryName string
 
-param modelName string = 'gpt-6-luna'
-param modelVersion string = '2026-09-22'
+param modelName string = 'gpt-5-mini'
+param modelVersion string = '2025-08-07'
 
 @description('Deployment capacity in thousands of tokens per minute.')
 param capacity int = 10
@@ -599,8 +599,7 @@ param apiKeyName string = 'app-first-call'
 
 var foundryUserRoleId = '53ca6127-db72-4b80-b1b0-d745d6d5456d'
 
-// 1. The gateway in the Standard SKU, with a system-assigned managed identity, then its companion connector
-//    gateway.
+// 1. The gateway, with a system-assigned managed identity. It omits sku, so it gets the default SKU.
 #disable-next-line BCP081
 resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' = {
   name: gatewayName
@@ -609,21 +608,7 @@ resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' = {
   identity: {
     type: 'SystemAssigned'
   }
-  sku: {
-    name: 'Standard'
-  }
   properties: {}
-}
-
-#disable-next-line BCP081
-resource connectorGateway 'Microsoft.Web/connectorGateways@2026-05-01-preview' = {
-  name: gatewayName
-  location: location
-  tags: tags
-  properties: {}
-  dependsOn: [
-    gateway
-  ]
 }
 
 #disable-next-line BCP081
@@ -884,7 +869,7 @@ if ($?) { Write-Host "🤖 $($reply.choices[0].message.content)" }
 > role on the Foundry account is still taking effect. Wait a minute and run the call again.
 
 To see what you created, open the [AI Gateway portal](https://ai.gateway.azure.com) and select your gateway in the top
-bar: **Models**, **Access** › **Keys**, and the **Catalog** playground.
+bar: **Models**, **Access** › **API keys**, and the **Catalog** playground.
 
 ### Clean up
 

@@ -1,6 +1,7 @@
 // Lab 13 with azd: "azd up" creates the resource group rg-<environment name>, the quick start's gateway, Foundry
-// model, default alias, and runtime API key, then the Application Insights destination for the gateway's telemetry,
-// and connects the gateway to it over OpenTelemetry. The runtime API key is never an output.
+// model, default alias, and runtime API key, then the Application Insights destination for the gateway's telemetry.
+// azure.yaml then connects the gateway to it over OpenTelemetry, once Azure has created the OTLP endpoints. The
+// runtime API key is never an output.
 targetScope = 'subscription'
 
 @description('azd environment name. The resource group is rg-<environmentName>.')
@@ -45,16 +46,9 @@ module monitoring 'monitoring.bicep' = {
   }
 }
 
-// What the portal's Configure telemetry wizard does next: an OpenTelemetry exporter with the recommended token claims.
-// azure.yaml then grants the gateway's identity Monitoring Metrics Publisher on the data collection rule.
-module telemetry 'otel-exporter.bicep' = {
-  name: 'aigw-telemetry'
-  scope: rg
-  params: {
-    gatewayName: base.outputs.gatewayName
-    appInsightsName: monitoring.outputs.appInsightsName
-  }
-}
+// What the portal's Configure telemetry wizard does next happens after this deployment: azure.yaml runs
+// connect-telemetry.sh, which waits for the OTLP endpoints, grants the gateway's identity Monitoring Metrics Publisher
+// on the data collection rule, and then deploys otel-exporter.bicep with the recommended token claims.
 
 output AZURE_RESOURCE_GROUP string = rg.name
 output AI_GATEWAY_NAME string = base.outputs.gatewayName
@@ -64,9 +58,8 @@ output AI_GATEWAY_PROVIDER string = base.outputs.providerName
 output AI_GATEWAY_BACKEND_MODEL string = base.outputs.modelName
 output AI_GATEWAY_MODEL string = base.outputs.aliasName
 output FOUNDRY_ACCOUNT_NAME string = base.outputs.foundryName
+output AI_GATEWAY_PRINCIPAL_ID string = base.outputs.gatewayPrincipalId
+output APP_INSIGHTS_ID string = monitoring.outputs.appInsightsId
 output APP_INSIGHTS_NAME string = monitoring.outputs.appInsightsName
 output LOG_ANALYTICS_WORKSPACE_ID string = monitoring.outputs.logAnalyticsWorkspaceId
 output LOG_ANALYTICS_CUSTOMER_ID string = monitoring.outputs.logAnalyticsCustomerId
-output TELEMETRY_EXPORTER_NAME string = telemetry.outputs.telemetryExporterName
-output AI_GATEWAY_PRINCIPAL_ID string = telemetry.outputs.gatewayPrincipalId
-output DATA_COLLECTION_RULE_ID string = telemetry.outputs.dataCollectionRuleId

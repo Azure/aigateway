@@ -65,7 +65,7 @@ governed and observable in the same place.
 
 - Complete [Publish a Foundry model and make your first call](../02-first-model-call/README.md). You need the
   gateway URL, a callable alias, and a runtime key. Create a dedicated key for this agent under **Access** ›
-  **Keys**, for example `docs-agent`, so its traffic is easy to find.
+  **API keys**, for example `docs-agent`, so its traffic is easy to find.
 - Complete [Federate MCP tools behind one endpoint](../04-federate-mcp-tools/README.md). The samples use the
   `learn` MCP server from that lab. Any MCP server on your gateway works.
 - Python 3.10 or later. The samples were tested together on Python 3.13 with the versions in
@@ -700,7 +700,7 @@ usually makes at least two model calls: one that asks for a tool and one that wr
 ## Clean up
 
 - Delete `infra/.env`, because it holds a key, and `infra/.venv` if you don't need it.
-- If you created a key just for this lab, revoke it under **Access** › **Keys**.
+- If you created a key just for this lab, revoke it under **Access** › **API keys**.
 
 Keep the gateway, the alias, and the `learn` MCP server. Other labs reuse them.
 
@@ -709,7 +709,7 @@ Keep the gateway, the alias, and the `learn` MCP server. Other labs reuse them.
 - [Deploy a Foundry hosted agent behind AI Gateway](../16-foundry-hosted-agent/README.md): run an Agent Framework
   agent in Microsoft Foundry with the same gateway wiring.
 - [Go keyless with Microsoft Entra ID and RBAC](../11-entra-rbac/README.md): replace the agent's key with an
-  identity.
+  identity. Lab 16's hosted agent already runs without keys.
 - [Attribute tokens and cost with OpenTelemetry](../14-otel-chargeback/README.md): report each agent's tokens and
   estimated cost.
 - Docs: [Connect agents to AI Gateway](https://ai.gateway.azure.com/docs/agent-access)

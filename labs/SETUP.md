@@ -26,7 +26,7 @@ Application Insights, are billed normally.
 
 | To | You need, for example |
 | :-- | :-- |
-| Create a gateway in the portal or with the Azure CLI | **Contributor** on the resource group, or on the subscription if you create a new resource group. Creating a gateway needs write access to both API Management and connector gateways. |
+| Create a gateway in the portal or with the Azure CLI | **Contributor** on the resource group, or on the subscription if you create a new resource group. In the portal, you also need write access to `Microsoft.Web/connectorGateways`, because the portal creates a connector gateway with the same name for connector-based MCP tools. |
 | Change a gateway that already exists | **Contributor** on its resource group |
 | Give the gateway a role on a Foundry account, as most Bicep + azd tracks do | **Owner**, or **Contributor** plus **Role Based Access Control Administrator**, on the subscription. The templates create a resource group and role assignments, so that the gateway can call your models with its own identity. |
 
@@ -137,21 +137,22 @@ az aigateway version
 
 > [!NOTE]
 > The labs use `az aigateway` commands wherever the extension covers an operation. A few operations, such as
-> the connector gateway and an MCP server's tool rules, aren't in the extension yet. For those,
-> the labs call the Azure Resource Manager REST API with `az rest` and say why.
+> an MCP server's tool rules, aren't in the extension yet. For those, the labs call the Azure Resource Manager
+> REST API with `az rest` and say why.
 
 ## Register the resource providers
 
-The gateway lives in the `Microsoft.ApiManagement` resource provider and its companion connector gateway in
-`Microsoft.Web`. Most labs also create a Foundry account, in `Microsoft.CognitiveServices`. Register them once per
-subscription. Registering returns quickly when a provider is already registered.
+The gateway lives in the `Microsoft.ApiManagement` resource provider. Most labs also create a Foundry account, in
+`Microsoft.CognitiveServices`. Register them once per subscription. Registering returns quickly when a provider is
+already registered. The portal registers the providers it needs when you create a gateway there, including
+`Microsoft.Web` for its connector gateway.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# Register the resource providers for AI Gateway, its connector gateway, and Foundry (once per subscription)
+# Register the resource providers for AI Gateway and Foundry (once per subscription)
 # --wait returns when each provider is registered, and right away if it already is
-for ns in Microsoft.ApiManagement Microsoft.Web Microsoft.CognitiveServices; do
+for ns in Microsoft.ApiManagement Microsoft.CognitiveServices; do
   az provider register --namespace "$ns" --wait && echo "📦 $ns is registered"
 done
 ```
@@ -160,9 +161,9 @@ done
 <details><summary>PowerShell</summary> <!-- gh -->
 
 ```powershell title="PowerShell"
-# Register the resource providers for AI Gateway, its connector gateway, and Foundry (once per subscription)
+# Register the resource providers for AI Gateway and Foundry (once per subscription)
 # --wait returns when each provider is registered, and right away if it already is
-foreach ($ns in "Microsoft.ApiManagement", "Microsoft.Web", "Microsoft.CognitiveServices") {
+foreach ($ns in "Microsoft.ApiManagement", "Microsoft.CognitiveServices") {
   az provider register --namespace $ns --wait
   if ($?) { Write-Host "📦 $ns is registered" }
 }
@@ -229,25 +230,25 @@ with the Azure CLI or Bicep + azd track.
 
 Most labs also deploy Foundry models, and their templates put the Foundry account in the gateway's region, so pick a
 region where those models are available too. Each lab names its models. For example, this command prints the
-deployment types of `gpt-6-luna` in a region, and prints nothing if the model isn't available there:
+deployment types of `gpt-5-mini` in a region, and prints nothing if the model isn't available there:
 
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# List the deployment types of gpt-6-luna in a region, such as GlobalStandard: no output means it isn't there
-echo "✨ Deployment types of gpt-6-luna in <location>:"
+# List the deployment types of gpt-5-mini in a region, such as GlobalStandard: no output means it isn't there
+echo "✨ Deployment types of gpt-5-mini in <location>:"
 az cognitiveservices model list --location "<location>" \
-  --query "[?model.name=='gpt-6-luna'].model.skus[].name" -o tsv
+  --query "[?model.name=='gpt-5-mini'].model.skus[].name" -o tsv
 ```
 </details> <!-- gh -->
 
 <details><summary>PowerShell</summary> <!-- gh -->
 
 ```powershell title="PowerShell"
-# List the deployment types of gpt-6-luna in a region, such as GlobalStandard: no output means it isn't there
-Write-Host "✨ Deployment types of gpt-6-luna in <location>:"
+# List the deployment types of gpt-5-mini in a region, such as GlobalStandard: no output means it isn't there
+Write-Host "✨ Deployment types of gpt-5-mini in <location>:"
 az cognitiveservices model list --location "<location>" `
-  --query "[?model.name=='gpt-6-luna'].model.skus[].name" -o tsv
+  --query "[?model.name=='gpt-5-mini'].model.skus[].name" -o tsv
 ```
 </details> <!-- gh -->
 

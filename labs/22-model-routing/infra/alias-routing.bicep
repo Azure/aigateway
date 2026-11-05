@@ -11,8 +11,8 @@ param gatewayName string
 @description('Name of the existing Foundry model provider in the gateway, for example foundry-models from lab 02.')
 param providerName string = 'foundry-models'
 
-@description('Name of the existing backend model that takes most of the traffic, for example gpt-6-luna.')
-param primaryModelName string = 'gpt-6-luna'
+@description('Name of the existing backend model that takes most of the traffic, for example gpt-5-mini.')
+param primaryModelName string = 'gpt-5-mini'
 
 @description('Resource ID of the Foundry account that hosts the candidate deployment.')
 param foundryAccountId string

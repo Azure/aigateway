@@ -1,6 +1,6 @@
-// The AI Gateway itself: a Microsoft.ApiManagement/aigateways resource in the Standard SKU with a system-assigned
-// managed identity, the companion connector gateway (created after it, as in the reference sample), and the Foundry
-// User role for the gateway identity on every Foundry account it calls.
+// The AI Gateway itself: a Microsoft.ApiManagement/aigateways resource with a system-assigned managed identity, in
+// the default SKU (sku is omitted, as in the reference sample), and the Foundry User role for the gateway identity
+// on every Foundry account it calls.
 targetScope = 'resourceGroup'
 
 @description('Location of the gateway. Pick one where AI Gateway is available. List them with az provider show --namespace Microsoft.ApiManagement (Setup guide, Find the available regions).')
@@ -27,21 +27,7 @@ resource aiGateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' = {
   identity: {
     type: 'SystemAssigned'
   }
-  sku: {
-    name: 'Standard'
-  }
   properties: empty(backendSubnetId) ? {} : { backend: { subnet: { id: backendSubnetId } } }
-}
-
-#disable-next-line BCP081
-resource connectorNamespace 'Microsoft.Web/connectorGateways@2026-05-01-preview' = {
-  name: gatewayName
-  location: location
-  tags: tags
-  properties: {}
-  dependsOn: [
-    aiGateway
-  ]
 }
 
 module foundryUserRoleAssignments './foundry-user-role.bicep' = [for (foundryResourceId, i) in foundryResourceIds: {
@@ -59,5 +45,4 @@ output gatewayId string = aiGateway.id
 output gatewayUrl string = 'https://${aiGateway.properties.frontend.defaultHostname}'
 output runtimeHostname string = aiGateway.properties.frontend.defaultHostname
 output gatewayPrincipalId string = aiGateway.identity.principalId
-output connectorNamespaceId string = connectorNamespace.id
 output foundryUserRoleAssignmentNames array = [for (foundryResourceId, i) in foundryResourceIds: foundryUserRoleAssignments[i].outputs.roleAssignmentName]

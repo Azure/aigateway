@@ -2,14 +2,15 @@
 // and composes small modules:
 //
 //   rg-<env>-<token>-foundrymodels   foundry.bicep         Foundry account (keyless) + model deployment
-//   rg-<env>-<token>-gateway         monitoring.bicep      Log Analytics + Application Insights
-//                                    gateway.bicep         aigateways resource + connector gateway + Foundry User role for the gateway identity
+//   rg-<env>-<token>-gateway         monitoring.bicep      Log Analytics + Application Insights with OTLP ingestion
+//                                    gateway.bicep         aigateways resource + Foundry User role for the gateway identity
 //                                    models.bicep          Foundry provider + backend model (tokenLimit, contentSafety) + alias
 //                                    tools.bicep           Microsoft Learn MCP server
 //                                    keys.bicep            one runtime API key per app
-//                                    telemetry.bicep       optional legacy exporter (off by default)
 //
-// Gateway-wide baseline policies are applied after deployment by scripts/apply-baselines.sh (or .ps1).
+// After deployment, scripts/connect-telemetry.sh (or .ps1) connects the gateway to Application Insights with
+// telemetry.bicep, an OpenTelemetry exporter, once Azure has created the OTLP endpoints. Then
+// scripts/apply-baselines.sh (or .ps1) applies the gateway-wide baseline policies.
 targetScope = 'subscription'
 
 import { principal } from './modules/types.bicep'
@@ -35,10 +36,10 @@ param tags object = {}
 param aiGatewayName string = ''
 
 @description('Foundry model name to deploy.')
-param modelName string = 'gpt-6-luna'
+param modelName string = 'gpt-5-mini'
 
 @description('Foundry model version to deploy.')
-param modelVersion string = '2026-09-22'
+param modelVersion string = '2025-08-07'
 
 @description('ARM-safe name of the Foundry deployment. It is also the backend model name in the gateway.')
 param modelDeploymentName string = 'gpt-mini-latest'
@@ -85,9 +86,6 @@ param toolUsers principal[] = []
 @minValue(30)
 @maxValue(730)
 param logRetentionInDays int = 30
-
-@description('Also deploy the reference sample\'s telemetry exporter (kind applicationInsights). The portal labels this kind as legacy because it no longer activates OTLP signals. Leave false and connect telemetry in the portal.')
-param enableLegacyAppInsightsExporter bool = false
 
 var resourceToken = take(toLower(uniqueString(subscription().id, environmentName, location)), 8)
 var environmentLabel = toLower(environmentName)
@@ -168,8 +166,8 @@ module gateway './modules/gateway.bicep' = {
   }
 }
 
-// Every module below takes gateway.outputs.gatewayName, so it starts only after the gateway, its connector gateway,
-// and the Foundry User role assignment exist.
+// Every module below takes gateway.outputs.gatewayName, so it starts only after the gateway and the Foundry User
+// role assignment exist.
 module models './modules/models.bicep' = {
   name: 'ai-gateway-models-${resourceToken}'
   scope: gatewayRg
@@ -216,15 +214,6 @@ module keys './modules/keys.bicep' = {
   params: {
     gatewayName: gateway.outputs.gatewayName
     appNames: appNames
-  }
-}
-
-module telemetry './modules/telemetry.bicep' = if (enableLegacyAppInsightsExporter) {
-  name: 'ai-gateway-telemetry-${resourceToken}'
-  scope: gatewayRg
-  params: {
-    gatewayName: gateway.outputs.gatewayName
-    appInsightsName: monitoring.outputs.appInsightsName
   }
 }
 

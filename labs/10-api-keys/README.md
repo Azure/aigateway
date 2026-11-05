@@ -178,7 +178,7 @@ A key is gateway-scoped: it grants access to every published model and MCP serve
 also a separate caller identity, which token limits, cost limits, and Monitoring use to tell callers apart.
 That's why every app, agent, or user should get its own key.
 
-| Task | Portal (**Access** › **Keys**) | Azure CLI (`az aigateway api-key`) | Bicep (`aigateways/apiKeys`) |
+| Task | Portal (**Access** › **API keys**) | Azure CLI (`az aigateway api-key`) | Bicep (`aigateways/apiKeys`) |
 |---|---|---|---|
 | Create a key | **Create API key** | `create` | Declare the key |
 | Read a value | **View keys** (primary value) | `list-secrets` (primary and secondary values) | — (never an output) |
@@ -198,7 +198,7 @@ for the key that leaked. Pick one track.
 
 ### Create the first key
 
-1. In the [AI Gateway portal](https://ai.gateway.azure.com), open your gateway and select **Access** › **Keys**.
+1. In the [AI Gateway portal](https://ai.gateway.azure.com), open your gateway and select **Access** › **API keys**.
 2. Select **Create API key**.
 3. In **Key name**, enter `app-dev`, and select **Create**.
 4. The **API key created successfully** dialog shows the value. Select **Copy & done**.
@@ -480,7 +480,7 @@ if ($?) { Write-Host "🚀 Gateway deployed: $(azd env get-value AI_GATEWAY_URL)
 ```
 </details> <!-- gh -->
 
-For another region, pick one where AI Gateway and the `gpt-6-luna` model are available, as in [Find the available
+For another region, pick one where AI Gateway and the `gpt-5-mini` model are available, as in [Find the available
 regions](../SETUP.md#find-the-available-regions).
 
 ### Read the outputs and the key
@@ -659,7 +659,7 @@ printf '%-14s %-8s HTTP %s  %s\n' "$LABEL" "$HINT" "$STATUS" "$RESULT"
 <!-- gh:end -->
 
 > **Checkpoint**
-> **Access** › **Keys** lists `app-dev`, `support-bot`, and `old-notebook`, and the check prints
+> **Access** › **API keys** lists `app-dev`, `support-bot`, and `old-notebook`, and the check prints
 > `HTTP 200  accepted` for `app-dev`.
 
 ## Store the key outside your code
@@ -1237,7 +1237,7 @@ Keep `app-dev` and `support-bot`:
 
 ### Delete the test keys
 
-Delete any other keys you created for testing, such as `support-bot-v2`, in **Access** › **Keys** (check box,
+Delete any other keys you created for testing, such as `support-bot-v2`, in **Access** › **API keys** (check box,
 then **Delete**).
 
 </details> <!-- gh -->

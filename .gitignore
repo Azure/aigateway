@@ -1,0 +1,2 @@
+# The labs site, generated from labs/ by `npm run build` and published by .github/workflows/labs-pages.yml
+/docs/

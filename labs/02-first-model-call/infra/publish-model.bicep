@@ -13,10 +13,10 @@ param gatewayName string
 @description('Resource ID of the Foundry (Azure AI Services) or Azure OpenAI account. It can be in another resource group or subscription.')
 param foundryAccountId string
 
-@description('Name of the model deployment in that account, for example gpt-6-luna.')
+@description('Name of the model deployment in that account, for example gpt-5-mini.')
 param deploymentName string
 
-@description('Version of the deployed model, for example 2026-09-22. Optional.')
+@description('Version of the deployed model, for example 2025-08-07. Optional.')
 param modelVersion string = ''
 
 @description('Name of the model provider to create in the gateway.')

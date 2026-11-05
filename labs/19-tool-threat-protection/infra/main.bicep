@@ -31,7 +31,7 @@ resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
   tags: tags
 }
 
-// Lab 01's template: the gateway and its connector gateway, with no model.
+// Lab 01's template: the gateway, with no model.
 module gateway '../../01-provision-gateway/infra/gateway.bicep' = {
   name: 'aigw-gateway'
   scope: rg

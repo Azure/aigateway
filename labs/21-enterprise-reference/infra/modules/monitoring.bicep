@@ -1,5 +1,6 @@
 // Observability destination for the gateway: a Log Analytics workspace and a workspace-based Application Insights
-// component.
+// component with OTLP ingestion on. Azure then creates the component's OTLP endpoints, a Data Collection Rule, and an
+// Azure Monitor workspace for the metrics, in a managed resource group, a few minutes after the deployment.
 targetScope = 'resourceGroup'
 
 @description('Location for the monitoring resources.')
@@ -39,10 +40,14 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
   location: location
   kind: 'web'
   tags: tags
-  properties: {
-    Application_Type: 'web'
-    WorkspaceResourceId: logAnalyticsWorkspace.id
-  }
+  // AzureMonitorWorkspaceIngestionMode isn't in the Bicep types for this API version yet, so union() adds it.
+  properties: union(
+    {
+      Application_Type: 'web'
+      WorkspaceResourceId: logAnalyticsWorkspace.id
+    },
+    { AzureMonitorWorkspaceIngestionMode: 'Enabled' }
+  )
 }
 
 output logAnalyticsWorkspaceId string = logAnalyticsWorkspace.id

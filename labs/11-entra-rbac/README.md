@@ -190,35 +190,48 @@ call the gateway afterward. Role scopes are Azure resource IDs:
 ### Start a role assignment
 
 Open the [AI Gateway portal](https://ai.gateway.azure.com), select your gateway, and select
-**Access** › **Entra ID** › **Add role assignments**.
-
-### Choose access
-
-On **Choose access**, pick what the identities can use:
-
-- **All models and tools in the gateway** grants **AI Gateway User** at the gateway.
-- **All models in the gateway** grants **AI Gateway Models User** at the gateway.
-- **All tools in the gateway** grants **AI Gateway Tools User** at the gateway.
-- **Specific resources** lets you select model aliases and MCP servers under **Resources**, then choose one
-  compatible **Role** for all of them.
-
-Select **All models in the gateway**, then **Next**.
-
-![The Add role assignments wizard on the Choose access step](../assets/screens/access-entra-role-assignments.png "Choose gateway-wide access, or select specific model aliases and MCP servers and apply one compatible role.")
+**Access** › **Entra ID** › **Add role assignment**. The **Add role assignments** wizard has four steps:
+**Identities**, **Access**, **Scope**, and **Review**.
 
 ### Select identities
 
-On **Select identities**, set **Assign access to** to **User, group, or service principal**, search for your
-own account by name, and choose **Select**. In production, prefer an Entra group so membership controls
-access. To grant an app running in Azure, set **Assign access to** to **Managed identity** and pick it by
-subscription and resource type. You can also enter a principal object ID directly. Select **Next**.
+On **Select identities**, the **Users, groups, and apps** tab finds users, groups, and service principals.
+In **Search by name, email, or object ID**, enter your object ID, the `MY_OBJECT_ID` value from
+[Before you begin](#before-you-begin). Check your account, and select **Next**. To search by name or email,
+select **Allow directory search** first; an exact object ID works without it. In production, prefer an Entra
+group so membership controls access. To grant an app running in Azure, open the **Managed identities** tab and
+pick its identity, filtered by **Subscription** and **Resource type**.
+
+### Choose access
+
+On **Choose access**, **What do these identities need to do?** offers **Manage the gateway**, **Manage gateway
+assets**, **Build with gateway assets**, and **Invoke gateway assets only**. The first three also let the
+identities view or change the gateway's configuration. Select **Invoke gateway assets only** ("No control plane
+access."), then **Next**.
+
+### Choose scope
+
+On **Choose scope**, **Where should this access apply?** picks the runtime role. The **Azure roles to assign**
+panel shows the result:
+
+- **All models and tools** grants **AI Gateway User** at the gateway.
+- **All models** grants **AI Gateway Models User** at the gateway.
+- **All tools** grants **AI Gateway Tools User** at the gateway.
+- **Specific assets** lists the model aliases and MCP servers under **Resources**. Select one or more: an MCP
+  server alone grants **AI Gateway Tools User** on that server.
+
+Select **All models**, then **Next**.
+
+![The Add role assignments wizard on the Choose scope step, with All models selected](../assets/screens/access-entra-role-assignments.webp "Invoke gateway assets only, with the All models scope, assigns AI Gateway Models User.")
 
 ### Review and assign
 
-On **Review + assign**, confirm the role, identities, and scopes, then select **Assign**.
+On **Review**, **Role assignments to create** lists the identity, its type, the role, and the scope,
+**All assets**. Select **Assign**.
 
 > **Checkpoint**
-> Your account appears in **Access** › **Entra ID** with the **AI Gateway Models User** role on the gateway.
+> Your account appears in **Access** › **Entra ID** with the **AI Gateway Models User** role, **All assets**
+> as the resource scope, and **Models** as the access.
 
 </details> <!-- gh -->
 <!-- track: cli | Azure CLI -->
@@ -388,25 +401,26 @@ from `az identity show -g <resource-group> -n <identity-name> --query principalI
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# List your role assignments on the gateway, with each role's name and scope
+# List your role assignments on the gateway and its assets, with each role's name and scope
 echo "🔐 Your role assignments on $GATEWAY:"
-az role assignment list --scope "$GATEWAY_ID" \
-  --query "[?principalId=='$MY_OBJECT_ID'].{Role:roleDefinitionName, Scope:scope}" -o table
+az role assignment list --all --assignee "$MY_OBJECT_ID" \
+  --query "[?starts_with(scope, '$GATEWAY_ID')].{Role:roleDefinitionName, Scope:scope}" -o table
 ```
 </details> <!-- gh -->
 
 <details><summary>PowerShell</summary> <!-- gh -->
 
 ```powershell title="PowerShell"
-# List your role assignments on the gateway, with each role's name and scope
+# List your role assignments on the gateway and its assets, with each role's name and scope
 Write-Host "🔐 Your role assignments on ${GATEWAY}:"
-az role assignment list --scope $GATEWAY_ID `
-  --query "[?principalId=='$MY_OBJECT_ID'].{Role:roleDefinitionName, Scope:scope}" -o table
+az role assignment list --all --assignee $MY_OBJECT_ID `
+  --query "[?starts_with(scope, '$GATEWAY_ID')].{Role:roleDefinitionName, Scope:scope}" -o table
 ```
 </details> <!-- gh -->
 
 > **Checkpoint**
-> The list shows **AI Gateway Models User** with the gateway's resource ID as the scope.
+> The list shows **AI Gateway Models User** with the gateway's resource ID as the scope. A role that you
+> assigned in the portal shows the gateway's resource ID followed by `/workspaces/default`.
 
 </details> <!-- gh -->
 <!-- track: iac | Bicep + azd -->
@@ -660,7 +674,7 @@ if ($?) { Write-Host "🚀 Gateway deployed: $(azd env get-value AI_GATEWAY_URL)
 ```
 </details> <!-- gh -->
 
-For another region, pick one where AI Gateway and the `gpt-6-luna` model are available, as in [Find the available
+For another region, pick one where AI Gateway and the `gpt-5-mini` model are available, as in [Find the available
 regions](../SETUP.md#find-the-available-regions).
 
 ### Read the outputs
@@ -691,10 +705,10 @@ echo "👤 Your object ID: $MY_OBJECT_ID"
 unset AI_GATEWAY_API_KEY
 echo "🔑 AI_GATEWAY_API_KEY is unset, so every call in this lab is keyless"
 
-# List your role assignments on the gateway, including the one that azd up created
+# List your role assignments on the gateway and its assets, including the one that azd up created
 echo "🔐 Your role assignments on $GATEWAY:"
-az role assignment list --scope "$GATEWAY_ID" \
-  --query "[?principalId=='$MY_OBJECT_ID'].{Role:roleDefinitionName, Scope:scope}" -o table
+az role assignment list --all --assignee "$MY_OBJECT_ID" \
+  --query "[?starts_with(scope, '$GATEWAY_ID')].{Role:roleDefinitionName, Scope:scope}" -o table
 ```
 </details> <!-- gh -->
 
@@ -721,10 +735,10 @@ Write-Host "👤 Your object ID: $MY_OBJECT_ID"
 Remove-Item Env:AI_GATEWAY_API_KEY -ErrorAction SilentlyContinue
 Write-Host "🔑 AI_GATEWAY_API_KEY is removed, so every call in this lab is keyless"
 
-# List your role assignments on the gateway, including the one that azd up created
+# List your role assignments on the gateway and its assets, including the one that azd up created
 Write-Host "🔐 Your role assignments on ${GATEWAY}:"
-az role assignment list --scope $GATEWAY_ID `
-  --query "[?principalId=='$MY_OBJECT_ID'].{Role:roleDefinitionName, Scope:scope}" -o table
+az role assignment list --all --assignee $MY_OBJECT_ID `
+  --query "[?starts_with(scope, '$GATEWAY_ID')].{Role:roleDefinitionName, Scope:scope}" -o table
 ```
 </details> <!-- gh -->
 
@@ -1245,14 +1259,19 @@ The gateway answers `401`: authentication failed, so the role was never checked.
 
 ### Remove the role and try again
 
-Remove your assignment, wait a few minutes, get a fresh token, and repeat the curl call:
+Remove your assignment. In the portal, select **Access** › **Entra ID**, select **More actions** on your row,
+then **Remove role assignment**, and confirm with **Remove**. With the Azure CLI, delete it wherever it is on
+the gateway, so it works whichever track created it:
 
 ```bash
-# Delete your AI Gateway Models User role assignment (a6b68e3d-…) on the gateway
-az role assignment delete --assignee "$MY_OBJECT_ID" \
-  --role "a6b68e3d-a1f0-4c60-8678-237c050cf4ea" --scope "$GATEWAY_ID" &&
+# Delete your AI Gateway Models User role assignments (a6b68e3d-…) on the gateway and its assets
+ROLE_IDS="$(az role assignment list --all --assignee "$MY_OBJECT_ID" \
+  --role "a6b68e3d-a1f0-4c60-8678-237c050cf4ea" --query "[?starts_with(scope, '$GATEWAY_ID')].id" -o tsv)"
+az role assignment delete --ids $ROLE_IDS &&
   echo "🚮 Your AI Gateway Models User role assignment on $GATEWAY is deleted"
 ```
+
+Then wait a few minutes, get a fresh token, and repeat the curl call.
 
 The gateway now answers `403`: you're authenticated, but no role allows you to invoke the model. In the
 playground, the same error offers **Review access**, which opens the role assignments, and
@@ -1290,14 +1309,15 @@ re-creates the assignment.
 ## Clean up
 
 Role assignments don't cost anything. Keep yours if you'll continue with Entra-based labs. Otherwise remove
-it, and revoke any runtime keys you no longer need in **Access** › **Keys**.
+it, and revoke any runtime keys you no longer need in **Access** › **API keys**.
 
 <!-- track: portal | Portal -->
 <details open><summary><b>🖥️ Portal</b></summary> <!-- gh -->
 
 ### Remove the role assignment
 
-Select **Access** › **Entra ID**, find your assignment, and remove it.
+Select **Access** › **Entra ID**, and find your row with the **AI Gateway Models User** role. Select
+**More actions**, then **Remove role assignment**, and confirm with **Remove**.
 
 </details> <!-- gh -->
 <!-- track: cli | Azure CLI -->
@@ -1308,9 +1328,9 @@ Select **Access** › **Entra ID**, find your assignment, and remove it.
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# Delete your AI Gateway Models User role assignment (a6b68e3d-…) on the gateway, unless Verify already removed it
-ROLE_IDS="$(az role assignment list --assignee "$MY_OBJECT_ID" \
-  --role "a6b68e3d-a1f0-4c60-8678-237c050cf4ea" --scope "$GATEWAY_ID" --query "[].id" -o tsv)"
+# Delete your AI Gateway Models User role assignments (a6b68e3d-…) on the gateway and its assets, unless Verify already removed them
+ROLE_IDS="$(az role assignment list --all --assignee "$MY_OBJECT_ID" \
+  --role "a6b68e3d-a1f0-4c60-8678-237c050cf4ea" --query "[?starts_with(scope, '$GATEWAY_ID')].id" -o tsv)"
 if [ -n "$ROLE_IDS" ]; then
   az role assignment delete --ids $ROLE_IDS &&
     echo "🚮 Your AI Gateway Models User role assignment on $GATEWAY is deleted"
@@ -1323,9 +1343,9 @@ fi
 <details><summary>PowerShell</summary> <!-- gh -->
 
 ```powershell title="PowerShell"
-# Delete your AI Gateway Models User role assignment (a6b68e3d-…) on the gateway, unless Verify already removed it
-$roleIds = @(az role assignment list --assignee $MY_OBJECT_ID `
-  --role "a6b68e3d-a1f0-4c60-8678-237c050cf4ea" --scope $GATEWAY_ID --query "[].id" -o tsv)
+# Delete your AI Gateway Models User role assignments (a6b68e3d-…) on the gateway and its assets, unless Verify already removed them
+$roleIds = @(az role assignment list --all --assignee $MY_OBJECT_ID `
+  --role "a6b68e3d-a1f0-4c60-8678-237c050cf4ea" --query "[?starts_with(scope, '$GATEWAY_ID')].id" -o tsv)
 if ($roleIds) {
   az role assignment delete --ids @roleIds
   if ($?) { Write-Host "🚮 Your AI Gateway Models User role assignment on $GATEWAY is deleted" }

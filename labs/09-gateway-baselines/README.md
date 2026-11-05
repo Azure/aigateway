@@ -69,7 +69,7 @@ and keep tighter asset policies on top of it.
 - Complete [Throttle tokens per caller with token limits](../06-token-limits/README.md) and
   [Screen prompts and responses with content safety](../08-content-safety/README.md), including their
   **Clean up** sections. You need a gateway, an imported model, a callable alias, and a runtime API key from
-  **Access** › **Keys**.
+  **Access** › **API keys**.
 - Permission to change the gateway, for example **Contributor** on the resource group.
 - The public IP addresses or CIDR ranges your callers use. Once the IP filter is on, calls from anywhere else get
   `403`.
@@ -95,7 +95,7 @@ export AI_GATEWAY_MODEL="$(az aigateway model show -g "$RG" --gateway-name "$GAT
   -n "$MODEL" --query properties.deployment.modelName -o tsv)"
 echo "🔖 Model alias: $AI_GATEWAY_MODEL"
 
-# Paste the runtime key you created in Access › Keys, without showing it: don't commit it or write it to a file
+# Paste the runtime key you created in Access › API keys, without showing it: don't commit it or write it to a file
 read -rsp "AI Gateway API key: " AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 
@@ -127,7 +127,7 @@ $env:AI_GATEWAY_MODEL = az aigateway model show -g $RG --gateway-name $GATEWAY -
   -n $MODEL --query properties.deployment.modelName -o tsv
 Write-Host "🔖 Model alias: $env:AI_GATEWAY_MODEL"
 
-# Paste the runtime key you created in Access › Keys, without showing it: don't commit it or write it to a file
+# Paste the runtime key you created in Access › API keys, without showing it: don't commit it or write it to a file
 $env:AI_GATEWAY_API_KEY = Read-Host "AI Gateway API key" -MaskInput
 Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) characters, not shown)"
 

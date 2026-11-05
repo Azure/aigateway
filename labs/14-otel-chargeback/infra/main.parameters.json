@@ -13,9 +13,6 @@
     },
     "principalType": {
       "value": "${AZURE_PRINCIPAL_TYPE=User}"
-    },
-    "clientAppMetrics": {
-      "value": "${CLIENT_APP_METRICS=true}"
     }
   }
 }

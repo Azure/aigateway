@@ -3,7 +3,7 @@
     {
       "type": "promptString",
       "id": "aigw-key",
-      "description": "AI Gateway runtime key (Access > Keys)",
+      "description": "AI Gateway runtime key (Access > API keys)",
       "password": true
     }
   ],

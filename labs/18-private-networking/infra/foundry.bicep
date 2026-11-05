@@ -1,4 +1,4 @@
-// A dedicated Microsoft Foundry (Azure AI Services) account with one gpt-6-luna deployment for this lab, so turning
+// A dedicated Microsoft Foundry (Azure AI Services) account with one gpt-5-mini deployment for this lab, so turning
 // off its public access doesn't block the Foundry resource that the earlier labs use. Local auth is off: only
 // Microsoft Entra identities, such as the gateway's managed identity, can call it. Model inference is billed.
 // The lab's main.bicep calls it with azd, first with publicNetworkAccess 'Enabled', then 'Disabled' once the
@@ -14,13 +14,13 @@ param accountName string
 param location string = resourceGroup().location
 
 @description('Name of the model deployment that the gateway publishes.')
-param deploymentName string = 'gpt-6-luna'
+param deploymentName string = 'gpt-5-mini'
 
 @description('Model to deploy.')
-param modelName string = 'gpt-6-luna'
+param modelName string = 'gpt-5-mini'
 
 @description('Model version to deploy.')
-param modelVersion string = '2026-09-22'
+param modelVersion string = '2025-08-07'
 
 @description('Deployment SKU.')
 param skuName string = 'GlobalStandard'

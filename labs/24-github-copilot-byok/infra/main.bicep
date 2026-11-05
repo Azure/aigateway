@@ -1,5 +1,5 @@
 // Lab 24 with azd: "azd up" creates the resource group rg-<environment name>, the quick start's gateway, Foundry
-// account, and default model, then publishes gpt-6-astra for GitHub Copilot with its token limit and the
+// account, and default model, then publishes gpt-6.1-sol for GitHub Copilot with its token limit and the
 // github-copilot runtime API key, and registers the Microsoft Learn MCP server as learn. The key value is never an output.
 targetScope = 'subscription'
 
@@ -13,10 +13,10 @@ param environmentName string
 param location string
 
 @description('Model to deploy and publish for Copilot. The deployment, the backend model, and the alias use this name. azd reads it from BYOK_MODEL.')
-param byokModelName string = 'gpt-6-astra'
+param byokModelName string = 'gpt-6.1-sol'
 
 @description('Version of that model. azd reads it from BYOK_MODEL_VERSION.')
-param byokModelVersion string = '2026-09-03'
+param byokModelVersion string = '2026-09-29'
 
 @description('Deployment SKU. Use DataZoneStandard if your GlobalStandard quota for the model is used up. azd reads it from BYOK_MODEL_SKU.')
 @allowed([
@@ -42,7 +42,7 @@ resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
   tags: tags
 }
 
-// The quick start's template: a gateway, a Foundry account with gpt-6-luna, the foundry-models provider, and a key.
+// The quick start's template: a gateway, a Foundry account with gpt-5-mini, the foundry-models provider, and a key.
 module base '../../quickstart/infra/resources.bicep' = {
   name: 'aigw-base'
   scope: rg
@@ -54,7 +54,7 @@ module base '../../quickstart/infra/resources.bicep' = {
   }
 }
 
-// gpt-6-astra in the same Foundry account, under the same provider, with its token limit and the github-copilot key.
+// gpt-6.1-sol in the same Foundry account, under the same provider, with its token limit and the github-copilot key.
 module copilot 'copilot-model.bicep' = {
   name: 'aigw-copilot-model'
   scope: rg

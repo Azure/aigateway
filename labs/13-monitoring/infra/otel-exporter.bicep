@@ -1,12 +1,15 @@
 // Connects an AI Gateway to Application Insights over OpenTelemetry, the same way the portal's Configure telemetry
 // wizard does: an OpenTelemetry exporter that sends metrics, logs, and traces to the component's OTLP endpoints, with
 // the token claims to add to the telemetry.
-// Turn on OTLP ingestion on the component first (monitoring.bicep with enableOtlpIngestion=true): it creates the
-// data collection rule and the endpoints. The gateway's system-assigned identity also needs Monitoring Metrics
-// Publisher on that rule. Azure keeps the rule in a managed resource group whose deny assignment blocks deployments,
-// so Bicep can't assign it: the lab's azure.yaml does it with the Azure CLI after "azd provision", using the
-// gatewayPrincipalId and dataCollectionRuleId outputs. The lab's main.bicep calls this file with azd. You can also
-// deploy it on its own to the resource group of an existing gateway and component, then assign the role yourself.
+// Deploy it only once two things are in place, or the exporter fails validation or gets empty endpoints:
+//   - The component reports its OTLP endpoints. Azure creates them, with a Data Collection Rule, a few minutes after
+//     OTLP ingestion turns on (monitoring.bicep with enableOtlpIngestion=true).
+//   - The gateway's system-assigned identity has Monitoring Metrics Publisher on that rule. Azure keeps the rule in a
+//     managed resource group whose deny assignment blocks deployments, so Bicep can't assign the role.
+// Neither can happen inside the deployment that turns ingestion on. So the lab's azure.yaml runs connect-telemetry.sh
+// after "azd provision": it waits for the endpoints, assigns the role, then deploys this file with
+// otel-exporter.bicepparam. You can also deploy it on your own, to the resource group of an existing gateway and
+// component, once both are in place.
 targetScope = 'resourceGroup'
 
 @description('Name of the existing AI Gateway (Microsoft.ApiManagement/aigateways) in this resource group.')
@@ -87,6 +90,3 @@ resource telemetryExporter 'Microsoft.ApiManagement/aigateways/workspaces/teleme
 
 output telemetryExporterId string = telemetryExporter.id
 output telemetryExporterName string = telemetryExporter.name
-@description('Grant this principal Monitoring Metrics Publisher on the data collection rule.')
-output gatewayPrincipalId string = gateway.identity.principalId
-output dataCollectionRuleId string = otlp.DataCollectionRuleResourceId

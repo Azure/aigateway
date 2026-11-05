@@ -1,7 +1,7 @@
 // Lab 14 with azd: "azd up" creates the resource group rg-<environment name>, the quick start's gateway, Foundry
-// model, default alias, and runtime API key, then lab 13's Application Insights destination and OpenTelemetry
-// exporter with the token claims to export, and lab 11's role so that you can call the model with your Microsoft
-// Entra token. The runtime API key is never an output.
+// model, default alias, and runtime API key, then lab 13's Application Insights destination, and lab 11's role so
+// that you can call the model with your Microsoft Entra token. azure.yaml then creates lab 13's OpenTelemetry
+// exporter with the token claims in otel-exporter.bicepparam. The runtime API key is never an output.
 targetScope = 'subscription'
 
 @description('azd environment name. The resource group is rg-<environmentName>.')
@@ -20,13 +20,8 @@ param principalId string
 @allowed([ 'User', 'Group', 'ServicePrincipal' ])
 param principalType string = 'User'
 
-@description('Also export the client app claims, appid and azp, to metrics. azd reads it from CLIENT_APP_METRICS.')
-param clientAppMetrics bool = true
-
 var suffix = take(uniqueString(subscription().id, environmentName, location), 6)
 var tags = { 'azd-env-name': environmentName }
-var allSignals = [ 'logs', 'traces', 'metrics' ]
-var clientAppSignals = clientAppMetrics ? allSignals : [ 'logs', 'traces' ]
 
 resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
   name: 'rg-${environmentName}'
@@ -58,35 +53,9 @@ module monitoring '../../13-monitoring/infra/monitoring.bicep' = {
   }
 }
 
-// Lab 13's OpenTelemetry exporter, with the token claims to export and the signals that carry each one: the
-// recommended preset, plus metrics for the client app claims. azure.yaml then grants the gateway's identity
-// Monitoring Metrics Publisher on the data collection rule.
-module telemetry '../../13-monitoring/infra/otel-exporter.bicep' = {
-  name: 'aigw-telemetry'
-  scope: rg
-  params: {
-    gatewayName: base.outputs.gatewayName
-    appInsightsName: monitoring.outputs.appInsightsName
-    claimAttributes: [
-      {
-        source: { kind: 'claims', value: 'tid' }
-        signals: allSignals
-      }
-      {
-        source: { kind: 'claims', value: 'oid' }
-        signals: allSignals
-      }
-      {
-        source: { kind: 'claims', value: 'appid' }
-        signals: clientAppSignals
-      }
-      {
-        source: { kind: 'claims', value: 'azp' }
-        signals: clientAppSignals
-      }
-    ]
-  }
-}
+// Lab 13's OpenTelemetry exporter comes after this deployment, once Azure has created the OTLP endpoints: azure.yaml
+// runs lab 13's connect-telemetry.sh, which grants the gateway's identity Monitoring Metrics Publisher on the data
+// collection rule, then deploys otel-exporter.bicep with the claims in otel-exporter.bicepparam.
 
 // Lab 11's role assignment: AI Gateway Models User on the gateway, for the Entra calls.
 module roleAssignment '../../11-entra-rbac/infra/role-assignment.bicep' = {
@@ -109,9 +78,8 @@ output AI_GATEWAY_PROVIDER string = base.outputs.providerName
 output AI_GATEWAY_BACKEND_MODEL string = base.outputs.modelName
 output AI_GATEWAY_MODEL string = base.outputs.aliasName
 output FOUNDRY_ACCOUNT_NAME string = base.outputs.foundryName
+output AI_GATEWAY_PRINCIPAL_ID string = base.outputs.gatewayPrincipalId
 output APP_INSIGHTS_ID string = monitoring.outputs.appInsightsId
+output APP_INSIGHTS_NAME string = monitoring.outputs.appInsightsName
 output LOG_ANALYTICS_WORKSPACE_ID string = monitoring.outputs.logAnalyticsWorkspaceId
-output TELEMETRY_EXPORTER_NAME string = telemetry.outputs.telemetryExporterName
-output AI_GATEWAY_PRINCIPAL_ID string = telemetry.outputs.gatewayPrincipalId
-output DATA_COLLECTION_RULE_ID string = telemetry.outputs.dataCollectionRuleId
 output AI_GATEWAY_ROLE_ASSIGNMENT_ID string = roleAssignment.outputs.roleAssignmentId

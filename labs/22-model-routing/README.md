@@ -70,7 +70,7 @@ apps never change the model name they send.
 > this section. You need only the one-time setup above.
 
 - Complete [Publish a Foundry model and make your first call](../02-first-model-call/README.md). You need the
-  gateway, a runtime API key, and the `gpt-6-luna` backend model. Lab 02 also gave the gateway the
+  gateway, a runtime API key, and the `gpt-5-mini` backend model. Lab 02 also gave the gateway the
   **Foundry User** role on your Foundry account, which covers the new deployment in this lab.
 - Permission to change the gateway, for example **Contributor** on its resource group, and to create deployments
   in the Foundry account.
@@ -88,8 +88,8 @@ export RG="<resource-group>"
 export GATEWAY="<gateway>"
 export FOUNDRY_RG="<foundry-resource-group>"     # resource group of the Foundry account from lab 02
 export FOUNDRY_ACCOUNT="<foundry-account-name>"
-export PROVIDER="foundry-models"                 # the gateway provider that holds gpt-6-luna
-export PRIMARY="gpt-6-luna"                      # the backend model that serves today's traffic
+export PROVIDER="foundry-models"                 # the gateway provider that holds gpt-5-mini
+export PRIMARY="gpt-5-mini"                      # the backend model that serves today's traffic
 export CANDIDATE="gpt-6.1-sol"                   # the new model to try
 export CANDIDATE_VERSION="2026-09-29"
 export ALIAS="chat"                              # the name that clients send in "model"
@@ -117,8 +117,8 @@ $RG                = "<resource-group>"
 $GATEWAY           = "<gateway>"
 $FOUNDRY_RG        = "<foundry-resource-group>"    # resource group of the Foundry account from lab 02
 $FOUNDRY_ACCOUNT   = "<foundry-account-name>"
-$PROVIDER          = "foundry-models"              # the gateway provider that holds gpt-6-luna
-$PRIMARY           = "gpt-6-luna"                  # the backend model that serves today's traffic
+$PROVIDER          = "foundry-models"              # the gateway provider that holds gpt-5-mini
+$PRIMARY           = "gpt-5-mini"                  # the backend model that serves today's traffic
 $CANDIDATE         = "gpt-6.1-sol"                 # the new model to try
 $CANDIDATE_VERSION = "2026-09-29"
 $ALIAS             = "chat"                        # the name that clients send in "model"
@@ -159,13 +159,13 @@ az aigateway model list -g $RG --gateway-name $GATEWAY -o table
 ```
 </details> <!-- gh -->
 
-Deploy the candidate model in the same Foundry account as `gpt-6-luna`. Pick a region where the model is
+Deploy the candidate model in the same Foundry account as `gpt-5-mini`. Pick a region where the model is
 available. Model inference is billed per use.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# Deploy the candidate model next to gpt-6-luna, with 10,000 tokens per minute of Global Standard capacity
+# Deploy the candidate model next to gpt-5-mini, with 10,000 tokens per minute of Global Standard capacity
 az cognitiveservices account deployment create -g "$FOUNDRY_RG" -n "$FOUNDRY_ACCOUNT" \
   --deployment-name "$CANDIDATE" --model-name "$CANDIDATE" --model-version "$CANDIDATE_VERSION" \
   --model-format OpenAI --sku-name GlobalStandard --sku-capacity 10 \
@@ -177,7 +177,7 @@ az cognitiveservices account deployment create -g "$FOUNDRY_RG" -n "$FOUNDRY_ACC
 <details><summary>PowerShell</summary> <!-- gh -->
 
 ```powershell title="PowerShell"
-# Deploy the candidate model next to gpt-6-luna, with 10,000 tokens per minute of Global Standard capacity
+# Deploy the candidate model next to gpt-5-mini, with 10,000 tokens per minute of Global Standard capacity
 az cognitiveservices account deployment create -g $FOUNDRY_RG -n $FOUNDRY_ACCOUNT `
   --deployment-name $CANDIDATE --model-name $CANDIDATE --model-version $CANDIDATE_VERSION `
   --model-format OpenAI --sku-name GlobalStandard --sku-capacity 10 `
@@ -244,15 +244,15 @@ weights `80` and `20`.
 1. Select **Models** › **Aliases** › **Add alias**.
 2. On **Basics**, set **Alias name** to `chat` and **Description** to `Canary: 80/20 between the current and the
    new model`. Select **Next**.
-3. On **Select models**, select `gpt-6-luna` and `gpt-6.1-sol` in **Available backend models**. Select **Next**.
+3. On **Select models**, select `gpt-5-mini` and `gpt-6.1-sol` in **Available backend models**. Select **Next**.
 4. On **Priority and weights**, keep **Priority** at `0` for both models. Set **Weight** to `80` for
-   `gpt-6-luna` and `20` for `gpt-6.1-sol`. **Share within priority** shows `80%` and `20%`. Select **Next**.
+   `gpt-5-mini` and `20` for `gpt-6.1-sol`. **Share within priority** shows `80%` and `20%`. Select **Next**.
 5. On **Review**, check the shares, then select **Create**.
 
 ![The Priority and weights step of Create alias, with Priority, Weight, and Share within priority columns for each backend model](../assets/screens/models-alias-routing.png "Priority and weights. This example from the product documentation uses three GPT-4o deployments: one at priority 0, and two at priority 1 that split 75/25.")
 
 > **Checkpoint**
-> **Models** › **Aliases** lists `chat`. Its **Backend models** tab shows `gpt-6-luna` and `gpt-6.1-sol`, both at
+> **Models** › **Aliases** lists `chat`. Its **Backend models** tab shows `gpt-5-mini` and `gpt-6.1-sol`, both at
 > priority `0`, with weights `80` and `20`.
 
 </details> <!-- gh -->
@@ -332,7 +332,7 @@ az aigateway model-alias set -g $RG --gateway-name $GATEWAY -n $ALIAS `
 `az aigateway model-alias set` creates the alias, or updates it if it exists, so you can run the step again.
 
 > **Checkpoint**
-> The output shows `gpt-6-luna  priority 0  weight 80` and `gpt-6.1-sol  priority 0  weight 20`.
+> The output shows `gpt-5-mini  priority 0  weight 80` and `gpt-6.1-sol  priority 0  weight 20`.
 
 </details> <!-- gh -->
 <!-- track: iac | Bicep + azd -->
@@ -344,7 +344,7 @@ az aigateway model-alias set -g $RG --gateway-name $GATEWAY -n $ALIAS `
 ### Review the templates
 
 `infra/main.bicep` creates the resource group `rg-<environment name>` and calls the quick start's
-[resources.bicep](../quickstart/infra/resources.bicep) for the gateway, `gpt-6-luna`, its default alias, and the
+[resources.bicep](../quickstart/infra/resources.bicep) for the gateway, `gpt-5-mini`, its default alias, and the
 `app-first-call` key. Then it deploys the candidate model in the same Foundry account and publishes the `chat`
 alias:
 
@@ -396,7 +396,7 @@ resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
   tags: tags
 }
 
-// The quick start's template: a gateway, gpt-6-luna behind the default alias, and the app-first-call key.
+// The quick start's template: a gateway, gpt-5-mini behind the default alias, and the app-first-call key.
 module base '../../quickstart/infra/resources.bicep' = {
   name: 'aigw-base'
   scope: rg
@@ -449,7 +449,7 @@ output FOUNDRY_ACCOUNT_NAME string = base.outputs.foundryName
 </details>
 <!-- gh:end -->
 
-`infra/candidate-deployment.bicep` deploys `gpt-6.1-sol` next to `gpt-6-luna`. The gateway's **Foundry User** role
+`infra/candidate-deployment.bicep` deploys `gpt-6.1-sol` next to `gpt-5-mini`. The gateway's **Foundry User** role
 on the account already covers it:
 
 <!-- include: infra/candidate-deployment.bicep -->
@@ -460,7 +460,7 @@ on the account already covers it:
 
 ```bicep
 // Deploys the candidate model in an existing Foundry account, next to the primary model. main.bicep calls it after the
-// quick start's template has created the account and its gpt-6-luna deployment.
+// quick start's template has created the account and its gpt-5-mini deployment.
 targetScope = 'resourceGroup'
 
 @description('Name of the existing Foundry (Azure AI Services) account.')
@@ -504,7 +504,7 @@ output foundryId string = foundry.id
 <!-- gh:end -->
 
 `infra/alias-routing.bicep` registers the candidate deployment under the existing provider and publishes the alias.
-It only references `gpt-6-luna`, so that model's settings stay as they are. Its `strategy` parameter switches
+It only references `gpt-5-mini`, so that model's settings stay as they are. Its `strategy` parameter switches
 between a weighted split and a priority preference. You can also deploy it on its own to the gateway from lab 02:
 
 <!-- include: infra/alias-routing.bicep -->
@@ -527,8 +527,8 @@ param gatewayName string
 @description('Name of the existing Foundry model provider in the gateway, for example foundry-models from lab 02.')
 param providerName string = 'foundry-models'
 
-@description('Name of the existing backend model that takes most of the traffic, for example gpt-6-luna.')
-param primaryModelName string = 'gpt-6-luna'
+@description('Name of the existing backend model that takes most of the traffic, for example gpt-5-mini.')
+param primaryModelName string = 'gpt-5-mini'
 
 @description('Resource ID of the Foundry account that hosts the candidate deployment.')
 param foundryAccountId string
@@ -694,7 +694,7 @@ if ($?) { Write-Host "🚀 Gateway deployed: $(azd env get-value AI_GATEWAY_URL)
 ```
 </details> <!-- gh -->
 
-For another region, pick one where AI Gateway and the `gpt-6-luna` and `gpt-6.1-sol` models are available, as in [Find
+For another region, pick one where AI Gateway and the `gpt-5-mini` and `gpt-6.1-sol` models are available, as in [Find
 the available regions](../SETUP.md#find-the-available-regions). The parameters come from azd
 environment values, with the defaults in `infra/main.parameters.json`: `ROUTING_STRATEGY` (`weighted`),
 `ROUTING_CANDIDATE_WEIGHT` (`20`), `CANDIDATE_MODEL` (`gpt-6.1-sol`), and `CANDIDATE_MODEL_VERSION` (`2026-09-29`).
@@ -761,7 +761,7 @@ az aigateway model-alias show -g $RG --gateway-name $GATEWAY -n $ALIAS --query p
 </details> <!-- gh -->
 
 > **Checkpoint**
-> `azd up` ended with `SUCCESS`, and the last command printed `gpt-6-luna  priority 0  weight 80` and
+> `azd up` ended with `SUCCESS`, and the last command printed `gpt-5-mini  priority 0  weight 80` and
 > `gpt-6.1-sol  priority 0  weight 20`.
 
 </details> <!-- gh -->
@@ -792,11 +792,11 @@ Write-Host "📊 Counting the backend models that serve $ALIAS, one request ever
 
 ```text
 Requests per backend model:
-  16 gpt-6-luna-2026-09-22
+  16 gpt-5-mini-2025-08-07
    4 gpt-6.1-sol-2026-09-29
 ```
 
-In our tests the gateway interleaved the two models, four requests to `gpt-6-luna` and then one to
+In our tests the gateway interleaved the two models, four requests to `gpt-5-mini` and then one to
 `gpt-6.1-sol`, so 20 requests split exactly 16 and 4. Plan around the shares, not the exact order.
 
 To see the header for a single call:
@@ -827,13 +827,14 @@ Write-Host "✨ Backend model that served one request to ${ALIAS}:"
 </details> <!-- gh -->
 
 > **Checkpoint**
-> About four of every five requests show `gpt-6-luna-…`, and the rest show `gpt-6.1-sol-…`. The client sent
-> `"model": "chat"` every time.
+> About four of every five requests show `gpt-5-mini-…`, and the rest show `gpt-6.1-sol-…`. The client sent
+> `"model": "chat"` every time. Right after you create the alias, the first requests can return
+> `HTTP 404 model_not_found` for a few seconds; run the count again.
 
 ## Prefer one model by priority
 
-The canary looks good, but finance wants `gpt-6-luna` to handle the traffic until the new model is approved.
-Give `gpt-6.1-sol` priority `1`. It stays in the alias, ready to promote, but requests go to `gpt-6-luna`.
+The canary looks good, but finance wants `gpt-5-mini` to handle the traffic until the new model is approved.
+Give `gpt-6.1-sol` priority `1`. It stays in the alias, ready to promote, but requests go to `gpt-5-mini`.
 
 <!-- track: portal | Portal -->
 <details open><summary><b>🖥️ Portal</b></summary> <!-- gh -->
@@ -842,12 +843,12 @@ Give `gpt-6.1-sol` priority `1`. It stays in the alias, ready to promote, but re
 
 1. In **Models** › **Aliases**, open `chat` and select **Edit**.
 2. Select **Next** until you reach **Priority and weights**.
-3. Set **Priority** to `1` for `gpt-6.1-sol` and set both weights to `1`. `gpt-6-luna` now shows `100%` at
+3. Set **Priority** to `1` for `gpt-6.1-sol` and set both weights to `1`. `gpt-5-mini` now shows `100%` at
    priority `0`, and `gpt-6.1-sol` shows `100%` at priority `1`.
-4. Select **Next**, then **Save**. New requests use the new settings immediately.
+4. Select **Next**, then **Save**. New requests use the new settings within a few seconds.
 
 > **Checkpoint**
-> The alias **Backend models** tab shows `gpt-6-luna` at priority `0` and `gpt-6.1-sol` at priority `1`.
+> The alias **Backend models** tab shows `gpt-5-mini` at priority `0` and `gpt-6.1-sol` at priority `1`.
 
 </details> <!-- gh -->
 <!-- track: cli | Azure CLI -->
@@ -860,7 +861,7 @@ Give `gpt-6.1-sol` priority `1`. It stays in the alias, ready to promote, but re
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# Prefer gpt-6-luna: it keeps priority 0, and the candidate moves to priority 1, both with weight 1
+# Prefer gpt-5-mini: it keeps priority 0, and the candidate moves to priority 1, both with weight 1
 echo "🔖 Alias $ALIAS now routes to:"
 az aigateway model-alias update -g "$RG" --gateway-name "$GATEWAY" -n "$ALIAS" \
   --description "Prefer the current model" \
@@ -874,7 +875,7 @@ az aigateway model-alias update -g "$RG" --gateway-name "$GATEWAY" -n "$ALIAS" \
 <details><summary>PowerShell</summary> <!-- gh -->
 
 ```powershell title="PowerShell"
-# Prefer gpt-6-luna: it keeps priority 0, and the candidate moves to priority 1, both with weight 1
+# Prefer gpt-5-mini: it keeps priority 0, and the candidate moves to priority 1, both with weight 1
 Write-Host "🔖 Alias $ALIAS now routes to:"
 az aigateway model-alias update -g $RG --gateway-name $GATEWAY -n $ALIAS `
   --description "Prefer the current model" `
@@ -886,7 +887,7 @@ az aigateway model-alias update -g $RG --gateway-name $GATEWAY -n $ALIAS `
 </details> <!-- gh -->
 
 > **Checkpoint**
-> The output shows `gpt-6-luna  priority 0  weight 1` and `gpt-6.1-sol  priority 1  weight 1`.
+> The output shows `gpt-5-mini  priority 0  weight 1` and `gpt-6.1-sol  priority 1  weight 1`.
 
 </details> <!-- gh -->
 <!-- track: iac | Bicep + azd -->
@@ -894,7 +895,7 @@ az aigateway model-alias update -g $RG --gateway-name $GATEWAY -n $ALIAS `
 
 ### Provision the priority strategy
 
-Set `ROUTING_STRATEGY` to `priority` and provision again. Only the alias changes: `gpt-6-luna` keeps priority `0`,
+Set `ROUTING_STRATEGY` to `priority` and provision again. Only the alias changes: `gpt-5-mini` keeps priority `0`,
 and `gpt-6.1-sol` gets priority `1`.
 
 <details open><summary>Bash</summary> <!-- gh -->
@@ -927,7 +928,7 @@ To go back to the weighted split, run `azd env set ROUTING_STRATEGY weighted` an
 `ROUTING_CANDIDATE_WEIGHT` the same way to canary in steps.
 
 > **Checkpoint**
-> `azd provision` ended with `SUCCESS`. **Read the alias** in **Verify** shows `gpt-6-luna  priority 0  weight 1`
+> `azd provision` ended with `SUCCESS`. **Read the alias** in **Verify** shows `gpt-5-mini  priority 0  weight 1`
 > and `gpt-6.1-sol  priority 1  weight 1`.
 
 </details> <!-- gh -->
@@ -980,11 +981,12 @@ Write-Host "📊 Counting the backend models that serve $ALIAS, one request ever
 </details> <!-- gh -->
 
 > **Checkpoint**
-> All 10 requests show `gpt-6-luna-…`. `gpt-6.1-sol` stays in the alias at priority `1`.
+> All 10 requests show `gpt-5-mini-…`. `gpt-6.1-sol` stays in the alias at priority `1`. If one of the first
+> requests still shows `gpt-6.1-sol-…`, the change was still reaching the gateway; run the count again.
 
 ### Promote the new model
 
-To finish the rollout, swap the priorities: `gpt-6.1-sol` at `0`, `gpt-6-luna` at `1`. Use the portal, or run
+To finish the rollout, swap the priorities: `gpt-6.1-sol` at `0`, `gpt-5-mini` at `1`. Use the portal, or run
 the `az aigateway model-alias update` command from the previous section with `$PRIMARY` and `$CANDIDATE`
 swapped. Run the count again: every request now shows `gpt-6.1-sol-…`. To roll back, swap them again. Clients
 never change.
@@ -1007,7 +1009,7 @@ never change.
 
 ## Clean up
 
-Keep the gateway, the runtime key, and `gpt-6-luna` from lab 02. Later labs use them. Remove what you added in
+Keep the gateway, the runtime key, and `gpt-5-mini` from lab 02. Later labs use them. Remove what you added in
 this lab: the alias first, then the backend model, then the Foundry deployment.
 
 <!-- track: portal | Portal -->
@@ -1037,7 +1039,7 @@ az aigateway model-alias delete -g "$RG" --gateway-name "$GATEWAY" -n "$ALIAS" -
 az aigateway model delete -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$CANDIDATE" --yes &&
   echo "🚮 Model $CANDIDATE is deleted from $PROVIDER"
 
-# Delete the candidate deployment from the Foundry account, and keep gpt-6-luna for later labs
+# Delete the candidate deployment from the Foundry account, and keep gpt-5-mini for later labs
 az cognitiveservices account deployment delete -g "$FOUNDRY_RG" -n "$FOUNDRY_ACCOUNT" --deployment-name "$CANDIDATE" &&
   echo "🚮 Model deployment $CANDIDATE is deleted from $FOUNDRY_ACCOUNT"
 ```
@@ -1054,7 +1056,7 @@ if ($?) { Write-Host "🚮 Alias $ALIAS is deleted" }
 az aigateway model delete -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER -n $CANDIDATE --yes
 if ($?) { Write-Host "🚮 Model $CANDIDATE is deleted from $PROVIDER" }
 
-# Delete the candidate deployment from the Foundry account, and keep gpt-6-luna for later labs
+# Delete the candidate deployment from the Foundry account, and keep gpt-5-mini for later labs
 az cognitiveservices account deployment delete -g $FOUNDRY_RG -n $FOUNDRY_ACCOUNT --deployment-name $CANDIDATE
 if ($?) { Write-Host "🚮 Model deployment $CANDIDATE is deleted from $FOUNDRY_ACCOUNT" }
 ```
@@ -1081,7 +1083,7 @@ azd down --purge --force &&
 </details> <!-- gh -->
 <!-- /tracks -->
 
-`azd down` doesn't touch the gateway, key, and `gpt-6-luna` from lab 02, because the Bicep + azd track created its
+`azd down` doesn't touch the gateway, key, and `gpt-5-mini` from lab 02, because the Bicep + azd track created its
 own gateway.
 
 ## Next steps

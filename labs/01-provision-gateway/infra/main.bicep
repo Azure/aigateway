@@ -1,5 +1,5 @@
 // Lab 01 with azd: "azd up" creates the resource group rg-<environment name>, then calls gateway.bicep to create
-// an AI gateway with a unique name and its connector gateway.
+// an AI gateway with a unique name.
 targetScope = 'subscription'
 
 @description('azd environment name. The resource group is rg-<environmentName>.')
@@ -20,7 +20,7 @@ resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
   tags: tags
 }
 
-// The lab's template: the gateway in the Standard SKU with a system-assigned identity, then its connector gateway.
+// The lab's template: the gateway with a system-assigned identity, in the default SKU.
 module gateway 'gateway.bicep' = {
   name: 'aigw-gateway'
   scope: rg

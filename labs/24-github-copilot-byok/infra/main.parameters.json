@@ -9,10 +9,10 @@
       "value": "${AZURE_LOCATION}"
     },
     "byokModelName": {
-      "value": "${BYOK_MODEL=gpt-6-astra}"
+      "value": "${BYOK_MODEL=gpt-6.1-sol}"
     },
     "byokModelVersion": {
-      "value": "${BYOK_MODEL_VERSION=2026-09-03}"
+      "value": "${BYOK_MODEL_VERSION=2026-09-29}"
     },
     "byokModelSku": {
       "value": "${BYOK_MODEL_SKU=GlobalStandard}"

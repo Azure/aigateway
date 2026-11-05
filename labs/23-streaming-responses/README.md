@@ -73,7 +73,7 @@ then prove that a token limit still counts every streamed token.
 > response](#stream-a-response) and **Verify** use. You need only the one-time setup above.
 
 - Complete [Publish a Foundry model and make your first call](../02-first-model-call/README.md). You need a gateway, an imported
-  model, a callable alias, and a runtime API key from **Access** › **Keys**.
+  model, a callable alias, and a runtime API key from **Access** › **API keys**.
 - For the PowerShell steps: PowerShell 7.4 or later.
 - For the Code track: Python 3.10 or later, or Node.js 22.18 or later.
 - Permission to change the gateway, for example **Contributor** on the resource group, for the token limit steps.
@@ -104,7 +104,7 @@ export AI_GATEWAY_MODEL="$(az aigateway model show -g "$RG" --gateway-name "$GAT
   --query properties.deployment.modelName -o tsv)"
 echo "🔖 Model alias: $AI_GATEWAY_MODEL"
 
-# Paste the runtime key that you created in Access › Keys, without showing it: don't commit it or write it to a file
+# Paste the runtime key that you created in Access › API keys, without showing it: don't commit it or write it to a file
 read -rsp "AI Gateway API key: " AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 ```
@@ -132,7 +132,7 @@ $env:AI_GATEWAY_MODEL = az aigateway model show -g $RG --gateway-name $GATEWAY -
   --query properties.deployment.modelName -o tsv
 Write-Host "🔖 Model alias: $env:AI_GATEWAY_MODEL"
 
-# Paste the runtime key that you created in Access › Keys, without showing it: don't commit it or write it to a file
+# Paste the runtime key that you created in Access › API keys, without showing it: don't commit it or write it to a file
 $env:AI_GATEWAY_API_KEY = Read-Host "AI Gateway API key" -MaskInput
 Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) characters, not shown)"
 ```
@@ -216,10 +216,10 @@ Write-Host "🤖 Raw server-sent events from the $env:AI_GATEWAY_MODEL alias:"
 Expected output (shortened; your text and IDs differ):
 
 ```text
-🤖 Raw server-sent events from the gpt-6-luna alias:
+🤖 Raw server-sent events from the gpt-5-mini alias:
 data: {"choices":[],"created":0,"id":"","model":"","object":"","prompt_filter_results":[{"prompt_index":0,"content_filter_results":{…}}]}
 
-data: {"choices":[{"delta":{"content":"","refusal":null,"role":"assistant"},"finish_reason":null,"index":0,…}],"model":"gpt-6-luna-2026-09-22","object":"chat.completion.chunk",…,"usage":null}
+data: {"choices":[{"delta":{"content":"","refusal":null,"role":"assistant"},"finish_reason":null,"index":0,…}],"model":"gpt-5-mini-2025-08-07","object":"chat.completion.chunk",…,"usage":null}
 
 data: {"choices":[{"delta":{"content":"Hi"},"finish_reason":null,"index":0,…}],…,"usage":null}
 
@@ -354,7 +354,7 @@ On GitHub, open [stream-chat.sh](infra/stream-chat.sh) or [stream-chat.ps1](infr
 Expected output (your text and numbers differ):
 
 ```text
-🤖 Reply from the gpt-6-luna alias, as it streams:
+🤖 Reply from the gpt-5-mini alias, as it streams:
 Streaming shows replies as they're generated, so users see progress right away. They can start reading before the full answer is ready. That makes the app feel more responsive than waiting for one complete message.
 
 Events              43 (1 with an empty choices array)
@@ -362,7 +362,7 @@ First token         1.77 s
 Usage chunk         none: run again with --usage to ask for one
 HTTP status         200
 Content-Type        text/event-stream; charset=utf-8
-Served by           gpt-6-luna-2026-09-22
+Served by           gpt-5-mini-2025-08-07
 ```
 
 ### Ask for usage at the end of the stream
@@ -390,7 +390,7 @@ Write-Host "🤖 Reply from the $env:AI_GATEWAY_MODEL alias, with a usage chunk 
 Expected output:
 
 ```text
-🤖 Reply from the gpt-6-luna alias, with a usage chunk at the end:
+🤖 Reply from the gpt-5-mini alias, with a usage chunk at the end:
 Streaming shows the reply as it's generated instead of waiting for the whole answer. You can start reading right away. That makes the app feel more responsive.
 
 Events              35 (2 with an empty choices array)
@@ -398,7 +398,7 @@ First token         1.74 s
 Usage chunk         prompt 19, completion 34, total 53
 HTTP status         200
 Content-Type        text/event-stream; charset=utf-8
-Served by           gpt-6-luna-2026-09-22
+Served by           gpt-5-mini-2025-08-07
 ```
 
 The second empty-`choices` chunk is the usage chunk, the last one before `[DONE]`. `stream_options` is only valid
@@ -456,7 +456,7 @@ Write-Host "📊 Usage from response.completed:"
 Expected output (your counts differ):
 
 ```text
-🤖 Stream received from the gpt-6-luna alias
+🤖 Stream received from the gpt-5-mini alias
 📊 Event types, in order:
    1 event: response.created
    1 event: response.in_progress
@@ -630,7 +630,7 @@ lab 02, so clients that call that alias aren't affected.
 
 1. Open the [AI Gateway portal](https://ai.gateway.azure.com) and select your gateway in the top bar.
 2. Select **Models** › **Aliases** › **Add alias**.
-3. On **Basics**, set **Alias name** to `<model-name>-stream`, for example `gpt-6-luna-stream`. Select **Next**.
+3. On **Basics**, set **Alias name** to `<model-name>-stream`, for example `gpt-5-mini-stream`. Select **Next**.
 4. On **Select models**, select your model in **Available backend models**. Select **Next**.
 5. Keep the defaults on **Priority and weights**, select **Next**, then select **Create** on **Review**.
 
@@ -720,8 +720,8 @@ existing model, with the streaming alias name and the limit of 1,000 tokens per 
 
 ```bicep
 // Lab 23 with azd: "azd up" creates the resource group rg-<environment name>, the quick start's gateway, Foundry
-// account, gpt-6-luna alias, and app-first-call key, then reuses lab 06's limited-alias.bicep to publish the
-// gpt-6-luna-stream alias with a limit of 1,000 tokens per minute for each caller. The key value is never an output.
+// account, gpt-5-mini alias, and app-first-call key, then reuses lab 06's limited-alias.bicep to publish the
+// gpt-5-mini-stream alias with a limit of 1,000 tokens per minute for each caller. The key value is never an output.
 targetScope = 'subscription'
 
 @description('azd environment name. The resource group is rg-<environmentName>.')
@@ -742,7 +742,7 @@ resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
   tags: tags
 }
 
-// The quick start's template: a gateway, a Foundry account with gpt-6-luna, the gpt-6-luna alias, and a key.
+// The quick start's template: a gateway, a Foundry account with gpt-5-mini, the gpt-5-mini alias, and a key.
 module base '../../quickstart/infra/resources.bicep' = {
   name: 'aigw-base'
   scope: rg
@@ -824,7 +824,7 @@ if ($?) { Write-Host "🚀 Gateway deployed: $(azd env get-value AI_GATEWAY_URL)
 ```
 </details> <!-- gh -->
 
-For another region, pick one where AI Gateway and the `gpt-6-luna` model are available, as in [Find the available
+For another region, pick one where AI Gateway and the `gpt-5-mini` model are available, as in [Find the available
 regions](../SETUP.md#find-the-available-regions).
 
 ### Read the outputs and the key
@@ -880,12 +880,12 @@ Write-Host "🔖 Streaming alias: $STREAM_ALIAS"
 ```
 </details> <!-- gh -->
 
-`AI_GATEWAY_MODEL` is the default alias, `gpt-6-luna`, which has no token limit, so the steps in
+`AI_GATEWAY_MODEL` is the default alias, `gpt-5-mini`, which has no token limit, so the steps in
 [Stream a response](#stream-a-response) aren't throttled. **Verify** calls the streaming alias.
 
 > **Checkpoint**
-> `azd up` ended with `SUCCESS`, and the last command printed `🔖 Streaming alias: gpt-6-luna-stream`. In
-> the portal, **Models** › **Aliases** lists it next to `gpt-6-luna`, and **Policies** lists a **Token rate limit**
+> `azd up` ended with `SUCCESS`, and the last command printed `🔖 Streaming alias: gpt-5-mini-stream`. In
+> the portal, **Models** › **Aliases** lists it next to `gpt-5-mini`, and **Policies** lists a **Token rate limit**
 > scoped to it. If you came here from **Before you begin**, go back to [Stream a response](#stream-a-response) now.
 
 </details> <!-- gh -->

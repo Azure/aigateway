@@ -37,7 +37,7 @@ async def main() -> None:
     query = sys.argv[3] if len(sys.argv) > 3 else "What is Azure AI Gateway?"
     api_key = os.environ.get("AI_GATEWAY_API_KEY")
     if not api_key:
-        sys.exit("Set AI_GATEWAY_API_KEY to a runtime key from Access > Keys")
+        sys.exit("Set AI_GATEWAY_API_KEY to a runtime key from Access > API keys")
 
     url = endpoint(server)
     print(f"MCP endpoint: {url}")

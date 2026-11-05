@@ -69,7 +69,7 @@ you give each caller its own token allowance at the gateway, so a noisy neighbor
 > need only the one-time setup above.
 
 - Complete [Publish a Foundry model and make your first call](../02-first-model-call/README.md). You need a gateway, an imported
-  model, a callable alias, and a runtime API key from **Access** › **Keys**.
+  model, a callable alias, and a runtime API key from **Access** › **API keys**.
 - Permission to change the gateway, for example **Contributor** on the resource group.
 - Run the scripts and samples from the lab's folder, `~/aigateway/labs/06-token-limits`.
 
@@ -95,7 +95,7 @@ export AI_GATEWAY_MODEL="$(az aigateway model show -g "$RG" --gateway-name "$GAT
   -n "$MODEL" --query properties.deployment.modelName -o tsv)"
 echo "🔖 Model alias: $AI_GATEWAY_MODEL"
 
-# Paste the runtime key that you created in Access › Keys, without showing it
+# Paste the runtime key that you created in Access › API keys, without showing it
 # Don't commit the key or write it to a file
 read -rsp "AI Gateway API key: " AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
@@ -122,7 +122,7 @@ $env:AI_GATEWAY_MODEL = az aigateway model show -g $RG --gateway-name $GATEWAY -
   -n $MODEL --query properties.deployment.modelName -o tsv
 Write-Host "🔖 Model alias: $env:AI_GATEWAY_MODEL"
 
-# Paste the runtime key that you created in Access › Keys, without showing it
+# Paste the runtime key that you created in Access › API keys, without showing it
 # Don't commit the key or write it to a file
 $env:AI_GATEWAY_API_KEY = Read-Host "AI Gateway API key" -MaskInput
 Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) characters, not shown)"
@@ -556,7 +556,7 @@ if ($?) { Write-Host "🚀 Gateway deployed: $(azd env get-value AI_GATEWAY_URL)
 ```
 </details> <!-- gh -->
 
-For another region, pick one where AI Gateway and the `gpt-6-luna` model are available, as in [Find the available
+For another region, pick one where AI Gateway and the `gpt-5-mini` model are available, as in [Find the available
 regions](../SETUP.md#find-the-available-regions).
 
 ### Read the outputs and the key
@@ -611,7 +611,7 @@ Write-Host "🔖 Model alias: $env:AI_GATEWAY_MODEL"
 
 > **Checkpoint**
 > `azd up` ended with `SUCCESS`, and the last command printed the limited alias,
-> `🔖 Model alias: gpt-6-luna-limited`. In the portal, **Models** shows it next to `gpt-6-luna`, and **Policies**
+> `🔖 Model alias: gpt-5-mini-limited`. In the portal, **Models** shows it next to `gpt-5-mini`, and **Policies**
 > lists a **Token rate limit** scoped to it.
 
 ### Change the limit
@@ -727,7 +727,7 @@ SDKs, including the OpenAI SDKs, honor `Retry-After` automatically when they ret
 
 ### Prove the counter is per caller
 
-Create a second runtime key in **Access** › **Keys**, set it as `AI_GATEWAY_API_KEY` in a new terminal, and
+Create a second runtime key in **Access** › **API keys**, set it as `AI_GATEWAY_API_KEY` in a new terminal, and
 run the burst again while the first key is still throttled. The second key starts with a full allowance,
 because **Caller identity** gives every key its own counter.
 
@@ -768,7 +768,7 @@ to a production value, before you continue.
 ### Remove the policy
 
 Select **Policies**, open the **Token rate limit** you created, and delete it. If you created a second runtime
-key for testing, revoke it in **Access** › **Keys**.
+key for testing, revoke it in **Access** › **API keys**.
 
 </details> <!-- gh -->
 <!-- track: cli | Azure CLI -->

@@ -1,7 +1,7 @@
-// Publishes gpt-6-astra through an existing AI Gateway so GitHub Copilot can use it as a bring-your-own-key model.
+// Publishes gpt-6.1-sol through an existing AI Gateway so GitHub Copilot can use it as a bring-your-own-key model.
 // main.bicep calls it after the quick start's template, and you can also deploy it on its own to a gateway you already
-// have, such as the one from lab 02. It adds a gpt-6-astra deployment to the Foundry account the gateway already uses,
-// registers it under the gateway's existing Foundry provider with a per-caller token limit, publishes the gpt-6-astra
+// have, such as the one from lab 02. It adds a gpt-6.1-sol deployment to the Foundry account the gateway already uses,
+// registers it under the gateway's existing Foundry provider with a per-caller token limit, publishes the gpt-6.1-sol
 // alias, and creates the github-copilot runtime API key. The key value is never an output.
 // The gateway's identity already has the Foundry User role on the account (from lab 02 or the quick start), and that
 // role covers the new deployment, so this template doesn't assign it again.
@@ -14,10 +14,10 @@ param gatewayName string
 param foundryAccountId string
 
 @description('Model to deploy and publish. The deployment and the alias both use this name.')
-param modelName string = 'gpt-6-astra'
+param modelName string = 'gpt-6.1-sol'
 
 @description('Version of the model to deploy.')
-param modelVersion string = '2026-09-03'
+param modelVersion string = '2026-09-29'
 
 @description('Deployment SKU. Use DataZoneStandard if your GlobalStandard quota for the model is used up.')
 @allowed([

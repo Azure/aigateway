@@ -4,8 +4,8 @@
 # repository root (infra/main.bicep, infra/main.bicepparam, infra/prod.bicepparam, infra/scripts/...).
 #
 # It signs in to Azure with OpenID Connect (no client secret is stored in GitHub), installs the aigateway CLI extension
-# that the smoke test uses, previews the change with what-if, deploys the subscription-scope template, applies the
-# gateway-wide baseline policies, and runs the smoke test.
+# that the scripts use, previews the change with what-if, deploys the subscription-scope template, connects the
+# gateway's telemetry to Application Insights, applies the gateway-wide baseline policies, and runs the smoke test.
 #
 # One-time setup (see the lab for the commands):
 #   - A Microsoft Entra app registration (or user-assigned managed identity) with a federated credential for each
@@ -87,6 +87,12 @@ jobs:
             echo "gateway-url=$(out AI_GATEWAY_URL)"
             echo "alias=$(out AI_GATEWAY_MODEL)"
           } >> "$GITHUB_OUTPUT"
+
+      - name: Connect telemetry
+        env:
+          RG: ${{ steps.deploy.outputs.resource-group }}
+          GATEWAY: ${{ steps.deploy.outputs.gateway }}
+        run: bash infra/scripts/connect-telemetry.sh
 
       - name: Apply gateway baseline policies
         env:

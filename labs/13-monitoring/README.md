@@ -72,7 +72,7 @@ send the gateway's OpenTelemetry signals to Application Insights and answer all 
 > **Owner** on the subscription.
 
 - Complete [Publish a Foundry model and make your first call](../02-first-model-call/README.md). You need a gateway,
-  an imported model, a callable alias, and a runtime API key from **Access** › **Keys**.
+  an imported model, a callable alias, and a runtime API key from **Access** › **API keys**.
 - Permission to change the gateway, for example **Contributor** on its resource group, **and** permission to
   create role assignments, for example **Owner** or **Role Based Access Control Administrator**. Setup grants the
   gateway's managed identity a role on the telemetry destination. To reuse an existing Application Insights
@@ -93,7 +93,7 @@ export AI_GATEWAY_MODEL="<model-name>"     # a callable alias, for example the o
 export AI_GATEWAY_URL="https://$(az aigateway show -g "$RG" -n "$GATEWAY" --query properties.frontend.defaultHostname -o tsv)"
 echo "🌐 Runtime URL: $AI_GATEWAY_URL"
 
-# Paste the runtime key you created in Access › Keys, without showing it: don't commit it or write it to a file
+# Paste the runtime key you created in Access › API keys, without showing it: don't commit it or write it to a file
 read -rsp "AI Gateway API key: " AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 ```
@@ -111,7 +111,7 @@ $env:AI_GATEWAY_MODEL = "<model-name>"     # a callable alias, for example the o
 $env:AI_GATEWAY_URL = "https://$(az aigateway show -g $RG -n $GATEWAY --query properties.frontend.defaultHostname -o tsv)"
 Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
 
-# Paste the runtime key you created in Access › Keys, without showing it: don't commit it or write it to a file
+# Paste the runtime key you created in Access › API keys, without showing it: don't commit it or write it to a file
 $env:AI_GATEWAY_API_KEY = Read-Host "AI Gateway API key" -MaskInput
 Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) characters, not shown)"
 ```
@@ -240,8 +240,8 @@ if ($?) { Write-Host "📊 Application Insights $GATEWAY-insights is ready" }
 The component reports OTLP endpoints only after you turn on ingestion into an Azure Monitor workspace. Azure then
 creates a managed resource group, `ai_<component>_<id>_managed`, with the Data Collection Rule and the Azure Monitor
 workspace for the metrics. `az monitor app-insights` has no flag for this setting, so set the component's
-`AzureMonitorWorkspaceIngestionMode` property with `az resource update`, then read the endpoints back. It takes about
-ten seconds.
+`AzureMonitorWorkspaceIngestionMode` property with `az resource update`, wait for the endpoints, then read them back.
+The wait usually takes seconds, and can take a few minutes.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -250,6 +250,12 @@ ten seconds.
 COMPONENT_ID="$(az resource update -g "$RG" -n "$GATEWAY-insights" --resource-type Microsoft.Insights/components \
   --api-version 2020-02-02 --set properties.AzureMonitorWorkspaceIngestionMode=Enabled --query id -o tsv)" &&
   echo "📊 OTLP ingestion is on for $GATEWAY-insights"
+
+# Wait until the component reports the Data Collection Rule and the three OTLP endpoints
+READY="(properties.OTLPMetricsEndpoint && properties.OTLPLogsEndpoint && properties.OTLPTracesEndpoint) && properties.DataCollectionRuleResourceId || ''"
+until [ -n "$(az resource show --ids "$COMPONENT_ID" --api-version 2020-02-02 --query "$READY" -o tsv)" ]; do
+  echo "⏳ Waiting for the OTLP endpoints" && sleep 10
+done
 
 # Read the Data Collection Rule and the OTLP endpoint of each signal from the component
 otlp() { az resource show --ids "$COMPONENT_ID" --api-version 2020-02-02 --query "properties.$1" -o tsv; }
@@ -270,6 +276,12 @@ echo "🌐 Logs and traces endpoint: ${LOGS_URL%%/dataCollectionRules/*}"
 $COMPONENT_ID = az resource update -g $RG -n "$GATEWAY-insights" --resource-type Microsoft.Insights/components `
   --api-version 2020-02-02 --set properties.AzureMonitorWorkspaceIngestionMode=Enabled --query id -o tsv
 if ($?) { Write-Host "📊 OTLP ingestion is on for $GATEWAY-insights" }
+
+# Wait until the component reports the Data Collection Rule and the three OTLP endpoints
+$READY = "(properties.OTLPMetricsEndpoint && properties.OTLPLogsEndpoint && properties.OTLPTracesEndpoint) && properties.DataCollectionRuleResourceId || ''"
+while (-not (az resource show --ids $COMPONENT_ID --api-version 2020-02-02 --query $READY -o tsv)) {
+  Write-Host "⏳ Waiting for the OTLP endpoints"; Start-Sleep -Seconds 10
+}
 
 # Read the Data Collection Rule and the OTLP endpoint of each signal from the component
 function otlp($name) { az resource show --ids $COMPONENT_ID --api-version 2020-02-02 --query "properties.$name" -o tsv }
@@ -377,33 +389,40 @@ The templates declare what the portal's wizard sets up: a Log Analytics workspac
 Insights component with OTLP ingestion turned on, and a gateway telemetry exporter of kind `OpenTelemetry` that
 sends metrics, logs, and traces to the component's OTLP endpoints with the recommended token claims. When OTLP
 ingestion turns on, Azure creates a managed resource group, `ai_<component>_<id>_managed`, with the Data Collection
-Rule and the Azure Monitor workspace for the metrics. The template reads the endpoints back from the component.
+Rule and the Azure Monitor workspace for the metrics. The component reports the OTLP endpoints a few minutes later.
 
-The gateway's managed identity also needs **Monitoring Metrics Publisher** on that Data Collection Rule. Azure locks
-the managed resource group with a deny assignment that blocks deployments, so Bicep can't assign the role there.
-Instead, `azure.yaml` assigns it with the Azure CLI in a `postprovision` hook, which azd runs after each deployment.
+The exporter can't be part of that deployment. It needs the endpoints, and the gateway's managed identity needs
+**Monitoring Metrics Publisher** on the Data Collection Rule before the exporter is created: an exporter created
+earlier fails validation or gets empty endpoints. Bicep can't wait for the endpoints, and it can't assign the role,
+because Azure locks the managed resource group with a deny assignment that blocks deployments. So `azd up` connects
+the gateway in two steps:
 
-The sample's exporter kind, `applicationInsights`, is legacy: the portal flags it because it no longer activates the
-OTLP signals the dashboard needs. `infra/monitoring.bicep` keeps it for reference, switched off by
-`deployLegacyExporter`.
+1. `infra/main.bicep` deploys the gateway and the destination.
+2. The `postprovision` hook in `azure.yaml`, which azd runs after each deployment, runs `infra/connect-telemetry.sh`
+   (`infra/connect-telemetry.ps1` on Windows). The script waits for the endpoints, assigns the role with the Azure
+   CLI, then deploys `infra/otel-exporter.bicep` and retries while the role assignment propagates.
+
+The `applicationInsights` exporter kind that older samples deploy is legacy: the portal flags it because it no longer
+activates the OTLP signals the dashboard needs. The templates don't use it.
 
 ### Review the templates
 
 `infra/main.bicep` creates the resource group `rg-<environment name>` and calls the quick start's
 [resources.bicep](../quickstart/infra/resources.bicep) for the gateway, the Foundry model, its default alias, and the
-`app-first-call` key. Then it calls `infra/monitoring.bicep` for the destination and `infra/otel-exporter.bicep` to
-connect the gateway to it:
+`app-first-call` key. Then it calls `infra/monitoring.bicep` for the destination. Its outputs become azd's
+environment values, which the hook reads:
 
 <!-- include: infra/main.bicep -->
 <!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
 📄 [`infra/main.bicep`](infra/main.bicep)
 
-<details><summary>Show all 72 lines</summary>
+<details><summary>Show all 65 lines</summary>
 
 ```bicep
 // Lab 13 with azd: "azd up" creates the resource group rg-<environment name>, the quick start's gateway, Foundry
-// model, default alias, and runtime API key, then the Application Insights destination for the gateway's telemetry,
-// and connects the gateway to it over OpenTelemetry. The runtime API key is never an output.
+// model, default alias, and runtime API key, then the Application Insights destination for the gateway's telemetry.
+// azure.yaml then connects the gateway to it over OpenTelemetry, once Azure has created the OTLP endpoints. The
+// runtime API key is never an output.
 targetScope = 'subscription'
 
 @description('azd environment name. The resource group is rg-<environmentName>.')
@@ -448,16 +467,9 @@ module monitoring 'monitoring.bicep' = {
   }
 }
 
-// What the portal's Configure telemetry wizard does next: an OpenTelemetry exporter with the recommended token claims.
-// azure.yaml then grants the gateway's identity Monitoring Metrics Publisher on the data collection rule.
-module telemetry 'otel-exporter.bicep' = {
-  name: 'aigw-telemetry'
-  scope: rg
-  params: {
-    gatewayName: base.outputs.gatewayName
-    appInsightsName: monitoring.outputs.appInsightsName
-  }
-}
+// What the portal's Configure telemetry wizard does next happens after this deployment: azure.yaml runs
+// connect-telemetry.sh, which waits for the OTLP endpoints, grants the gateway's identity Monitoring Metrics Publisher
+// on the data collection rule, and then deploys otel-exporter.bicep with the recommended token claims.
 
 output AZURE_RESOURCE_GROUP string = rg.name
 output AI_GATEWAY_NAME string = base.outputs.gatewayName
@@ -467,12 +479,11 @@ output AI_GATEWAY_PROVIDER string = base.outputs.providerName
 output AI_GATEWAY_BACKEND_MODEL string = base.outputs.modelName
 output AI_GATEWAY_MODEL string = base.outputs.aliasName
 output FOUNDRY_ACCOUNT_NAME string = base.outputs.foundryName
+output AI_GATEWAY_PRINCIPAL_ID string = base.outputs.gatewayPrincipalId
+output APP_INSIGHTS_ID string = monitoring.outputs.appInsightsId
 output APP_INSIGHTS_NAME string = monitoring.outputs.appInsightsName
 output LOG_ANALYTICS_WORKSPACE_ID string = monitoring.outputs.logAnalyticsWorkspaceId
 output LOG_ANALYTICS_CUSTOMER_ID string = monitoring.outputs.logAnalyticsCustomerId
-output TELEMETRY_EXPORTER_NAME string = telemetry.outputs.telemetryExporterName
-output AI_GATEWAY_PRINCIPAL_ID string = telemetry.outputs.gatewayPrincipalId
-output DATA_COLLECTION_RULE_ID string = telemetry.outputs.dataCollectionRuleId
 ```
 
 </details>
@@ -487,17 +498,17 @@ resource**:
 <!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
 📄 [`infra/monitoring.bicep`](infra/monitoring.bicep)
 
-<details><summary>Show all 98 lines</summary>
+<details><summary>Show all 62 lines</summary>
 
 ```bicep
 // Creates the Application Insights destination for AI Gateway telemetry: a Log Analytics workspace and a
 // workspace-based Application Insights component.
 //
-// The lab's main.bicep calls it with azd, sets enableOtlpIngestion, and then connects the gateway with
-// otel-exporter.bicep. You can also deploy it on its own to the resource group of an existing gateway, then connect
-// the gateway in the portal: Monitoring › Configure telemetry › Existing Azure Application Insights resource. The
-// portal enables OTLP ingestion on the component, grants the gateway's managed identity the Monitoring Metrics
-// Publisher role, and creates an OpenTelemetry exporter.
+// The lab's main.bicep calls it with azd and sets enableOtlpIngestion. azure.yaml then connects the gateway with
+// connect-telemetry.sh and otel-exporter.bicep. You can also deploy it on its own to the resource group of an existing
+// gateway, then connect the gateway in the portal: Monitoring › Configure telemetry › Existing Azure Application
+// Insights resource. The portal enables OTLP ingestion on the component, grants the gateway's managed identity the
+// Monitoring Metrics Publisher role, and creates an OpenTelemetry exporter.
 
 @description('Name of the existing AI Gateway (Microsoft.ApiManagement/aigateways).')
 param gatewayName string
@@ -514,10 +525,7 @@ param logAnalyticsWorkspaceName string = take('${gatewayName}-logs', 63)
 @description('Tags applied to the monitoring resources.')
 param tags object = {}
 
-@description('Also create the sample\'s telemetry exporter (kind applicationInsights). The portal flags this kind as legacy because it no longer activates OTLP signals. Leave false and connect in the portal.')
-param deployLegacyExporter bool = false
-
-@description('Turn on OTLP ingestion on the component, as the portal does when you connect it. Azure then creates a managed Azure Monitor workspace, data collection endpoint, and data collection rule, and the component reports its OTLP endpoints.')
+@description('Turn on OTLP ingestion on the component, as the portal does when you connect it. Azure then creates a managed Azure Monitor workspace, data collection endpoint, and data collection rule, and the component reports its OTLP endpoints a few minutes later.')
 param enableOtlpIngestion bool = false
 
 resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
@@ -550,44 +558,11 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
   )
 }
 
-// Read-only properties that the component reports once OTLP ingestion is on. any() skips the missing Bicep types.
-var otlp = any(appInsights.properties)
-
-#disable-next-line BCP081
-resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
-  name: gatewayName
-}
-
-#disable-next-line BCP081
-resource defaultWorkspace 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' existing = {
-  parent: gateway
-  name: 'default'
-}
-
-// The reference sample's exporter, unchanged. Kept for reference only: see deployLegacyExporter.
-#disable-next-line BCP081
-resource telemetryExporter 'Microsoft.ApiManagement/aigateways/workspaces/telemetryExporters@2025-09-01-preview' = if (deployLegacyExporter) {
-  parent: defaultWorkspace
-  name: 'appinsights'
-  properties: {
-    kind: 'applicationInsights'
-    payloadCapture: false
-    applicationInsights: {
-      connectionString: appInsights.properties.ConnectionString
-      resourceId: appInsights.id
-    }
-  }
-}
-
 output appInsightsId string = appInsights.id
 output appInsightsName string = appInsights.name
 output logAnalyticsWorkspaceId string = logAnalyticsWorkspace.id
 output logAnalyticsWorkspaceName string = logAnalyticsWorkspace.name
 output logAnalyticsCustomerId string = logAnalyticsWorkspace.properties.customerId
-output dataCollectionRuleId string = otlp.?DataCollectionRuleResourceId ?? ''
-output otlpMetricsEndpoint string = otlp.?OTLPMetricsEndpoint ?? ''
-output otlpLogsEndpoint string = otlp.?OTLPLogsEndpoint ?? ''
-output otlpTracesEndpoint string = otlp.?OTLPTracesEndpoint ?? ''
 ```
 
 </details>
@@ -607,12 +582,15 @@ telemetry**:
 // Connects an AI Gateway to Application Insights over OpenTelemetry, the same way the portal's Configure telemetry
 // wizard does: an OpenTelemetry exporter that sends metrics, logs, and traces to the component's OTLP endpoints, with
 // the token claims to add to the telemetry.
-// Turn on OTLP ingestion on the component first (monitoring.bicep with enableOtlpIngestion=true): it creates the
-// data collection rule and the endpoints. The gateway's system-assigned identity also needs Monitoring Metrics
-// Publisher on that rule. Azure keeps the rule in a managed resource group whose deny assignment blocks deployments,
-// so Bicep can't assign it: the lab's azure.yaml does it with the Azure CLI after "azd provision", using the
-// gatewayPrincipalId and dataCollectionRuleId outputs. The lab's main.bicep calls this file with azd. You can also
-// deploy it on its own to the resource group of an existing gateway and component, then assign the role yourself.
+// Deploy it only once two things are in place, or the exporter fails validation or gets empty endpoints:
+//   - The component reports its OTLP endpoints. Azure creates them, with a Data Collection Rule, a few minutes after
+//     OTLP ingestion turns on (monitoring.bicep with enableOtlpIngestion=true).
+//   - The gateway's system-assigned identity has Monitoring Metrics Publisher on that rule. Azure keeps the rule in a
+//     managed resource group whose deny assignment blocks deployments, so Bicep can't assign the role.
+// Neither can happen inside the deployment that turns ingestion on. So the lab's azure.yaml runs connect-telemetry.sh
+// after "azd provision": it waits for the endpoints, assigns the role, then deploys this file with
+// otel-exporter.bicepparam. You can also deploy it on your own, to the resource group of an existing gateway and
+// component, once both are in place.
 targetScope = 'resourceGroup'
 
 @description('Name of the existing AI Gateway (Microsoft.ApiManagement/aigateways) in this resource group.')
@@ -693,15 +671,30 @@ resource telemetryExporter 'Microsoft.ApiManagement/aigateways/workspaces/teleme
 
 output telemetryExporterId string = telemetryExporter.id
 output telemetryExporterName string = telemetryExporter.name
-@description('Grant this principal Monitoring Metrics Publisher on the data collection rule.')
-output gatewayPrincipalId string = gateway.identity.principalId
-output dataCollectionRuleId string = otlp.DataCollectionRuleResourceId
 ```
 
 </details>
 <!-- gh:end -->
 
-`azure.yaml` holds the `postprovision` hook that grants the role:
+`infra/otel-exporter.bicepparam` passes the gateway and the component names from azd's environment values:
+
+<!-- include: infra/otel-exporter.bicepparam -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`infra/otel-exporter.bicepparam`](infra/otel-exporter.bicepparam)
+
+```bicepparam
+// The lab's OpenTelemetry exporter, with the portal's recommended token claims (the template's default). azd doesn't
+// deploy it with main.bicep: the postprovision hook in azure.yaml runs connect-telemetry.sh, which deploys it once
+// the component reports its OTLP endpoints and the gateway can publish to them. The values come from the outputs of
+// main.bicep, which azd passes to the hook as environment variables.
+using 'otel-exporter.bicep'
+
+param gatewayName = readEnvironmentVariable('AI_GATEWAY_NAME')
+param appInsightsName = readEnvironmentVariable('APP_INSIGHTS_NAME')
+```
+<!-- gh:end -->
+
+`azure.yaml` holds the `postprovision` hook that runs the script:
 
 <!-- include: azure.yaml -->
 <!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
@@ -710,7 +703,7 @@ output dataCollectionRuleId string = otlp.DataCollectionRuleResourceId
 ```yaml
 # yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
 # Lab 13: "azd up" creates the quick start's gateway, model, and runtime API key, then an Application Insights
-# destination, and connects the gateway to it over OpenTelemetry.
+# destination, and connects the gateway to it over OpenTelemetry once Azure has created the OTLP endpoints.
 # The lab clones the repo's main branch from GitHub and runs azd up in this folder.
 name: aigw-lab13
 metadata:
@@ -719,21 +712,18 @@ infra:
   provider: bicep
   path: infra
 hooks:
-  # Bicep can't deploy into the data collection rule's managed resource group, so azd grants the gateway's identity
-  # Monitoring Metrics Publisher on the rule with the Azure CLI after every provision. Running it again is harmless.
+  # The telemetry exporter needs the component's OTLP endpoints and the Monitoring Metrics Publisher role on its data
+  # collection rule, and Azure creates the endpoints and the rule a few minutes after the deployment turns OTLP
+  # ingestion on. So after each deployment, azd runs connect-telemetry.sh: it waits for them, assigns the role, then
+  # deploys the exporter. When azd provision finds no changes to deploy, it skips this hook too: run
+  # "azd hooks run postprovision" to run it on its own. Running it again is harmless.
   postprovision:
     posix:
       shell: sh
-      run: >-
-        az role assignment create --assignee-object-id "$AI_GATEWAY_PRINCIPAL_ID"
-        --assignee-principal-type ServicePrincipal --role "Monitoring Metrics Publisher"
-        --scope "$DATA_COLLECTION_RULE_ID" --output none
+      run: ./infra/connect-telemetry.sh infra/otel-exporter.bicepparam
     windows:
       shell: pwsh
-      run: >-
-        az role assignment create --assignee-object-id $env:AI_GATEWAY_PRINCIPAL_ID
-        --assignee-principal-type ServicePrincipal --role "Monitoring Metrics Publisher"
-        --scope $env:DATA_COLLECTION_RULE_ID --output none
+      run: ./infra/connect-telemetry.ps1 -ParametersFile infra/otel-exporter.bicepparam
 ```
 <!-- gh:end -->
 
@@ -776,7 +766,7 @@ if ($?) { Write-Host "🚀 Gateway deployed: $(azd env get-value AI_GATEWAY_URL)
 ```
 </details> <!-- gh -->
 
-For another region, pick one where AI Gateway and the `gpt-6-luna` model are available, as in [Find the available
+For another region, pick one where AI Gateway and the `gpt-5-mini` model are available, as in [Find the available
 regions](../SETUP.md#find-the-available-regions).
 
 ### Read the outputs and the key
@@ -1182,8 +1172,8 @@ az aigateway telemetry-exporter list -g $RG --gateway-name $GATEWAY --query "[].
 ```
 </details> <!-- gh -->
 
-The exporter that every track creates has kind `OpenTelemetry`. Kind `applicationInsights` is the legacy exporter
-from [Troubleshooting](../TROUBLESHOOTING.md#lab-13-monitoring).
+The exporter that every track creates has kind `OpenTelemetry`. A legacy `applicationInsights` exporter, from
+[Troubleshooting](../TROUBLESHOOTING.md#lab-13-monitoring), shows an empty kind, because Azure doesn't return one.
 
 <!-- /steps -->
 

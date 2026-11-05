@@ -1,6 +1,6 @@
 // Lab 23 with azd: "azd up" creates the resource group rg-<environment name>, the quick start's gateway, Foundry
-// account, gpt-6-luna alias, and app-first-call key, then reuses lab 06's limited-alias.bicep to publish the
-// gpt-6-luna-stream alias with a limit of 1,000 tokens per minute for each caller. The key value is never an output.
+// account, gpt-5-mini alias, and app-first-call key, then reuses lab 06's limited-alias.bicep to publish the
+// gpt-5-mini-stream alias with a limit of 1,000 tokens per minute for each caller. The key value is never an output.
 targetScope = 'subscription'
 
 @description('azd environment name. The resource group is rg-<environmentName>.')
@@ -21,7 +21,7 @@ resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
   tags: tags
 }
 
-// The quick start's template: a gateway, a Foundry account with gpt-6-luna, the gpt-6-luna alias, and a key.
+// The quick start's template: a gateway, a Foundry account with gpt-5-mini, the gpt-5-mini alias, and a key.
 module base '../../quickstart/infra/resources.bicep' = {
   name: 'aigw-base'
   scope: rg

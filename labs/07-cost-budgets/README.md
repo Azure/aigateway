@@ -76,7 +76,7 @@ called.
 - Complete [Throttle tokens per caller with token limits](../06-token-limits/README.md). This lab reuses the
   **Policies** › **Add policy** wizard and the idea of per-caller counters.
 - Complete [Issue and rotate runtime API keys](../10-api-keys/README.md). You need **two** runtime keys from
-  **Access** › **Keys**, for example `app-dev` (gets the default budget) and `support-bot` (gets an override).
+  **Access** › **API keys**, for example `app-dev` (gets the default budget) and `support-bot` (gets an override).
 - Recommended: configure Application Insights in [Monitor usage, cost, and traces](../13-monitoring/README.md)
   and send a few requests first, so **Monitoring** can show estimated spend before you choose a budget.
 - Optional, for the Entra override: a user or service principal that can call the gateway with Microsoft
@@ -108,7 +108,7 @@ export AI_GATEWAY_MODEL="$(az aigateway model show -g "$RG" --gateway-name "$GAT
   -n "$MODEL" --query properties.deployment.modelName -o tsv)"
 echo "🔖 Model alias: $AI_GATEWAY_MODEL"
 
-# Paste the app-dev runtime key from Access › Keys, without showing it: don't commit it or write it to a file
+# Paste the app-dev runtime key from Access › API keys, without showing it: don't commit it or write it to a file
 read -rsp "AI Gateway API key: " AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 ```
@@ -136,7 +136,7 @@ $env:AI_GATEWAY_MODEL = az aigateway model show -g $RG --gateway-name $GATEWAY -
   -n $MODEL --query properties.deployment.modelName -o tsv
 Write-Host "🔖 Model alias: $env:AI_GATEWAY_MODEL"
 
-# Paste the app-dev runtime key from Access › Keys, without showing it: don't commit it or write it to a file
+# Paste the app-dev runtime key from Access › API keys, without showing it: don't commit it or write it to a file
 $env:AI_GATEWAY_API_KEY = Read-Host "AI Gateway API key" -MaskInput
 Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) characters, not shown)"
 ```
@@ -614,7 +614,7 @@ if ($?) { Write-Host "🚀 Gateway deployed: $(azd env get-value AI_GATEWAY_URL)
 ```
 </details> <!-- gh -->
 
-For another region, pick one where AI Gateway and the `gpt-6-luna` model are available, as in [Find the available
+For another region, pick one where AI Gateway and the `gpt-5-mini` model are available, as in [Find the available
 regions](../SETUP.md#find-the-available-regions).
 
 ### Read the outputs and the key
@@ -677,7 +677,7 @@ Write-Host "🔖 Model alias: $env:AI_GATEWAY_MODEL"
 </details> <!-- gh -->
 
 > **Checkpoint**
-> `azd up` ended with `SUCCESS`, and the last command printed `🔖 Model alias: gpt-6-luna-budget`.
+> `azd up` ended with `SUCCESS`, and the last command printed `🔖 Model alias: gpt-5-mini-budget`.
 > `az rest --url "$WS/aliases/$AI_GATEWAY_MODEL?$API" --query properties.policies` returns one `costLimit` entry
 > with `"amount": 5.0`, `"period": "day"`, `"counterKey": ["identity"]`, and two `overrides`: `"amount": 50.0`
 > with the `apiKeyResourceId` of `support-bot`, and `"amount": 20.0` with your `oid` and `tid` claims.
@@ -702,7 +702,7 @@ key (which has no override), and watch the gateway switch from `200` to `403`.
 
 ### Lower the budget for the test
 
-A call to `gpt-6-luna` costs about $0.0001, so a budget of `0.001` is spent after about ten calls. For a more
+A call to `gpt-5-mini` costs about $0.0001, so a budget of `0.001` is spent after about ten calls. For a more
 expensive model, use `0.01`. In the portal, open the **Cost limit**, select **Edit**, set **Budget amount** to
 `0.001`, and **Save**. On the Azure CLI track, run **Set the cost limit** again with `--amount 0.001`. The new
 budget reaches the gateway within about a minute, so wait before you run the requests.
@@ -881,7 +881,7 @@ budget.
 ### Remove or raise the budget
 
 Select **Policies**, open the **Cost limit** you created, and select **Delete**, or select **Edit** and set a
-production **Budget amount**. If you created runtime keys only for this lab, revoke them in **Access** › **Keys**.
+production **Budget amount**. If you created runtime keys only for this lab, revoke them in **Access** › **API keys**.
 
 </details> <!-- gh -->
 <!-- track: cli | Azure CLI -->

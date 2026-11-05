@@ -75,7 +75,7 @@ WIDGETS['request-lifecycle'] = (el, cfg) => {
 WIDGETS['alias-retarget'] = (el, cfg) => {
   const alias = cfg.alias || 'chat';
   const targets = cfg.targets || [
-    { provider: 'Microsoft Foundry', model: 'gpt-6-luna', note: 'Lower cost', logo: 'microsoft-foundry' },
+    { provider: 'Microsoft Foundry', model: 'gpt-5-mini', note: 'Lower cost', logo: 'microsoft-foundry' },
     { provider: 'Microsoft Foundry', model: 'gpt-6.1-sol', note: 'Higher quality', logo: 'microsoft-foundry' },
     { provider: 'Azure OpenAI', model: 'gpt-6-sol', note: 'Existing deployment', logo: 'azure-openai' },
   ];
@@ -123,7 +123,7 @@ WIDGETS['alias-routing'] = (el, cfg) => {
   const alias = cfg.alias || 'chat', N = 20;
   const COL = ['var(--cat-violet)', 'var(--cat-magenta)', 'var(--cat-azure)', 'var(--cat-cyan)', 'var(--cat-amber)'];
   const rows = (cfg.backends || [
-    { model: 'gpt-6-luna', provider: 'Microsoft Foundry', logo: 'microsoft-foundry', priority: 0, weight: 80 },
+    { model: 'gpt-5-mini', provider: 'Microsoft Foundry', logo: 'microsoft-foundry', priority: 0, weight: 80 },
     { model: 'gpt-6.1-sol', provider: 'Microsoft Foundry', logo: 'microsoft-foundry', priority: 0, weight: 20 },
     { model: 'gpt-6-sol', provider: 'Azure OpenAI', logo: 'azure-openai', priority: 1, weight: 1 },
   ]).map((b, i) => ({ ...b, priority: String(b.priority ?? 0), weight: String(b.weight ?? 1), c: COL[i % COL.length] }));
@@ -256,7 +256,7 @@ WIDGETS['policy-layers'] = (el) => {
       pols: [['IP filter', 'filter', ['model', 'mcp']], ['Content safety', 'shield', ['model', 'mcp']], ['Cost limit', 'coins', ['model']]] },
     { id: 'chat', name: 'Alias chat', sub: 'Individual asset', icon: 'route', c: 'var(--cat-violet)', pols: [['Token rate limit', 'gauge', ['model']]] },
     { id: 'batch', name: 'Alias chat-batch', sub: 'Individual asset', icon: 'route', c: 'var(--cat-magenta)', pols: [['Token rate limit', 'gauge', ['model']], ['Cost limit', 'coins', ['model']]] },
-    { id: 'model', name: 'Backend model gpt-6-luna', sub: 'Applies through every alias', icon: 'models', c: 'var(--cat-green)', pols: [['Request rate limit', 'filter', ['model']]] },
+    { id: 'model', name: 'Backend model gpt-5-mini', sub: 'Applies through every alias', icon: 'models', c: 'var(--cat-green)', pols: [['Request rate limit', 'filter', ['model']]] },
     { id: 'mcp', name: 'MCP server github-tools', sub: 'Individual asset', icon: 'tools', c: 'var(--cat-amber)', pols: [['Request rate limit', 'filter', ['mcp']], ['Agent 365 tool threat protection', 'shield', ['mcp']]] },
   ];
   const T = {
@@ -288,7 +288,7 @@ WIDGETS['policy-layers'] = (el) => {
 
 // Streaming usage: what a streaming client receives versus what the gateway counts.
 WIDGETS['stream-usage'] = (el, cfg) => {
-  const LIMIT = cfg.limit || 1000, WIN = cfg.window || 30, alias = cfg.alias || 'gpt-6-luna-stream';
+  const LIMIT = cfg.limit || 1000, WIN = cfg.window || 30, alias = cfg.alias || 'gpt-5-mini-stream';
   const REPLY = cfg.reply || 'Streaming sends the reply in small chunks as the model writes it, so people see words right away instead of waiting for the full answer.';
   const words = REPLY.match(/\S+\s*/g);
   const fmt = (n) => n.toLocaleString('en-US');

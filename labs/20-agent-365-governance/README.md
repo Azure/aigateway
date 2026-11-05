@@ -74,7 +74,7 @@ enforce each decision on live traffic.
   [Microsoft 365 admin center](https://admin.microsoft.com). After consent, Agent 365 administrators don't need
   Azure permissions of their own.
 - Permission to edit the MCP server in the AI Gateway portal, for example **Contributor** on the gateway's resource
-  group, and a runtime API key from **Access** › **Keys**.
+  group, and a runtime API key from **Access** › **API keys**.
 - Run the scripts and samples from the lab's folder, `~/aigateway/labs/20-agent-365-governance`.
 
 > [!NOTE]
@@ -97,7 +97,7 @@ echo "📝 MCP server $MCP_SERVER on gateway $GATEWAY in $RG"
 export AI_GATEWAY_URL="https://$(az aigateway show -g "$RG" -n "$GATEWAY" --query properties.frontend.defaultHostname -o tsv)"
 echo "🌐 Runtime URL: $AI_GATEWAY_URL"
 
-# Paste the runtime key you created in Access › Keys without showing it, and don't commit it or write it to a file
+# Paste the runtime key you created in Access › API keys without showing it, and don't commit it or write it to a file
 read -rsp "AI Gateway API key: " AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 ```
@@ -116,7 +116,7 @@ Write-Host "📝 MCP server $MCP_SERVER on gateway $GATEWAY in $RG"
 $env:AI_GATEWAY_URL = "https://$(az aigateway show -g $RG -n $GATEWAY --query properties.frontend.defaultHostname -o tsv)"
 Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
 
-# Paste the runtime key you created in Access › Keys without showing it, and don't commit it or write it to a file
+# Paste the runtime key you created in Access › API keys without showing it, and don't commit it or write it to a file
 $env:AI_GATEWAY_API_KEY = Read-Host "AI Gateway API key" -MaskInput
 Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) characters, not shown)"
 ```

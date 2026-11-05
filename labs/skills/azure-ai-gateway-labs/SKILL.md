@@ -83,11 +83,10 @@ Before you create, change, or delete Azure resources, confirm the subscription a
 ## Facts to rely on
 
 - The gateway is the `Microsoft.ApiManagement/aigateways` resource, API version `2025-09-01-preview`. Never use
-  `Microsoft.ApiManagement/service`. In Bicep, set `sku: { name: 'Standard' }`, the only SKU the service accepts
-  (`az aigateway create` omits `sku`, so the service default `Standard` applies), and no publisher properties, and add a
-  `Microsoft.Web/connectorGateways` resource with the same name (API version `2026-05-01-preview`) that depends on
-  the gateway. Put `#disable-next-line BCP081` before each `aigateways` and `connectorGateways` resource
-  declaration, because Bicep has no types for them. Gateway names are at most 24 characters, and a subscription
+  `Microsoft.ApiManagement/service`. In Bicep, omit `sku`, so the service default `Standard` applies (as with
+  `az aigateway create`), and set no publisher properties. Don't declare a `Microsoft.Web/connectorGateways`
+  resource. Put `#disable-next-line BCP081` before each `aigateways` resource declaration, because Bicep has no
+  types for it. Gateway names are at most 24 characters, and a subscription
   can have at most five gateways in each region.
 - AI Gateway runs in a growing list of regions. List them with
   `az provider show --namespace Microsoft.ApiManagement --query "resourceTypes[?resourceType=='aigateways'].locations | [0]"`
@@ -104,9 +103,11 @@ Before you create, change, or delete Azure resources, confirm the subscription a
   such as `Identity IPAddress`. `model-provider update --foundry` and `--custom` merge a partial JSON value into the
   provider's settings, and `mcp update --versions` and `--endpoints` change only what you pass. Don't use
   `model create --foundry-resource-id --deployment`: it crashes in 1.0.0b22. The track keeps `az rest` for what the
-  extension can't do yet: the connector gateway, MCP tool rules (`allowList`, `blocked`, `accessState`) and
-  `failureMode`, and writing a whole policy array from a file. Only connector-based MCP tools use the connector
-  gateway: the CLI doesn't create it, the portal creates it when you first add a connector backend, and the quick start's CLI track skips it.
+  extension can't do yet: MCP tool rules (`allowList`, `blocked`, `accessState`) and writing a whole policy array
+  from a file. Tool servers have no top-level `failureMode`: the service drops it, and only an endpoint's
+  `required` setting persists. Only connector-based MCP tools use a `Microsoft.Web/connectorGateways` resource: the
+  portal creates one with the gateway's name when it creates the gateway, and deletes it with the gateway. The CLI
+  and Bicep tracks don't create it.
   Tracks that call `az rest` set `GATEWAY_ID` (from `az aigateway show`),
   `WS` (`https://management.azure.com$GATEWAY_ID/workspaces/default`), and `API`
   (`api-version=2025-09-01-preview`) once. A `PATCH` replaces whole arrays such as `properties.policies`, so read,
@@ -117,10 +118,12 @@ Before you create, change, or delete Azure resources, confirm the subscription a
   gateway, never build it from the name, and the labs write it as `<gateway-url>`. A new gateway with no models answers `404`.
 - Models: `<runtime URL>/default/models/openai/v1` serves OpenAI Chat Completions and Responses.
   `<runtime URL>/default/models/anthropic/v1/messages` serves Anthropic Messages.
-- The labs use `gpt-6-luna` (version `2026-09-22`, `GlobalStandard`) from Foundry. It's a reasoning model: Chat
-  Completions rejects `max_tokens` (send `max_completion_tokens`) and accepts `temperature` only with
-  `reasoning_effort: "none"`. At the default effort, reasoning can use the whole token budget and leave the reply
-  empty, so the scripts send `reasoning_effort: "none"` when they cap tokens. Claude Sonnet 5.5 and Haiku 5.5
+- The labs use `gpt-5-mini` (version `2025-08-07`, `GlobalStandard`) from Foundry, and `gpt-6.1-sol` (version
+  `2026-09-29`) where a lab needs a second or stronger model. `gpt-5-mini` is a reasoning model: Chat Completions
+  rejects `max_tokens` (send `max_completion_tokens`) and any `temperature` other than the default, `1`, so leave
+  it out. Chat Completions reports the model as `gpt-5-mini-2025-08-07`, and Responses as `gpt-5-mini`. At the
+  default effort, reasoning can use the whole token budget and leave the reply empty, so the scripts send
+  `reasoning_effort: "none"` when they cap tokens. Claude Sonnet 5.5 and Haiku 5.5
   think by default, so read the `text` blocks in `content` and leave headroom in `max_tokens`.
 - MCP tools: `<runtime URL>/default/toolservers/<name>/mcp`. Federated tools are named `<namespace>_<tool>`, for
   example `learn_microsoft_docs_search`.
@@ -139,7 +142,7 @@ Before you create, change, or delete Azure resources, confirm the subscription a
 - GitHub Copilot (VS Code, CLI, SDK, and the GitHub Copilot app) can use a gateway model with bring your own key: base
   URL `<runtime URL>/default/models/openai/v1`, the Responses API, a runtime key sent as a bearer token, and the alias
   as the model ID. The gateway doesn't serve `GET /models` (it answers `400`), so add models by hand. Name the alias
-  after a well-known model, such as `gpt-6-astra`, so Copilot applies that model's prompts and token sizes. Agent
+  after a well-known model, such as `gpt-6.1-sol`, so Copilot applies that model's prompts and token sizes. Agent
   requests carry 14,000 to 38,000 input tokens each, so give Copilot keys a generous token limit.
 - The same Copilot clients can use a gateway MCP server, such as `learn`, at `<runtime URL>/default/toolservers/<name>/mcp`
   with the same runtime key in the `api-key` header (a bearer token answers `401`). Add it with
@@ -192,9 +195,9 @@ Each entry shows the level, time, tracks, and the labs it needs.
 ### Agents
 
 - **15** [Connect agent frameworks to models and tools](https://azure.github.io/aigateway/labs/15-agent-frameworks/index.md) `15-agent-frameworks` (Intermediate, 30 min · Code · needs 02, 04): Point Microsoft Agent Framework, the OpenAI Agents SDK, and LangChain with LangGraph at the gateway's OpenAI-compatible model endpoint and its MCP endpoint, so every model and tool call an agent makes passes through gateway policies and shows up in Monitoring.
-- **16** [Deploy a Foundry hosted agent behind AI Gateway](https://azure.github.io/aigateway/labs/16-foundry-hosted-agent/index.md) `16-foundry-hosted-agent` (Intermediate, 40 min · Portal, CLI, Code · needs 02, 04): Deploy your own Microsoft Agent Framework agent to Foundry Hosted Agents with azd. The agent has no model deployment and no direct tool access, so its model calls and its Microsoft Learn MCP calls go through AI Gateway with a dedicated key. Run it locally, invoke it in Foundry, and cap its tokens without changing its code.
+- **16** [Deploy a Foundry hosted agent behind AI Gateway](https://azure.github.io/aigateway/labs/16-foundry-hosted-agent/index.md) `16-foundry-hosted-agent` (Intermediate, 45 min · Portal, CLI, Code · needs 02, 04): Deploy your own Microsoft Agent Framework agent to Foundry Hosted Agents with azd. The agent has no model deployment, no direct tool access, and no keys. It calls its model through AI Gateway with its own Microsoft Entra Agent ID, and reaches the Microsoft Learn MCP server through a Foundry toolbox that signs in with the project's managed identity. Run it locally, invoke it in Foundry, and cap its tokens without changing its code.
 - **17** [Build on your gateway with coding agents](https://azure.github.io/aigateway/labs/17-coding-agent-plugin/index.md) `17-coding-agent-plugin` (Beginner, 15 min · Code · needs 02): Install the AI Gateway plugin in GitHub Copilot CLI, Claude Code, Cursor, or Gemini CLI, then let your coding agent discover the gateway's models and MCP tools and generate working client code.
-- **24** [Use your gateway's models and tools in GitHub Copilot](https://azure.github.io/aigateway/labs/24-github-copilot-byok/index.md) `24-github-copilot-byok` (Intermediate, 40 min · Portal, CLI, Bicep, Code · needs 02): Point GitHub Copilot in VS Code, the Copilot CLI, the Copilot SDK, and the GitHub Copilot app at gpt-6-astra published by your gateway, then give them Microsoft Learn tools from an MCP server on the same gateway, so every model and tool call uses your key, your limits, and your monitoring.
+- **24** [Use your gateway's models and tools in GitHub Copilot](https://azure.github.io/aigateway/labs/24-github-copilot-byok/index.md) `24-github-copilot-byok` (Intermediate, 40 min · Portal, CLI, Bicep, Code · needs 02): Point GitHub Copilot in VS Code, the Copilot CLI, the Copilot SDK, and the GitHub Copilot app at gpt-6.1-sol published by your gateway, then give them Microsoft Learn tools from an MCP server on the same gateway, so every model and tool call uses your key, your limits, and your monitoring.
 
 ### Production & emerging
 

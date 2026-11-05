@@ -13,8 +13,8 @@ param gatewayName string
 @description('Foundry account name, also its custom subdomain. It must be globally unique.')
 param foundryName string
 
-param modelName string = 'gpt-6-luna'
-param modelVersion string = '2026-09-22'
+param modelName string = 'gpt-5-mini'
+param modelVersion string = '2025-08-07'
 
 @description('Deployment capacity in thousands of tokens per minute.')
 param capacity int = 10
@@ -24,8 +24,7 @@ param apiKeyName string = 'app-first-call'
 
 var foundryUserRoleId = '53ca6127-db72-4b80-b1b0-d745d6d5456d'
 
-// 1. The gateway in the Standard SKU, with a system-assigned managed identity, then its companion connector
-//    gateway.
+// 1. The gateway, with a system-assigned managed identity. It omits sku, so it gets the default SKU.
 #disable-next-line BCP081
 resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' = {
   name: gatewayName
@@ -34,21 +33,7 @@ resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' = {
   identity: {
     type: 'SystemAssigned'
   }
-  sku: {
-    name: 'Standard'
-  }
   properties: {}
-}
-
-#disable-next-line BCP081
-resource connectorGateway 'Microsoft.Web/connectorGateways@2026-05-01-preview' = {
-  name: gatewayName
-  location: location
-  tags: tags
-  properties: {}
-  dependsOn: [
-    gateway
-  ]
 }
 
 #disable-next-line BCP081

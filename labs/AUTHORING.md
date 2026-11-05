@@ -1,7 +1,8 @@
 # Authoring Azure AI Gateway labs
 
 Every lab is a folder under `labs/`. Its `README.md` is the **single source of truth** for two views: a rich page
-on the **labs site** (`docs/`, published with GitHub Pages) and a self-contained lab you can follow **on GitHub**.
+on the **labs site** (built into `docs/`, which git ignores, and published with GitHub Pages) and a self-contained
+lab you can follow **on GitHub**.
 `npm run build` in `labs/` generates the site and refreshes the GitHub navigation in the READMEs (see
 [GitHub view](#github-view)). Don't edit files in `docs/` by hand.
 
@@ -55,7 +56,7 @@ site shows a ⚡ instead of a number and "Quick start" instead of "Lab NN". The 
 band link to it. Keep it to five minutes, with no notebook: a portal track, an Azure CLI track that runs in
 Cloud Shell, and a Bicep + azd track. Like every lab, its **Before you begin** starts with the **One-time setup**
 card, and the later labs reuse that setup. The Bicep + azd track moves into `quickstart/` in the clone and deploys
-its `azure.yaml` and `infra/` (see [azd templates](#azd-templates)). It uses lab 02's names (`foundry-models`, `gpt-6-luna`, `app-first-call`), so
+its `azure.yaml` and `infra/` (see [azd templates](#azd-templates)). It uses lab 02's names (`foundry-models`, `gpt-5-mini`, `app-first-call`), so
 labs 03 onward work on its gateway. Each track ends with the first call and then its own **Clean up** step, so the lab
 has no separate call, verify, or clean up section. Teach the details in labs 00 to 02 instead.
 
@@ -178,7 +179,7 @@ lab. Follow [lab 06](06-token-limits/) and the quick start:
   resources with `take(uniqueString(subscription().id, environmentName, location), 6)`, tags them with
   `azd-env-name`, and creates the resource group `rg-<environment>`.
 - Reuse a base module rather than copying resources: [`quickstart/infra/resources.bicep`](quickstart/infra/resources.bicep)
-  for a gateway with the `foundry-models` provider, the `gpt-6-luna` alias, and the `app-first-call` key, or
+  for a gateway with the `foundry-models` provider, the `gpt-5-mini` alias, and the `app-first-call` key, or
   [lab 01's `gateway.bicep`](01-provision-gateway/infra/gateway.bicep) for a gateway alone. Keep the parameters of
   shared modules backward compatible, because other labs and the notebooks call them.
 - Name outputs the same way in every lab: `AZURE_RESOURCE_GROUP`, `AI_GATEWAY_NAME`, `AI_GATEWAY_ID`,
@@ -366,9 +367,9 @@ Kinds: `NOTE`, `TIP`, `IMPORTANT`, `WARNING`, `CAUTION`. A blockquote starting w
   `policy-cost-limit-details.png`, `monitoring-token-claim-attributes.png`, `models-aliases.png`,
   `mcp-tool-controls.png`, `policy-add-wizard.png`, `policy-gateway-scope.png`,
   `policy-cost-limit-entra-overrides.png`, `policy-tool-threat-protection.jpeg`,
-  `access-entra-role-assignments.png`, `managed-identities.png`, `models-alias-routing.png`. The
+  `access-entra-role-assignments.webp`, `managed-identities.png`, `models-alias-routing.png`. The
   `quickstart-01…15-*.webp` set walks the whole portal flow: the gateway switcher, Create AI gateway, provisioning,
-  Home, the Foundry import, aliases, Access › Keys, the Create API key dialogs, Catalog, the playground,
+  Home, the Foundry import, aliases, Access › API keys, the Create API key dialogs, Catalog, the playground,
   Continue in code, and deleting the gateway from All gateways.
 - New screenshots: crop to the relevant area, replace real names, emails, and IDs with Contoso placeholders, mask
   every key, highlight the controls to select with magenta (`#e3008c`) boxes, and save as WebP, 1600 px wide at most.
@@ -393,7 +394,7 @@ never put essential instructions in a widget).
 | `budget` | Cost-limit simulator with per-key overrides | `{"amount":5,"period":"day"}` |
 | `alias-retarget` | Retarget an alias between backend models without client changes | none |
 | `alias-routing` | Priority and weight routing across an alias's backend models, with presets and a 20-request run | `{"alias":"chat"}` optional |
-| `stream-usage` | A streamed reply chunk by chunk, with and without `include_usage`, against a token limit that counts every stream | `{"limit":1000,"alias":"gpt-6-luna-stream"}` optional |
+| `stream-usage` | A streamed reply chunk by chunk, with and without `include_usage`, against a token limit that counts every stream | `{"limit":1000,"alias":"gpt-5-mini-stream"}` optional |
 | `policy-layers` | Which gateway and asset policies apply to a request | none |
 
 ### Videos
@@ -435,15 +436,15 @@ Keep the video optional: every step it shows must also be written in the lab.
 
 - Bicep files live in the lab's `infra/` folder and must compile without warnings:
   `az bicep build --file infra/<file>.bicep --stdout > /dev/null`. Bicep has no types yet for
-  `Microsoft.ApiManagement/aigateways` and `Microsoft.Web/connectorGateways`, so put `#disable-next-line BCP081` on
-  the line before each of their `resource` declarations, including `existing` ones.
+  `Microsoft.ApiManagement/aigateways`, so put `#disable-next-line BCP081` on the line before each of its `resource`
+  declarations, including `existing` ones.
 - Use API version `2025-09-01-preview` for `Microsoft.ApiManagement/*` resources.
 - Gateways are the dedicated `Microsoft.ApiManagement/aigateways` type, never `Microsoft.ApiManagement/service`.
   Follow the product's [reference sample](https://github.com/Azure-Samples/simple-foundry-hosted-agent-python-aigateway/blob/main/infra/ai-gateway/main.bicep), as
-  [lab 01's template](01-provision-gateway/infra/gateway.bicep) does: set `sku: { name: 'Standard' }`, the only SKU the service
-  accepts, and no publisher properties, then create a
-  `Microsoft.Web/connectorGateways` resource with the same name (API version `2026-05-01-preview`) that depends on
-  the gateway. A subscription can have at most five gateways in each region.
+  [lab 01's template](01-provision-gateway/infra/gateway.bicep) does: omit `sku`, so the service default, `Standard`, applies,
+  and set no publisher properties. Don't declare a `Microsoft.Web/connectorGateways` resource: only the portal creates
+  one, for connector-based MCP tools, and the labs' IaC and CLI tracks don't need it. A subscription can have at most
+  five gateways in each region.
   Gateway names have 24 characters or fewer. The runtime URL is `https://` plus `properties.frontend.defaultHostname`: the name's first 10 characters
   (without a trailing hyphen), a hyphen, a 13-character hash, and `.<region>-01.ai.gateway.azure.com`, for example
   `https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com` for `aigw-labs-001`. Always read it from the
@@ -458,8 +459,9 @@ Keep the video optional: every step it shows must also be written in the lab.
   `Standard`, is the only SKU it accepts. `api-key create` doesn't need `--display-name`. Create models with
   `--deployment-config "{resourceId:…,modelName:…}"`, because `model create --foundry-resource-id --deployment`
   crashes in 1.0.0b22, or import every deployment with `model-provider create --foundry-resource-id`. Call ARM with
-  `az rest` only for what the extension can't do yet: the connector gateway, MCP tool rules (`allowList`,
-  `blocked`, `accessState`) and `failureMode`, and writing a whole policy array from a file. Say why in one sentence. Set
+  `az rest` only for what the extension can't do yet: MCP tool rules (`allowList`, `blocked`, `accessState`) and
+  writing a whole policy array from a file. A tool server has no top-level `failureMode`: the service drops it, and
+  only an endpoint's `required` setting persists. Say why in one sentence. Set
   `GATEWAY_ID` with `az aigateway show`, plus `WS` (`https://management.azure.com$GATEWAY_ID/workspaces/default`)
   and `API` (`api-version=2025-09-01-preview`), only in tracks that still call `az rest`. Publish aliases with
   `model-alias set`, which creates the alias or updates it, so a step can run again. `--token-counter-key` takes one

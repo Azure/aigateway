@@ -74,12 +74,12 @@ baseline, prove it works with a smoke test, and wire it all into GitHub Actions.
   [Monitor usage, cost, and traces](../13-monitoring/README.md), and
   [Call backends with managed identities](../12-backend-identity/README.md). This lab builds on what you learned
   there, not on the resources you created: it deploys a new, separate environment.
-- The Azure CLI installs Bicep the first time you deploy. The smoke test reads the gateway and a key with the
-  `aigateway` extension. Its `az aigateway policy` commands set one policy at a time from flags, so to apply the
+- The Azure CLI installs Bicep the first time you deploy. The telemetry script and the smoke test read the gateway
+  with the `aigateway` extension. Its `az aigateway policy` commands set one policy at a time from flags, so to apply the
   whole baseline from a file, the baseline script calls the management API with `az rest`.
 - **Owner**, or **Contributor** plus **Role Based Access Control Administrator**, on the subscription. The
   template creates two resource groups and several role assignments.
-- Quota for `gpt-6-luna` with the `GlobalStandard` SKU in the region you deploy to. The dev environment uses
+- Quota for `gpt-5-mini` with the `GlobalStandard` SKU in the region you deploy to. The dev environment uses
   50 capacity units (50,000 tokens per minute).
 - For [Automate deployments with GitHub Actions](#automate-deployments-with-github-actions): a GitHub
   repository where you can create environments and variables, the [GitHub CLI](https://cli.github.com/) signed
@@ -138,13 +138,14 @@ workspace in a template would replace it. Instead, a script merges them in after
 
 | File | Resource group | Deploys |
 |---|---|---|
-| `modules/monitoring.bicep` | `…-gateway` | Log Analytics workspace and a workspace-based Application Insights component, `<gateway>-insights` |
-| `modules/foundry.bicep` | `…-foundrymodels` | Foundry account with key authentication turned off, and the `gpt-6-luna` deployment |
-| `modules/gateway.bicep` | `…-gateway` | The AI Gateway (`Microsoft.ApiManagement/aigateways`, system-assigned identity), its connector gateway, and **Foundry User** for the identity on the Foundry account |
+| `modules/monitoring.bicep` | `…-gateway` | Log Analytics workspace and a workspace-based Application Insights component, `<gateway>-insights`, with OTLP ingestion on |
+| `modules/foundry.bicep` | `…-foundrymodels` | Foundry account with key authentication turned off, and the `gpt-5-mini` deployment |
+| `modules/gateway.bicep` | `…-gateway` | The AI Gateway (`Microsoft.ApiManagement/aigateways`, system-assigned identity) and **Foundry User** for the identity on the Foundry account |
 | `modules/models.bicep` | `…-gateway` | A Foundry model provider that authenticates with the managed identity, the backend model with a token limit and content safety, the alias `chat`, and **AI Gateway Models User** on the alias |
 | `modules/tools.bicep` | `…-gateway` | The Microsoft Learn MCP server `learn`, and **AI Gateway Tools User** on it |
 | `modules/keys.bicep` | `…-gateway` | One runtime API key per app: `web-chat` and `batch-jobs` |
-| `modules/telemetry.bicep` | `…-gateway` | The legacy Application Insights telemetry exporter, off by default |
+| `modules/telemetry.bicep` | `…-gateway` | The gateway's OpenTelemetry exporter to the component, with the recommended token claims. `scripts/connect-telemetry.sh` deploys it |
+| `scripts/connect-telemetry.sh` | Not applicable | Waits for the component's OTLP endpoints, grants the gateway's identity **Monitoring Metrics Publisher** on its Data Collection Rule, then deploys `modules/telemetry.bicep` |
 | `scripts/apply-baselines.sh` | Not applicable | Gateway scope **Request rate limit** and **Cost limit** from `baselines.json` |
 
 ## Make the architecture decisions
@@ -187,15 +188,21 @@ portal-only overrides, and the spend it has already counted.
 > If the API rejects a field, create the policy once in the portal at **Gateway** scope, read it with
 > `az aigateway policy list`, and copy that shape into `baselines.json`.
 
-### Observability: the destination in Bicep, the connection in the portal
+### Observability: the destination in Bicep, the exporter after it
 
 `monitoring.bicep` creates the Log Analytics workspace and the Application Insights component, with retention
-set per environment. The sample also declares a telemetry exporter of kind `applicationInsights`, but the
-current portal treats that kind as **legacy**: it no longer activates the OTLP signals the **Monitoring**
-dashboard needs. The OpenTelemetry exporter that replaces it isn't documented for automation yet. So you
-connect the component once in the portal after the first deployment. No module declares an exporter, so later
-deployments leave that connection alone. The sample's exporter is still available as `telemetry.bicep`, behind
-`enableLegacyAppInsightsExporter`.
+set per environment, and turns on OTLP ingestion. A few minutes after the deployment, Azure creates the component's
+OTLP endpoints and a Data Collection Rule in a managed resource group. The gateway's OpenTelemetry exporter, in
+`telemetry.bicep`, needs those endpoints, and the gateway's managed identity needs **Monitoring Metrics Publisher**
+on the rule before the exporter is created. Bicep can't wait for the endpoints, and it can't assign the role,
+because the managed resource group has a deny assignment that blocks deployments. So `scripts/connect-telemetry.sh`
+runs after each deployment: it waits for the endpoints, assigns the role with the Azure CLI, then deploys
+`telemetry.bicep`. The result matches the portal's **Configure telemetry** wizard: metrics, logs, and traces, with
+the recommended token claims.
+
+The reference sample's exporter kind, `applicationInsights`, is legacy: the portal flags it because it no longer
+activates the OTLP signals the **Monitoring** dashboard needs. An exporter's kind can't change, so the script
+replaces an `applicationInsights` exporter that an earlier deployment created.
 
 ### Naming, tags, and resource groups
 
@@ -233,8 +240,8 @@ deployments leave that connection alone. The sample's exporter is still availabl
 
 ### Delivery: GitHub Actions with OpenID Connect
 
-The workflow installs the `aigateway` extension, previews every change with `what-if`, deploys, applies the
-baseline, and runs the smoke test. A `prod` GitHub environment with required reviewers gates production, and a
+The workflow installs the `aigateway` extension, previews every change with `what-if`, deploys, connects
+telemetry, applies the baseline, and runs the smoke test. A `prod` GitHub environment with required reviewers gates production, and a
 concurrency group per environment stops two runs from deploying to the same environment at once. The deployment
 identity needs **Contributor** and **Role Based Access Control Administrator** on the subscription, because the
 template creates role assignments. To narrow that, you can add a condition that only lets it assign the roles the
@@ -250,21 +257,22 @@ right order: monitoring and Foundry first, then the gateway, then models, tools,
 <!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
 📄 [`infra/main.bicep`](infra/main.bicep)
 
-<details><summary>Show all 246 lines</summary>
+<details><summary>Show all 235 lines</summary>
 
 ```bicep
 // Enterprise reference deployment for Azure AI Gateway. One subscription-scope template creates two resource groups
 // and composes small modules:
 //
 //   rg-<env>-<token>-foundrymodels   foundry.bicep         Foundry account (keyless) + model deployment
-//   rg-<env>-<token>-gateway         monitoring.bicep      Log Analytics + Application Insights
-//                                    gateway.bicep         aigateways resource + connector gateway + Foundry User role for the gateway identity
+//   rg-<env>-<token>-gateway         monitoring.bicep      Log Analytics + Application Insights with OTLP ingestion
+//                                    gateway.bicep         aigateways resource + Foundry User role for the gateway identity
 //                                    models.bicep          Foundry provider + backend model (tokenLimit, contentSafety) + alias
 //                                    tools.bicep           Microsoft Learn MCP server
 //                                    keys.bicep            one runtime API key per app
-//                                    telemetry.bicep       optional legacy exporter (off by default)
 //
-// Gateway-wide baseline policies are applied after deployment by scripts/apply-baselines.sh (or .ps1).
+// After deployment, scripts/connect-telemetry.sh (or .ps1) connects the gateway to Application Insights with
+// telemetry.bicep, an OpenTelemetry exporter, once Azure has created the OTLP endpoints. Then
+// scripts/apply-baselines.sh (or .ps1) applies the gateway-wide baseline policies.
 targetScope = 'subscription'
 
 import { principal } from './modules/types.bicep'
@@ -290,10 +298,10 @@ param tags object = {}
 param aiGatewayName string = ''
 
 @description('Foundry model name to deploy.')
-param modelName string = 'gpt-6-luna'
+param modelName string = 'gpt-5-mini'
 
 @description('Foundry model version to deploy.')
-param modelVersion string = '2026-09-22'
+param modelVersion string = '2025-08-07'
 
 @description('ARM-safe name of the Foundry deployment. It is also the backend model name in the gateway.')
 param modelDeploymentName string = 'gpt-mini-latest'
@@ -340,9 +348,6 @@ param toolUsers principal[] = []
 @minValue(30)
 @maxValue(730)
 param logRetentionInDays int = 30
-
-@description('Also deploy the reference sample\'s telemetry exporter (kind applicationInsights). The portal labels this kind as legacy because it no longer activates OTLP signals. Leave false and connect telemetry in the portal.')
-param enableLegacyAppInsightsExporter bool = false
 
 var resourceToken = take(toLower(uniqueString(subscription().id, environmentName, location)), 8)
 var environmentLabel = toLower(environmentName)
@@ -423,8 +428,8 @@ module gateway './modules/gateway.bicep' = {
   }
 }
 
-// Every module below takes gateway.outputs.gatewayName, so it starts only after the gateway, its connector gateway,
-// and the Foundry User role assignment exist.
+// Every module below takes gateway.outputs.gatewayName, so it starts only after the gateway and the Foundry User
+// role assignment exist.
 module models './modules/models.bicep' = {
   name: 'ai-gateway-models-${resourceToken}'
   scope: gatewayRg
@@ -474,15 +479,6 @@ module keys './modules/keys.bicep' = {
   }
 }
 
-module telemetry './modules/telemetry.bicep' = if (enableLegacyAppInsightsExporter) {
-  name: 'ai-gateway-telemetry-${resourceToken}'
-  scope: gatewayRg
-  params: {
-    gatewayName: gateway.outputs.gatewayName
-    appInsightsName: monitoring.outputs.appInsightsName
-  }
-}
-
 output AZURE_LOCATION string = location
 output AZURE_TENANT_ID string = tenant().tenantId
 output AI_GATEWAY_NAME string = gateway.outputs.gatewayName
@@ -513,12 +509,12 @@ only add child resources to it.
 <!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
 📄 [`infra/modules/gateway.bicep`](infra/modules/gateway.bicep)
 
-<details><summary>Show all 63 lines</summary>
+<details><summary>Show all 48 lines</summary>
 
 ```bicep
-// The AI Gateway itself: a Microsoft.ApiManagement/aigateways resource in the Standard SKU with a system-assigned
-// managed identity, the companion connector gateway (created after it, as in the reference sample), and the Foundry
-// User role for the gateway identity on every Foundry account it calls.
+// The AI Gateway itself: a Microsoft.ApiManagement/aigateways resource with a system-assigned managed identity, in
+// the default SKU (sku is omitted, as in the reference sample), and the Foundry User role for the gateway identity
+// on every Foundry account it calls.
 targetScope = 'resourceGroup'
 
 @description('Location of the gateway. Pick one where AI Gateway is available. List them with az provider show --namespace Microsoft.ApiManagement (Setup guide, Find the available regions).')
@@ -545,21 +541,7 @@ resource aiGateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' = {
   identity: {
     type: 'SystemAssigned'
   }
-  sku: {
-    name: 'Standard'
-  }
   properties: empty(backendSubnetId) ? {} : { backend: { subnet: { id: backendSubnetId } } }
-}
-
-#disable-next-line BCP081
-resource connectorNamespace 'Microsoft.Web/connectorGateways@2026-05-01-preview' = {
-  name: gatewayName
-  location: location
-  tags: tags
-  properties: {}
-  dependsOn: [
-    aiGateway
-  ]
 }
 
 module foundryUserRoleAssignments './foundry-user-role.bicep' = [for (foundryResourceId, i) in foundryResourceIds: {
@@ -577,7 +559,6 @@ output gatewayId string = aiGateway.id
 output gatewayUrl string = 'https://${aiGateway.properties.frontend.defaultHostname}'
 output runtimeHostname string = aiGateway.properties.frontend.defaultHostname
 output gatewayPrincipalId string = aiGateway.identity.principalId
-output connectorNamespaceId string = connectorNamespace.id
 output foundryUserRoleAssignmentNames array = [for (foundryResourceId, i) in foundryResourceIds: foundryUserRoleAssignments[i].outputs.roleAssignmentName]
 ```
 
@@ -912,16 +893,45 @@ Expected output:
 🏭 Foundry account aimodels-<token> in rg-aigw-dev-<token>-foundrymodels
 ```
 
-### Connect telemetry in the portal
+### Connect telemetry
 
-Open the [AI Gateway portal](https://ai.gateway.azure.com), select your gateway, then **Monitoring** ›
-**Configure telemetry**. On **Destination**, select **Existing Azure Application Insights resource**, pick
-`<gateway>-insights` in **Application Insights resource**, and select **Next**. On **Authentication**, leave
-**Include recommended token claims in telemetry** selected and select **Next**. On **Review and apply**, select
-**Apply** and wait for every step, ending with **Create telemetry exporter**.
+Run the telemetry script. It waits until Azure has created the component's OTLP endpoints, grants the gateway's
+identity **Monitoring Metrics Publisher** on the Data Collection Rule, then deploys `modules/telemetry.bicep`. Right
+after the first deployment, the wait can take a few minutes.
 
-The wizard assigns the gateway's identity a role on the Application Insights component, so it needs the same
-role assignment rights you used for the deployment. You do this once per environment.
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Wait for the OTLP endpoints, let the gateway's identity publish to them, then deploy the OpenTelemetry exporter
+./infra/scripts/connect-telemetry.sh &&
+  echo "📊 Telemetry is connected for $GATEWAY"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Wait for the OTLP endpoints, let the gateway's identity publish to them, then deploy the OpenTelemetry exporter
+./infra/scripts/connect-telemetry.ps1
+if ($?) { Write-Host "📊 Telemetry is connected for $env:GATEWAY" }
+```
+</details> <!-- gh -->
+
+On GitHub, open [infra/scripts/connect-telemetry.sh](infra/scripts/connect-telemetry.sh) or
+[infra/scripts/connect-telemetry.ps1](infra/scripts/connect-telemetry.ps1).
+
+Expected output:
+
+```text
+⏳ Waiting for the OTLP endpoints of aigw-<token>-insights
+🆔 Data Collection Rule: managed-aigw-<token>-insights-dcr
+🔐 The gateway can publish to the Data Collection Rule
+📊 The gateway sends metrics, logs, and traces to aigw-<token>-insights
+📊 Telemetry is connected for aigw-<token>
+```
+
+The role assignment needs the same rights as the deployment. Run the script after each deployment: running it again
+gives the same result.
 
 ### Preview the gateway baseline
 
@@ -1050,8 +1060,9 @@ Run it again whenever `baselines.json` changes. It's idempotent: a second run gi
 
 > **Checkpoint**
 > The deployment printed `🚀 Deployment aigw-dev finished: Succeeded`, `RG` and `GATEWAY` point at the new
-> gateway, **Monitoring** shows the **Overview**, **Models**, **Tools**, **Policies**, and **Traces** tabs, and the
-> baseline script lists `requestRateLimit` and `costLimit`.
+> gateway, the telemetry script printed `📊 Telemetry is connected`, **Monitoring** shows the **Overview**,
+> **Models**, **Tools**, **Policies**, and **Traces** tabs, and the baseline script lists `requestRateLimit` and
+> `costLimit`.
 
 ## Automate deployments with GitHub Actions
 
@@ -1255,7 +1266,7 @@ cp infra/deploy-workflow.yml .github/workflows/deploy-ai-gateway.yml &&
 <!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
 📄 [`infra/deploy-workflow.yml`](infra/deploy-workflow.yml)
 
-<details><summary>Show all 111 lines</summary>
+<details><summary>Show all 117 lines</summary>
 
 ```yaml
 # Sample GitHub Actions workflow for the enterprise reference deployment.
@@ -1264,8 +1275,8 @@ cp infra/deploy-workflow.yml .github/workflows/deploy-ai-gateway.yml &&
 # repository root (infra/main.bicep, infra/main.bicepparam, infra/prod.bicepparam, infra/scripts/...).
 #
 # It signs in to Azure with OpenID Connect (no client secret is stored in GitHub), installs the aigateway CLI extension
-# that the smoke test uses, previews the change with what-if, deploys the subscription-scope template, applies the
-# gateway-wide baseline policies, and runs the smoke test.
+# that the scripts use, previews the change with what-if, deploys the subscription-scope template, connects the
+# gateway's telemetry to Application Insights, applies the gateway-wide baseline policies, and runs the smoke test.
 #
 # One-time setup (see the lab for the commands):
 #   - A Microsoft Entra app registration (or user-assigned managed identity) with a federated credential for each
@@ -1347,6 +1358,12 @@ jobs:
             echo "gateway-url=$(out AI_GATEWAY_URL)"
             echo "alias=$(out AI_GATEWAY_MODEL)"
           } >> "$GITHUB_OUTPUT"
+
+      - name: Connect telemetry
+        env:
+          RG: ${{ steps.deploy.outputs.resource-group }}
+          GATEWAY: ${{ steps.deploy.outputs.gateway }}
+        run: bash infra/scripts/connect-telemetry.sh
 
       - name: Apply gateway baseline policies
         env:

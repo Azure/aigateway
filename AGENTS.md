@@ -8,7 +8,7 @@ Guidance for coding agents (GitHub Copilot, Claude Code, Codex, Cursor, and othe
 |---|---|---|
 | `labs/` | The Azure AI Gateway hands-on labs: one folder per lab (`NN-slug/README.md`, `infra/`, optional notebook, plus the unnumbered `quickstart/`), the site engine (`site/`, `build.mjs`), tools, shared assets, and the `azure-ai-gateway-labs` agent skill | Yes. Read [`labs/AUTHORING.md`](labs/AUTHORING.md) first |
 | `labs/RELEASE-NOTES.md` | The labs release notes, one section per [product release](https://ai.gateway.azure.com/docs/) | Yes |
-| `docs/` | The generated labs site. On `main`, `.github/workflows/labs-pages.yml` rebuilds it and publishes it to GitHub Pages | Never by hand. `npm run build` writes it |
+| `docs/` | The generated labs site, ignored by git. On `main`, `.github/workflows/labs-pages.yml` builds it from `labs/` and publishes it to GitHub Pages | Never. `npm run build` writes it |
 | `skills/use-ai-gateway/`, `commands/`, `.claude-plugin/`, `.cursor-plugin/`, `.github/plugin/`, `gemini-extension.json` | The read-only coding-agent plugin that integrates an existing gateway's models and tools into apps | Only when asked |
 | `cli/` | Installers and the command reference for the `az aigateway` CLI extension | Only when asked |
 | `samples/` | The samples catalog | Only when asked |
@@ -35,7 +35,7 @@ npm run deploy:swa # optional: publish to the swa-ai-gateway-labs Static Web App
   labs create the `Microsoft.ApiManagement/aigateways` resource type with API version `2025-09-01-preview`.
 - Never print, commit, or screenshot keys, tokens, or connection strings. Delete the Azure resources you create to
   verify a change.
-- Commit `labs/` and the regenerated `docs/` together.
+- Commit only the sources under `labs/`. `docs/` is ignored by git; the **Publish labs site** workflow builds it.
 
 ## Update the labs
 
@@ -115,11 +115,11 @@ Add a `## <Month D, YYYY>` section at the top of `labs/RELEASE-NOTES.md`, as des
 1. Run `npm run sync && npm run build && npm run check`, and fix every warning.
 2. Preview with `npm run serve`. Check the release notes page, the **What's new** pill on the home page, and each
    changed lab in light and dark themes and at mobile width.
-3. Commit `labs/`, `docs/`, and the root `README.md` with a message that names the product release, then push.
-   Once the change merges to `main`, the **Publish labs site** workflow publishes it to GitHub Pages.
+3. Commit `labs/` and the root `README.md` with a message that names the product release, then push. Once the
+   change merges to `main`, the **Publish labs site** workflow builds the site and publishes it to GitHub Pages.
 4. If the user publishes the Static Web App, run `npm run deploy:swa` and open `/release-notes/` on it.
-5. Delete the verification resources (gateways, `Microsoft.Web/connectorGateways`, and Foundry accounts, purging
-   soft-deleted ones) and their deployment history.
+5. Delete the verification resources (gateways, the connector gateways that the portal creates with them, and
+   Foundry accounts, purging soft-deleted ones) and their deployment history.
 
 Finish with a short report: the releases handled, the labs added or updated, and any product change that no lab
 covers yet.

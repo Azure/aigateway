@@ -1,5 +1,5 @@
 // Deploys the candidate model in an existing Foundry account, next to the primary model. main.bicep calls it after the
-// quick start's template has created the account and its gpt-6-luna deployment.
+// quick start's template has created the account and its gpt-5-mini deployment.
 targetScope = 'resourceGroup'
 
 @description('Name of the existing Foundry (Azure AI Services) account.')

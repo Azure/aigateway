@@ -77,7 +77,6 @@ resource toolServer 'Microsoft.ApiManagement/aigateways/workspaces/toolServers@2
     displayName: displayName
     description: serverDescription
     type: 'mcp'
-    failureMode: 'failClosed'
     endpoints: empty(secondNamespace) ? [ primaryEndpoint ] : [ primaryEndpoint, secondEndpoint ]
   }, versions)
 }

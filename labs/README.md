@@ -140,7 +140,7 @@ Route agent frameworks, hosted agents, and coding agents through the gateway.
 | # | Lab | Level | Time | Tracks | Notebook |
 | :-: | :-- | :-- | --: | :-- | :-: |
 | 15 | [Connect agent frameworks to models and tools](15-agent-frameworks/README.md) | Intermediate | 30 min | Code |  |
-| 16 | [Deploy a Foundry hosted agent behind AI Gateway](16-foundry-hosted-agent/README.md) | Intermediate | 40 min | Portal · CLI · Code |  |
+| 16 | [Deploy a Foundry hosted agent behind AI Gateway](16-foundry-hosted-agent/README.md) | Intermediate | 45 min | Portal · CLI · Code |  |
 | 17 | [Build on your gateway with coding agents](17-coding-agent-plugin/README.md) | Beginner | 15 min | Code |  |
 | 24 | [Use your gateway's models and tools in GitHub Copilot](24-github-copilot-byok/README.md) | Intermediate | 40 min | Portal · CLI · Bicep · Code |  |
 
@@ -243,7 +243,7 @@ available regions, and cloning this repo. Each lab links to the steps it needs a
 ## Work on the labs site
 
 Each lab's `labs/<NN-slug>/README.md` is the single source of truth for both views. You write the lab once; the
-build turns it into the site in [`docs/`](../docs), and `npm run sync` adds the GitHub-only navigation, lab
+build turns it into the site in `docs/` (ignored by git), and `npm run sync` adds the GitHub-only navigation, lab
 header, collapsible tracks, and inline code you see here. The generated parts sit between `<!-- gh:begin -->` and
 `<!-- gh:end -->` comments or end with `<!-- gh -->`; don't edit them, and the site ignores them.
 
@@ -268,8 +268,8 @@ When a change reaches `main`, the [Publish labs site](../.github/workflows/labs-
 `npm run check` and publishes the result to GitHub Pages at <https://azure.github.io/aigateway/>. You can also run
 it from the **Actions** tab.
 
-Commit both your changes under `labs/` and the regenerated `docs/` folder, and run `npm run check` before you open
-a pull request.
+Commit only your changes under `labs/`; `docs/` is ignored by git, and the workflow builds it. Run `npm run check`
+before you open a pull request.
 
 | Path | Contents |
 |---|---|

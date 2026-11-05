@@ -1,5 +1,5 @@
 // Lab 18 with azd: "azd up" creates the resource group rg-<environment name> with a dedicated Foundry account and
-// gpt-6-luna, a virtual network, a new gateway with private routing through the network's integration subnet, a
+// gpt-5-mini, a virtual network, a new gateway with private routing through the network's integration subnet, a
 // private endpoint and private DNS for Foundry, and lab 02's provider, model, private-chat alias, and runtime key.
 // Set FOUNDRY_PUBLIC_NETWORK_ACCESS to Disabled and run "azd provision" to turn off Foundry's public access.
 // The key value is never an output.
@@ -30,7 +30,7 @@ resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
   tags: tags
 }
 
-// A Foundry account with gpt-6-luna that only this lab uses, so you can turn off its public access.
+// A Foundry account with gpt-5-mini that only this lab uses, so you can turn off its public access.
 module foundry 'foundry.bicep' = {
   name: 'aigw-foundry'
   scope: rg

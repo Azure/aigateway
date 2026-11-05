@@ -87,7 +87,7 @@ you can keep business APIs in API Management and send model and tool traffic thr
 | Building block | What it is | Example |
 |---|---|---|
 | **Gateway** | An Azure AI Gateway resource (`Microsoft.ApiManagement/aigateways`) in your subscription | `<gateway-url>` |
-| **Backend model** | A model at a provider, such as a Foundry deployment or an Anthropic model | `gpt-6-luna` at Microsoft Foundry |
+| **Backend model** | A model at a provider, such as a Foundry deployment or an Anthropic model | `gpt-5-mini` at Microsoft Foundry |
 | **Alias** | The stable, gateway-wide name clients send in the `model` field | `chat` |
 | **MCP server** | One governed MCP endpoint that federates tools from one or more sources | `/default/toolservers/<server-name>/mcp` |
 | **Policy** | A rule on the gateway or on one asset: limits, budgets, safety, filters | Token rate limit, Cost limit |

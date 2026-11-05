@@ -27,6 +27,28 @@ model version, and manage MCP servers that use the 2026-07-28 MCP specification.
 
 #### Labs changes
 
+- **November 5.** The labs default to `gpt-5-mini` and `gpt-6.1-sol`, the latest generally available Foundry
+  models, in every portal step, Bicep template, notebook, code sample, and the agent skill. Lab 24's screenshots of
+  VS Code, the Copilot CLI, and the SDK still show the model picker's earlier example, GPT-6 Astra.
+- **November 5.** [Lab 16](16-foundry-hosted-agent/README.md) is keyless. The hosted agent calls the model with its
+  own Microsoft Entra ID identity, and the toolbox reaches the gateway's MCP server through a `RemoteTool`
+  connection with the project's managed identity. You grant **AI Gateway User** instead of creating a
+  `hosted-agent` key.
+- **November 5.** Labs [13](13-monitoring/README.md), [14](14-otel-chargeback/README.md), and
+  [21](21-enterprise-reference/README.md) create an OpenTelemetry exporter, like the portal's **Configure
+  telemetry** wizard, instead of the legacy `applicationInsights` exporter. Azure creates the OTLP endpoints and
+  their Data Collection Rule a few minutes after a deployment, so a `connect-telemetry` script waits for them,
+  grants the gateway **Monitoring Metrics Publisher** on the rule, then deploys the exporter.
+- **November 5.** The Bicep templates, the Azure CLI steps, and the agent skill no longer create a
+  `Microsoft.Web/connectorGateways` resource. The templates omit `sku`, so the gateway gets the default, `Standard`.
+  [Lab 21](21-enterprise-reference/README.md)'s MCP server no longer sets a top-level `failureMode`, which the
+  service drops, and the coding-agent plugin's examples use `Microsoft.ApiManagement/aigateways` resource IDs.
+- **November 5.** The [quick start](quickstart/README.md) matches the current portal: **Access** has an **API keys**
+  tab, and the playground's **Method** can start on **Microsoft Entra ID**, so you set it to **API key** before you
+  choose your key. Its screenshots are new. Labs [11](11-entra-rbac/README.md) and
+  [19](19-tool-threat-protection/README.md) follow the current role assignment wizard.
+- **November 5.** GitHub Actions builds the labs site from `labs/` and publishes it to GitHub Pages, so the
+  repo no longer commits the generated `docs/` folder.
 - **November 5.** The labs repo is now [Azure/aigateway](https://github.com/Azure/aigateway), and the labs site is
   [azure.github.io/aigateway](https://azure.github.io/aigateway/). The [Setup guide](SETUP.md#clone-the-labs-repo)
   clones it into `~/aigateway`, and every lab runs from `~/aigateway/labs/<lab>`. If you cloned `Azure/ai-gateway`
@@ -46,7 +68,7 @@ model version, and manage MCP servers that use the 2026-07-28 MCP specification.
   policy files, which the extension doesn't cover yet.
 - **November 4.** The gateways use the `Standard` SKU, the only one that AI Gateway accepts. It's the default in
   the portal and in `az aigateway create`, so [lab 01](01-provision-gateway/README.md#create-the-ai-gateway) no
-  longer passes `--sku`, and the Bicep templates set `Standard`. Lab 01 also explains the runtime host name: the
+  longer passes `--sku`, and the Bicep templates omit `sku`. Lab 01 also explains the runtime host name: the
   gateway name's first 10 characters, a hyphen, a 13-character hash, and `.<region>-01.ai.gateway.azure.com`, so
   always read it from the gateway instead of building it from the name.
 - **November 4.** On the site, **Your values** has a **Runtime URL** field, and the code blocks fill

@@ -26,17 +26,16 @@ export const architecture = () => svgDoc('architecture', {
 
 export const provisioning = () => svgDoc('provisioning', {
   title: 'What provisioning an AI Gateway creates',
-  desc: 'You choose a name, a resource group, and a region where AI Gateway is available. Azure creates the AI Gateway with a system-assigned managed identity, and its companion connector gateway with the same name. There is no capacity to size. You get a runtime URL, a default workspace for model and MCP routes, and the AI Gateway portal.',
+  desc: 'You choose a name, a resource group, and a region where AI Gateway is available. Azure creates the AI Gateway in the Standard SKU, with a system-assigned managed identity. There is no capacity or publisher to set. You get a runtime URL, a default workspace for model and MCP routes, and the AI Gateway portal.',
   h: 356,
   body: () => {
     let o = zone(16, 20, 220, 316, 'You choose', { ic: 'user', tone: 'azure' });
-    [['Name', 'Up to 24 characters', 'Globally unique', 'doc'], ['Resource group', 'New or existing', 'Holds both resources', 'layers'], ['Region', 'Any available region', 'List it with the CLI', 'globe']]
+    [['Name', 'Up to 24 characters', 'Globally unique', 'doc'], ['Resource group', 'New or existing', 'Holds the gateway', 'layers'], ['Region', 'Any available region', 'List it with the CLI', 'globe']]
       .forEach(([t, s, s2, ic], i) => { o += box(28, 56 + i * 96, 196, 72, { t, s, s2, icon: ic, tone: 'azure' }); });
     o += zone(270, 20, 340, 316, 'Azure creates', { gw: true, ic: 'sparkle' });
-    o += box(282, 56, 316, 72, { t: '1 · AI Gateway', s: 'No capacity to size', s2: 'Microsoft.ApiManagement/aigateways', icon: 'sparkle', mono: true, accent: true });
-    o += arrow('M440 130 V150', { flow: false });
-    o += box(282, 152, 316, 72, { t: '2 · Connector gateway', s: 'Same name, companion resource', s2: 'Microsoft.Web/connectorGateways', icon: 'plug', mono: true });
-    o += box(282, 248, 316, 72, { t: 'Managed identity', s: 'System-assigned, on by default', s2: 'Calls backends without keys', icon: 'key', tone: 'green' });
+    o += box(282, 56, 316, 72, { t: 'AI Gateway', s: 'Standard SKU, the default', s2: 'Microsoft.ApiManagement/aigateways', icon: 'sparkle', mono: true, accent: true });
+    o += box(282, 152, 316, 72, { t: 'Managed identity', s: 'System-assigned, on by default', s2: 'Calls backends without keys', icon: 'key', tone: 'green' });
+    o += box(282, 248, 316, 72, { t: 'Nothing to size', s: 'No capacity or publisher to set', s2: 'Ready in a few minutes', icon: 'clock' });
     o += zone(644, 20, 300, 316, 'You get', { ic: 'check', tone: 'green' });
     o += box(656, 56, 276, 72, { t: 'Runtime URL', s: 'https://<gateway>.eastus2-01', s2: '.ai.gateway.azure.com', icon: 'globe', tone: 'green', mono: 'all' });
     o += box(656, 152, 276, 72, { t: 'Default workspace', s: '/default/models/…', s2: '/default/toolservers/…', icon: 'grid', tone: 'green', mono: 'all' });
@@ -56,15 +55,15 @@ export const quickstart = () => svgDoc('quickstart', {
     o += box(32, 104, 260, 44, { t: 'Azure CLI', s: 'paste into Azure Cloud Shell', icon: 'terminal', tone: 'azure' });
     o += box(32, 156, 260, 44, { t: 'Bicep + azd', s: 'one azd up, Cloud Shell or local', icon: 'code', tone: 'azure' });
     [74, 126, 178].forEach((y) => { o += arrow(`M294 ${y} C312 ${y} 310 114 326 114`, { tone: 'azure' }); });
-    [['sparkle', 'AI Gateway', '+ connector gateway'], ['models', 'Foundry model', 'gpt-6-luna'], ['plug', 'Provider', 'managed identity'], ['route', 'Alias', 'gpt-6-luna'], ['key', 'Runtime key', 'app-first-call']]
+    [['sparkle', 'AI Gateway', 'Standard SKU'], ['models', 'Foundry model', 'gpt-5-mini'], ['plug', 'Provider', 'managed identity'], ['route', 'Alias', 'gpt-5-mini'], ['key', 'Runtime key', 'app-first-call']]
       .forEach(([ic, l, sub], i) => { o += node(360 + i * 135, 86, ic, l, { sub, tone: i === 1 ? 'azure' : 'violet' }); });
     o += zone(16, 228, 928, 224, '2 · Call the model · seconds', { ic: 'bolt', tone: 'violet' });
     o += node(90, 312, 'app', 'Your app', { tone: 'azure', sub: 'curl or OpenAI SDK', accent: false });
     o += zone(176, 264, 560, 172, 'AI Gateway', { gw: true, ic: 'sparkle' });
     o += node(276, 312, 'key', 'Check the key', { sub: 'api-key header' });
-    o += node(456, 312, 'route', 'Route the alias', { sub: 'gpt-6-luna → model' });
+    o += node(456, 312, 'route', 'Route the alias', { sub: 'gpt-5-mini → model' });
     o += node(636, 312, 'lock', 'Managed identity', { sub: 'Foundry User role' });
-    o += node(860, 312, 'models', 'Foundry', { tone: 'azure', sub: 'gpt-6-luna deployment', accent: false });
+    o += node(860, 312, 'models', 'Foundry', { tone: 'azure', sub: 'gpt-5-mini deployment', accent: false });
     o += arrow('M120 340 H244', { tone: 'azure' }) + arrow('M306 340 H424') + arrow('M486 340 H604') + arrow('M666 340 H828', { tone: 'azure' });
     o += label(182, 332, 'POST + key') + label(747, 332, 'Entra token');
     o += pill(276, 406, '401 without a key', { tone: 'red', anchor: 'middle' });
@@ -86,7 +85,7 @@ export const createGateway = () => svgDoc('create-gateway', {
     let o = zone(16, 20, 456, 304, 'Basics', { ic: 'doc', tone: 'azure' });
     o += row(36, 74, 'Name', [['<gateway>', 'azure', true]], 'Globally unique, 24 characters or fewer');
     o += row(36, 140, 'Subscription', [], 'Needs write access to API Management and connector gateways');
-    o += row(36, 206, 'Resource group', [['New', 'azure'], ['Existing', 'azure']], 'Holds the gateway and its connector');
+    o += row(36, 206, 'Resource group', [['New', 'azure'], ['Existing', 'azure']], 'Holds the gateway');
     o += row(36, 272, 'Region', [], 'One where AI Gateway is available, as listed by the CLI');
     o += zone(488, 20, 456, 304, 'Advanced · keep the defaults', { ic: 'shield', tone: 'green' });
     o += row(508, 74, 'System-assigned managed identity', [['Enabled', 'green']], 'The gateway uses it to call Foundry');
@@ -137,9 +136,9 @@ export const aliases = () => svgDoc('aliases', {
     o += zone(290, 20, 280, 360, 'Aliases', { gw: true, ic: 'route' });
     o += zone(636, 20, 308, 360, 'Backend models', { ic: 'models', tone: 'azure' });
     const rows = [
-      ['app', 'Chat app', 'model: chat', 'chat', 'Token rate limit', 'gpt-6-luna', 'Microsoft Foundry'],
+      ['app', 'Chat app', 'model: chat', 'chat', 'Token rate limit', 'gpt-5-mini', 'Microsoft Foundry'],
       ['server', 'Batch job', 'model: chat-batch', 'chat-batch', 'Token rate limit · Cost limit', 'gpt-6.1-sol', 'Microsoft Foundry'],
-      ['agent', 'Research agent', 'model: reasoning', 'reasoning', 'Content safety', 'gpt-6-astra', 'Microsoft Foundry'],
+      ['agent', 'Research agent', 'model: reasoning', 'reasoning', 'Content safety', 'claude-sonnet-5-5', 'Microsoft Foundry'],
     ];
     rows.forEach(([ic, c, call, a, pol, m, prov], i) => {
       const y = 60 + i * 110;
@@ -160,7 +159,7 @@ export const aliases = () => svgDoc('aliases', {
 
 export const aliasRouting = () => svgDoc('alias-routing', {
   title: 'Priority and weighted routing behind one alias',
-  desc: 'Clients keep calling the alias chat. The alias lists several backend models, each with a priority and a weight. The gateway picks the lowest priority number, then splits traffic among the backend models at that priority in proportion to their weights: gpt-6-luna with weight 80 gets 80 percent and the gpt-6.1-sol canary with weight 20 gets 20 percent. A backend model at priority 1 is a lower preference.',
+  desc: 'Clients keep calling the alias chat. The alias lists several backend models, each with a priority and a weight. The gateway picks the lowest priority number, then splits traffic among the backend models at that priority in proportion to their weights: gpt-5-mini with weight 80 gets 80 percent and the gpt-6.1-sol canary with weight 20 gets 20 percent. A backend model at priority 1 is a lower preference.',
   h: 420,
   body: () => {
     let o = zone(16, 20, 200, 360, 'Clients', { ic: 'users', tone: 'azure' });
@@ -169,7 +168,7 @@ export const aliasRouting = () => svgDoc('alias-routing', {
     o += zone(252, 20, 312, 360, 'AI Gateway', { gw: true, ic: 'sparkle' });
     o += box(268, 60, 280, 64, { t: 'Alias: chat', s: 'Lowest priority first,', s2: 'then split by weight', icon: 'route', accent: true });
     o += text(272, 162, 'SHARE WITHIN PRIORITY 0', 'dg-cap');
-    [['gpt-6-luna', 0.8, '80%', 'violet', 190], ['gpt-6.1-sol', 0.2, '20%', 'magenta', 240]].forEach(([m, r, pct, tone, y]) => {
+    [['gpt-5-mini', 0.8, '80%', 'violet', 190], ['gpt-6.1-sol', 0.2, '20%', 'magenta', 240]].forEach(([m, r, pct, tone, y]) => {
       o += text(272, y, m, 'dg-m');
       o += `<g class="tn-${tone}"><rect class="dg-bar" x="272" y="${y + 8}" width="214" height="10" rx="5"/><rect class="dg-bar-fill" x="272" y="${y + 8}" width="${Math.round(214 * r)}" height="10" rx="5"/></g>`;
       o += text(548, y + 18, pct, 'dg-t', 'end');
@@ -179,7 +178,7 @@ export const aliasRouting = () => svgDoc('alias-routing', {
     o += text(272, 346, '80 ÷ (80 + 20) = 80%', 'dg-m');
     o += zone(600, 20, 344, 360, 'Backend models', { ic: 'models', tone: 'azure' });
     o += zone(612, 52, 320, 196, 'Priority 0 · preferred', { tone: 'violet' });
-    o += box(624, 88, 296, 64, { t: 'gpt-6-luna', s: 'Weight 80 · 80% of requests', icon: 'models', tone: 'violet', accent: true });
+    o += box(624, 88, 296, 64, { t: 'gpt-5-mini', s: 'Weight 80 · 80% of requests', icon: 'models', tone: 'violet', accent: true });
     o += box(624, 166, 296, 64, { t: 'gpt-6.1-sol', s: 'Weight 20 · 20% (canary)', icon: 'models', tone: 'magenta', accent: true });
     o += zone(612, 262, 320, 106, 'Priority 1 · lower preference', { tone: 'azure' });
     o += box(624, 296, 296, 60, { t: 'gpt-6-sol', s: 'Azure OpenAI · weight 1', icon: 'models', tone: 'azure' });
@@ -208,7 +207,7 @@ export const streamingUsage = () => svgDoc('streaming-usage', {
     o += box(268, 198, 368, 62, { t: 'Capture usage from every stream', s: 'Prompt and completion tokens,', s2: 'with or without include_usage', icon: 'chart', tone: 'green', accent: true });
     o += pills(268, 274, ['Token counters', 'Cost limits', 'Monitoring'], { tone: 'green' });
     o += zone(688, 20, 256, 290, 'Model', { ic: 'models', tone: 'azure' });
-    o += box(700, 120, 232, 76, { t: 'Foundry model', s: 'gpt-6-luna', s2: 'Streams tokens as made', icon: 'models', tone: 'violet' });
+    o += box(700, 120, 232, 76, { t: 'Foundry model', s: 'gpt-5-mini', s2: 'Streams tokens as made', icon: 'models', tone: 'violet' });
     o += list(700, 232, ['Tokens as data: chunks', 'Usage in the final chunk', 'Responses: response.completed'], { tone: 'violet' });
     o += arrow('M206 96 C236 96 236 80 264 80', { tone: 'azure' });
     o += arrow('M206 216 C240 216 236 90 264 90', { tone: 'azure' });
@@ -264,8 +263,8 @@ export const policyScopes = () => svgDoc('policy-scopes', {
     let o = zone(16, 16, 928, 408, 'Gateway scope · applies to all compatible assets, including future ones', { gw: true, ic: 'globe' });
     o += pills(32, 48, [['Content safety', 'azure'], ['IP filter', 'azure'], ['Cost limit', 'azure']]);
     const cols = [
-      ['Models', 'models', [['gpt-6-luna', 'Backend model', ['Request rate']]], 'Applies through every alias'],
-      ['Aliases', 'route', [['chat', '→ gpt-6-luna', ['Token rate limit']], ['chat-batch', '→ gpt-6-luna', ['Token rate limit', 'Cost limit']]]],
+      ['Models', 'models', [['gpt-5-mini', 'Backend model', ['Request rate']]], 'Applies through every alias'],
+      ['Aliases', 'route', [['chat', '→ gpt-5-mini', ['Token rate limit']], ['chat-batch', '→ gpt-5-mini', ['Token rate limit', 'Cost limit']]]],
       ['MCP servers', 'tools', [['github-tools', 'MCP server', ['Request rate', 'Threat protection']]]],
     ];
     const tones = ['green', 'violet', 'amber'];

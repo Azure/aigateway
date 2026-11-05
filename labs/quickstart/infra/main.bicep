@@ -13,10 +13,10 @@ param environmentName string
 param location string
 
 @description('Model to deploy in Foundry. The deployment, the gateway model, and the alias use this name.')
-param modelName string = 'gpt-6-luna'
+param modelName string = 'gpt-5-mini'
 
 @description('Version of the model to deploy.')
-param modelVersion string = '2026-09-22'
+param modelVersion string = '2025-08-07'
 
 var suffix = take(uniqueString(subscription().id, environmentName, location), 6)
 var tags = { 'azd-env-name': environmentName }

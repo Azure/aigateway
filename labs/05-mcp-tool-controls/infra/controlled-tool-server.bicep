@@ -69,7 +69,6 @@ resource toolServer 'Microsoft.ApiManagement/aigateways/workspaces/toolServers@2
     displayName: 'Microsoft Learn'
     description: 'Search and fetch official Microsoft documentation and code samples.'
     type: 'mcp'
-    failureMode: 'failClosed'
     accessState: serverAccess
     allowList: allowedTools
     blocked: blockedTools

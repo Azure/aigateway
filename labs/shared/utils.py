@@ -40,7 +40,6 @@ from azure.identity import AzureCliCredential
 
 ARM = "https://management.azure.com"
 AIGW_API = "2025-09-01-preview"         # Microsoft.ApiManagement/aigateways and its child resources
-CONNECTOR_API = "2026-05-01-preview"    # Microsoft.Web/connectorGateways
 COGNITIVE_API = "2025-04-01-preview"    # Microsoft.CognitiveServices (Foundry)
 RESOURCES_API = "2021-04-01"            # resource groups, resource providers, and deployments
 ROLES_API = "2022-04-01"                # Microsoft.Authorization/roleAssignments
@@ -110,8 +109,6 @@ class Lab:
         self.gateway_id = (f"{subscription}/resourceGroups/{self.resource_group}"
                            f"/providers/Microsoft.ApiManagement/aigateways/{self.gateway_name}")
         self.workspace_id = f"{self.gateway_id}/workspaces/default"   # models, aliases, and tool servers live here
-        self.connector_gateway_id = (f"{subscription}/resourceGroups/{self.resource_group}"
-                                     f"/providers/Microsoft.Web/connectorGateways/{self.gateway_name}")
         self.foundry_id = (f"{subscription}/resourceGroups/{self.foundry_resource_group}"
                            f"/providers/Microsoft.CognitiveServices/accounts/{self.foundry_account}")
 

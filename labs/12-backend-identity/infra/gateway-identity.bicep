@@ -1,6 +1,6 @@
 // Attaches a user-assigned managed identity to an AI Gateway and keeps its system-assigned identity.
 // A deployment sets the gateway's whole identity block, so the gateway keeps only the identities listed here. The
-// template redeclares the gateway with the SKU, region, and tags of the quick start's template, which
+// template redeclares the gateway with the region and tags of the quick start's template, which
 // infra/main.bicep deploys first: every "azd provision" sets the system-assigned identity there, then attaches the
 // user-assigned identity again here. On a gateway you created another way, attach the identity with
 // az aigateway identity assign instead, which keeps the identities the gateway already has.
@@ -28,9 +28,6 @@ resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' = {
     userAssignedIdentities: {
       '${identityId}': {}
     }
-  }
-  sku: {
-    name: 'Standard'
   }
   properties: {}
 }
