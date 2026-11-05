@@ -18,17 +18,22 @@ platform teams enforce security, policy, networking, and observability.
 ## Azure CLI
 
 Create and manage gateways, model registrations, MCP servers, and policies with
-`az aigateway`. See the **[CLI installation and quickstart](cli/README.md)** for
+`az aigateway`. The CLI is an external dependency published in **[Azure/aigateway](https://github.com/Azure/aigateway)**.
+See its **[current installation and quickstart](https://github.com/Azure/aigateway/tree/main/cli)** for
 one-line Bash and PowerShell installers, or browse the
-[command reference](cli/command-reference.md).
+[current command reference](https://github.com/Azure/aigateway/blob/main/cli/command-reference.md).
+Use the latest published CLI, including preview releases, rather than a local
+source build or an installer copied from an older release.
 
 ## Coding-agent plugin
 
-This repository hosts the official **plugin** for coding agents. It helps
-developers **build applications on top of an existing AI Gateway tier in Azure API Management resources**: it discovers the
-models and MCP tool servers registered in a gateway and integrates them into whatever
-you're building — call a model over the OpenAI-compatible passthrough, connect MCP
-tools, or scaffold a runnable agent — all from your coding agent.
+This repository hosts the official **plugin** for coding agents. It supports two
+personas:
+
+- **Administrators and platform engineers** can create and operate gateways
+  and configure their assets with the current `az aigateway` CLI.
+- **Developers** can discover the models and MCP tool servers in an existing
+  gateway and integrate them into an application.
 
 The plugin follows the [Claude Code plugin spec](https://code.claude.com/docs/en/plugins),
 the [GitHub Copilot / awesome-copilot plugin convention](https://github.com/github/awesome-copilot/blob/main/CONTRIBUTING.md#adding-plugins),
@@ -36,17 +41,23 @@ the [Cursor plugin format](https://cursor.com/docs/plugins), and the
 [Gemini CLI extension format](https://geminicli.com/docs/extensions/), so it installs
 in any of those coding agents (and other agents that support the plugin standard).
 
-> **Consumption only.** The plugin is read-only against the gateway — it never
-> provisions, updates, or deletes resources. Creating gateways, models, or tools
-> is an administrator task done in the [AI Gateway Portal](https://ai.gateway.azure.com).
+> **Separate administrator and developer workflows.** Discover and build remain
+> read-only against the gateway. Create and manage require an authorized
+> administrator and approval before mutations. APIM migration uses additional
+> local helpers, capability checks, and explicit per-item approval.
 
 ### What's inside
 
 | Component | Invoked as | Purpose |
 | --------- | ---------- | ------- |
 | Skill `use-ai-gateway` | `/ai-gateway:use-ai-gateway` | Full discover → select → credential → integrate workflow (call a model, connect MCP tools, or scaffold an agent). |
+| Skill `manage-ai-gateway` | `/ai-gateway:manage-ai-gateway` | Full administrator workflow for creating, configuring, and operating a gateway. |
+| Skill `migrate-ai-gateway` | `/ai-gateway:migrate-ai-gateway` | Inventory, assess, validate, and reconcile supported APIM V2 configuration with explicit approval. |
 | Command `discover` | `/ai-gateway:discover` | Read-only: list a gateway's models and MCP tool servers and pick the ones that fit your use case. |
 | Command `build` | `/ai-gateway:build` | End-to-end: discover, retrieve a credential, and integrate the models/tools into your app. |
+| Command `create` | `/ai-gateway:create` | Create a gateway and verify that it is ready for configuration. |
+| Command `manage` | `/ai-gateway:manage` | Configure and operate a gateway, rotate keys, or maintain assets. |
+| Command `migrate` | `/ai-gateway:migrate` | Run the assisted, capability-gated APIM V2 migration workflow or resume its verified state. |
 
 ### Install
 
@@ -85,6 +96,51 @@ Or explore first, then integrate:
 ```
 /ai-gateway:discover /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.ApiManagement/service/<gateway>
 ```
+
+Administrators can create a gateway or manage an existing one:
+
+```
+/ai-gateway:create my-gateway my-resource-group eastus2
+/ai-gateway:manage my-gateway my-resource-group add a Foundry model provider
+```
+
+Administrators can assess and migrate supported APIM V2 configuration:
+
+```
+/ai-gateway:migrate /subscriptions/<sub>/resourceGroups/<source-rg>/providers/Microsoft.ApiManagement/service/<source-apim>
+```
+
+A source-only invocation assesses feasibility without requiring a destination.
+The assessment gives evidence-based per-component conclusions and asks specific
+questions when missing facts affect the verdict, rather than leaving generic
+"confirmation needed" items. It inventories AI traffic first, then assesses
+migrating all discovered AI APIs or a feasible subset. Any scope question comes
+after inventory when needed; an already-specified subset is preserved.
+Traditional APIs remain on APIM except where their behavior is needed by AI
+traffic. This is not an assessment of replacing the entire APIM instance, and
+no feasibility conclusion authorizes deployment.
+
+For destination-bound planning, supply a target:
+
+```
+/ai-gateway:migrate /subscriptions/<sub>/resourceGroups/<source-rg>/providers/Microsoft.ApiManagement/service/<source-apim> my-ai-gateway my-target-rg eastus2
+```
+
+The [migration skill](skills/migrate-ai-gateway/SKILL.md) bundles Python helpers
+for read-only source inventory, redaction, capability evidence, deterministic plan
+validation, approved reconciliation, verification, and resume. The native
+`az aigateway` CLI performs supported destination operations; it is not an APIM
+bulk-import tool. Install the helper's isolated dependencies as described in the
+skill. BasicV2, StandardV2, and PremiumV2 sources are initially enabled; classic
+V1 and AIGateway source profiles are reserved for later expansion.
+
+Approved local APIOps and conservative ARM-template evidence can supplement
+incomplete discovery. Unsupported behavior remains an explicit question or
+residual, never an implicit approximation. Each mutation needs current-plan
+approval; resource read-back and source-behavior verification are separate.
+Version-3 state uses protected immutable generations under
+`.ai-gateway-migration/`. Legacy checkpoints are preserved read-only, not
+automatically resumed. See the [state schemas](skills/migrate-ai-gateway/schemas/).
 
 ### Security
 

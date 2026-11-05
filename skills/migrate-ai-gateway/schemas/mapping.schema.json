@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Azure/ai-gateway/migration/mapping.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "items"],
+  "properties": {
+    "schemaVersion": {"const": "4.0"},
+    "selection": {"type": ["object", "null"]},
+    "removalProposals": {"type": "array", "items": {"type": "object"}},
+    "nativeSyncPreviews": {"type": "array", "items": {
+      "$ref": "https://github.com/Azure/ai-gateway/migration/native-sync-preview.schema.json"}},
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "sourceIds", "behaviorIds", "classification", "capabilityId", "semanticDecision", "question", "residual"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "sourceIds": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}},
+          "behaviorIds": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+          "classification": {"enum": ["ready", "needs-input", "cannot-import"]},
+          "capabilityId": {"type": ["string", "null"]},
+          "semanticDecision": {"type": ["string", "null"]},
+          "question": {"type": ["string", "null"]},
+          "todoIds": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+          "disposition": {"enum": ["selected", "dependency", "retained-source", "unresolved"]},
+          "behaviorResults": {"type": "object", "additionalProperties": {
+            "type": "object", "additionalProperties": false,
+            "required": ["status", "method", "evidenceDigest", "recordedAt"],
+            "properties": {
+              "status": {"enum": ["pending", "passed", "failed", "inconclusive"]},
+              "method": {"enum": ["control-plane", "data-plane", "administrator-attestation"]},
+              "evidenceDigest": {"type": ["string", "null"]},
+              "recordedAt": {"type": ["string", "null"]}
+            }
+          }},
+          "residual": {
+            "type": ["object", "null"],
+            "properties": {
+              "reason": {"type": "string", "minLength": 1},
+              "manualAction": {"type": "string", "minLength": 1},
+              "acceptance": {"enum": ["pending", "accepted", "rejected"]},
+              "approvedPlanDigest": {"type": ["string", "null"]},
+              "decidedAt": {"type": ["string", "null"]}
+            },
+            "required": ["reason", "manualAction", "acceptance", "approvedPlanDigest", "decidedAt"],
+            "additionalProperties": false
+          }
+        }
+      }
+    }
+  }
+}
