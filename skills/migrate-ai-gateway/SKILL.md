@@ -317,8 +317,12 @@ Do the compatibility analysis rather than reporting "candidate; needs
 confirmation." Use already-authorized read-only evidence to resolve technical
 unknowns first. For MCP, compare upstream protocol, tool/operation input shapes,
 authentication mode, routing, policies, and client access. For model APIs,
-compare the runtime model and protocol and required operations; a broad
-OpenAI-shaped API is not automatically equivalent to inference registration.
+follow the route and authentication checklist in
+[the model workflow](references/model-workflow.md#resolve-a-model-discovery-route-during-assessment)
+before asking for model names or declaring runtime model IDs undetermined.
+Compare the discovered runtime model, protocol, and required operations; a broad
+OpenAI-shaped API or a model-list result is not automatically equivalent to
+inference registration.
 For dependencies such as general REST, product/subscription access, portal
 behavior, or diagnostics, explain the required AI behavior and whether the
 dependency remains on APIM, needs a supported mapping, or is an adapter
@@ -338,8 +342,13 @@ verdict or claim that missing adapter support makes the platform impossible.
 Call out changes to anonymous access, client credentials, endpoint paths, and
 key scope separately from backend registration. Do not merge providers merely
 because their URLs share a host: establish whether account, credential,
-deployment, and policy boundaries must remain distinct. Use non-secret
-authentication metadata and references, never credential values, for assessment.
+deployment, and policy boundaries must remain distinct. Keep authentication
+conclusions and assessment artifacts limited to non-secret metadata and
+references. Separately approved catalog reads may consume an existing protected
+runtime credential as described in the model workflow; redacted inventory does
+not prove that binding is unavailable. Metadata-read approval does not authorize
+secret retrieval or credential use. Do not collect source keys, expose credential
+values, or ask the user to paste them.
 
 When an essential fact cannot be obtained from the authorized evidence, ask an
 actual, focused question with the available user-question tool. Explain the

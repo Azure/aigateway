@@ -6,6 +6,66 @@ import. Use the selected isolated Python environment and the skill's
 example model or account exists. Obtain actual identifiers from authorized
 discovery or explicit operator input.
 
+## Resolve a model-discovery route during assessment
+
+Before treating model names as missing operator facts, determine whether an
+evidenced catalog route and an approved runtime credential are usable. An
+unauthenticated failure does not establish model absence or unsupported
+discovery. This is source-only work: no destination, inference request, or
+migration execution approval is required, but data-plane reads and credential
+use retain their separate approvals.
+
+1. **Establish the exact URL from source evidence.** For an APIM-fronted catalog,
+   use the observed service `properties.gatewayUrl` or explicitly selected
+   hostname binding, API `properties.path`, and catalog GET operation's
+   `urlTemplate`. Verify the effective forwarding policy for that operation.
+   Do not guess a hostname suffix from the service name, omit an API/base path,
+   or assume every model-facing API exposes `/models`. For direct discovery,
+   establish the effective provider base from the selected backend and inherited
+   routing/rewrite policies or explicit operator evidence, not a provider brand
+   or an unrelated backend. The Custom helper appends `/models` to this base:
+   preserve version/path prefixes and do not pass an already-complete catalog
+   URL. Opaque route expressions remain unresolved; do not probe guessed hosts
+   or adjacent paths to compensate.
+2. **Check the approved credential binding, not its value.** Source inventory
+   deliberately redacts credentials; that does not mean an existing protected
+   runtime variable or already-authorized secret-manager binding is unavailable.
+   Check only the named approved binding and use it inside the authorized runtime
+   process. Do not dump the environment, print headers, persist secret values,
+   or request a pasted key. ARM login/metadata-read access does not authorize
+   secret retrieval or data-plane credential use. Keep source key collection
+   prohibited. If the binding or its approval is missing, identify that exact
+   prerequisite instead of claiming the provider lacks models.
+3. **Choose a route with the correct authentication boundary.** Prefer the
+   evidenced APIM catalog route when an existing client credential is approved
+   and usable: APIM can apply its stored backend credential without retrieving
+   it into the assessment. Use the observed APIM admission header (including any
+   configured subscription-key header name), not the backend Authorization
+   header. Otherwise use the evidenced direct route with its separately approved
+   upstream credential and complete required header scheme. Never send an APIM
+   client key or ARM bearer token upstream. Confirmed anonymous catalogs need no
+   invented credential. An alternate origin or credential requires its own
+   approval; no implicit fallback or redirect following is authorized.
+4. **Perform the scoped GET and classify its actual result.** Use the Custom
+   helper below for its supported `/models` route. Preserve redirect, pagination,
+   response-size, timeout, and finite-entry limits. If an exposed APIM catalog
+   has a different route/envelope, keep an approved read as redacted supplemental
+   assessment evidence rather than pretending the helper supports that shape.
+   Distinguish URL/connectivity failures, authentication/authorization failures,
+   malformed responses, unsupported catalog operations, and reads not attempted.
+   Do not equate a 401/403 with no models or a 404 with platform incompatibility.
+   Correct an evidenced URL/header/binding mistake only within the approved
+   scope; do not retry the unchanged failure. If discovery is unavailable, retain
+   sanitized diagnostics and explain the exact blocker before using operator
+   input. Continue assessing unaffected components.
+
+Preserve exact, case-sensitive IDs from the returned catalog. A list of names
+does not prove protocol/operation support or runtime parity. A catalog read
+through APIM describes that exposed surface, potentially filtered; retain its
+APIM endpoint and provenance, and do not relabel it as a direct authenticated
+upstream read or proof of exhaustive upstream membership. Destination provider
+selection must still respect the actual account/credential boundary.
+
 ## Discover or import source facts
 
 **Foundry:** select the exact account ARM ID and one of its advertised endpoints.
