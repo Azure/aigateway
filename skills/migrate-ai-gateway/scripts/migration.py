@@ -36,9 +36,15 @@ def parser():
     models.add_argument("--kind", choices=("Foundry", "Custom"), required=True)
     models.add_argument("--endpoint", required=True)
     models.add_argument("--account-id")
-    models.add_argument("--credential-env")
+    credentials = models.add_mutually_exclusive_group()
+    credentials.add_argument("--credential-env")
+    credentials.add_argument("--credential-resource-id")
+    models.add_argument("--source-id")
+    models.add_argument("--credential-field", choices=("value", "primaryKey", "secondaryKey"), default="value")
+    models.add_argument("--credential-scheme", choices=("Bearer", "Basic"))
     models.add_argument("--credential-header", default="Authorization")
     models.add_argument("--approved-read", action="store_true")
+    models.add_argument("--approved-credential-read", action="store_true")
     models.add_argument("--output-file", required=True)
     manual = sub.add_parser("import-models")
     manual.add_argument("--manifest-file", required=True)
@@ -72,6 +78,7 @@ def parser():
         command.add_argument("--state-dir", required=True)
         if name in ("execute", "report"):
             export_options(command)
+            command.add_argument("--approved-credential-read", action="store_true")
         if name == "validate-plan":
             command.add_argument("--mapping-file")
             command.add_argument("--todos-file")
@@ -131,9 +138,18 @@ def main(argv=None):
         print(digest(semantic(document) if args.selection else document))
         return 0
     if command == "collect-models":
+        credential_source = None
+        if args.credential_resource_id:
+            credential_source = {
+                "sourceId": args.source_id, "resourceId": args.credential_resource_id,
+                "field": args.credential_field, "scheme": args.credential_scheme,
+            }
+        elif args.source_id or args.credential_scheme or args.credential_field != "value":
+            raise MigrationError("Control-plane credential options require --credential-resource-id.")
         result = collect_models(
             args.provider_id, args.kind, args.endpoint, args.account_id,
-            args.credential_env, args.credential_header, args.approved_read)
+            args.credential_env, args.credential_header, args.approved_read,
+            credential_source=credential_source, credential_read_approved=args.approved_credential_read)
         write_new(args.output_file, result)
         return 0 if all(p["error"] is None for p in result["providers"]) else 1
     if command == "import-models":
@@ -221,7 +237,8 @@ def main(argv=None):
         elif command == "approve":
             approve(bundle, args.todo_id, args.plan_digest)
         elif command == "execute":
-            execute(bundle, args.todo_id, args.plan_digest, state.save, exports=exports(args))
+            execute(bundle, args.todo_id, args.plan_digest, state.save, exports=exports(args),
+                    credential_read_approved=args.approved_credential_read)
             return 0
         elif command == "record-verification":
             record_behavior(bundle, args.mapping_id or args.todo_id, args.behavior_id, args.method,
@@ -238,7 +255,8 @@ def main(argv=None):
                                          approvedPlanDigest=args.plan_digest, decidedAt=now())
         elif command == "report":
             try:
-                snapshot = refresh(bundle, exports=exports(args))
+                snapshot = refresh(bundle, exports=exports(args),
+                                   credential_read_approved=args.approved_credential_read)
                 if digest(semantic(snapshot)) != digest(semantic(bundle["destination-inventory.json"])):
                     raise MigrationError("Destination drift blocks completion.")
                 verify_final_resources(bundle, snapshot)

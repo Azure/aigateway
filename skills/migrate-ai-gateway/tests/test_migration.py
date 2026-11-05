@@ -937,14 +937,16 @@ class ExecutionTests(unittest.TestCase):
             pdigest = state.load()["plan-validation.json"]["planDigest"]
             approved = ["--todo-id", "create-gateway", "--plan-digest", pdigest]
             self.assertEqual(migration.main(["approve", *base, *approved]), 0)
-            with patch("migration.execute", side_effect=lambda b, tid, pd, save, exports:
-                       execute(b, tid, pd, save, azure, cli, exports)):
+            with patch("migration.execute", side_effect=lambda b, tid, pd, save, exports, credential_read_approved:
+                       execute(b, tid, pd, save, azure, cli, exports,
+                               credential_read_approved=credential_read_approved)):
                 self.assertEqual(migration.main(["execute", *base, *approved]), 0)
             for bid in value["todos.json"]["items"][0]["behaviorResults"]:
                 self.assertEqual(migration.main([
                     "record-verification", *base, *approved, "--behavior-id", bid,
                     "--method", "control-plane", "--evidence-digest", digest("verified")]), 0)
-            with patch("migration.refresh", side_effect=lambda b, exports: refresh(b, azure, cli, exports)), \
+            with patch("migration.refresh", side_effect=lambda b, exports, credential_read_approved:
+                       refresh(b, azure, cli, exports, credential_read_approved=credential_read_approved)), \
                  patch("migration.verify_final_resources", side_effect=lambda b, snapshot:
                        verify_final_resources(b, snapshot, azure)):
                 self.assertEqual(migration.main(["report", *base]), 0)

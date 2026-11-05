@@ -26,6 +26,9 @@ def initialize(source, destination, contract, model_catalog=None):
     validate_schema(contract, "capability-contract")
     validate_schema(destination, "destination-inventory")
     model_catalog = validate_catalog(model_catalog or {"schemaVersion": "1.0", "providers": []})
+    if any(p.get("credentialSource", {}).get("sourceId", source["sourceId"]).lower()
+           != source["sourceId"].lower() for p in model_catalog["providers"]):
+        raise MigrationError("APIM catalog credentials must belong to the selected migration source.")
     context = {"schemaVersion": "4.0", "generationId": str(uuid.uuid4()),
                "sourceId": source["sourceId"], "destinationId": destination["destinationId"],
                "phase": "mapping", "completionStatus": "blocked",
@@ -67,7 +70,20 @@ def invalidate(bundle, reason):
     bundle["migration-report.md"] = f"# Migration report\n\nBlocked: {reason}\n"
 
 
-def refresh(bundle, runner=run_az, inspector=inspect_cli, exports=()):
+def refresh(bundle, runner=run_az, inspector=inspect_cli, exports=(), *, credential_read_approved=False):
+    selection = bundle["mapping.json"].get("selection")
+    selected_providers = {p["id"] for p in selection["providers"]} if selection is not None else None
+    providers = [p for p in bundle["model-catalog.json"]["providers"]
+                 if (selected_providers is None or p["id"] in selected_providers)
+                 and p["provenance"] != "operator-manifest"]
+    for provider in providers:
+        credential_source = provider.get("credentialSource")
+        if credential_source is not None:
+            if credential_source["sourceId"].lower() != bundle["context.json"]["sourceId"].lower():
+                raise MigrationError("APIM catalog credentials do not belong to this migration source.")
+            if not credential_read_approved:
+                raise MigrationError("Catalog refresh requires separate approval of the displayed APIM "
+                                     "credential sources; use --approved-credential-read.")
     source = collect_with_exports(bundle["context.json"]["sourceId"], exports, runner)
     old_source = bundle["source-inventory.json"]
     contract = capabilities(inspector())
@@ -76,17 +92,12 @@ def refresh(bundle, runner=run_az, inspector=inspect_cli, exports=()):
         raise MigrationError("Source content, coverage, or behavior drift; collect a new plan.")
     if contract != bundle["capability-contract.json"]:
         raise MigrationError("CLI or capability contract drift; collect a new plan.")
-    selection = bundle["mapping.json"].get("selection")
-    selected_providers = {p["id"] for p in selection["providers"]} if selection is not None else None
-    for provider in bundle["model-catalog.json"]["providers"]:
-        if selected_providers is not None and provider["id"] not in selected_providers:
-            continue
-        if provider["provenance"] == "operator-manifest":
-            continue
+    for provider in providers:
         fresh = collect_models(
             provider["id"], provider["kind"], provider["endpoint"], provider["accountId"],
             provider["credentialRef"], provider.get("credentialHeader", "Authorization"),
-            approved=True, runner=runner)["providers"][0]
+            approved=True, runner=runner, credential_source=provider.get("credentialSource"),
+            credential_read_approved=credential_read_approved and "credentialSource" in provider)["providers"][0]
         if digest(semantic(fresh)) != digest(semantic(provider)):
             raise MigrationError("Upstream model catalog changed or is unavailable; reselect and re-plan.")
     refresh_previews(bundle, destination, runner, contract["cli"])
@@ -208,7 +219,8 @@ def mutation_argv(bundle, todo, directory):
     return argv + ["-o", "json"]
 
 
-def execute(bundle, tid, approved_digest, save, runner=run_az, inspector=inspect_cli, exports=()):
+def execute(bundle, tid, approved_digest, save, runner=run_az, inspector=inspect_cli, exports=(),
+            *, credential_read_approved=False):
     result = validated(bundle)
     todo = select_todo(bundle, tid)
     if approved_digest != result["planDigest"]:
@@ -235,7 +247,7 @@ def execute(bundle, tid, approved_digest, save, runner=run_az, inspector=inspect
                 for result in mapping.get("behaviorResults", {}).values()):
             raise MigrationError("Failed or inconclusive mapping behavior blocks dependent work.")
     try:
-        snapshot = refresh(bundle, runner, inspector, exports)
+        snapshot = refresh(bundle, runner, inspector, exports, credential_read_approved=credential_read_approved)
     except MigrationError:
         invalidate(bundle, "Fresh source/catalog/CLI/native-sync evidence is unavailable or changed.")
         save(bundle)

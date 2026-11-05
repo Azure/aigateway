@@ -675,9 +675,12 @@ def render_plan(bundle, result):
              f"Destination: `{bundle['context.json']['destinationId']}`", "",
              "## Upstream read scope", "",
              "Execution refreshes these approved catalogs; no credential values are displayed.",
+             "APIM credentialSource reads additionally require --approved-credential-read after scoped approval.",
              "```json", json.dumps([{
                  "provider": p["id"], "kind": p["kind"], "endpoint": p["endpoint"],
                  "accountId": p["accountId"], "credentialRef": p["credentialRef"],
+                 "credentialHeader": p.get("credentialHeader", "Authorization"),
+                 "credentialSource": p.get("credentialSource"),
                  "provenance": p["provenance"], "complete": p["complete"], "error": p["error"]}
                  for p in bundle["model-catalog.json"]["providers"]
                  if selected_providers is None or p["id"] in selected_providers], indent=2),

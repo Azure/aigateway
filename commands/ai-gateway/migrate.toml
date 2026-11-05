@@ -29,6 +29,12 @@ capture are opt-in. Do not enable mcp update --failure-mode, key rename,
 unreviewed OpenTelemetry write fields or external provisioning. Existing policy,
 network and lifecycle targets require verified foundations and fresh evidence;
 endpoint credential reads need explicit approval.
+For model discovery, use a protected runtime binding or the helper's separately
+approved scoped APIM named-value/subscription-key read. The read-only listValue
+and listSecrets actions use POST but do not mutate the source. Keep secrets in
+process memory for the exact approved catalog endpoint/header; do not enumerate,
+copy, log or expose their values. Do not categorically reject control-plane
+secret retrieval when this supported path is available.
 
 Collect source evidence through read-only ARM GETs. Collect non-secret destination
 evidence only if a target is supplied and its reads are authorized.

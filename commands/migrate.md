@@ -32,6 +32,13 @@ Do not enable `mcp update --failure-mode`, key rename, unreviewed OpenTelemetry
 write fields, or external provisioning. Policy/network/lifecycle updates need
 verified foundations and fresh destination evidence; credential-use approvals
 remain separate from metadata reuse.
+For model discovery, offer the helper's separately approved APIM named-value or
+subscription-key control-plane read when no protected runtime binding exists.
+Keep the selected secret in process memory, bind it to the exact catalog
+endpoint/header, and preserve non-secret provenance. These scoped read-only
+`listValue`/`listSecrets` actions use POST; they are not source writes or permission
+to enumerate/copy secrets. Follow the model workflow rather than rejecting all
+control-plane secret reads.
 Keep legacy checkpoints read-only; create a fresh version-4 workspace when
 destination-bound planning begins.
 

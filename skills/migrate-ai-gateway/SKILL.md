@@ -58,8 +58,16 @@ For generic model import/sync, follow [the explicit model workflow](references/m
 Discover Foundry deployments from selected accounts, attempt approved Custom
 `/models` reads, or obtain an operator manifest. Keep catalogs source-only, then
 select concrete models and supported operations. No wildcard model/operation
-import is supported. Foundry sync is add/update/verify by default, preserves
-stale registrations, and proposes removals separately without executing them.
+import is supported.
+
+For Custom discovery, an existing protected runtime credential or a separately
+approved APIM control-plane credential read is supported. The helper can resolve
+one selected named value or subscription's keys in memory for the selected
+catalog request. These `listValue`/`listSecrets` POST actions read secrets; they
+are not source configuration mutations or permission to enumerate/copy secrets.
+
+Foundry sync is add/update/verify by default, preserves stale registrations, and
+proposes removals separately without executing them.
 For Foundry model planning, collect an authorized native CLI dry-run against an
 existing provider; native preview owns missing/stale decisions. Source catalogs
 remain independent. New providers need a provider-only foundation stage first.
@@ -200,7 +208,8 @@ responses remain explicit gaps, not empty collections or platform verdicts.
 Failed detail reads identify the affected source resource IDs in coverage.
 Workspace-wide policies are not a supported collection; do not probe that path.
 This is configuration inventory, not proof of actual traffic usage or runtime
-behavior, and never collects subscription keys.
+behavior. The inventory collector never collects subscription keys; separately
+approved model-discovery credential reads use the isolated workflow above.
 
 Collect the destination capability contract separately when assessing mappings:
 
@@ -256,7 +265,8 @@ Every failed or malformed collection is an explicit gap, not an empty domain.
 Unknown error classification remains inconclusive; do not parse a forbidden
 response into “not found,” blindly retry permanent failures, or combine separate
 partial attempts into manufactured completeness. The helper fails closed on
-unsafe continuations and does not collect source keys.
+unsafe continuations and does not collect source keys into inventory. Do not
+confuse that redaction boundary with a ban on scoped runtime credential reads.
 
 Destination discovery uses non-secret CLI reads against the exact
 `Microsoft.ApiManagement/aigateways` destination in the default workspace.
@@ -345,10 +355,13 @@ because their URLs share a host: establish whether account, credential,
 deployment, and policy boundaries must remain distinct. Keep authentication
 conclusions and assessment artifacts limited to non-secret metadata and
 references. Separately approved catalog reads may consume an existing protected
-runtime credential as described in the model workflow; redacted inventory does
-not prove that binding is unavailable. Metadata-read approval does not authorize
-secret retrieval or credential use. Do not collect source keys, expose credential
-values, or ask the user to paste them.
+runtime credential or a scoped APIM control-plane credential read as described
+in the model workflow; redacted inventory does not prove the credential is
+unavailable. Metadata-read approval does not authorize secret retrieval or
+credential use. Obtain approval of the exact source credential resource/field,
+catalog endpoint, and header before the helper resolves it. Do not enumerate
+source keys, copy them to destination configuration, expose values, or ask the
+user to paste them.
 
 When an essential fact cannot be obtained from the authorized evidence, ask an
 actual, focused question with the available user-question tool. Explain the

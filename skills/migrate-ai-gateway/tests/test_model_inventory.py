@@ -11,12 +11,13 @@ import sys
 import tempfile
 import unittest
 from unittest.mock import patch
+from urllib.error import HTTPError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from core import MigrationError, cli_failure_code, digest, semantic
-from execution import approve, execute, initialize, record_behavior, report, mutation_argv, selectors
+from execution import approve, execute, initialize, record_behavior, refresh, report, mutation_argv, selectors
 from gateway import capabilities, destination_inventory, exposed_options
 from inventory import source_inventory
 from model_inventory import NoRedirect, collect_models, import_models, validate_catalog
@@ -41,6 +42,10 @@ def catalog(kind="Custom", complete=False):
             "deploymentId": None if kind == "Custom" else ACCOUNT + "/deployments/deployment-a",
             "family": "family-a", "version": "2", "apiFormat": "OpenAI",
             "endpoints": ["/chat/completions"]}]}]}
+
+
+def apim_credential_source(resource="namedValues/upstream-key", field="value", scheme=None):
+    return {"sourceId": SOURCE, "resourceId": SOURCE + "/" + resource, "field": field, "scheme": scheme}
 
 
 class GraphAzure(Azure):
@@ -172,6 +177,210 @@ class ModelInventoryTests(unittest.TestCase):
         self.assertEqual([m["id"] for m in result["providers"][0]["models"]],
                          ["Owner/ModelCase", "owner/modelcase"])
         self.assertNotIn("TEST_ONLY", json.dumps(result))
+
+    def test_control_plane_named_value_credentials_stay_inside_catalog_process(self):
+        secret = "offline-upstream-credential"
+        source = apim_credential_source(scheme="Bearer")
+        calls, requests = [], []
+
+        def runner(argv):
+            calls.append(argv)
+            if argv[1:3] == ["cloud", "show"]:
+                return "https://management.azure.com/"
+            self.assertEqual(argv[argv.index("--method") + 1], "post")
+            self.assertEqual(argv[argv.index("--url") + 1],
+                             "https://management.azure.com" + source["resourceId"]
+                             + "/listValue?api-version=2024-05-01")
+            self.assertEqual(argv[argv.index("--subscription") + 1], SOURCE.split("/")[2])
+            return {"value": secret}
+
+        def fetch(url, headers):
+            requests.append(url)
+            self.assertEqual(headers["Authorization"], "Bearer " + secret)
+            if len(requests) == 1:
+                return {"data": [{"id": "ModelOne"}], "next": "?cursor=two"}
+            return {"data": [{"id": "ModelTwo"}]}
+
+        output = io.StringIO()
+        environment = dict(os.environ)
+        with tempfile.TemporaryDirectory() as temporary, redirect_stdout(output), \
+                patch("migration.collect_models", side_effect=lambda *args, **kwargs:
+                      collect_models(*args, **kwargs, runner=runner, fetch=fetch)):
+            path = Path(temporary) / "models.json"
+            self.assertEqual(migration.main([
+                "collect-models", "--provider-id", "custom", "--kind", "Custom",
+                "--endpoint", "https://upstream.example/v1", "--source-id", SOURCE,
+                "--credential-resource-id", source["resourceId"],
+                "--credential-field", "value", "--credential-scheme", "Bearer",
+                "--approved-read", "--approved-credential-read", "--output-file", str(path)]), 0)
+            result = json.loads(path.read_text())
+        provider = result["providers"][0]
+        self.assertTrue(provider["complete"])
+        self.assertEqual(provider["credentialSource"], source)
+        self.assertIsNone(provider["credentialRef"])
+        self.assertEqual([model["id"] for model in provider["models"]], ["ModelOne", "ModelTwo"])
+        self.assertEqual(requests, ["https://upstream.example/v1/models",
+                                    "https://upstream.example/v1/models?cursor=two"])
+        self.assertNotIn(secret, json.dumps(result))
+        self.assertNotIn(secret, json.dumps(calls))
+        self.assertEqual(output.getvalue(), "")
+        self.assertEqual(dict(os.environ), environment)
+
+    def test_control_plane_subscription_keys_only_use_the_advertised_apim_origin(self):
+        keys = {"primaryKey": "offline-primary-credential", "secondaryKey": "offline-secondary-credential"}
+        for field in keys:
+            source = apim_credential_source("subscriptions/app", field)
+            calls = []
+
+            def runner(argv):
+                calls.append(argv)
+                if argv[1:3] == ["cloud", "show"]:
+                    return "https://management.azure.com/"
+                url = argv[argv.index("--url") + 1]
+                if argv[argv.index("--method") + 1] == "get":
+                    self.assertEqual(url, "https://management.azure.com" + SOURCE + "?api-version=2024-05-01")
+                    return {"id": SOURCE, "properties": {
+                        "gatewayUrl": "https://apim.example",
+                        "hostnameConfigurations": [{"type": "Proxy", "hostName": "catalog.example"}]}}
+                self.assertEqual(url, "https://management.azure.com" + source["resourceId"]
+                                 + "/listSecrets?api-version=2024-05-01")
+                return dict(keys)
+
+            def fetch(url, headers):
+                self.assertEqual(url, "https://catalog.example/meta/models")
+                self.assertEqual(headers["Ocp-Apim-Subscription-Key"], keys[field])
+                self.assertNotIn("Authorization", headers)
+                return {"data": [{"id": "ObservedModel"}]}
+
+            with self.subTest(field=field):
+                result = collect_models("apim", "Custom", "https://catalog.example/meta",
+                    credential_header="Ocp-Apim-Subscription-Key", approved=True,
+                    credential_source=source, credential_read_approved=True, runner=runner, fetch=fetch)
+                self.assertTrue(result["providers"][0]["complete"])
+                for secret in keys.values():
+                    self.assertNotIn(secret, json.dumps(result))
+                    self.assertNotIn(secret, json.dumps(calls))
+        result = collect_models("apim", "Custom", "https://unrelated.example/meta",
+            approved=True, credential_source=source, credential_read_approved=True,
+            runner=runner, fetch=lambda *_: self.fail("Do not send an APIM key to another origin."))
+        self.assertIsNotNone(result["providers"][0]["error"])
+        self.assertEqual(calls[-1][calls[-1].index("--method") + 1], "get")
+
+    def test_control_plane_reads_require_approval_and_an_exact_credential_scope(self):
+        source = apim_credential_source()
+        cases = [
+            {"credential_source": source},
+            {"credential_source": source, "credential_read_approved": True, "approved": False},
+            {"credential_source": source, "credential_read_approved": True, "credential_ref": "TOKEN"},
+            {"credential_source": {**source, "resourceId": TARGET + "/namedValues/key"},
+             "credential_read_approved": True},
+            {"credential_source": {**source, "resourceId": SOURCE + "/namedValues"},
+             "credential_read_approved": True},
+            {"credential_source": {**source, "resourceId": SOURCE + "/namedValues/key/listValue"},
+             "credential_read_approved": True},
+            {"credential_source": {**source, "resourceId": SOURCE + "/namedValues/key%2Fother"},
+             "credential_read_approved": True},
+            {"credential_source": {**source, "field": "primaryKey"}, "credential_read_approved": True},
+            {"credential_source": apim_credential_source("subscriptions/app", "primaryKey", "Bearer"),
+             "credential_read_approved": True},
+            {"credential_source": source, "credential_read_approved": True, "credential_header": "Host"},
+        ]
+        for case in cases:
+            with self.subTest(case=case), self.assertRaises(MigrationError):
+                collect_models("custom", "Custom", "https://upstream.example",
+                    **({"approved": True} | case),
+                    runner=lambda *_: self.fail("Invalid or unapproved scope must not read Azure."),
+                    fetch=lambda *_: self.fail("Invalid or unapproved scope must not fetch models."))
+
+    def test_secret_read_failures_and_credential_echoes_do_not_leak_or_become_success(self):
+        keys = {"primaryKey": "offline-primary-credential", "secondaryKey": "offline-secondary-credential"}
+        source = apim_credential_source("subscriptions/app", "primaryKey")
+
+        def runner(argv):
+            if argv[1:3] == ["cloud", "show"]:
+                return "https://management.azure.com/"
+            if argv[argv.index("--method") + 1] == "get":
+                return {"id": SOURCE, "properties": {"gatewayUrl": "https://apim.example"}}
+            return dict(keys)
+
+        for response in (
+                {"data": [{"id": keys["primaryKey"]}]},
+                {"data": [{"id": keys["secondaryKey"]}]},
+                {"data": [{"id": "Observed"}], "next": "?token=" + keys["primaryKey"]},
+                {"data": [{"id": "Observed"}], "next": "https://other.example/models"}):
+            requests = []
+
+            def fetch(url, headers):
+                requests.append(url)
+                return response
+
+            result = collect_models("apim", "Custom", "https://apim.example",
+                approved=True, credential_source=source, credential_read_approved=True,
+                runner=runner, fetch=fetch)
+            self.assertFalse(result["providers"][0]["complete"])
+            self.assertIsNotNone(result["providers"][0]["error"])
+            self.assertEqual(result["providers"][0]["models"], [])
+            self.assertEqual(len(requests), 1)
+            for secret in keys.values():
+                self.assertNotIn(secret, json.dumps(result))
+        def denied(argv):
+            if argv[1:3] == ["cloud", "show"]:
+                return "https://management.azure.com/"
+            raise MigrationError("Denied " + keys["primaryKey"])
+
+        result = collect_models("apim", "Custom", "https://apim.example",
+            approved=True, credential_source=source, credential_read_approved=True, runner=denied,
+            fetch=lambda *_: self.fail("Do not fetch models after a failed credential read."))
+        self.assertIn("Scoped APIM credential read failed", result["providers"][0]["error"])
+        self.assertNotIn(keys["primaryKey"], json.dumps(result))
+
+        def missing(argv):
+            if "--method" in argv and argv[argv.index("--method") + 1] == "post":
+                return {}
+            return runner(argv)
+
+        result = collect_models("apim", "Custom", "https://apim.example",
+            approved=True, credential_source=source, credential_read_approved=True, runner=missing,
+            fetch=lambda *_: self.fail("Do not fetch models without the selected secret."))
+        self.assertIn("lacks the selected secret", result["providers"][0]["error"])
+
+        with patch("model_inventory.build_opener") as opener:
+            error = HTTPError("https://apim.example/models", 403, keys["primaryKey"], {}, None)
+            opener.return_value.open.side_effect = error
+            result = collect_models("apim", "Custom", "https://apim.example",
+                approved=True, credential_source=source, credential_read_approved=True, runner=runner)
+        self.assertTrue(error.closed)
+        self.assertIn("HTTP 403", result["providers"][0]["error"])
+        self.assertNotIn(keys["primaryKey"], json.dumps(result))
+
+        for secret in (keys["primaryKey"], "bad\r\nheader"):
+            def fetch(*_):
+                raise MigrationError("Upstream echoed " + keys["primaryKey"])
+
+            with patch("model_inventory.read_apim_credential", return_value=(secret, list(keys.values()))):
+                result = collect_models("apim", "Custom", "https://apim.example",
+                    approved=True, credential_source=source, credential_read_approved=True, fetch=fetch)
+            self.assertFalse(result["providers"][0]["complete"])
+            self.assertNotIn(keys["primaryKey"], json.dumps(result))
+            self.assertNotIn("bad\r\nheader", json.dumps(result))
+
+    def test_catalog_refresh_does_not_reuse_secret_read_approval_implicitly(self):
+        bundle, _, azure = graph_fixture()
+        provider = bundle["model-catalog.json"]["providers"][0]
+        provider.update(credentialSource=apim_credential_source(), provenance="custom-models", complete=True)
+        with self.assertRaisesRegex(MigrationError, "separate approval"):
+            refresh(bundle, runner=lambda *_: self.fail("Unapproved refresh must not read Azure."))
+        with patch("execution.collect_models", return_value=copy.deepcopy(bundle["model-catalog.json"])) as collect:
+            refresh(bundle, azure, cli, credential_read_approved=True)
+        self.assertEqual(collect.call_args.kwargs["credential_source"], provider["credentialSource"])
+        self.assertTrue(collect.call_args.kwargs["credential_read_approved"])
+        foreign = copy.deepcopy(bundle["model-catalog.json"])
+        foreign["providers"][0]["credentialSource"] = {
+            **apim_credential_source(), "sourceId": SOURCE + "-other",
+            "resourceId": SOURCE + "-other/namedValues/upstream-key"}
+        with self.assertRaisesRegex(MigrationError, "selected migration source"):
+            initialize(bundle["source-inventory.json"], bundle["destination-inventory.json"],
+                       bundle["capability-contract.json"], foreign)
 
     def test_partial_unsafe_and_unavailable_catalogs_require_manual_input_not_empty_success(self):
         for page in (

@@ -27,19 +27,22 @@ use retain their separate approvals.
    preserve version/path prefixes and do not pass an already-complete catalog
    URL. Opaque route expressions remain unresolved; do not probe guessed hosts
    or adjacent paths to compensate.
-2. **Check the approved credential binding, not its value.** Source inventory
+2. **Resolve credentials only inside the approved runtime.** Source inventory
    deliberately redacts credentials; that does not mean an existing protected
-   runtime variable or already-authorized secret-manager binding is unavailable.
-   Check only the named approved binding and use it inside the authorized runtime
-   process. Do not dump the environment, print headers, persist secret values,
-   or request a pasted key. ARM login/metadata-read access does not authorize
-   secret retrieval or data-plane credential use. Keep source key collection
-   prohibited. If the binding or its approval is missing, identify that exact
-   prerequisite instead of claiming the provider lacks models.
+   runtime variable, named value, or subscription key is unavailable. Prefer an
+   existing protected binding; when the credential is only available through the
+   control plane, offer the scoped APIM helper path below instead of rejecting
+   secret retrieval categorically. Obtain separate approval of the exact source
+   resource/field and its use at the selected endpoint/header. ARM login or
+   metadata-read access alone is not that approval. Never dump the environment,
+   print headers, persist secret values, or request a pasted key. If permission
+   or the selected credential is unavailable, report that exact prerequisite
+   rather than claiming the provider lacks models.
 3. **Choose a route with the correct authentication boundary.** Prefer the
-   evidenced APIM catalog route when an existing client credential is approved
-   and usable: APIM can apply its stored backend credential without retrieving
-   it into the assessment. Use the observed APIM admission header (including any
+   evidenced APIM catalog route when a client credential is approved and usable,
+   including through a scoped subscription-key read. APIM can apply its stored
+   backend credential without retrieving it into the assessment.
+   Use the observed APIM admission header (including any
    configured subscription-key header name), not the backend Authorization
    header. Otherwise use the evidenced direct route with its separately approved
    upstream credential and complete required header scheme. Never send an APIM
@@ -97,7 +100,61 @@ required scheme prefix. Never echo it or place it in arguments.
   --approved-read --output-file custom.catalog.json
 ```
 
-Unauthenticated catalogs may omit `--credential-env`. Redirects are rejected.
+**Scoped APIM control-plane credentials:** when no protected runtime binding is
+available, do not require the user to extract or paste a secret. Approve the
+exact selected source service, credential resource and field, catalog endpoint,
+header, and scheme. Then use `--credential-resource-id` instead of
+`--credential-env`, with both `--approved-read` and `--approved-credential-read`.
+The latter records actual separate approval; it is not permission to grant RBAC,
+enumerate secrets, or contact other providers.
+
+The supported APIM `2024-05-01` read actions are
+[named value `listValue`](https://learn.microsoft.com/en-us/rest/api/apimanagement/named-value/list-value?view=rest-apimanagement-2024-05-01)
+and [subscription `listSecrets`](https://learn.microsoft.com/en-us/rest/api/apimanagement/subscription/list-secrets?view=rest-apimanagement-2024-05-01).
+Both use POST but only read existing secrets; no source configuration or keys
+are changed. A selected subscription response includes both keys; only the
+explicitly selected field is sent to APIM, and neither key is persisted.
+
+```bash
+"$PYTHON" "$HELPER" collect-models --provider-id custom-a --kind Custom \
+  --endpoint <approved-upstream-base-url> --source-id <source-service-id> \
+  --credential-resource-id <source-service-id>/namedValues/<named-value-id> \
+  --credential-field value --credential-header Authorization \
+  --credential-scheme Bearer --approved-read --approved-credential-read \
+  --output-file custom.catalog.json
+
+"$PYTHON" "$HELPER" collect-models --provider-id apim-a --kind Custom \
+  --endpoint <observed-apim-gateway-url>/<api-suffix> --source-id <source-service-id> \
+  --credential-resource-id <source-service-id>/subscriptions/<subscription-id> \
+  --credential-field primaryKey --credential-header Ocp-Apim-Subscription-Key \
+  --approved-read --approved-credential-read --output-file apim.catalog.json
+```
+
+Use complete ARM IDs and observed header names, not these placeholders. Omit
+`--credential-scheme` when a named value already contains the complete header
+value; otherwise it prefixes `Bearer` or `Basic` without evaluating expressions.
+The helper accepts only one service-level named value or subscription inside the
+exact source. Subscription keys additionally require the selected endpoint to
+match that source's advertised gateway origin or Proxy hostname binding.
+Upstream named-value use requires explicit approval of the evidenced provider
+URL and credential boundary. An inaccessible or unresolved Key Vault-backed
+value remains a specific blocker, not permission to fetch unrelated vault secrets.
+
+Azure CLI output is captured inside the helper process; credential values never
+enter its command arguments, environment, console output, catalog, or plan.
+Do not enable CLI debug/verbose logging, shell tracing, or HTTP payload capture.
+Values are retained only in process memory for the read, not guaranteed securely
+zeroized by Python. Catalogs retain only the non-secret `credentialSource`
+(source/resource IDs, selected field, and scheme), plus the credential header.
+Redirects and credential-bearing model IDs/continuations remain rejected.
+
+Execution and completion-report refreshes require renewed approval of the
+displayed catalog credential sources and `--approved-credential-read` on
+`execute`/`report`; a stored reference is not a stored approval. This does not
+authorize copying source credentials into destination registrations or replacing
+their separate runtime-secret/admission decisions.
+
+Unauthenticated catalogs may omit both credential options. Redirects are rejected.
 Pagination must remain on the selected HTTPS origin and exact collection path.
 Custom HTTP responses are bounded to 2 MiB and use a 30-second connection/read
 timeout. Catalogs are bounded to 1,000 pages and 10,000 entries; ARM calls retain
@@ -168,7 +225,8 @@ Use `schemas/selection.schema.json`:
   response that silently drops them.
 - `keys` selects new/reused gateway-wide key metadata and an explicit
   `accessDecision`. This is not per-API/product access or automatic preservation
-  of anonymous clients. Key values are not copied or retrieved by this workflow.
+  of anonymous clients. Destination key values are not retrieved; source keys
+  may only be consumed by approved catalog reads, not copied into the destination.
   Selected models/MCP require an explicit key/admission node; an anonymous
   source is not silently treated as an anonymous destination.
 - `retained` explicitly identifies observed source records and the reason they
