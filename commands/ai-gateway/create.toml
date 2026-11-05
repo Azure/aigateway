@@ -1,4 +1,4 @@
-description = "Create an AI Gateway for an authorized administrator and verify provisioning."
+description = "Create an Azure AI Gateway for an authorized administrator and verify provisioning."
 
 prompt = """
 Follow `skills/manage-ai-gateway/SKILL.md`, especially **Prerequisites and target

@@ -12,18 +12,26 @@ request to provision a destination. Require destination IDs/subscriptions only
 for destination-bound planning or execution, and a region only for creation.
 
 Check helper dependencies, the installed `az aigateway` command contract, and
-the source SKU. Only BasicV2, StandardV2, and PremiumV2 sources are initially
+the source service profile. Only BasicV2, StandardV2, and PremiumV2 sources are initially
 enabled; V1 and AIGateway source profiles are reserved for future work.
 Keep the source on `Microsoft.ApiManagement/service` and target the new
 `Microsoft.ApiManagement/aigateways` resource type. Check installed new-RP
 dispatch support, not help alone; never fall back to legacy writes. The CLI
 selects the default workspace internally; do not pass `--workspace-name`.
-The reviewed b14 enables new-RP model create/update/policy writes; refresh
-capability evidence and approvals instead of retaining the b12 model blocker.
+The reviewed b22 supports model writes, workspace policies, telemetry exporters,
+and post-create networking. Refresh evidence and approvals; help mentions alone
+do not establish exposed arguments or service support.
 Use the reviewed model-alias and gateway key capabilities for explicit callable
 routes and admission. Import/sync Foundry models from selected accounts; attempt
 approved Custom `/models` discovery, then fall back to an operator manifest when
 needed. Follow `references/model-workflow.md` under the skill directory.
+Use its explicit scoped selections for policy, network/connection, telemetry,
+key lifecycle, MCP versions and multi-backend aliases. Preserve source behavior
+ownership and scope decisions. Cost governance and payload capture are opt-in.
+Do not enable `mcp update --failure-mode`, key rename, unreviewed OpenTelemetry
+write fields, or external provisioning. Policy/network/lifecycle updates need
+verified foundations and fresh destination evidence; credential-use approvals
+remain separate from metadata reuse.
 Keep legacy checkpoints read-only; create a fresh version-4 workspace when
 destination-bound planning begins.
 

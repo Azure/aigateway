@@ -1,6 +1,6 @@
 {
   "name": "ai-gateway",
-  "description": "Create, configure, manage, and build applications on the AI Gateway tier in Azure API Management. Includes read-only developer integration and assisted APIM V2 migration with local validation and explicit approval.",
+  "description": "Create, configure, manage, and build applications on Azure AI Gateway. Includes read-only developer integration and assisted APIM V2 migration with local validation and explicit approval.",
   "version": "3.0.0",
   "author": {
     "name": "Microsoft",

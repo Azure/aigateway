@@ -1,8 +1,8 @@
-description = "Discover an AI Gateway's models and MCP tools, retrieve a credential, and integrate them into your app — call a model, connect MCP tools, or scaffold a runnable agent."
+description = "Discover an Azure AI Gateway's models and MCP tools, retrieve a credential, and integrate them into your app — call a model, connect MCP tools, or scaffold a runnable agent."
 
 prompt = """
 Take the user all the way from discovery to working code that uses an existing
-AI Gateway's models and/or MCP tools. Run the full workflow in the bundled skill
+Azure AI Gateway's models and/or MCP tools. Run the full workflow in the bundled skill
 `skills/use-ai-gateway/SKILL.md` end to end:
 
 1. **Discover & select** the models and MCP tool servers in the gateway (Part 1 of the
@@ -28,7 +28,7 @@ AI Gateway's models and/or MCP tools. Run the full workflow in the bundled skill
 Guardrails:
 - Consumption only. Strictly read-only against the gateway — never issue ARM
   `PUT`/`PATCH`/`DELETE` and never create, provision, or delete gateways, models, tools,
-  connections, or products. Provisioning is an administrator task done in the AI Gateway
+  connections, or products. Provisioning is an administrator task done in the Azure AI Gateway
   Portal (https://ai.gateway.azure.com).
 - Never hardcode secrets. Read the gateway key from an environment variable and keep
   `.env` out of source control. Warn the user the written `.env` holds a live key to

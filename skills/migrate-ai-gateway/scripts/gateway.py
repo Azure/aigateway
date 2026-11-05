@@ -18,6 +18,30 @@ def catalog():
     return read_json(ROOT / "capabilities.json")
 
 
+def exposed_options(text):
+    return sorted({option for line in text.splitlines()
+                   if re.match(r"^    --", line)
+                   for option in re.findall(r"--[a-z][a-z-]+", line.split(":")[0])})
+
+
+def command_selectors(command):
+    common = {"--subscription", "--resource-group"}
+    if command[0] == "policy":
+        return common | {"--gateway-name"}
+    if command[:2] == ["network", "private-endpoint-connection"]:
+        return common | {"--gateway-name", "--name"}
+    if command[0] in ("create", "show", "identity", "network"):
+        return common | {"--name"}
+    return common | {"--gateway-name", "--name"} | (
+        {"--provider-name"} if command[0] == "model" else set())
+
+
+def resource_kind(command):
+    if command[:2] == ["network", "private-endpoint-connection"]:
+        return "private-endpoint-connection"
+    return "gateway" if command[0] in ("create", "show") else command[0]
+
+
 def gateway_commands(package):
     """Inspect the reviewed new-RP dispatch allowlist without importing CLI code."""
     path = safe_path(package / "_rp.py")
@@ -80,7 +104,9 @@ def inspect_cli():
     })
     commands = {tuple(cap["command"]) for cap in catalog()["capabilities"]}
     commands |= {tuple(cap["read"]) for cap in catalog()["capabilities"]}
-    commands |= {(group, "list") for group in ("model", "model-provider", "model-alias", "mcp", "api-key")}
+    commands |= {(group, "list") for group in (
+        "model", "model-provider", "model-alias", "mcp", "api-key", "policy", "telemetry-exporter")}
+    commands.add(("network", "private-endpoint-connection", "list"))
     commands |= {("list",), ("model-provider", "sync")}
     shapes = {}
     for command in sorted(commands):
@@ -89,7 +115,7 @@ def inspect_cli():
                                     capture_output=True, text=True, timeout=30, check=False)
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise MigrationError("Unable to inspect local CLI help.") from exc
-        options = sorted(set(re.findall(r"--[a-z][a-z-]+", result.stdout)))
+        options = exposed_options(result.stdout)
         shapes[" ".join(command)] = options if result.returncode == 0 else None
     identity = {"extension": version, "commands": shapes,
                 "release": release, "releasedWheelSha256": released_digest,
@@ -107,15 +133,11 @@ def capabilities(cli):
     for cap in cat["capabilities"]:
         options = cli["commands"].get(" ".join(cap["command"]))
         reads = cli["commands"].get(" ".join(cap["read"]))
-        selectors = {"--subscription", "--resource-group", "--name"}
-        if cap["command"][0] in ("model-provider", "model", "model-alias", "api-key", "mcp"):
-            selectors.add("--gateway-name")
-        if cap["command"][0] == "model":
-            selectors.add("--provider-name")
+        selectors = command_selectors(cap["command"])
         required_options = {"--" + name for name in cap["options"]} | selectors
         available = (options is not None and reads is not None
                      and required_options.issubset(options)
-                     and selectors.issubset(reads)
+                     and command_selectors(cap["read"]).issubset(reads)
                      and " ".join(cap["command"]) in routed and " ".join(cap["read"]) in routed
                      and cli["commands"].get("list") is not None
                      and cli["extension"].get("apiVersion") == cat["apiVersion"])
@@ -160,9 +182,11 @@ def destination_inventory(destination_id, runner=run_az):
     if not isinstance(gateway, dict) or str(gateway.get("id", "")).lower() != destination_id.lower():
         raise MigrationError("Destination identity mismatch.")
     result["collections"]["gateway"] = [clean(gateway)]
-    for group in ("model-provider", "model", "model-alias", "mcp", "api-key"):
+    for group in ("model-provider", "model", "model-alias", "mcp", "api-key",
+                  "telemetry-exporter", "private-endpoint-connection"):
         try:
-            values = runner(["az", "aigateway", group, "list", *selectors,
+            command = ["network", group, "list"] if group == "private-endpoint-connection" else [group, "list"]
+            values = runner(["az", "aigateway", *command, *selectors,
                              "--gateway-name", target["gateway"], "-o", "json"])
             if isinstance(values, dict):
                 if incomplete_page(values):
@@ -173,6 +197,12 @@ def destination_inventory(destination_id, runner=run_az):
             if not all(isinstance(item, dict) and child_resource_id(item.get("id"), destination_id)
                        for item in values):
                 raise MigrationError("Destination collection contains malformed or out-of-scope resources.")
+            if group in ("telemetry-exporter", "private-endpoint-connection"):
+                suffix = "/workspaces/default/telemetryExporters/" if group == "telemetry-exporter" else "/privateEndpointConnections/"
+                if (any(not re.fullmatch(re.escape(destination_id + suffix) + r"[A-Za-z0-9_.-]+",
+                                         item["id"], re.I) for item in values)
+                        or len({item["id"].lower() for item in values}) != len(values)):
+                    raise MigrationError("Malformed or duplicate child-resource identities.")
             if group == "model-alias" and any(
                     not isinstance(item.get("properties"), dict)
                     or not isinstance(item["properties"].get("backendModels"), list)
@@ -197,7 +227,20 @@ def destination_inventory(destination_id, runner=run_az):
         result["collections"]["network"] = clean(network)
     except MigrationError:
         result["errors"].append({"domain": "network", "code": "inconclusive"})
+    try:
+        policies = runner(["az", "aigateway", "policy", "list", *selectors,
+                           "--gateway-name", target["gateway"], "-o", "json"])
+        result["collections"]["policy"] = policy_resource(policies, destination_id)
+    except MigrationError:
+        result["errors"].append({"domain": "policy", "code": "inconclusive"})
     return result
+
+
+def policy_resource(policies, root):
+    if not isinstance(policies, list) or not all(
+            isinstance(policy, dict) and isinstance(policy.get("type"), str) for policy in policies):
+        raise MigrationError("Malformed default-workspace policy array.")
+    return {"id": root + "/workspaces/default", "properties": {"policies": clean(policies)}}
 
 
 def incomplete_page(value):

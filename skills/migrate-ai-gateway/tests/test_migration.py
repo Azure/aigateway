@@ -99,6 +99,8 @@ class Azure:
         if command[1] == "list":
             return []
         if command[0] in ("identity", "network"):
+            if command[:3] == ["network", "private-endpoint-connection", "list"]:
+                return []
             return {}
         raise AssertionError(argv)
 

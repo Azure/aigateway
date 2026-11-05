@@ -1,12 +1,12 @@
 ---
-description: Discover an AI Gateway's models and MCP tools, retrieve a credential, and integrate them into your app — call a model, connect MCP tools, or scaffold a runnable agent.
+description: Discover an Azure AI Gateway's models and MCP tools, retrieve a credential, and integrate them into your app — call a model, connect MCP tools, or scaffold a runnable agent.
 argument-hint: [gateway resource id or host] [optional use case]
 ---
 
 # /ai-gateway:build
 
 Take the user all the way from discovery to working code that uses an existing
-AI Gateway's models and/or MCP tools — in whatever they're building. This command runs
+Azure AI Gateway's models and/or MCP tools — in whatever they're building. This command runs
 the **full** workflow in the bundled skill `skills/use-ai-gateway/SKILL.md` end to end:
 
 1. **Discover & select** the models and MCP tool servers in the gateway
@@ -38,7 +38,7 @@ the **full** workflow in the bundled skill `skills/use-ai-gateway/SKILL.md` end 
 - **Consumption only.** This is strictly read-only against the gateway. Never issue ARM
   `PUT`/`PATCH`/`DELETE` calls and never create, provision, or delete gateways, models,
   tools, connections, or products. If the user asks to provision anything, tell them
-  that is an administrator task done in the [AI Gateway Portal](https://ai.gateway.azure.com).
+  that is an administrator task done in the [Azure AI Gateway Portal](https://ai.gateway.azure.com).
 - **Never hardcode secrets.** Read the gateway key from an environment variable and keep
   `.env` out of source control. Warn the user that the written `.env` holds a live key
   and to rotate it in the portal if it is ever exposed.

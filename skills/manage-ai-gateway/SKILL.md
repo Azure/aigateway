@@ -1,10 +1,10 @@
 ---
 name: manage-ai-gateway
 version: 2.0.0
-description: Create, configure, and operate the AI Gateway tier in Azure API Management with az aigateway. Use for authorized administrators managing gateways, model providers and models, MCP servers, model policies, API keys, identities, or networking. APIM migration is separately gated.
+description: Create, configure, and operate Azure AI Gateway with az aigateway. Use for authorized administrators managing gateways, model providers and models, MCP servers, model policies, API keys, identities, or networking. APIM migration is separately gated.
 ---
 
-# Manage the AI Gateway tier in Azure API Management
+# Manage Azure AI Gateway
 
 > Invoked as `/ai-gateway:manage-ai-gateway` when installed via the plugin.
 > Also used by `/ai-gateway:create` and `/ai-gateway:manage`.
@@ -42,7 +42,7 @@ or replace unsupported commands with guessed ARM calls.
    authorization, network, or transient failure is not evidence of absence.
 
 New gateways use `Microsoft.ApiManagement/aigateways`; the CLI also supports
-existing legacy `Microsoft.ApiManagement/service` AI Gateway resources.
+existing legacy `Microsoft.ApiManagement/service` Azure AI Gateway resources.
 Preserve the returned type/ID and check support for that resource family rather
 than rewriting IDs or assuming a help-visible legacy command supports new-RP.
 Treat new CLI features as requiring contract review, not automatic permission
@@ -171,7 +171,7 @@ obtain explicit approval before changing access. Use
 deleting a connection, and obtain approval for each consequential change.
 
 Telemetry-exporter management is not documented in the current public CLI.
-Report the limitation and refer to the AI Gateway documentation or portal;
+Report the limitation and refer to the Azure AI Gateway documentation or portal;
 do not substitute the legacy command or invent a REST write.
 
 ## Operate

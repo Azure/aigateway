@@ -69,6 +69,177 @@ def schema_projection(value, property_map=False):
             if key not in ("title", "description", "summary", "example", "examples")}
 
 
+def current_resource(destination, group, name=None, provider=None):
+    collection = {"model-policy": "model", "connection": "private-endpoint-connection"}.get(group, group)
+    if not destination["exists"]:
+        return None
+    if collection not in destination["collections"] or any(
+            error["domain"] == collection for error in destination["errors"]):
+        raise MigrationError("Recollect complete destination evidence for " + collection + ".")
+    values = destination["collections"][collection]
+    if group in ("network", "policy"):
+        return values
+    suffix = {
+        "model-policy": f"/workspaces/default/modelProviders/{provider}/models/{name}",
+        "connection": f"/privateEndpointConnections/{name}",
+        "telemetry-exporter": f"/workspaces/default/telemetryExporters/{name}",
+        "api-key": f"/apiKeys/{name}",
+        "mcp": f"/workspaces/default/toolServers/{name}",
+    }[group]
+    matches = [item for item in values if str(item.get("id", "")).lower()
+               == (destination["destinationId"] + suffix).lower()]
+    if len(matches) > 1:
+        raise MigrationError("Duplicate destination identities.")
+    return matches[0] if matches else None
+
+
+def scoped_nodes(bundle, selection):
+    from planning import policy_state, public_projection, reviewed_arguments, runtime_references
+
+    destination = bundle["destination-inventory.json"]
+    behaviors = {b["id"]: b for b in bundle["source-inventory.json"]["behaviors"]}
+    source = {item["id"]: item for item in bundle["source-inventory.json"]["items"]}
+    nodes, owned = [], set()
+    allowed_policy = {"policies", "inbound", "backend", "outbound", "on-error", "base",
+                      "rate-limit", "rate-limit-by-key", "llm-token-limit", "azure-openai-token-limit",
+                      "ip-filter", "address", "address-range", "llm-content-safety"}
+
+    def add(entry, group, arguments, desired, dependencies, name=None, provider=None):
+        ids = entry["behaviorIds"]
+        if (set(ids) & owned or any(bid not in behaviors or behaviors[bid]["sourceId"] not in entry["sourceIds"]
+                                   for bid in ids) or set(entry["sourceIds"]) != {behaviors[bid]["sourceId"] for bid in ids}):
+            raise MigrationError("Scoped selections require disjoint exact source behavior ownership.")
+        for bid in ids:
+            behavior = behaviors[bid]
+            item = source[behavior["sourceId"]]
+            if group in ("policy", "model-policy") and not item["policyShape"]:
+                selected_apis = {sid for selected in selection["models"] for sid in selected["sourceIds"]}
+                if (not entry.get("newGovernance") or not arguments
+                        or any(not key.startswith("cost-") for key in arguments)
+                        or item["domain"] not in ("apis", "service") or "property" in behavior
+                        or (item["domain"] == "apis" and item["id"] not in selected_apis)):
+                    raise MigrationError("Non-policy bindings support only explicit new cost governance for selected model traffic or its gateway.")
+            if group in ("policy", "model-policy") and item["policyShape"]:
+                if behavior.get("statement") not in allowed_policy and "statement" in behavior:
+                    raise MigrationError("Unreviewed policy statements cannot become supported mappings.")
+                if any(node["hasText"] or any(isinstance(v, dict) for k, v in node["attributes"].items() if k != "id")
+                       for node in item["policyShape"]) and entry.get("translationDigest") != digest({
+                           "sourceIds": entry["sourceIds"], "behaviorIds": ids,
+                           "settings": entry["settings"], "scopeDecision": entry["scopeDecision"]}):
+                    raise MigrationError("Opaque policy inputs need an explicitly approved typed translation digest.")
+            if group in ("network", "connection"):
+                properties = ({"privateEndpointConnections"} if group == "connection" else
+                              {"publicNetworkAccess", "virtualNetworkType", "virtualNetworkConfiguration"})
+                if behavior.get("property") not in properties:
+                    raise MigrationError("A network selection cannot own unrelated service behavior.")
+            if (group == "telemetry-exporter" and item["domain"] == "service"
+                    and behavior.get("property") not in ("loggers", "diagnostics", "telemetry")):
+                raise MigrationError("Exporter selection cannot own unrelated service behavior.")
+        owned.update(ids)
+        prefix = {"model-policy": "model-policy", "policy": "policy", "network": "network",
+                  "connection": "connection", "telemetry-exporter": "telemetry"}[group]
+        identifier = prefix + ":" + (name or "default") + (":" + provider if provider else "")
+        current = current_resource(destination, group, name, provider)
+        if current is None and group != "telemetry-exporter":
+            raise MigrationError("Create/verify the destination prerequisite first, then recollect and re-plan.")
+        verify = current is not None and subset(desired, current)
+        if group == "telemetry-exporter":
+            own_progress = any(
+                todo["id"] == identifier and todo["arguments"] == arguments
+                and todo["status"] in ("resource-verified", "behavior-verified", "in-progress", "mutation-unknown")
+                for todo in bundle["todos.json"]["items"])
+            if current is not None and not own_progress and not entry.get("reuseExisting") and not entry.get("updateExisting"):
+                raise MigrationError("Exporter reuse or update must be explicit.")
+            if not verify and current is not None and not entry.get("updateExisting"):
+                raise MigrationError("Existing exporter differs; explicit update is required.")
+            if not verify:
+                reviewed_arguments("telemetry.create" if current is None else "telemetry.update", arguments)
+            elif runtime_references(arguments) and not own_progress:
+                raise MigrationError("Exporter secret-only changes cannot be inferred from redacted state.")
+        cap = ("model-policy.verify" if verify else "model.policy") if group == "model-policy" else (
+            prefix + (".verify" if verify else ".create" if current is None else ".update"))
+        nodes.append({"id": identifier, "group": group, "capabilityId": cap, "name": name,
+                      "provider": provider, "arguments": {} if verify else arguments,
+                      "intent": arguments,
+                      "desired": desired, "dependencies": dependencies, "entry": entry,
+                      "current": current})
+
+    gateway = "gateway:" + resource_id(destination["destinationId"], "aigateways")["gateway"]
+    for entry in selection.get("policies", []):
+        group = "policy" if entry["scope"] == "workspace" else "model-policy"
+        name, provider = entry.get("model"), entry.get("provider")
+        if group == "model-policy" and (not NAME.fullmatch(name or "") or not NAME.fullmatch(provider or "")):
+            raise MigrationError("Model policy requires exact existing model/provider names.")
+        if group == "policy" and (name is not None or provider is not None):
+            raise MigrationError("Workspace policies do not take model/provider selectors.")
+        args = copy.deepcopy(entry["settings"])
+        cap = "policy.update" if group == "policy" else "model.policy"
+        allowed = next(c["options"] for c in catalog()["capabilities"] if c["id"] == cap)
+        if set(args) - set(allowed):
+            raise MigrationError("Unreviewed policy settings.")
+        reviewed_arguments(cap, args)
+        current = current_resource(destination, group, name, provider)
+        if current is None:
+            raise MigrationError("Policy targets need a verified foundation and fresh destination evidence.")
+        existing = current["properties"].get("policies", [])
+        for key, default in (("token-period", "minute"), ("token-counter-key", ["Identity"]),
+                             ("cost-counter-key", ["Identity"])):
+            parent = "cost-limit" if key.startswith("cost") else "token-limit"
+            if parent in args:
+                args.setdefault(key, default)
+        desired = semantic(copy.deepcopy(current))
+        desired["properties"]["policies"] = policy_state(args, existing, group == "policy")
+        add(entry, group, args, desired, [gateway], name, provider)
+    if "network" in selection:
+        entry = selection["network"]
+        args = entry["settings"]
+        if not args or set(args) - {"subnet", "public-network-access", "disable-vnet-integration"}:
+            raise MigrationError("Select explicit reviewed network settings.")
+        reviewed_arguments("network.update", args)
+        desired = semantic(copy.deepcopy(current_resource(destination, "network")))
+        if desired is None:
+            raise MigrationError("Network updates require an existing verified gateway.")
+        if "public-network-access" in args:
+            desired["publicNetworkAccess"] = args["public-network-access"]
+        if "subnet" in args:
+            desired.update(virtualNetworkType="External", virtualNetworkConfiguration={"subnetResourceId": args["subnet"]})
+        if args.get("disable-vnet-integration"):
+            desired.update(virtualNetworkType="None", virtualNetworkConfiguration=None)
+        dependencies = [gateway]
+        if args.get("public-network-access") == "Disabled":
+            dependencies.extend("connection:" + c["name"] for c in selection.get("connections", []))
+        add(entry, "network", args, desired, dependencies)
+    for entry in selection.get("connections", []):
+        current = current_resource(destination, "connection", entry["name"])
+        if current is None or current.get("properties", {}).get("privateEndpoint", {}).get("id") != entry["peerId"]:
+            raise MigrationError("Select the exact existing destination private-endpoint peer.")
+        desired = semantic(copy.deepcopy(current))
+        desired["properties"].update(provisioningState="Succeeded",
+                                     privateLinkServiceConnectionState={"status": "Approved", "description": entry["description"]})
+        add(entry, "connection", {"description": entry["description"]}, desired, [gateway], entry["name"])
+    for entry in selection.get("telemetry", []):
+        if not isinstance(entry["name"], str) or not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,78}[A-Za-z0-9])?", entry["name"]):
+            raise MigrationError("Exporter names must be 1-80 alphanumeric/hyphen characters.")
+        args = entry["settings"]
+        wire = {"kind": "kind", "application-insights": "applicationInsights", "payload-capture": "payloadCapture"}
+        if set(args) - set(wire) or type(args.get("payload-capture")) is not bool:
+            raise MigrationError("Unreviewed telemetry settings or missing payload-capture decision.")
+        desired = {"properties": {wire[k]: public_projection(v) for k, v in args.items()}}
+        add(entry, "telemetry-exporter", args, desired, [gateway], entry["name"])
+    return nodes
+
+
+def policy_translation(selection, source_id, behavior_ids):
+    entries = [entry for entry in selection.get("policies", []) if source_id in entry["sourceIds"]]
+    covered = set()
+    for entry in entries:
+        if entry.get("translationDigest") == digest({
+                "sourceIds": entry["sourceIds"], "behaviorIds": entry["behaviorIds"],
+                "settings": entry["settings"], "scopeDecision": entry["scopeDecision"]}):
+            covered.update(entry["behaviorIds"])
+    return set(behavior_ids) <= covered
+
+
 def validate_selection(bundle, selection, verify_graph=True):
     validate_schema(selection, "selection")
     catalogs = validate_catalog(bundle["model-catalog.json"])
@@ -162,7 +333,7 @@ def validate_selection(bundle, selection, verify_graph=True):
             raise MigrationError("Foundry import/sync requires exactly the selected account boundary.")
     for selected in selection["models"]:
         bindings(selected)
-        for value in (selected["name"], selected["alias"]):
+        for value in ([selected["name"]] if selected.get("explicitAlias") else [selected["name"], selected["alias"]]):
             name(value)
         provider_id = selected["provider"]
         if provider_id not in selected_providers:
@@ -170,16 +341,19 @@ def validate_selection(bundle, selection, verify_graph=True):
         provider = providers[provider_id]
         model = next((m for m in provider["models"] if m["id"] == selected["id"]), None)
         key = (provider_id, selected["name"].lower())
-        if not model or key in selected_models or not explicit_id(selected["routingName"]):
+        if not model or key in selected_models or (
+                not selected.get("explicitAlias") and not explicit_id(selected["routingName"])):
             raise MigrationError("Select a concrete catalog model and unique registration.")
         if provider["kind"] == "Foundry":
             target_provider = next(p.get("name", p["id"]) for p in selection["providers"] if p["id"] == provider_id)
             selected_action(bundle, provider_id, target_provider, selected)
         selected_models.add(key)
-        if selected["alias"].lower() in aliases or selected["routingName"].casefold() in routing_names:
+        if not selected.get("explicitAlias") and (
+                selected["alias"].lower() in aliases or selected["routingName"].casefold() in routing_names):
             raise MigrationError("Alias ARM/callable names collide; choose explicit distinct names.")
-        aliases.add(selected["alias"].lower())
-        routing_names.add(selected["routingName"].casefold())
+        if not selected.get("explicitAlias"):
+            aliases.add(selected["alias"].lower())
+            routing_names.add(selected["routingName"].casefold())
         if selected["apiFormat"] not in operations or any(
                 path not in operations[selected["apiFormat"]] for path in selected["endpoints"]):
             raise MigrationError("Only finite reviewed model protocol operations can be selected.")
@@ -192,7 +366,10 @@ def validate_selection(bundle, selection, verify_graph=True):
             item = source[sid]
             if item["domain"] == "apis" and item.get("facts", {}).get("role") in ("rest", "mcp"):
                 raise MigrationError("Ordinary REST/MCP APIs are not model registrations.")
-            if item["policyShape"] and not item.get("facts", {}).get("routingOnly"):
+            policy_behaviors = [b["id"] for b in bundle["source-inventory.json"]["behaviors"]
+                                if b["sourceId"] == sid and "statement" in b]
+            if (item["policyShape"] and not item.get("facts", {}).get("routingOnly")
+                    and not policy_translation(selection, sid, policy_behaviors)):
                 raise MigrationError("Untranslated policy behavior cannot be represented by a model selection.")
             expected_backends = {
                 r["name"] for node in item["policyShape"] for r in node["references"] if r["domain"] == "backends"}
@@ -403,6 +580,31 @@ def validate_selection(bundle, selection, verify_graph=True):
     for selected in selection["keys"]:
         bindings(selected)
         name(selected["name"])
+        if selected.get("state") == "suspended" and (selection["models"] or selection["mcp"]):
+            if not any(key.get("state", "active") == "active" for key in selection["keys"]):
+                raise MigrationError("Selected traffic needs an explicitly active admission key.")
+    for selected in selection.get("aliases", []):
+        bindings(selected)
+        name(selected["name"])
+        if (selected["name"].lower() in aliases or not explicit_id(selected["routingName"])
+                or selected["routingName"].casefold() in routing_names):
+            raise MigrationError("Explicit aliases need unique resource/callable names.")
+        aliases.add(selected["name"].lower())
+        routing_names.add(selected["routingName"].casefold())
+        if len({(b["provider"].lower(), b["model"].lower()) for b in selected["backends"]}) != len(selected["backends"]):
+            raise MigrationError("A routing pool cannot duplicate the same model registration.")
+        for backend in selected["backends"]:
+            if not any(model["name"] == backend["model"]
+                       and next(p.get("name", p["id"]) for p in selection["providers"] if p["id"] == model["provider"])
+                       == backend["provider"] for model in selection["models"]):
+                raise MigrationError("Every routing backend needs an explicitly selected model registration.")
+    for model in selection["models"]:
+        if model.get("explicitAlias") and not any(
+                backend["model"] == model["name"] and backend["provider"] == next(
+                    p.get("name", p["id"]) for p in selection["providers"] if p["id"] == model["provider"])
+                for alias in selection.get("aliases", []) for backend in alias["backends"]):
+            raise MigrationError("An explicit callable alias is required for every selected model.")
+    scoped_nodes(bundle, selection)
     handler_sources = {sid for entry in selection["models"] + selection["mcp"] for sid in entry["sourceIds"]}
     if any(source[sid]["domain"] == "apis" and sid not in handler_sources
            for entry in selection["keys"] for sid in entry["sourceIds"]):
@@ -452,6 +654,9 @@ def verify_selected_graph(bundle, selection, providers):
     gateway = "gateway:" + resource_id(bundle["context.json"]["destinationId"], "aigateways")["gateway"]
     check(gateway, "gateway", None, None, {"provisioningState": "Succeeded"},
           selection["gateway"], [source_service_id(bundle)], [])
+    if "sku" in selection["gateway"] and nodes[gateway]["desiredState"].get("sku") != {
+            "name": selection["gateway"]["sku"]}:
+        raise MigrationError("Gateway assertions must preserve the selected destination SKU.")
     for selected in selection["providers"]:
         target_name = selected.get("name", selected["id"])
         if (nodes.get("provider:" + target_name, {}).get("precondition", {}).get("exists")
@@ -476,6 +681,8 @@ def verify_selected_graph(bundle, selection, providers):
               {"deployment": deployment, "apiFormat": selected["apiFormat"], "supportedEndpoints": selected["endpoints"]},
               {"deployment-config": deployment, "api-format": selected["apiFormat"], "supported-endpoints": selected["endpoints"]},
               selected["sourceIds"], ["provider:" + target_provider])
+        if selected.get("explicitAlias"):
+            continue
         model_id = (bundle["context.json"]["destinationId"] + "/workspaces/default/modelProviders/"
                     + target_provider + "/models/" + selected["name"])
         backends = [{"resourceId": model_id, "priority": 0, "weight": 100}]
@@ -490,24 +697,99 @@ def verify_selected_graph(bundle, selection, providers):
         if (nodes.get("mcp:" + selected["name"], {}).get("precondition", {}).get("exists")
                 and not (selected.get("reuseExisting") or selected.get("replaceEndpoints"))):
             raise MigrationError("Existing MCP authentication reuse/replacement must be explicit.")
+        properties, settings = mcp_settings(bundle, selected)
         if (nodes.get("mcp:" + selected["name"], {}).get("capabilityId") == "mcp.update"
-                and not selected.get("replaceEndpoints")):
+                and not selected.get("replaceEndpoints") and "endpoints" in settings):
             raise MigrationError("Replacing an existing MCP endpoint collection requires an explicit selection decision.")
         check("mcp:" + selected["name"], "mcp", selected["name"], None,
-              {"endpoints": selected["endpoints"]}, {"endpoints": selected["endpoints"]},
+              properties, settings,
               selected["sourceIds"], [gateway])
     for selected in selection["keys"]:
+        properties, arguments = key_settings(bundle, selected)
         check("key:" + selected["name"], "key", selected["name"], None,
-              {"displayName": selected["displayName"]}, {"display-name": selected["displayName"]},
-              selected["sourceIds"], [gateway])
-    expected_nodes = set().union(*required.values()) if required else set()
+              properties, arguments, selected["sourceIds"], [gateway])
+    for selected in selection.get("aliases", []):
+        backends = alias_backends(bundle, selected)
+        check("alias:" + selected["name"], "alias", selected["name"], None,
+              {"aliasName": selected["routingName"], "backendModels": backends},
+              {"routing-name": selected["routingName"], "backend-models": backends}, selected["sourceIds"],
+              ["model:" + b["model"] + ":" + b["provider"] for b in selected["backends"]])
+    scoped_required = {}
+    extensions = scoped_nodes(bundle, selection)
+    for extension in extensions:
+        todo = nodes.get(extension["id"])
+        choices = {
+            "policy": ("policy.update", "policy.verify"), "model-policy": ("model.policy", "model-policy.verify"),
+            "network": ("network.update", "network.verify"),
+            "connection": ("connection.update", "connection.verify"),
+            "telemetry-exporter": ("telemetry.create", "telemetry.update", "telemetry.verify"),
+        }[extension["group"]]
+        if (not todo or todo["target"]["name"] != extension["name"]
+                or todo["target"]["provider"] != extension["provider"]
+                or todo["capabilityId"] not in choices
+                or todo["arguments"] != ({} if todo["capabilityId"].endswith(".verify") else extension["intent"])
+                or todo["desiredState"] != extension["desired"]
+                or not set(extension["dependencies"]) <= set(todo.get("resourceDependencies", []))):
+            raise MigrationError("Scoped resource graph differs from its explicit selection.")
+        for bid in extension["entry"]["behaviorIds"]:
+            behavior = next(b for b in bundle["source-inventory.json"]["behaviors"] if b["id"] == bid)
+            scoped_required[bid] = {extension["id"]} | (
+                required.get(behavior["sourceId"], set()) if "property" not in behavior else set())
+    expected_nodes = (set().union(*required.values()) if required else set()) | {e["id"] for e in extensions}
     if set(nodes) != expected_nodes:
         raise MigrationError("The selected graph contains missing or unselected resource nodes.")
     for mapping in bundle["mapping.json"]["items"]:
-        expected = (set().union(*(required.get(sid, set()) for sid in mapping["sourceIds"]))
+        expected = (set().union(*(scoped_required.get(bid, required.get(
+            next(b["sourceId"] for b in bundle["source-inventory.json"]["behaviors"] if b["id"] == bid), set()))
+                                 for bid in mapping["behaviorIds"]))
                     if mapping["classification"] == "ready" else set())
         if set(mapping.get("todoIds", [])) != expected:
             raise MigrationError("Mapping ownership differs from its selected resource graph.")
+
+
+def alias_backends(bundle, selected):
+    root = bundle["context.json"]["destinationId"] + "/workspaces/default/modelProviders/"
+    return [{"resourceId": root + b["provider"] + "/models/" + b["model"],
+             "priority": b["priority"], "weight": b["weight"]} for b in selected["backends"]]
+
+
+def key_settings(bundle, selected):
+    properties = {"displayName": selected["displayName"]}
+    arguments = {"display-name": selected["displayName"]}
+    lifecycle = {flag: selected[field] for field, flag in (
+        ("state", "state"), ("expirationDate", "expiration-date")) if field in selected}
+    if lifecycle:
+        current = current_resource(bundle["destination-inventory.json"], "api-key", selected["name"])
+        if current is None:
+            raise MigrationError("Create/verify key metadata first, then re-plan its lifecycle.")
+        if current.get("properties", {}).get("displayName") != selected["displayName"]:
+            raise MigrationError("The service rejects key renames; select its existing display name.")
+        if not selected.get("updateExisting") and any(
+                current["properties"].get("state" if flag == "state" else "expirationDate") != value
+                for flag, value in lifecycle.items()):
+            raise MigrationError("Key lifecycle updates require an explicit updateExisting decision.")
+        properties.update({("expirationDate" if k == "expiration-date" else k): v for k, v in lifecycle.items()})
+        arguments = lifecycle
+    return properties, arguments
+
+
+def mcp_settings(bundle, selected):
+    from planning import public_projection, runtime_references
+
+    properties = {"endpoints": selected["endpoints"]}
+    if "versions" in selected:
+        properties["versions"] = selected["versions"]
+    arguments = dict(properties)
+    if any(todo["id"] == "mcp:" + selected["name"] and todo["arguments"] == properties
+           and todo["status"] in ("resource-verified", "behavior-verified", "in-progress", "mutation-unknown")
+           for todo in bundle["todos.json"]["items"]):
+        return properties, arguments
+    current = current_resource(bundle["destination-inventory.json"], "mcp", selected["name"])
+    if (current is not None and public_projection(current["properties"].get("endpoints"))
+            == public_projection(selected["endpoints"])
+            and (selected.get("reuseExisting") or not runtime_references(selected["endpoints"]))):
+        arguments.pop("endpoints")
+    return properties, arguments
 
 
 def compile_selection(bundle, selection):
@@ -529,7 +811,49 @@ def compile_selection(bundle, selection):
     catalogs = {p["id"]: p for p in result["model-catalog.json"]["providers"]}
     selected_ids, nodes, retained = set(), [], {r["sourceId"]: r["reason"] for r in selection["retained"]}
 
-    def node(group, name, provider, arguments, properties, dependencies, source_ids, evidence, allow_update=True):
+    def node(group, name, provider, arguments, properties, dependencies, source_ids, evidence,
+             allow_update=True, extension=None):
+        if extension is not None:
+            todo = {
+                "id": extension["id"], "mappingIds": [], "capabilityId": extension["capabilityId"],
+                "target": {**scope, "workspace": "default", "name": name, "provider": provider},
+                "arguments": extension["arguments"], "desiredState": extension["desired"],
+                "dependsOn": [], "resourceDependencies": dependencies,
+                "precondition": {"exists": extension["current"] is not None,
+                                 "stateDigest": digest(semantic(extension["current"]))
+                                 if extension["current"] is not None else None},
+                "approval": {"status": "pending", "planDigest": None, "approvedAt": None},
+                "status": "pending", "attempts": [], "behaviorResults": {},
+            }
+            bids = set(extension["entry"]["behaviorIds"])
+            inherited = set()
+            mapping = {
+                "id": "map:" + extension["id"], "sourceIds": source_ids,
+                "behaviorIds": extension["entry"]["behaviorIds"], "classification": "ready",
+                "capabilityId": None, "semanticDecision": evidence, "question": None, "residual": None,
+                "todoIds": [todo["id"]], "behaviorResults": pending_results(bids), "disposition": "selected",
+            }
+            for existing in list(result["mapping.json"]["items"]):
+                if bids.intersection(existing["behaviorIds"]):
+                    inherited.update(existing.get("todoIds", []))
+                    existing["behaviorIds"] = [bid for bid in existing["behaviorIds"] if bid not in bids]
+                    if "behaviorResults" in existing:
+                        existing["behaviorResults"] = pending_results(existing["behaviorIds"])
+                    if not existing["behaviorIds"]:
+                        result["mapping.json"]["items"].remove(existing)
+                        for resource in nodes:
+                            if existing["id"] in resource["mappingIds"]:
+                                resource["mappingIds"].remove(existing["id"])
+            mapping["todoIds"].extend(sorted(inherited))
+            for resource in nodes:
+                if resource["id"] in inherited:
+                    resource["mappingIds"].append(mapping["id"])
+            result["mapping.json"]["items"].append(mapping)
+            todo["mappingIds"] = [mapping["id"]]
+            if todo["id"] in {t["id"] for t in nodes}:
+                raise MigrationError("Duplicate scoped target; combine policies for each target in one selection.")
+            nodes.append(todo)
+            return todo["id"]
         suffix = {
             "model-provider": f"/workspaces/default/modelProviders/{name}",
             "model": f"/workspaces/default/modelProviders/{provider}/models/{name}",
@@ -548,6 +872,8 @@ def compile_selection(bundle, selection):
             desired.update(type="Microsoft.ApiManagement/aigateways")
             if "location" in arguments:
                 desired["location"] = arguments["location"]
+            if "sku" in arguments:
+                desired["sku"] = {"name": arguments["sku"]}
         action = "verify" if current is not None and subset(desired, current) else "update" if current else "create"
         if group == "gateway" and action == "update":
             raise MigrationError("Existing gateway metadata differs; choose an appropriate destination instead of an implicit gateway update.")
@@ -555,7 +881,7 @@ def compile_selection(bundle, selection):
             raise MigrationError("Existing provider/alias configuration differs; review replacement separately instead of implicit sync changes.")
         if group == "mcp" and current is not None and action == "verify" and allow_update and runtime_references(arguments):
             raise MigrationError("Secret-only endpoint changes need a separately verifiable credential workflow; no replacement was inferred.")
-        if prefix == "key" and action == "update":
+        if prefix == "key" and action == "update" and not set(arguments) <= {"state", "expiration-date"}:
             raise MigrationError("Existing key metadata differs; explicitly choose a new key or reuse its current metadata.")
         if action == "update" and "deployment-config" in arguments:
             arguments = {("deployment" if k == "deployment-config" else k): v for k, v in arguments.items()}
@@ -651,6 +977,8 @@ def compile_selection(bundle, selection):
             generated = nodes[-1]["capabilityId"]
             if (action == "create") != (generated == "model.create"):
                 raise MigrationError("Native model action and destination preconditions disagree; recollect.")
+        if selected.get("explicitAlias"):
+            continue
         model_id = (root + "/workspaces/default/modelProviders/" + target_provider
                     + "/models/" + selected["name"])
         backends = [{"resourceId": model_id, "priority": 0, "weight": 100}]
@@ -663,14 +991,32 @@ def compile_selection(bundle, selection):
                        for i in destination["collections"].get("mcp", []))
         if existing and not (selected.get("reuseExisting") or selected.get("replaceEndpoints")):
             raise MigrationError("Existing MCP authentication needs an explicit reuse or replacement decision.")
-        node("mcp", selected["name"], None, {"endpoints": selected["endpoints"]},
-             {"endpoints": selected["endpoints"]}, [gateway],
+        properties, settings = mcp_settings(result, selected)
+        if existing and "endpoints" in settings and selected.get("replaceEndpoints") and not selected.get("credentialUseApproved"):
+            raise MigrationError("Approve the CLI's destination credential reads before endpoint updates.")
+        node("mcp", selected["name"], None, settings,
+             properties, [gateway],
              selected["sourceIds"], selected["evidence"] + " Access: " + selected["accessDecision"],
-             allow_update=selected.get("replaceEndpoints", False))
+             allow_update=selected.get("replaceEndpoints", False) or (
+                 "versions" in selected and "endpoints" not in settings))
     for selected in selection["keys"]:
-        node("api-key", selected["name"], None, {"display-name": selected["displayName"]},
-             {"displayName": selected["displayName"]}, [gateway],
+        properties, arguments = key_settings(result, selected)
+        node("api-key", selected["name"], None, arguments,
+             properties, [gateway],
              selected["sourceIds"], selected["accessDecision"])
+    for selected in selection.get("aliases", []):
+        backends = alias_backends(result, selected)
+        node("model-alias", selected["name"], None,
+             {"routing-name": selected["routingName"], "backend-models": backends},
+             {"aliasName": selected["routingName"], "backendModels": backends},
+             ["model:" + b["model"] + ":" + b["provider"] for b in selected["backends"]],
+             selected["sourceIds"], selected["evidence"] + " Scope: " + selected["scopeDecision"],
+             allow_update=selected.get("updateExisting", False))
+    for extension in scoped_nodes(result, selection):
+        entry = extension["entry"]
+        node(extension["group"], extension["name"], extension["provider"], extension["arguments"], {},
+             extension["dependencies"], entry["sourceIds"], entry["evidence"] + " Scope: " + entry["scopeDecision"],
+             extension=extension)
     for sid, reason in retained.items():
         mapping = mappings[sid]
         mapping.update(classification="cannot-import", disposition="retained-source", question=None,

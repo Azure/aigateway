@@ -5,11 +5,14 @@ from __future__ import annotations
 import copy
 from graphlib import CycleError, TopologicalSorter
 import json
+from datetime import datetime
+from ipaddress import ip_network
+from math import isfinite
 import re
 from urllib.parse import parse_qsl, urlsplit
 
 from core import GATEWAY_TYPE, MigrationError, SECRET, clean, digest, resource_id, semantic, subset, validate_schema
-from gateway import catalog
+from gateway import catalog, resource_kind
 from model_inventory import validate_catalog
 
 
@@ -146,16 +149,161 @@ def runtime_references(value):
     return set()
 
 
+def policy_state(arguments, current=(), workspace=False):
+    if not isinstance(current, (list, tuple)) or not all(
+            isinstance(policy, dict) and isinstance(policy.get("type"), str) for policy in current):
+        raise MigrationError("Existing policy state is malformed.")
+    updates = {}
+
+    def counter(option, default):
+        value = arguments.get(option, default)
+        values = [value] if isinstance(value, str) else value
+        allowed = {"Identity": "identity", "IPAddress": "ipAddress",
+                   "identity": "identity", "ipAddress": "ipAddress"}
+        if (not isinstance(values, list) or not values or
+                any(not isinstance(v, str) or v not in allowed for v in values)
+                or len(set(values)) != len(values)):
+            raise MigrationError("Counters require finite identity/IPAddress dimensions, not expressions or All.")
+        normalized = [allowed[v] for v in values]
+        if len(set(normalized)) != len(normalized):
+            raise MigrationError("Counter dimensions must be unique after normalization.")
+        return normalized
+
+    def positive(value):
+        return type(value) is int and value > 0
+
+    if {"token-limit", "token-period", "token-counter-key"} & arguments.keys():
+        if not positive(arguments.get("token-limit")):
+            raise MigrationError("An explicit positive token count is required.")
+        period = arguments.get("token-period", "minute")
+        if period not in ("minute", "hour", "day"):
+            raise MigrationError("Unsupported token period.")
+        updates["tokenLimit"] = {"type": "tokenLimit", "count": arguments["token-limit"],
+                                "period": period, "counterKey": counter("token-counter-key", ["Identity"])}
+    severities = ("Low", "Medium", "High", "None")
+    category_options = (("hateSeverity", "hate-severity"), ("selfHarmSeverity", "self-harm-severity"),
+                        ("sexualSeverity", "sexual-severity"), ("violenceSeverity", "violence-severity"))
+    if "content-safety" in arguments or any(option in arguments for _, option in category_options):
+        severity = arguments.get("content-safety")
+        if severity not in severities or any(arguments.get(option, severity) not in severities
+                                            for _, option in category_options):
+            raise MigrationError("Category overrides require an explicit supported content-safety severity.")
+        updates["contentSafety"] = {"type": "contentSafety", **{
+            field: arguments.get(option, severity) for field, option in category_options}}
+    if any(key.startswith("cost-") for key in arguments):
+        amount, period = arguments.get("cost-limit"), arguments.get("cost-period")
+        finite = ((type(amount) is int and abs(amount) <= 9007199254740991)
+                  or (type(amount) is float and isfinite(amount)))
+        if (not finite or amount < 0
+                or period not in ("hour", "day", "week", "month", "year")):
+            raise MigrationError("Cost governance requires a finite non-negative amount and supported period.")
+        updates["costLimit"] = {"type": "costLimit", "amount": amount, "period": period,
+                               "counterKey": counter("cost-counter-key", ["Identity"])}
+        if "cost-id" in arguments:
+            identifier = arguments["cost-id"]
+            if not isinstance(identifier, str) or not re.fullmatch(r"[A-Za-z0-9_.-]+", identifier):
+                raise MigrationError("Cost policy ID must be explicit.")
+            updates["costLimit"]["id"] = identifier
+    if {"calls-per-period", "period-seconds", "rate-counter-key"} & arguments.keys():
+        if not workspace or not positive(arguments.get("calls-per-period")) or not positive(arguments.get("period-seconds")):
+            raise MigrationError("Request-rate policies require workspace scope, positive calls and period seconds.")
+        updates["requestRateLimit"] = {"type": "requestRateLimit",
+                                      "callsPerPeriod": arguments["calls-per-period"],
+                                      "periodSeconds": arguments["period-seconds"],
+                                      "counterKey": counter("rate-counter-key", ["Identity"])}
+    if {"ip-filter-mode", "ip-addresses"} & arguments.keys():
+        addresses = arguments.get("ip-addresses")
+        action = arguments.get("ip-filter-mode")
+        if not workspace or action not in ("allow", "deny") or not isinstance(addresses, list) or not addresses:
+            raise MigrationError("An IP policy requires workspace scope, allow/deny and explicit IP ranges.")
+        try:
+            for address in addresses:
+                if not isinstance(address, str):
+                    raise ValueError
+                ip_network(address, strict=True)
+        except ValueError as exc:
+            raise MigrationError("Invalid IP address/CIDR range.") from exc
+        updates["ipFilter"] = {"type": "ipFilter", "action": action, "cidrRanges": addresses}
+    if not updates:
+        raise MigrationError("Select an explicit supported policy.")
+    merged, remaining = [], dict(updates)
+    for existing in current:
+        policy = copy.deepcopy(existing)
+        kind = policy.get("type")
+        if kind in updates:
+            if kind not in remaining:
+                continue
+            policy = {**policy, **remaining.pop(kind)}
+        if kind in ("tokenLimit", "costLimit", "requestRateLimit") and "counterKey" in policy:
+            values = policy["counterKey"]
+            values = [values] if isinstance(values, str) else values
+            policy["counterKey"] = [{"Identity": "identity", "IPAddress": "ipAddress"}.get(v, v) if isinstance(v, str) else v
+                                    for v in values] if isinstance(values, list) else values
+        if workspace and kind in updates and kind in ("tokenLimit", "costLimit", "requestRateLimit"):
+            policy["scope"] = "workspace"
+        merged.append(policy)
+    for kind, policy in remaining.items():
+        if kind == "costLimit":
+            policy.setdefault("id", "default")
+        if workspace and kind in ("tokenLimit", "costLimit", "requestRateLimit"):
+            policy["scope"] = "workspace"
+        merged.append(policy)
+    return merged
+
+
+def reviewed_arguments(cid, arguments):
+    if cid in ("model.policy", "policy.update"):
+        policy_state(arguments, workspace=cid == "policy.update")
+    if cid in ("gateway.create", "network.update") and "subnet" in arguments:
+        if not isinstance(arguments["subnet"], str) or not re.fullmatch(
+                r"/subscriptions/[A-Za-z0-9_.-]+/resourceGroups/[A-Za-z0-9_.-]+/providers/"
+                r"Microsoft\.Network/virtualNetworks/[A-Za-z0-9_.-]+/subnets/[A-Za-z0-9_.-]+",
+                arguments["subnet"], re.I):
+            raise MigrationError("Subnet must be a complete existing subnet ARM ID.")
+    if cid == "network.update":
+        if "subnet" in arguments and arguments.get("disable-vnet-integration"):
+            raise MigrationError("Subnet and disable-vnet-integration are mutually exclusive.")
+        if "disable-vnet-integration" in arguments and arguments["disable-vnet-integration"] is not True:
+            raise MigrationError("Select integration removal explicitly with true.")
+    if cid == "key.update":
+        if not arguments or set(arguments) - {"state", "expiration-date"}:
+            raise MigrationError("Only explicit key state/expiry updates are supported.")
+        if arguments.get("state", "active") not in ("active", "suspended"):
+            raise MigrationError("Unsupported key state.")
+        if "expiration-date" in arguments:
+            try:
+                parsed = datetime.fromisoformat(arguments["expiration-date"].replace("Z", "+00:00"))
+                if parsed.utcoffset() is None:
+                    raise ValueError
+            except (ValueError, TypeError, AttributeError) as exc:
+                raise MigrationError("Key expiration requires a timezone-qualified ISO timestamp.") from exc
+    if cid in ("telemetry.create", "telemetry.update"):
+        if (arguments.get("kind") != "ApplicationInsights"
+                or type(arguments.get("payload-capture")) is not bool
+                or set(arguments) - {"kind", "application-insights", "payload-capture"}):
+            raise MigrationError("Only reviewed ApplicationInsights connection-string writes are enabled; OpenTelemetry fields are unreviewed.")
+        config = arguments.get("application-insights")
+        if (not isinstance(config, dict) or set(config) != {"connectionString"}
+                or not isinstance(config["connectionString"], dict)
+                or set(config["connectionString"]) != {"$runtimeSecret"}
+                or not runtime_references(config)):
+            raise MigrationError("Application Insights requires a runtime-only connection string.")
+
+
 def meaningful_assertion(todo, cap):
     args, desired = todo["arguments"], todo["desiredState"]
     cid = cap["id"]
     if cap["kind"] == "verify":
+        if cid == "network.verify":
+            return bool(desired) and not args
         return bool(desired.get("properties")) and not args
     if cid == "gateway.create":
         expected = {"type": GATEWAY_TYPE, "location": args["location"],
                     "properties": {"provisioningState": "Succeeded"}}
         if "subnet" in args:
             expected["properties"]["backend"] = {"subnet": {"id": args["subnet"]}}
+        if "sku" in args:
+            expected["sku"] = {"name": args["sku"]}
         return subset(expected, desired)
     if cid == "identity.assign":
         dtype = desired.get("type", "")
@@ -173,24 +321,24 @@ def meaningful_assertion(todo, cap):
         if "subnet" in args:
             expected.update(virtualNetworkType="External",
                             virtualNetworkConfiguration={"subnetResourceId": args["subnet"]})
+        if args.get("disable-vnet-integration"):
+            expected.update(virtualNetworkType="None", virtualNetworkConfiguration=None)
         return bool(expected) and subset(expected, desired)
-    if cid == "model.policy":
+    if cid in ("model.policy", "policy.update"):
         policies = desired.get("properties", {}).get("policies")
         if not isinstance(policies, list):
             return False
-        expected = []
-        if "token-limit" in args:
-            expected.append({"type": "tokenLimit", "count": args["token-limit"],
-                             "period": args.get("token-period", "minute"),
-                             "counterKey": [{"Identity": "identity", "IPAddress": "ipAddress"}[
-                                 args.get("token-counter-key", "Identity")]]})
-        if "content-safety" in args:
-            expected.append({"type": "contentSafety", **{
-                key: args.get(option, args["content-safety"]) for key, option in (
-                    ("hateSeverity", "hate-severity"), ("selfHarmSeverity", "self-harm-severity"),
-                    ("sexualSeverity", "sexual-severity"), ("violenceSeverity", "violence-severity"))
-            }})
+        expected = policy_state(args, workspace=cid == "policy.update")
+        if "cost-id" not in args:
+            for policy in expected:
+                if policy["type"] == "costLimit":
+                    policy.pop("id", None)
         return bool(expected) and all(any(subset(p, actual) for actual in policies) for p in expected)
+    if cid == "connection.update":
+        properties = desired.get("properties", {})
+        return bool(properties.get("privateEndpoint", {}).get("id")) and subset({"properties": {"privateLinkServiceConnectionState": {
+            "status": "Approved", "description": args["description"]},
+            "provisioningState": "Succeeded"}}, desired)
     if cid == "mcp.source.add":
         expected = public_projection({key.replace("open-api", "openApi"): value
                                       for key, value in args.items()})
@@ -205,7 +353,9 @@ def meaningful_assertion(todo, cap):
             "foundry": "foundry", "custom": "custom", "deployment": "deployment",
             "deployment-config": "deployment", "api-format": "apiFormat",
             "supported-endpoints": "supportedEndpoints", "endpoints": "endpoints",
-            "failure-mode": "failureMode"}
+            "failure-mode": "failureMode", "versions": "versions", "state": "state",
+            "expiration-date": "expirationDate", "application-insights": "applicationInsights",
+            "payload-capture": "payloadCapture"}
     expected = {wire[key]: public_projection(value) for key, value in args.items() if key in wire}
     return bool(expected) and subset({"properties": expected}, desired)
 
@@ -253,7 +403,7 @@ def validate_plan(bundle):
     if str(source["service"].get("id", "")).lower() != context["sourceId"].lower():
         issue("source-identity", "/source", "Service snapshot identity differs from the source.")
     if source["sku"] != source["service"].get("sku", {}).get("name"):
-        issue("source-profile", "/source", "Profile and observed service SKU disagree.")
+        issue("source-profile", "/source", "Profile and observed source service profile disagree.")
     supplied = {key: value for key, value in contract.items() if key != "contractDigest"}
     if digest(supplied) != contract["contractDigest"] or contract["catalogDigest"] != digest(catalog()):
         issue("capability-digest", "/contract", "Capability output is stale or modified.")
@@ -318,10 +468,17 @@ def validate_plan(bundle):
                         issue("behavior-capability", path, "Capability does not represent this source domain.")
                     if domain in ("api-operations", "api-schemas", "namedValues") and not bundle["mapping.json"].get("selection"):
                         issue("selection-required", path, "Operation/schema/credential ownership requires explicit selections.")
+                    if (domain in ("apis", "service") and any(
+                            c and c["id"] in ("model.policy", "model-policy.verify", "policy.update", "policy.verify")
+                            for c in implementing_caps) and not bundle["mapping.json"].get("selection")):
+                        issue("selection-required", path, "New governance requires an explicit scoped selection.")
                 if (record["policyShape"] and '"redacted": true' in json.dumps(record["policyShape"])
                         and not (graph_mapping and bundle["mapping.json"].get("selection")
                                  and record.get("facts", {}).get("routingOnly"))):
-                    issue("opaque-policy", path, "Redacted policy literals/expressions require manual residual handling.")
+                    from selection import policy_translation
+                    if not (graph_mapping and bundle["mapping.json"].get("selection")
+                            and policy_translation(bundle["mapping.json"]["selection"], sid, item["behaviorIds"])):
+                        issue("opaque-policy", path, "Redacted policy inputs require an explicitly approved typed translation.")
                 coverage = [c for c in source["coverage"]
                             if c["scope"] == record["scope"] and c["domain"] == record["domain"]]
                 if not coverage or not all(c["establishesCompleteness"] and
@@ -346,7 +503,8 @@ def validate_plan(bundle):
         if any(v is not None and (not isinstance(v, str) or
                not re.fullmatch(r"[A-Za-z0-9_.-]+", v)) for v in todo["target"].values()):
             issue("invalid-selector", path, "Selectors must be unambiguous resource names.")
-        if cap["command"][0] in ("model-provider", "model", "model-alias", "api-key", "mcp") and not todo["target"]["name"]:
+        if resource_kind(cap["command"]) in ("model-provider", "model", "model-alias", "api-key", "mcp",
+                                             "telemetry-exporter", "private-endpoint-connection") and not todo["target"]["name"]:
             issue("missing-child", path, "Child resource name required.")
         if cap["command"][0] == "model" and not todo["target"]["provider"]:
             issue("missing-provider", path, "Model provider name required.")
@@ -389,8 +547,8 @@ def validate_plan(bundle):
                     issue("alias-shape", path, "Callable names must be explicit, not wildcard selectors.")
         if cap["id"] == "model.policy":
             args = todo["arguments"]
-            if not ("token-limit" in args or "content-safety" in args):
-                issue("policy-shape", path, "Select token-limit or content-safety explicitly.")
+            if not ("token-limit" in args or "content-safety" in args or "cost-limit" in args):
+                issue("policy-shape", path, "Select token-limit, content-safety or cost-limit explicitly.")
             if {"token-period", "token-counter-key"} & args.keys() and "token-limit" not in args:
                 issue("policy-shape", path, "Token period and counter key require token-limit.")
             if any(key.endswith("-severity") for key in args) and "content-safety" not in args:
@@ -406,7 +564,6 @@ def validate_plan(bundle):
         enums = {
             "api-format": tuple(catalog()["modelOperations"]),
             "token-period": ("minute", "hour", "day"),
-            "token-counter-key": ("Identity", "IPAddress"),
             "content-safety": ("Low", "Medium", "High", "None"),
             "hate-severity": ("Low", "Medium", "High", "None"),
             "self-harm-severity": ("Low", "Medium", "High", "None"),
@@ -414,6 +571,7 @@ def validate_plan(bundle):
             "violence-severity": ("Low", "Medium", "High", "None"),
             "failure-mode": ("failClosed", "failOpen"),
             "public-network-access": ("Enabled", "Disabled"),
+            "sku": ("Standard", "Premium", "Consumption"),
         }
         for key, value in todo["arguments"].items():
             json_types = {
@@ -421,6 +579,8 @@ def validate_plan(bundle):
                 "endpoints": list, "supported-endpoints": list, "user-assigned": list,
                 "mcp": dict, "open-api": dict, "credentials": dict,
                 "backend-models": list,
+                "versions": list, "ip-addresses": list, "cost-counter-key": list,
+                "rate-counter-key": list, "application-insights": dict,
             }
             if key in json_types and not isinstance(value, json_types[key]):
                 issue("option-shape", path, "Structured arguments must be JSON values, not file paths.")
@@ -431,8 +591,9 @@ def validate_plan(bundle):
             if key == "token-limit" and (not isinstance(value, int) or isinstance(value, bool) or value <= 0):
                 issue("option-value", path, "Token limits must be positive integers.")
         try:
+            reviewed_arguments(cap["id"], todo["arguments"])
             meaningful = meaningful_assertion(todo, cap)
-        except (KeyError, TypeError):
+        except (KeyError, TypeError, MigrationError):
             meaningful = False
         if not meaningful:
             issue("desired-state", path, "Read-back must assert the actual requested configuration.")

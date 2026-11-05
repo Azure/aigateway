@@ -1,8 +1,8 @@
-# AI Gateway tier in Azure API Management
+# Azure AI Gateway
 
 **One gateway for every model and tool.**
-[AI Gateway tier in Azure API Management](https://aka.ms/aigateway/docs) is the AI-focused tier of Azure API
-Management. It gives developers one familiar way to call model APIs and MCP tools, while
+[Azure AI Gateway](https://aka.ms/aigateway/docs) gives developers one familiar way
+to call model APIs and MCP tools, while
 platform teams enforce security, policy, networking, and observability.
 
 - **Govern model APIs** — Microsoft Foundry, OpenAI, Anthropic, Google Vertex, and more, while developers keep the SDKs they already use.
@@ -11,7 +11,7 @@ platform teams enforce security, policy, networking, and observability.
 - **Observe AI traffic** — token usage, latency, errors, and policy outcomes in dashboards and logs.
 - **Run on a trusted platform** — the Azure API Management platform, with Private Link, virtual network integration, and managed identity.
 
-> AI Gateway is in **public preview**, available free of charge. See the **[documentation](https://aka.ms/aigateway/docs)** to get started.
+> Azure AI Gateway is in **public preview**, available free of charge. See the **[documentation](https://aka.ms/aigateway/docs)** to get started.
 
 ---
 
@@ -147,7 +147,7 @@ automatically resumed. See the [state schemas](skills/migrate-ai-gateway/schemas
 The generated code authenticates the model passthrough and the MCP tool servers
 with a gateway **API key**, read from an environment variable
 (`AI_GATEWAY_API_KEY`) and never hardcoded. Scaffolded projects keep `.env` out of
-source control. If a key is ever exposed, rotate it in the [AI Gateway Portal](https://ai.gateway.azure.com).
+source control. If a key is ever exposed, rotate it in the [Azure AI Gateway Portal](https://ai.gateway.azure.com).
 
 Standalone agent scaffolds use least-privilege tool configuration: only explicitly
 selected MCP tools are made available, and permission-requiring operations require
@@ -160,7 +160,7 @@ To report a security issue, see [SECURITY.md](SECURITY.md).
 ## Samples
 
 Looking for working examples? The [samples catalog](samples/README.md) curates end-to-end
-samples and infrastructure that build on the AI Gateway tier in Azure API Management.
+samples and infrastructure that build on Azure AI Gateway.
 
 ## Contributing
 

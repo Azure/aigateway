@@ -1,7 +1,7 @@
-description = "Discover the models and MCP tool servers registered in an AI Gateway and summarize which ones fit your use case."
+description = "Discover the models and MCP tool servers registered in an Azure AI Gateway and summarize which ones fit your use case."
 
 prompt = """
-Discover — and only discover — the AI assets registered in an AI Gateway. This is a
+Discover — and only discover — the AI assets registered in an Azure AI Gateway. This is a
 read-only exploration command: list models and MCP tool servers and help the user pick
 the ones that match their intent. Never provision, update, or delete anything, and do
 not scaffold code (use /ai-gateway:build for that).

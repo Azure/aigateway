@@ -1,11 +1,11 @@
 ---
-description: Configure and operate an AI Gateway, including assets, model policies, identities, networking, and secret rotation.
+description: Configure and operate an Azure AI Gateway, including assets, model policies, identities, networking, and secret rotation.
 argument-hint: <gateway-name> <resource-group> <operation>
 ---
 
 # /ai-gateway:manage
 
-Configure and operate an existing AI Gateway for an authorized administrator or
+Configure and operate an existing Azure AI Gateway for an authorized administrator or
 platform engineer. Follow the complete workflow in
 `skills/manage-ai-gateway/SKILL.md`, especially **Configure gateway assets** and
 **Operate**. Use the current `az aigateway` command group.

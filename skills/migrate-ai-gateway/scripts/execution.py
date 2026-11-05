@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from math import isfinite
 import os
 from pathlib import Path
 import re
@@ -13,7 +14,7 @@ from core import (
     MigrationError, clean, digest, now, resource_id, run_az, semantic, subset,
     validate_schema,
 )
-from gateway import capabilities, destination_inventory, inspect_cli
+from gateway import capabilities, destination_inventory, inspect_cli, policy_resource, resource_kind
 from inventory import collect_with_exports
 from planning import initial_mapping, runtime_references, validate_plan
 from model_inventory import collect_models, validate_catalog
@@ -100,7 +101,10 @@ def capability(bundle, todo):
 def selectors(todo, cap):
     target = todo["target"]
     args = ["--subscription", target["subscription"], "--resource-group", target["resourceGroup"]]
-    if cap["command"][0] in ("create", "show", "identity", "network"):
+    kind = resource_kind(cap["command"])
+    if kind == "policy":
+        return args + ["--gateway-name", target["gateway"]]
+    if kind in ("gateway", "identity", "network"):
         return args + ["--name", target["gateway"]]
     args += ["--gateway-name", target["gateway"], "--name", target["name"]]
     if cap["command"][0] == "model":
@@ -112,7 +116,7 @@ def read_current(bundle, todo, snapshot, runner):
     cap = capability(bundle, todo)
     if not snapshot["exists"]:
         return None
-    group = cap["command"][0]
+    group = resource_kind(cap["command"])
     if any(error["domain"] == group for error in snapshot["errors"]):
         raise MigrationError("Target collection is incomplete; preconditions are unknown.")
     root = bundle["context.json"]["destinationId"]
@@ -128,12 +132,22 @@ def read_current(bundle, todo, snapshot, runner):
         expected_id += "/workspaces/default/aliases/" + todo["target"]["name"]
     elif group == "api-key":
         expected_id += "/apiKeys/" + todo["target"]["name"]
-    if group not in ("create", "show", "identity", "network"):
+    elif group == "telemetry-exporter":
+        expected_id += "/workspaces/default/telemetryExporters/" + todo["target"]["name"]
+    elif group == "private-endpoint-connection":
+        expected_id += "/privateEndpointConnections/" + todo["target"]["name"]
+    elif group == "policy":
+        expected_id += "/workspaces/default"
+        if "policy" not in snapshot["collections"]:
+            raise MigrationError("Recollect default-workspace policy evidence.")
+    if group not in ("gateway", "identity", "network", "policy"):
         matches = [item for item in snapshot["collections"].get(group, [])
                    if str(item.get("id", "")).lower() == expected_id.lower()]
         if not matches:
             return None
     result = runner(["az", "aigateway", *cap["read"], *selectors(todo, cap), "-o", "json"])
+    if group == "policy":
+        result = policy_resource(result, root)
     if not isinstance(result, dict):
         raise MigrationError("Resource read-back must be an object.")
     if group == "identity":
@@ -185,7 +199,9 @@ def mutation_argv(bundle, todo, directory):
             with os.fdopen(fd, "w") as output:
                 json.dump(resolve_runtime(value), output)
             argv.extend(["--" + key, "@" + str(path)])
-        elif isinstance(value, (str, bool, int)):
+        elif isinstance(value, (str, bool, int, float)):
+            if isinstance(value, float) and not isfinite(value):
+                raise MigrationError("Non-finite command numbers are not supported.")
             argv.extend(["--" + key, str(value).lower() if isinstance(value, bool) else str(value)])
         else:
             raise MigrationError("Unsupported scalar command input.")

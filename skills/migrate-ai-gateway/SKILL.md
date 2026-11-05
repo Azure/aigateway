@@ -1,13 +1,13 @@
 ---
 name: migrate-ai-gateway
-version: 4.0.0
-description: Assess and migrate explicitly supported APIM V2 configuration into a separate AI Gateway using redacted local inventory, deterministic plan validation, human approval, and granular az aigateway commands. Preserve unsupported behavior as questions or explicit residuals. V1 and AIGateway source profiles are reserved, not enabled.
+version: 5.0.0
+description: Assess and migrate explicitly supported APIM V2 configuration into a separate Azure AI Gateway using redacted local inventory, deterministic plan validation, human approval, and granular az aigateway commands. Preserve unsupported behavior as questions or explicit residuals. V1 and AIGateway source profiles are reserved, not enabled.
 ---
 
-# Migrate APIM configuration to an AI Gateway
+# Migrate APIM configuration to an Azure AI Gateway
 
 Invoked as `/ai-gateway:migrate-ai-gateway` or through `/ai-gateway:migrate`.
-This is assisted configuration migration, not in-place SKU conversion or a blind
+This is assisted configuration migration, not in-place service conversion or a blind
 API import. The source remains read-only. Developer consumption belongs in
 `skills/use-ai-gateway/SKILL.md`; ordinary administration belongs in
 `skills/manage-ai-gateway/SKILL.md`.
@@ -44,7 +44,7 @@ or use the obsolete `az ai-gateway` interface.
 
 Source inventory and destination mapping are separate contracts. `collect-source`
 needs only authorized APIM reads and the helper dependencies, not an installed
-AI Gateway extension, capability catalog, destination, or migration decisions.
+Azure AI Gateway extension, capability catalog, destination, or migration decisions.
 `scripts/inventory.py` and `scripts/apiops.py` describe APIM evidence;
 `scripts/gateway.py`, `capabilities.json`, and `scripts/planning.py` describe the
 evolving destination and its mappings. Never filter discovery by the current
@@ -63,6 +63,8 @@ stale registrations, and proposes removals separately without executing them.
 For Foundry model planning, collect an authorized native CLI dry-run against an
 existing provider; native preview owns missing/stale decisions. Source catalogs
 remain independent. New providers need a provider-only foundation stage first.
+The same reference describes the reviewed b22 scoped policy, networking,
+telemetry, key lifecycle, MCP version and multi-backend routing selections.
 
 Apply each gate to the phase it protects:
 
@@ -70,7 +72,7 @@ Apply each gate to the phase it protects:
 2. Before destination capability assessment or planning, local `az aigateway version`, help, and installed new-RP dispatch support
    satisfy the reviewed capability catalog. Command help alone is insufficient:
    some commands remain visible for legacy gateways but reject `aigateways`.
-3. Source SKU is BasicV2, StandardV2, or PremiumV2, and source provisioning is
+3. Source service profile is BasicV2, StandardV2, or PremiumV2, and source provisioning is
    healthy. Classic V1 and AIGateway *sources* are not enabled yet.
 4. Before destination-bound planning or execution, source and destination must be
    distinct complete ARM resource IDs, with explicit subscriptions. The source
@@ -115,6 +117,13 @@ For destination-bound planning, also establish the destination subscription,
 resource group/name, region if creation is needed, and ownership of existing
 target configuration. Local fallback exports require their own approval.
 Authenticate through `az login` when necessary. Do not change global defaults.
+With approval, install the current official extension using:
+
+```bash
+curl -fsSL https://aka.ms/aigateway-cli-install | bash
+az aigateway version
+```
+
 Use the latest [CLI installation guide](https://github.com/Azure/aigateway/tree/main/cli)
 and [command reference](https://github.com/Azure/aigateway/blob/main/cli/command-reference.md),
 not a stale local quickstart. `capabilities.json` pins the reviewed documentation
@@ -216,14 +225,14 @@ version. It also reads the reviewed `azext_aigateway/_rp.py` dispatch allowlists
 without importing or executing them and records `resourceCommands.aigateways`.
 A missing or unrecognized dispatch contract cannot establish compatibility.
 Only commands with reviewed new-RP routing and the exact selectors/options are
-available; visible legacy-only commands remain unavailable. The reviewed b14
-release enables new-RP model creation, updates, and token/content-safety policy
-writes that b12 rejected. Do not carry that old model-write blocker into a b14
-assessment when fresh command evidence establishes support. Post-create network
-edits remain blocked, even though help lists them. Do not bypass an unavailable
+available; visible legacy-only commands remain unavailable. The reviewed b22
+release supports model writes, workspace defaults, telemetry exporters and
+post-create new-RP networking. Only exposed argument declarations count as
+options: `mcp update` mentions `--failure-mode` in help but does not expose it.
+API-key rename is also service-rejected despite visible help. Do not bypass an unavailable
 capability with REST, a legacy destination, or a convenience import.
 A changed adapter/catalog/CLI contract invalidates execution authority.
-After upgrading from b12, recollect the contract and source/destination evidence,
+After changing the reviewed CLI profile, recollect the contract and destination evidence,
 revalidate the plan, and obtain fresh per-item approvals; old digests are not
 execution authority for the newly available writes.
 
@@ -292,7 +301,7 @@ itself a blocker for unrelated AI traffic; an unresolved required dependency is.
 Inventory is evidence, not an assessment verdict. Read the source behavior
 ledger, operation definitions, policies, backend metadata, coverage, and reviewed
 destination capabilities. Explain what each required source behavior would map
-to and which semantics are preserved or changed. A supported SKU, a command
+to and which semantics are preserved or changed. A supported source service profile, a command
 present in help, or an endpoint kind alone is not proof of compatibility.
 
 For each component and behavior, give one evidence-backed outcome:
@@ -350,12 +359,12 @@ and continue assessing unaffected components.
 
 Before reporting a gap count as "uncertainties," distinguish genuinely missing
 source/usage facts from collector parsing/classification defects, evidenced
-source/SKU restrictions, and pending comparisons or approvals. For each item,
+source service profile restrictions, and pending comparisons or approvals. For each item,
 state the evidence, affected decision, and owner/next technical action or actual
 user question. Known roles do not require user confirmation just to explain
 collector warnings; collector fixes and source-contract applicability research
 are technical work, not missing operator facts. An unrun comparison is "not run,"
-not unknown source configuration or successful parity. A source/SKU restriction
+not unknown source configuration or successful parity. A source service profile restriction
 is known only with specific evidence; unclassified or forbidden failures remain
 inconclusive. Keep ledger failures and execution gates intact even when the
 source role or failure cause is understood. Classification, inventory
@@ -450,7 +459,7 @@ Use an existing approved export or, with separate approval, run the APIOps
 extractor into a fresh protected directory outside the source tree. Do not invoke
 its publisher, reuse a stale artifact directory, install it automatically, or
 enable debug/trace logging. Standard APIOps exports can be filtered, omit system
-groups/master subscriptions, and have SKU-dependent skips; a successful exit
+groups/master subscriptions, and have source-profile-dependent skips; a successful exit
 or the files present do not establish completeness. The helper does not generate
 completeness claims from those observations. Fresh live evidence remains the
 preferred authority for AI-specific typing/tools and infrastructure configuration.
@@ -560,15 +569,21 @@ are representable and others are residual; retain every behavior ID exactly once
 ### Mapping boundaries
 
 - Create the destination with `az aigateway create --subscription <id>
-  --resource-group <group> --name <gateway> --location <region>`. The CLI chooses
-  the gateway SKU/capacity; do not copy the source SKU or require the legacy
-  `sku.name == AIGateway` response. Assert the new resource type, exact ARM ID,
-  location, and successful provisioning.
+  --resource-group <group> --name <gateway> --location <region>`. Do not copy
+  source service sizing or require legacy service-profile fields in the
+  destination response. Assert the new resource type, exact ARM ID,
+  location, and successful provisioning. Omit `--sku` to let the service select
+  Standard, or explicitly approve a destination Standard/Premium/Consumption
+  choice; never derive it from source service sizing.
 - If outbound subnet integration is required, use the reviewed optional
   `gateway.create` argument `subnet`, emitted as `az aigateway create --subnet
   <existing-subnet-id>`. Verify `properties.backend.subnet.id`. The subnet must
   already exist, be in the gateway's region, and have the required delegation.
-  Do not postpone this to an unsupported post-create `network update`.
+  Existing gateways can also use reviewed b22 `network update`. Assert its
+  normalized `network show` projection, not a legacy wire payload. Public-access
+  removal requires an independently usable verification path and approval of
+  selected pending private-endpoint connections first. The adapter does not
+  provision endpoints, subnets, DNS or external network resources.
 - Prefer low-level provider registration plus individually mapped deployments.
   Use `az aigateway model-provider create --kind Foundry --foundry <json>`
   or `--kind Custom --custom <json>`. Child selectors use `--gateway-name`,
@@ -589,7 +604,7 @@ are representable and others are residual; retain every behavior ID exactly once
 - The native Foundry convenience commands import more than APIM metadata and
   can assign identity/RBAC. This adapter does not execute those shortcuts:
   choose explicit low-level configuration or record an external prerequisite.
-- The reviewed b15 `model-provider sync` owns Foundry missing/stale membership
+- The reviewed b22 `model-provider sync` owns Foundry missing/stale membership
   through authorized `--dry-run` evidence. Use `collect-sync-preview` only for an
   existing selected Foundry provider and bind its exact account, endpoint, target,
   catalog, CLI and destination baseline. Select native create/unchanged rows;
@@ -608,18 +623,41 @@ are representable and others are residual; retain every behavior ID exactly once
   conditions, inheritance, duplicate policies, and policy ordering must match
   the confirmed semantics. Redacted policy literals/expressions are not enough
   evidence to make a policy ready.
-- For b14 token policies, keep CLI inputs `--token-counter-key Identity` or
-  `IPAddress`, but assert new-RP read-back `counterKey: ["identity"]` or
-  `["ipAddress"]`; the default is `["identity"]`. Token period/counter options
+- For b22 token/cost/request-rate policies, use explicit finite JSON counter
+  lists of Identity/IPAddress (or their normalized spellings), and assert
+  read-back arrays of `identity`/`ipAddress`. Legacy single token-counter inputs
+  remain accepted. `All` is not exposed by the reviewed CLI enum.
+  Token period/counter options
   require `--token-limit`, and severity overrides require `--content-safety`.
-  The policy helper sends an ETag with `If-Match`; general model metadata PATCH
-  does not send that header in the reviewed implementation. Do not claim atomic
+  Model policy writes require ETag/If-Match; default-workspace policy writes may
+  omit If-Match when the GET has no ETag. General model metadata PATCH
+  does not send that header. Do not claim atomic
   update protection or service-side stale-ETag enforcement from release notes
   alone; keep the existing concurrency and behavior-verification gates.
 - Use `az aigateway mcp create --endpoints <json-array>` to register existing
   upstream servers, not provision them. MCP endpoint kinds `mcp`, `openApi`, and `http` require verified reachable
   sources, input shapes, auth, operations, and routing semantics. Native
   `mcp update --endpoints` replaces the collection; do not treat it as append.
+  Matching supplied endpoints preserve omitted nested fields and credentials,
+  not omitted collection members. Explicitly approve internal destination secret
+  reads for endpoint replacement. A versions-only update of reused, unchanged
+  endpoints sends only `--versions`, without those reads.
+- Use explicit scoped policy selections for supported token/content-safety,
+  request-rate and IP mappings. Compare effective APIM inheritance, identity,
+  windows, increment conditions and filtering scope. A workspace default is not
+  automatically a per-API/product or MCP policy equivalent. Cost settings are
+  optional new governance, never inferred from source quotas. Redacted inputs
+  require an approved typed translation digest; arbitrary XML and unreviewed
+  statements stay unsupported.
+- Telemetry writes review only the documented ApplicationInsights
+  `connectionString` shape, supplied with a runtime secret reference. Payload
+  capture is explicitly selected, never enabled by default. OpenTelemetry and
+  free-form telemetry write fields stay gated pending schema review; existing
+  exporters may be inspected/reused with separate behavior proof.
+- Explicit key lifecycle selections can update state and timezone-qualified
+  expiry without reading/copying/rotating keys or renaming them. Multi-backend
+  alias selections compose exact selected model nodes with reviewed priorities
+  and weights; they do not imply arbitrary retry/circuit-breaker equivalence.
 - Products/subscriptions, gateway-wide client keys, identities, workspace
   topology, aliases, telemetry, network topology, custom domains, and arbitrary
   XML are not implicitly equivalent. Keep unsupported behavior visible.

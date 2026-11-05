@@ -296,7 +296,7 @@ def source_inventory(source_id, runner=run_az, endpoint=None):
     if not isinstance(service, dict) or str(service.get("id", "")).lower() != source_id.lower():
         raise MigrationError("Source service identity mismatch.")
     if not isinstance(service.get("sku"), dict) or not isinstance(service.get("properties"), dict):
-        raise MigrationError("Malformed source service properties or SKU.")
+        raise MigrationError("Malformed source service properties or service profile.")
     sku = service["sku"].get("name")
     if sku not in SOURCE_SKUS:
         raise MigrationError("Unsupported source profile; V1 and AIGateway sources are reserved.")

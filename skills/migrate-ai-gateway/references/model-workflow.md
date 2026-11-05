@@ -175,7 +175,7 @@ ordinary model update. Existing policies and unrelated models are preserved.
 Native deletes appear only as unapproved, separate removal proposals, never
 DELETE TODOs. Manual/partial catalogs alone cannot establish staleness.
 
-The published b15 CLI can fail even dry-run if a stale registration is referenced
+The reviewed b22 CLI can fail even dry-run if a stale registration is referenced
 by an alias. The collector writes a `blocked` artifact and exits nonzero; failed
 preview evidence cannot compile a plan. Do not detach aliases/delete models to
 obtain a preview or replace the failure with a local diff. Explain the blocker
@@ -198,7 +198,7 @@ must remain the workspace's selected resources. Alternatively initialize a fresh
 workspace from the new evidence.
 
 Do not invoke native `model-provider sync --yes` as a migration apply shortcut:
-its stale deletion behavior conflicts with this workflow. b15 has no finite
+its stale deletion behavior conflicts with this workflow. b22 has no finite
 selection, preserve-stale, or externally approved-plan binding for bulk apply.
 Preview does not approve writes: accepted changes expand into individually
 approved native resource operations. Convenience Foundry onboarding with
@@ -224,3 +224,146 @@ costs, actual MCP calls, identity-isolation checks and cutover need their separa
 approvals. Never substitute a shared upstream identity to claim equivalent
 caller-token propagation. Fresh read-back and current-plan residual acceptance
 remain necessary for completion.
+
+## Explicit b22 capability selections
+
+The optional fields below extend existing version-1 selections. Omitting them
+preserves the original finite graph. Recollect capability/destination evidence
+and compile a new immutable generation with fresh approvals, preserving old
+generations. Source inventory stays independent and retains all gaps/redaction.
+
+Workspace/model policies, network edits, connection approval and key lifecycle
+updates require existing verified targets and complete fresh reads. For new
+targets, create/verify a foundation and re-plan first. Exporter creation and
+aliases can depend on new gateway/model nodes in the same granular graph.
+
+`policies`, `network`, `connections` and `telemetry` entries require exact
+`sourceIds`, disjoint inventory `behaviorIds`, `evidence` and a nonempty
+`scopeDecision`. They split those behaviors out of existing mappings, preserving
+other behavior and prerequisites. Do not bind unrelated service properties to
+make a capability ready. Unknown coverage remains blocked.
+
+### Workspace and model policies
+
+Use `policies: [...]`, one entry per workspace/model target:
+
+```json
+{
+  "scope": "workspace",
+  "sourceIds": ["<observed-source-policy-id>"],
+  "behaviorIds": ["<observed-policy-behavior-id>"],
+  "evidence": "Reviewed effective limits and required enforcement checks.",
+  "scopeDecision": "Explicitly selected default-workspace identity scope.",
+  "settings": {
+    "calls-per-period": 100,
+    "period-seconds": 60,
+    "rate-counter-key": ["Identity"]
+  }
+}
+```
+
+For `scope: "model"`, include exact existing destination `provider` and `model`
+names. Supported settings include explicit token limits/period/counter lists,
+content-safety severities, and optional cost amount/period/counter/ID. Request
+counts/period seconds and IP filter mode/address lists are workspace-only.
+Use `ip-filter-mode: "allow"|"deny"` with validated IP/CIDR `ip-addresses`.
+Counters contain Identity/IPAddress or identity/ipAddress, never expressions or
+`All`. Cost periods are hour/day/week/month/year; amounts are finite and
+non-negative. Opaque cost overrides are not enabled.
+
+Cost-only new governance can bind the gateway's base behavior or already-selected
+model API behavior with `newGovernance: true`. This adds explicit governance,
+not source quota equivalence; original resource prerequisites remain owned.
+
+Policies preserve sibling types and require full approved read-back. Do not
+flatten APIM service/product/API/operation precedence, expression counters,
+conditional increments or filter order without reviewed translation. Only
+listed policy statement families are enabled, not arbitrary XML. When source
+inputs are redacted, prepare a typed entry and obtain approval of its bindings,
+settings and scope decision:
+
+```bash
+"$PYTHON" "$HELPER" translation-digest --path policy.intent.json
+```
+
+After approval, put that digest in `translationDigest`. It binds the proposed
+translation, not proof of expression equality or enforcement. Changed intent
+requires fresh approval; unowned behaviors stay unresolved. Model writes require
+ETag/If-Match, while workspace writes may be unconditional without an ETag.
+
+### Networking and private connections
+
+`network` adds `settings` with selected `subnet`, `public-network-access` or
+`disable-vnet-integration: true`, and `verificationAccess` describing an
+independently verified path. Subnet and integration removal are mutually
+exclusive. Bind only source networking properties. The subnet must already
+exist with the required region/delegation; assert `network show`'s normalized
+subnet/access fields.
+
+`connections: [...]` additionally select the existing destination connection
+`name`, exact `peerId` and approval `description`. They do not copy a source ID
+or provision endpoints/DNS. Public-access disabling depends on selected
+connection approvals. Independently verify the private path before removing
+public verification access.
+
+Optional `gateway.sku` selects Standard/Premium/Consumption explicitly.
+Without it, b22 lets the service select Standard; never copy APIM sizing.
+
+### Telemetry and key lifecycle
+
+`telemetry: [...]` adds a valid exporter `name` and settings such as:
+
+```json
+{
+  "kind": "ApplicationInsights",
+  "application-insights": {
+    "connectionString": {"$runtimeSecret": "TELEMETRY_CONNECTION"}
+  },
+  "payload-capture": false
+}
+```
+
+Use an existing authorized resource and operator runtime credential, not a
+persisted source logger secret. Review sampling, fields and payload exposure
+separately. Explicit `reuseExisting`/`updateExisting` decisions protect existing
+exporters; matching redacted metadata does not establish credential equality
+or imply a secret-only update. Only the documented ApplicationInsights
+connection-string write shape is reviewed. OpenTelemetry/free-form writes stay
+blocked until their child fields are reviewed. Existing metadata verification
+does not prove delivery.
+
+Existing `keys` may add `state: "active"|"suspended"`, timezone-qualified
+`expirationDate`, and `updateExisting: true`. Use the existing display name:
+the service rejects rename. New keys need a metadata foundation before
+lifecycle updates. No secret reads/copy/rotation occur. A suspended key cannot
+be the only explicitly selected admission for model/MCP traffic.
+
+### MCP versions and multi-backend aliases
+
+MCP selections may include finite `versions`. Reused unchanged endpoints can
+receive a versions-only update that sends only `--versions`. Endpoint replacement
+still needs `replaceEndpoints` and `credentialUseApproved: true` after approval
+of internal destination secret reads. Supplied membership is complete: matching
+IDs/namespaces preserve nested fields, not omitted sources. MCP update does not
+expose `--failure-mode`.
+
+Models retain their original single-backend aliases by default. For a shared
+pool, set participating models' `explicitAlias: true` and add an `aliases` entry
+with unique `name`/`routingName`, `sourceIds`, `evidence`, `scopeDecision` and
+explicit `backends`:
+
+With `explicitAlias: true`, omit the model's single-backend `alias`/`routingName`
+fields; the explicit alias entry owns the callable route.
+
+```json
+[
+  {"provider": "selected-provider", "model": "model-a", "priority": 0, "weight": 75},
+  {"provider": "selected-provider", "model": "model-b", "priority": 1, "weight": 25}
+]
+```
+
+References are selected model registration names, not runtime deployment IDs.
+Each alias has 1-30 distinct gateway-bound backends, priorities 0-100 and weights
+1-100. Replacement requires `updateExisting: true`. The graph shares prerequisites
+and retains one owner per behavior. Routing does not establish arbitrary retry,
+circuit-breaker, expression or client-route equivalence; verify separately.

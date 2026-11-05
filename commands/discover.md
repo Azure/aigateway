@@ -1,11 +1,11 @@
 ---
-description: Discover the models and MCP tool servers registered in an AI Gateway and summarize which ones fit your use case.
+description: Discover the models and MCP tool servers registered in an Azure AI Gateway and summarize which ones fit your use case.
 argument-hint: [gateway resource id or host]
 ---
 
 # /ai-gateway:discover
 
-Discover — and only discover — the AI assets registered in an AI Gateway. This is a
+Discover — and only discover — the AI assets registered in an Azure AI Gateway. This is a
 **read-only** exploration command: it lists models and MCP tool servers and helps the
 user pick the ones that match their intent. It never provisions, updates, or deletes
 anything, and it does **not** scaffold code (use `/ai-gateway:build` for that).

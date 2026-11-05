@@ -8,7 +8,7 @@ a target, region, or provisioning approval. Require explicit destination
 IDs/subscriptions only for destination-bound planning or execution, and a region
 only for creation.
 
-Check dependencies, the installed `az aigateway` contract, and the source SKU.
+Check dependencies, the installed `az aigateway` contract, and the source service profile.
 Only BasicV2, StandardV2, and PremiumV2 sources are initially enabled. V1 and
 AIGateway source profiles are reserved. The source remains a
 `Microsoft.ApiManagement/service`; the destination must use
@@ -16,11 +16,19 @@ AIGateway source profiles are reserved. The source remains a
 not just help. Never substitute legacy writes or pass the removed public
 `--workspace-name` selector. Preserve legacy checkpoints read-only;
 create a fresh version-4 workspace when destination-bound planning begins.
-b14 enables new-RP model create/update/policy writes; refresh capability evidence
-and approvals instead of retaining the b12 model blocker. Use reviewed explicit
+b22 supports model writes, workspace policies, telemetry exporters and post-create
+networking; refresh evidence and approvals, using exposed arguments rather than
+help mentions. Use reviewed explicit
 alias and gateway key nodes, not an assumption that registrations are callable.
 Follow the skill's references/model-workflow.md for Foundry import/sync,
 approved Custom /models discovery, and operator-manifest fallback.
+Use that reference's scoped selections for policies, network/connection intent,
+telemetry, key lifecycle, MCP versions and multi-backend aliases. Keep exact
+source behavior ownership and scope decisions; cost governance and payload
+capture are opt-in. Do not enable mcp update --failure-mode, key rename,
+unreviewed OpenTelemetry write fields or external provisioning. Existing policy,
+network and lifecycle targets require verified foundations and fresh evidence;
+endpoint credential reads need explicit approval.
 
 Collect source evidence through read-only ARM GETs. Collect non-secret destination
 evidence only if a target is supplied and its reads are authorized.

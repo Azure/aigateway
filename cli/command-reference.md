@@ -1,4 +1,4 @@
-# AI Gateway CLI command reference
+# Azure AI Gateway CLI command reference
 
 The authoritative command reference is maintained in
 [Azure/aigateway](https://github.com/Azure/aigateway/blob/main/cli/command-reference.md).

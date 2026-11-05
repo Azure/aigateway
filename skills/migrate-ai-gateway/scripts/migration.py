@@ -30,6 +30,7 @@ def parser():
     model_digest = sub.add_parser("model-catalog-digest")
     model_digest.add_argument("--path", required=True)
     model_digest.add_argument("--selection", action="store_true")
+    sub.add_parser("translation-digest").add_argument("--path", required=True)
     models = sub.add_parser("collect-models")
     models.add_argument("--provider-id", required=True)
     models.add_argument("--kind", choices=("Foundry", "Custom"), required=True)
@@ -117,6 +118,13 @@ def main(argv=None):
     command = args.command
     if command == "export-digest":
         print(export_digest(args.path))
+        return 0
+    if command == "translation-digest":
+        entry = read_json(args.path)
+        fields = ("sourceIds", "behaviorIds", "settings", "scopeDecision")
+        if not isinstance(entry, dict) or any(field not in entry for field in fields):
+            raise MigrationError("Translation intent requires source/behavior IDs, settings and a scope decision.")
+        print(digest({field: entry[field] for field in fields}))
         return 0
     if command == "model-catalog-digest":
         document = read_json(args.path)

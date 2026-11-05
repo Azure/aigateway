@@ -1,4 +1,4 @@
-# AI Gateway CLI: external dependency
+# Azure AI Gateway CLI: external dependency
 
 The CLI is published and maintained through **[Azure/aigateway](https://github.com/Azure/aigateway)**.
 This skill repository does not maintain a CLI implementation, local installer,

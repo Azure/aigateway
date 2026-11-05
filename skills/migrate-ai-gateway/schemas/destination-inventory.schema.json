@@ -16,7 +16,10 @@
         "mcp": {"type": "array", "items": {"type": "object"}},
         "api-key": {"type": "array", "items": {"type": "object"}},
         "identity": {"type": ["object", "null"]},
-        "network": {"type": "object"}
+        "network": {"type": "object"},
+        "policy": {"type": "object"},
+        "telemetry-exporter": {"type": "array", "items": {"type": "object"}},
+        "private-endpoint-connection": {"type": "array", "items": {"type": "object"}}
       }
     },
     "errors": {"type": "array", "items": {"type": "object", "required": ["domain", "code"]}}
