@@ -2200,7 +2200,7 @@ gateway.
 
 | ⬅️ Previous | 🏠 | Next ➡️ |
 | :-- | :-: | --: |
-| [17 · Coding-agent plugin](../17-coding-agent-plugin/README.md) | [All labs](../README.md) | [18 · Private networking](../18-private-networking/README.md) |
+| [17 · Coding-agent plugin](../17-coding-agent-plugin/README.md) | [All labs](../README.md) | [25 · Claude Code](../25-claude-code/README.md) |
 
-<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (9 of 9)</sub>
+<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (9 of 10)</sub>
 <!-- gh:end -->

@@ -1626,7 +1626,7 @@ because the Bicep + azd track created its own gateway and Foundry resource.
 
 | ⬅️ Previous | 🏠 | Next ➡️ |
 | :-- | :-: | --: |
-| [24 · GitHub Copilot BYOK](../24-github-copilot-byok/README.md) | [All labs](../README.md) | [19 · Tool threat protection](../19-tool-threat-protection/README.md) |
+| [25 · Claude Code](../25-claude-code/README.md) | [All labs](../README.md) | [19 · Tool threat protection](../19-tool-threat-protection/README.md) |
 
 <sub>Learning paths: [Platform engineer](../README.md#learning-paths) (8 of 9)</sub>
 <!-- gh:end -->

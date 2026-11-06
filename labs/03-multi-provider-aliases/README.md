@@ -1315,5 +1315,5 @@ you created the key only for this lab, delete it in the Claude Console.
 | :-- | :-: | --: |
 | [02 · First model call](../02-first-model-call/README.md) | [All labs](../README.md) | [22 · Priority & weighted routing](../22-model-routing/README.md) |
 
-<sub>Learning paths: [Platform engineer](../README.md#learning-paths) (3 of 9) · [App & agent developer](../README.md#learning-paths) (2 of 9)</sub>
+<sub>Learning paths: [Platform engineer](../README.md#learning-paths) (3 of 9) · [App & agent developer](../README.md#learning-paths) (2 of 10)</sub>
 <!-- gh:end -->
