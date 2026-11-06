@@ -490,12 +490,13 @@ Keep the video optional: every step it shows must also be written in the lab.
 
 ## Notebooks
 
-Some labs ship a Jupyter notebook, `NN-slug/NN-slug.ipynb`, that runs the lab end to end from Python. The build
-finds it automatically: the lab page gets a **Notebook** button, and the GitHub header, the catalog, and the
-**Run the notebooks** table link to it.
+Every lab with a `code` track ships a Jupyter notebook, `NN-slug/NN-slug.ipynb`, that runs the lab's code end to
+end, so readers run the code from one place instead of copying it into files. Other labs may ship one too. The
+build finds it automatically: the lab page gets a **Notebook** button and a **Notebook** track chip, the catalog
+gets a **Notebook** filter, and the GitHub header and the **Run the notebooks** table link to it.
 
-A notebook deploys the lab's own Bicep files, so the notebook and the Bicep track can't drift apart. It keeps its
-cells short by importing [`shared/utils.py`](shared/utils.py):
+A notebook deploys the lab's own Bicep files, or runs the lab's own `azd` project, so the notebook and the other
+tracks can't drift apart. It keeps its cells short by importing [`shared/utils.py`](shared/utils.py):
 
 - `lab = utils.Lab("NN-slug")` reads the `az login` sign-in and the shared defaults (resource group
   `rg-ai-gateway-labs`, gateway `aigw-labs-<6 characters of the SHA-1 of the subscription ID>`, region `eastus2`)
@@ -520,7 +521,8 @@ In a cell, `display(brand.<helper>(...))`:
 | `note(text, tone)` | One line. Tones: `brand`, `ok`, `warn`, `bad`, `wait`, `neutral` |
 | `key(name, value, created)` | Which runtime key the notebook uses, with only its first four characters |
 | `checks(title, rows)` | A pass or fail table of `(request, status, expected[, detail])` |
-| `reply(text, title, model, tokens)` | A model's answer with the alias and the tokens used |
+| `reply(text, title, model, tokens, markdown)` | A model's or an agent's answer with the alias and the tokens used. `markdown=True` renders the answer's Markdown (headings, lists, links, code) |
+| `markdown(text)` | Markdown that the notebook didn't write, such as an agent's report, rendered with the site's styles |
 | `http(status, headers, body, title)` | A response's status, headers, and body, with `Retry-After` and the cost `…-retry-after` headers highlighted |
 | `policies(alias, items)` | An alias's policies, with token limits and cost limits, and their overrides, spelled out |
 | `hits(title, results)` | Search results from a tool call |
@@ -548,10 +550,28 @@ Follow the structure of the existing notebooks:
    Troubleshooting cell lists the errors that are specific to the notebook, then links to the lab's section on the
    [Troubleshooting page](#the-troubleshooting-page).
 
+When a lab's code runs in another tool rather than in Python, the notebook drives that tool and shows its output
+as cards:
+
+- **An agent framework or SDK** (labs 15 and 24): the `%pip install` cell installs the lab's
+  `infra/requirements.txt`, and the notebook runs the lab's own sample scripts in `infra/` as subprocesses, with
+  the gateway's URL and the key in their environment, then shows each answer with `brand.reply`.
+- **A command-line agent** (labs 17 and 24): the notebook runs the agent non-interactively (for example
+  `copilot -p`), with an allow rule for every command the prompt needs, including `printf` and `echo` in compound
+  commands, and renders its report with `brand.reply(..., markdown=True)`. Name the environment variable that
+  holds the key in the prompt, and never pass the key itself. Use a temporary home folder when the lab only
+  configures the agent, so the reader's own settings stay out of the runs; when the lab installs something in the
+  agent, such as lab 17's plugin, remove it, and the folders the notebook created, in **Clean up**.
+- **An azd project** (lab 16): the notebook runs `azd` in the lab's `infra/` folder with its own environment
+  (`-e <name> --no-prompt`), through a small helper that streams the latest line to a `brand.live` status. It
+  keeps the folder's default environment, runs long-lived commands such as `azd ai agent run` in the background,
+  stops them in a `finally` block, and runs `azd down --purge --force` and `azd env remove` in **Clean up**.
+
 Never print or save keys or tokens. Run the notebook from its lab folder, start to finish, against a real
 subscription before you commit it, then clear all outputs (`jupyter nbconvert --clear-output --inplace <file>`).
 Commit notebooks without outputs: saved outputs carry subscription IDs, names, and model answers, and they bloat
-diffs. `npm run check` fails when a notebook has saved outputs or execution counts.
+diffs. `npm run check` fails when a notebook has saved outputs or execution counts, and when a lab with a `code`
+track has no notebook.
 
 ## Release notes
 

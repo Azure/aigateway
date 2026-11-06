@@ -13,6 +13,7 @@ To run it without azd, copy .env.example to .env, install requirements.txt in a 
 
 import os
 
+import mcp
 from agent_framework import Agent
 from agent_framework.openai import OpenAIChatClient
 from agent_framework_foundry_hosting import FoundryToolbox, ResponsesHostServer
@@ -21,12 +22,31 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
+class HandshakeClient(mcp.Client):
+    """An MCP client that opens its connection with the initialize handshake.
+
+    By default, the MCP SDK negotiates the stateless MCP version 2026-07-28 when the server offers it, and Foundry
+    toolboxes do. The toolbox then speaks 2026-07-28 to the gateway's MCP server, and a server that supports only
+    earlier versions, like one whose backend is the Microsoft Learn MCP server, answers with HTTP 403. The handshake
+    keeps the whole chain on a version that the gateway's MCP server supports.
+    """
+
+    def __init__(self, *args, mode: str = "legacy", **kwargs) -> None:
+        super().__init__(*args, mode=mode, **kwargs)
+
+
+# Agent Framework creates its MCP clients from mcp.Client, so this applies to the toolbox connection.
+mcp.Client = HandshakeClient
+
 # The audience of AI Gateway's runtime endpoints
 AI_GATEWAY_SCOPE = "https://azure-api.net/aigateway/.default"
 
 INSTRUCTIONS = """
 You answer questions about Microsoft and Azure technologies.
 - Search the Microsoft Learn tools before you answer, and cite the URLs you used.
+- Answer from the search results. Fetch a whole article only when they don't answer the question: articles are long,
+  and their tokens count toward the model's limits.
 - If the tools don't cover the question, say so instead of guessing.
 - Keep answers under 150 words.
 """

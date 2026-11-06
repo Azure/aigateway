@@ -62,8 +62,10 @@ export const CATEGORY_ICONS = {
   foundations: 'compass', models: 'models', tools: 'tools', governance: 'gauge',
   security: 'shield', observability: 'chart', agents: 'agent', production: 'building',
 };
-const trackIcon = (t) => (TRACK_ICONS[t] || TRACK_ICONS.code).replace('<svg ', '<svg class="i" ');
-const SHORT_TRACK = { portal: 'Portal', cli: 'CLI', iac: 'Bicep', code: 'Code', rest: 'REST' };
+const trackIcon = (t) => (t === 'notebook' ? I.notebook : (TRACK_ICONS[t] || TRACK_ICONS.code).replace('<svg ', '<svg class="i" '));
+const SHORT_TRACK = { portal: 'Portal', cli: 'CLI', iac: 'Bicep', code: 'Code', rest: 'REST', notebook: 'Notebook' };
+// A lab's tracks, plus a notebook chip when the lab has a Jupyter notebook.
+const labTracks = (lab) => [...lab.tracks, ...(lab.notebook ? ['notebook'] : [])];
 const fmtDuration = (m) => (m >= 60 ? `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}` : `${m} min`);
 export const labUrl = (rel, slug) => `${rel}labs/${slug}/`;
 const levelDots = (level) => {
@@ -159,7 +161,7 @@ function footer(rel, site) {
 
 // ---------- Shared pieces ----------
 function trackChips(tracks, { labels = true } = {}) {
-  return `<span class="track-chips">${tracks.map((t) => `<span class="track-chip" title="${esc(TRACK_LABELS[t] || t)}">${trackIcon(t)}${labels ? `<span>${esc(SHORT_TRACK[t] || t)}</span>` : ''}</span>`).join('')}</span>`;
+  return `<span class="track-chips">${tracks.map((t) => `<span class="track-chip" title="${esc(t === 'notebook' ? 'Jupyter notebook' : TRACK_LABELS[t] || t)}">${trackIcon(t)}${labels ? `<span>${esc(SHORT_TRACK[t] || t)}</span>` : ''}</span>`).join('')}</span>`;
 }
 
 // Lab number, or a bolt for the unnumbered quick start.
@@ -175,7 +177,7 @@ export function labCard(lab, rel, cat, { compact = false } = {}) {
   const icon = I[CATEGORY_ICONS[lab.category]] || I.book;
   const paths = (lab.paths || []).join(' ');
   const text = [lab.title, lab.summary, ...(lab.tags || []), cat?.title].join(' ').toLowerCase();
-  return `<a class="lab-card${compact ? ' lab-card-compact' : ''}" href="${labUrl(rel, lab.slug)}" data-lab="${lab.slug}" data-category="${lab.category}" data-level="${esc(lab.level)}" data-tracks="${lab.tracks.join(' ')}" data-status="${esc(lab.status || '')}" data-paths="${paths}" data-text="${esc(text)}" style="--c: var(--cat-${cat?.color || 'violet'})">
+  return `<a class="lab-card${compact ? ' lab-card-compact' : ''}" href="${labUrl(rel, lab.slug)}" data-lab="${lab.slug}" data-category="${lab.category}" data-level="${esc(lab.level)}" data-tracks="${labTracks(lab).join(' ')}" data-status="${esc(lab.status || '')}" data-paths="${paths}" data-text="${esc(text)}" style="--c: var(--cat-${cat?.color || 'violet'})">
   <div class="lab-card-top">
     <span class="lab-card-num">${numHtml(lab)}</span>
     <span class="lab-card-icon">${icon}</span>
@@ -189,7 +191,7 @@ export function labCard(lab, rel, cat, { compact = false } = {}) {
     <div class="lab-card-meta">
       <span class="meta">${levelDots(lab.level)}${esc(lab.level)}</span>
       <span class="meta">${I.clock}${fmtDuration(lab.duration)}</span>
-      ${trackChips(lab.tracks, { labels: false })}
+      ${trackChips(labTracks(lab), { labels: false })}
     </div>
   </div>
 </a>`;
@@ -429,7 +431,7 @@ ${quick ? `
 export function catalogPage({ rel, catalog, labs }) {
   const cats = Object.fromEntries(catalog.categories.map((c) => [c.id, c]));
   const levels = ['Beginner', 'Intermediate', 'Advanced'];
-  const tracks = ['portal', 'cli', 'iac', 'rest', 'code'];
+  const tracks = ['portal', 'cli', 'iac', 'rest', 'code', 'notebook'];
   const chip = (group, value, label, extra = '') => `<button class="chip" type="button" data-filter="${group}" data-value="${value}" aria-pressed="false"${extra}>${label}</button>`;
   return `<main id="main" class="catalog">
   <section class="page-hero">
@@ -500,7 +502,7 @@ export function labPage({ rel, site, catalog, labs, lab, html, toc, prev, next }
       <div class="lab-meta">
         <span class="meta-pill">${levelDots(lab.level)}${esc(lab.level)}</span>
         <span class="meta-pill">${I.clock}${fmtDuration(lab.duration)}</span>
-        <span class="meta-pill meta-tracks">${trackChips(lab.tracks)}</span>
+        <span class="meta-pill meta-tracks">${trackChips(labTracks(lab))}</span>
         ${updatedText ? `<span class="meta-updated">Updated <time datetime="${updated.toISOString().slice(0, 10)}">${updatedText}</time></span>` : ''}
       </div>
       <div class="lab-actions">
@@ -521,7 +523,7 @@ export function labPage({ rel, site, catalog, labs, lab, html, toc, prev, next }
       <div class="overview-col">
         <h2>${I.book}Before you start</h2>
         ${prereqs.length ? `<ul class="prereq-list">${prereqs.map((p) => `<li><a href="${labUrl(rel, p.slug)}" data-lab-link="${p.slug}"><span class="side-num">${numHtml(p)}</span>${esc(p.title)}<span class="side-state" aria-hidden="true"></span></a></li>`).join('')}</ul>` : '<p class="muted">No prerequisite labs. Start here.</p>'}
-        <p class="overview-tracks">Tracks: ${lab.tracks.map((t) => `<span>${esc((t === 'iac' && lab.iacLabel) || TRACK_LABELS[t] || t)}</span>`).join(', ')}</p>
+        <p class="overview-tracks">Tracks: ${lab.tracks.map((t) => `<span>${esc((t === 'iac' && lab.iacLabel) || TRACK_LABELS[t] || t)}</span>`).join(', ')}${lab.notebook ? ', <span>Notebook</span>' : ''}</p>
       </div>
     </section>
     <article class="prose" id="lab-content">

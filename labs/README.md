@@ -7,7 +7,7 @@
   <a href="https://azure.github.io/aigateway/"><img alt="labs site: azure.github.io/aigateway" src="https://img.shields.io/badge/labs_site-azure.github.io%2Faigateway-0078D4"></a>
   <img alt="labs: 26" src="https://img.shields.io/badge/labs-26-5C2D91">
   <img alt="learning paths: 5" src="https://img.shields.io/badge/learning_paths-5-107C10">
-  <img alt="notebooks: 7" src="https://img.shields.io/badge/notebooks-7-F37626?logo=jupyter&amp;logoColor=white">
+  <img alt="notebooks: 11" src="https://img.shields.io/badge/notebooks-11-F37626?logo=jupyter&amp;logoColor=white">
   <img alt="tracks: Portal · CLI · REST · Bicep · Code" src="https://img.shields.io/badge/tracks-Portal_%C2%B7_CLI_%C2%B7_REST_%C2%B7_Bicep_%C2%B7_Code-505050">
 </p>
 <!-- gh:end -->
@@ -139,10 +139,10 @@ Route agent frameworks, hosted agents, and coding agents through the gateway.
 
 | # | Lab | Level | Time | Tracks | Notebook |
 | :-: | :-- | :-- | --: | :-- | :-: |
-| 15 | [Connect agent frameworks to models and tools](15-agent-frameworks/README.md) | Intermediate | 30 min | Code |  |
-| 16 | [Deploy a Foundry hosted agent behind AI Gateway](16-foundry-hosted-agent/README.md) | Intermediate | 45 min | Portal · CLI · Code |  |
-| 17 | [Build on your gateway with coding agents](17-coding-agent-plugin/README.md) | Beginner | 15 min | Code |  |
-| 24 | [Use your gateway's models and tools in GitHub Copilot](24-github-copilot-byok/README.md) | Intermediate | 40 min | Portal · CLI · Bicep · Code |  |
+| 15 | [Connect agent frameworks to models and tools](15-agent-frameworks/README.md) | Intermediate | 30 min | Code | [📓](15-agent-frameworks/15-agent-frameworks.ipynb) |
+| 16 | [Deploy a Foundry hosted agent behind AI Gateway](16-foundry-hosted-agent/README.md) | Intermediate | 45 min | Portal · CLI · Code | [📓](16-foundry-hosted-agent/16-foundry-hosted-agent.ipynb) |
+| 17 | [Build on your gateway with coding agents](17-coding-agent-plugin/README.md) | Beginner | 15 min | Code | [📓](17-coding-agent-plugin/17-coding-agent-plugin.ipynb) |
+| 24 | [Use your gateway's models and tools in GitHub Copilot](24-github-copilot-byok/README.md) | Intermediate | 40 min | Portal · CLI · Bicep · Code | [📓](24-github-copilot-byok/24-github-copilot-byok.ipynb) |
 
 ### Production & emerging
 
@@ -173,6 +173,10 @@ every cell stays short.
 | 📓 [`06-token-limits.ipynb`](06-token-limits/06-token-limits.ipynb) | [06 · Token limits](06-token-limits/README.md) | 25 min |
 | 📓 [`07-cost-budgets.ipynb`](07-cost-budgets/07-cost-budgets.ipynb) | [07 · Cost budgets](07-cost-budgets/README.md) | 30 min |
 | 📓 [`11-entra-rbac.ipynb`](11-entra-rbac/11-entra-rbac.ipynb) | [11 · Entra ID & RBAC](11-entra-rbac/README.md) | 35 min |
+| 📓 [`15-agent-frameworks.ipynb`](15-agent-frameworks/15-agent-frameworks.ipynb) | [15 · Agent frameworks](15-agent-frameworks/README.md) | 30 min |
+| 📓 [`16-foundry-hosted-agent.ipynb`](16-foundry-hosted-agent/16-foundry-hosted-agent.ipynb) | [16 · Foundry hosted agent](16-foundry-hosted-agent/README.md) | 45 min |
+| 📓 [`17-coding-agent-plugin.ipynb`](17-coding-agent-plugin/17-coding-agent-plugin.ipynb) | [17 · Coding-agent plugin](17-coding-agent-plugin/README.md) | 15 min |
+| 📓 [`24-github-copilot-byok.ipynb`](24-github-copilot-byok/24-github-copilot-byok.ipynb) | [24 · GitHub Copilot BYOK](24-github-copilot-byok/README.md) | 40 min |
 <!-- gh:end -->
 
 1. Install [Python](https://www.python.org/downloads/) 3.10 or later, the

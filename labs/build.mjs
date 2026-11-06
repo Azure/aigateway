@@ -162,6 +162,8 @@ function loadLabs(catalog) {
       const cells = JSON.parse(fs.readFileSync(path.join(LABS, slug, notebook), 'utf8')).cells || [];
       const ran = cells.filter((c) => c.cell_type === 'code' && ((c.outputs || []).length || c.execution_count != null)).length;
       if (ran) warn(`${slug}: ${notebook} has saved outputs in ${ran} code cell${ran === 1 ? '' : 's'}; clear all outputs before you commit`);
+    } else if ((data.tracks || []).includes('code')) {
+      warn(`${slug}: has a code track, but no ${slug}.ipynb; every lab with code runs it from a notebook`);
     }
     for (const k of REQUIRED) if (data[k] == null) warn(`${slug}: missing front matter "${k}"`);
     // "Do this: that" in a YAML list parses as a mapping and renders as [object Object].

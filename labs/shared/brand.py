@@ -119,6 +119,14 @@ _CSS = f"""
 .aigw .aigw-quote{{max-width:76ch;padding:12px 14px;border:1px solid var(--aigw-stroke2);border-radius:8px;
   background:var(--aigw-bg2);font-size:14.5px;line-height:1.6;color:var(--aigw-fg);white-space:pre-wrap;overflow-wrap:anywhere}}
 .aigw .aigw-quote.aigw-empty{{color:var(--aigw-fg3)}}
+.aigw .aigw-quote.aigw-md{{max-width:88ch;white-space:normal}}
+.aigw .aigw-md>*{{margin:0 0 10px}}
+.aigw .aigw-md>*:last-child{{margin-bottom:0}}
+.aigw .aigw-md ul,.aigw .aigw-md ol{{padding-left:22px}}
+.aigw .aigw-md li{{margin:2px 0}}
+.aigw .aigw-md code{{padding:1px 5px;border-radius:4px;background:var(--aigw-code);font:12.5px/1.5 {MONO}}}
+.aigw .aigw-md pre.aigw-pre code{{padding:0;background:transparent}}
+.aigw .aigw-md .aigw-h{{margin-top:4px;font-size:14px;color:var(--aigw-fg)}}
 .aigw .aigw-caret{{display:inline-block;width:7px;height:1.05em;margin-left:2px;vertical-align:-2px;border-radius:1px;
   background:{GRADIENT};animation:aigw-blink 1s steps(2,start) infinite}}
 .aigw pre.aigw-pre{{max-height:320px;margin:0;padding:10px 12px;overflow:auto;border:1px solid var(--aigw-stroke2);
@@ -314,6 +322,73 @@ def quote(text: str) -> Html:
     return Html(f'<div class="aigw-quote">{_html.escape(text)}</div>', text)
 
 
+def _inline(text: str) -> str:
+    """Escape a line, then render `code`, **bold**, and [links](https://...)."""
+    parts = _re.split(r"(`[^`]+`)", text)
+    out = []
+    for part in parts:
+        if len(part) > 1 and part.startswith("`") and part.endswith("`"):
+            out.append(f"<code>{_html.escape(part[1:-1])}</code>")
+            continue
+        part = _html.escape(part, quote=False)
+        part = _re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", part)
+        part = _re.sub(r"\[([^\]]+)\]\((https?://[^\s)]+)\)",
+                       lambda m: f'<a href="{m[2].replace(chr(34), "&quot;")}" target="_blank" rel="noopener">{m[1]}</a>', part)
+        out.append(part)
+    return "".join(out)
+
+
+def markdown(text: str) -> Html:
+    """An agent's Markdown answer: paragraphs, headings, lists, tables, code, bold, and links. HTML stays escaped."""
+    blocks, lines, i = [], text.strip().splitlines(), 0
+    while i < len(lines):
+        line = lines[i]
+        if not line.strip():
+            i += 1
+        elif line.lstrip().startswith("```"):
+            j = i + 1
+            while j < len(lines) and not lines[j].lstrip().startswith("```"):
+                j += 1
+            blocks.append(f'<pre class="aigw-pre">{_html.escape(chr(10).join(lines[i + 1:j]))}</pre>')
+            i = j + 1
+        elif line.lstrip().startswith("|"):
+            j = i
+            while j < len(lines) and lines[j].lstrip().startswith("|"):
+                j += 1
+            rows = [[c.strip() for c in r.strip().strip("|").split("|")] for r in lines[i:j]]
+            rows = [r for r in rows if not all(_re.fullmatch(r":?-{2,}:?", c) for c in r)]
+            head = "".join(f"<th>{_inline(c)}</th>" for c in rows[0])
+            body = "".join("<tr>" + "".join(f"<td>{_inline(c)}</td>" for c in r) + "</tr>" for r in rows[1:])
+            blocks.append(f'<div class="aigw-tw"><table class="aigw-tb"><thead><tr>{head}</tr></thead>'
+                          f"<tbody>{body}</tbody></table></div>")
+            i = j
+        elif _re.match(r"\s*([-*]|\d+\.)\s", line):
+            tag = "ol" if _re.match(r"\s*\d+\.", line) else "ul"
+            items = []
+            while i < len(lines) and lines[i].strip():
+                item = _re.match(r"\s*(?:[-*]|\d+\.)\s+(.*)", lines[i])
+                if item:
+                    items.append(item[1])
+                elif items:
+                    items[-1] += " " + lines[i].strip()
+                i += 1
+            blocks.append(f"<{tag}>" + "".join(f"<li>{_inline(t)}</li>" for t in items) + f"</{tag}>")
+        elif _re.match(r"#{1,6}\s", line):
+            blocks.append(f'<div class="aigw-h">{_inline(line.lstrip("#").strip())}</div>')
+            i += 1
+        else:
+            j = i
+            while j < len(lines) and lines[j].strip() and not _re.match(r"\s*([-*]|\d+\.|\||```|#{1,6}\s)", lines[j]):
+                j += 1
+            j = max(j, i + 1)
+            blocks.append("<p>" + "<br>".join(_inline(l) for l in lines[i:j]) + "</p>")
+            i = j
+    return Html(f'<div class="aigw-quote aigw-md">{"".join(blocks)}</div>', text)
+
+
+_markdown = markdown   # reply() has a parameter of the same name
+
+
 def section(title: str, block) -> Html:
     """A heading over a block, inside a card."""
     return Html(f'<div class="aigw-h">{_e(title)}</div>{_e(block)}', f"{title}\n{_plain(block)}")
@@ -398,8 +473,12 @@ def checks(title: str, rows, sub=None) -> View:
     return card(title, grid(columns, rows_out), sub=sub, badge=badge)
 
 
-def reply(text: str, title: str, model: str | None = None, tokens=None, sub=None, badge: Html | None = None) -> View:
-    """A model's answer, with the alias and the tokens it used. `tokens` is a total, or (input, output)."""
+def reply(text: str, title: str, model: str | None = None, tokens=None, sub=None, badge: Html | None = None,
+          markdown: bool = False) -> View:
+    """A model's answer, with the alias and the tokens it used. `tokens` is a total, or (input, output).
+
+    Set `markdown` for agents that answer in Markdown, such as GitHub Copilot.
+    """
     if isinstance(tokens, (tuple, list)):
         used = f"{tokens[0]:,} in · {tokens[1]:,} out tokens"
     elif tokens is not None:
@@ -407,7 +486,8 @@ def reply(text: str, title: str, model: str | None = None, tokens=None, sub=None
     else:
         used = None
     meta = [m for m in (chip(model, "violet", code=True) if model else None, chip(used) if used else None) if m]
-    return card(title, quote(text or "(empty)"), chips(*meta) if meta else None, sub=sub, badge=badge)
+    body = _markdown(text) if markdown and text else quote(text or "(empty)")
+    return card(title, body, chips(*meta) if meta else None, sub=sub, badge=badge)
 
 
 def http(code: int, headers, body: str, title: str, sub=None, keys=None) -> View:

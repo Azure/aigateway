@@ -32,7 +32,7 @@ prereqs:
 
 | ⏱️ Time | 📶 Level | 🧭 Tracks | ✅ Before you start |
 | :-- | :-- | :-- | :-- |
-| 40 min | Intermediate | Portal · Azure CLI · Bicep + azd · Code | [02 · First model call](../02-first-model-call/README.md) |
+| 40 min | Intermediate | Portal · Azure CLI · Bicep + azd · Code · Notebook | [02 · First model call](../02-first-model-call/README.md) |
 
 **You'll learn to**
 
@@ -45,7 +45,7 @@ prereqs:
 - Give VS Code, the Copilot CLI, the Copilot SDK, and the GitHub Copilot app the gateway's Learn tools with the same key
 - Track Copilot usage by key in Monitoring and cut off access by suspending the key
 
-**Follow along:** 🌐 [Interactive version](https://azure.github.io/aigateway/labs/24-github-copilot-byok/) with your own values filled in · 📁 [Lab files](infra/)
+**Follow along:** 🌐 [Interactive version](https://azure.github.io/aigateway/labs/24-github-copilot-byok/) with your own values filled in · 📓 [Jupyter notebook](24-github-copilot-byok.ipynb) · 📁 [Lab files](infra/)
 
 **On this page:** [Before you begin](#before-you-begin) · [How it works](#how-it-works) · [Publish gpt-6.1-sol for Copilot](#publish-gpt-61-sol-for-copilot) · [Connect VS Code](#connect-vs-code) · [Connect the Copilot CLI](#connect-the-copilot-cli) · [Connect the Copilot SDK](#connect-the-copilot-sdk) · [Connect the GitHub Copilot app](#connect-the-github-copilot-app) · [Publish Microsoft Learn tools for Copilot](#publish-microsoft-learn-tools-for-copilot) · [Add the Learn tools to VS Code](#add-the-learn-tools-to-vs-code) · [Add the Learn tools to the Copilot CLI](#add-the-learn-tools-to-the-copilot-cli) · [Add the Learn tools to the Copilot SDK](#add-the-learn-tools-to-the-copilot-sdk) · [Add the Learn tools to the GitHub Copilot app](#add-the-learn-tools-to-the-github-copilot-app) · [Verify](#verify) · [Go further](#go-further) · [Clean up](#clean-up) · [Next steps](#next-steps)
 <!-- gh:end -->

@@ -52,6 +52,13 @@ RESOURCES_API = "2021-04-01"            # resource groups, resource providers, a
 ROLES_API = "2022-04-01"                # Microsoft.Authorization/roleAssignments
 AIGW_SCOPE = "https://azure-api.net/aigateway/.default"   # Microsoft Entra token scope for gateway callers
 
+RESOURCE_KINDS = {   # ARM collection -> the name that clean-up messages use
+    "aigateways": "gateway", "aliases": "alias", "apiKeys": "API key", "models": "model",
+    "modelProviders": "model provider", "toolServers": "MCP server", "deployments": "Foundry deployment",
+    "accounts": "Foundry account", "projects": "Foundry project", "roleAssignments": "role assignment",
+    "connections": "connection", "connectorGateways": "connector gateway", "resourceGroups": "resource group",
+}
+
 ROLES = {   # AI Gateway data-plane roles: role ID -> name
     "caad7a21-134e-43f4-a550-c5ffc17e051c": "AI Gateway User",
     "a6b68e3d-a1f0-4c60-8678-237c050cf4ea": "AI Gateway Models User",
@@ -179,7 +186,8 @@ class Lab:
 
     def delete(self, path: str, api_version: str = AIGW_API, wait: bool = False):
         """Delete a resource. With wait=True, poll until it's gone (gateways take about 10 minutes)."""
-        name = path.rsplit("/", 1)[-1]
+        kind, name = path.rstrip("/").rsplit("/", 2)[-2:]
+        name = f"{RESOURCE_KINDS.get(kind, '')} {name}".strip()
         if self.arm("DELETE", path, api_version=api_version) is None:
             brand.show(brand.note(f"{name} was already deleted", "neutral"))
             return

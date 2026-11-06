@@ -28,7 +28,7 @@ prereqs:
 
 | ⏱️ Time | 📶 Level | 🧭 Tracks | ✅ Before you start |
 | :-- | :-- | :-- | :-- |
-| 30 min | Intermediate | Code | [02 · First model call](../02-first-model-call/README.md)<br>[04 · Federate MCP tools](../04-federate-mcp-tools/README.md) |
+| 30 min | Intermediate | Code · Notebook | [02 · First model call](../02-first-model-call/README.md)<br>[04 · Federate MCP tools](../04-federate-mcp-tools/README.md) |
 
 **You'll learn to**
 
@@ -37,7 +37,7 @@ prereqs:
 - Run the same agent in Microsoft Agent Framework, the OpenAI Agents SDK, and LangGraph
 - Prove that the gateway authenticates and records every model and tool call the agent makes
 
-**Follow along:** 🌐 [Interactive version](https://azure.github.io/aigateway/labs/15-agent-frameworks/) with your own values filled in · 📁 [Lab files](infra/)
+**Follow along:** 🌐 [Interactive version](https://azure.github.io/aigateway/labs/15-agent-frameworks/) with your own values filled in · 📓 [Jupyter notebook](15-agent-frameworks.ipynb) · 📁 [Lab files](infra/)
 
 **On this page:** [Before you begin](#before-you-begin) · [How it works](#how-it-works) · [Set up the samples](#set-up-the-samples) · [Point the model client at the gateway](#point-the-model-client-at-the-gateway) · [Add the gateway's MCP tools](#add-the-gateways-mcp-tools) · [Run the agents](#run-the-agents) · [Verify](#verify) · [Go further](#go-further) · [Clean up](#clean-up) · [Next steps](#next-steps)
 <!-- gh:end -->

@@ -27,7 +27,7 @@ prereqs:
 
 | ⏱️ Time | 📶 Level | 🧭 Tracks | ✅ Before you start |
 | :-- | :-- | :-- | :-- |
-| 15 min | Beginner | Code | [02 · First model call](../02-first-model-call/README.md) |
+| 15 min | Beginner | Code · Notebook | [02 · First model call](../02-first-model-call/README.md) |
 
 **You'll learn to**
 
@@ -36,7 +36,7 @@ prereqs:
 - Generate and run app code that calls the gateway with a runtime key
 - Review generated code for the right endpoint, model name, and secret handling
 
-**Follow along:** 🌐 [Interactive version](https://azure.github.io/aigateway/labs/17-coding-agent-plugin/) with your own values filled in · 📁 [Lab files](infra/)
+**Follow along:** 🌐 [Interactive version](https://azure.github.io/aigateway/labs/17-coding-agent-plugin/) with your own values filled in · 📓 [Jupyter notebook](17-coding-agent-plugin.ipynb) · 📁 [Lab files](infra/)
 
 **On this page:** [Before you begin](#before-you-begin) · [How it works](#how-it-works) · [Install the plugin](#install-the-plugin) · [Discover what the gateway offers](#discover-what-the-gateway-offers) · [Build an app with the gateway](#build-an-app-with-the-gateway) · [Verify](#verify) · [Go further](#go-further) · [Clean up](#clean-up) · [Next steps](#next-steps)
 <!-- gh:end -->
@@ -263,10 +263,11 @@ Answer with the ID you printed, or continue with the next step.
 
 ### Run discover with your resource ID
 
-Paste the gateway ID that you printed in [Before you begin](#before-you-begin):
+Paste the gateway ID that you printed in [Before you begin](#before-you-begin). Discover checks each MCP tool
+server with a call that needs a key, so tell it to use the key you created for this app:
 
 ```text
-/ai-gateway:discover /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ApiManagement/aigateways/<gateway>
+/ai-gateway:discover /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ApiManagement/aigateways/<gateway> For the MCP handshake, use the key in the AI_GATEWAY_API_KEY environment variable.
 ```
 
 When your agent asks to run `az` or `curl` commands, approve the ones that read: getting a token, `GET` requests
@@ -284,7 +285,8 @@ plain language, for example:
 Which model fits short summaries? Do any tool servers search Microsoft Learn?
 ```
 
-Discover doesn't retrieve keys or write code. Stop here, or move on to `build`.
+Discover doesn't write code. If you don't name a key, it may read the secret of one of the gateway's keys for the
+MCP handshake, without showing it. Stop here, or move on to `build`.
 
 <!-- /steps -->
 
