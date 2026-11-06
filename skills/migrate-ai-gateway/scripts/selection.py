@@ -7,7 +7,7 @@ import copy
 import json
 import re
 
-from core import MigrationError, SECRET, clean, digest, invalid_json, resource_id, semantic, subset, unique_keys, validate_schema
+from core import MigrationError, SECRET, child_resource_id, clean, digest, invalid_json, resource_id, semantic, subset, unique_keys, validate_schema
 from model_inventory import explicit_id, validate_catalog
 from gateway import catalog
 from native_sync import selected_action, validate_preview, removal_proposals
@@ -240,6 +240,102 @@ def policy_translation(selection, source_id, behavior_ids):
     return set(behavior_ids) <= covered
 
 
+def check_routing_failures(item):
+    if item["domain"] == "backends" and item["resource"].get("properties", {}).get("circuitBreaker") is not None:
+        raise MigrationError("Source circuit-breaker failure conditions and recovery have no reviewed model-routing "
+                             "translation; retain that source behavior instead of claiming failover equivalence.")
+    shape = item["policyShape"]
+    if any(node["statement"] == "retry" or (
+            node["statement"] == "on-error" and any(
+                child["path"].startswith(node["path"] + "/") for child in shape)) for node in shape):
+        raise MigrationError("Source retries and nonempty error handlers have no reviewed model-routing translation.")
+
+
+def backend_ids(item):
+    scope = re.match(
+        r"^(/subscriptions/[^/]+/resourceGroups/[^/]+/providers/Microsoft\.ApiManagement/service/"
+        r"[^/]+(?:/workspaces/[^/]+)?)(?:/|$)", item["id"], re.I)
+    if scope is None:
+        raise MigrationError("Model routing requires an exact source service/workspace resource identity.")
+    parent = scope[1] + "/backends"
+    ids = {(parent + "/" + reference["name"]).lower() for node in item["policyShape"]
+           for reference in node["references"] if reference["domain"] == "backends"}
+    backend = item["resource"].get("properties", {}).get("backendId")
+    if item["domain"] == "apis" and backend:
+        if not isinstance(backend, str):
+            raise MigrationError("Source backend routing is unresolved; do not infer a pool from an expression.")
+        if re.fullmatch(r"[A-Za-z0-9_.-]+", backend):
+            ids.add((parent + "/" + backend).lower())
+        elif child_resource_id(backend, parent) and "/" not in backend[len(parent) + 1:]:
+            ids.add(backend.lower())
+        else:
+            raise MigrationError("Source backend routing is unresolved or outside its exact APIM scope.")
+    return ids
+
+
+def source_pool_routes(bundle, selection):
+    source = {item["id"].lower(): item for item in bundle["source-inventory.json"]["items"]}
+    providers = {provider.get("name", provider["id"]): provider for provider in selection["providers"]}
+    routes = {}
+    for alias in selection.get("aliases", []):
+        pool_id = alias.get("sourcePoolId")
+        observed_pools = {
+            sid.lower() for sid in alias["sourceIds"] if sid.lower() in source
+            and source[sid.lower()]["domain"] == "backends"
+            and (source[sid.lower()]["resource"].get("properties", {}).get("type") == "Pool"
+                 or source[sid.lower()]["resource"].get("properties", {}).get("pool") is not None)}
+        if pool_id is None:
+            if observed_pools or any("sourceBackendId" in backend for backend in alias["backends"]):
+                raise MigrationError("Source pool translation requires sourcePoolId and exact sourceBackendId bindings.")
+            continue
+        pool = source.get(pool_id.lower())
+        if (not pool or pool["domain"] != "backends" or pool["authority"] != "authoritative"
+                or observed_pools != {pool_id.lower()}):
+            raise MigrationError("Select exactly one authoritative source pool in the alias sourceIds.")
+        check_routing_failures(pool)
+        properties = pool["resource"].get("properties", {})
+        config = properties.get("pool")
+        if (properties.get("type") != "Pool" or not isinstance(config, dict)
+                or set(config) != {"services"} or not isinstance(config["services"], list)
+                or not config["services"] or len(config["services"]) != len(alias["backends"])):
+            raise MigrationError("Source pool translation requires explicit, complete reviewed pool membership.")
+        if not any(pool_id.lower() in backend_ids(source[sid.lower()])
+                   for sid in alias["sourceIds"] if sid.lower() in source and sid.lower() != pool_id.lower()):
+            raise MigrationError("Alias source evidence must route to the selected source pool.")
+        members = {}
+        for member in config["services"]:
+            if (not isinstance(member, dict) or set(member) != {"id", "priority", "weight"}
+                    or not isinstance(member["id"], str)):
+                raise MigrationError("Source pool members require exact backend IDs, priorities and weights.")
+            sid = member["id"].lower()
+            backend = source.get(sid)
+            if (sid in members or not backend or backend["domain"] != "backends"
+                    or backend["scope"].lower() != pool["scope"].lower()
+                    or backend["authority"] != "authoritative"):
+                raise MigrationError("Source pool members must be distinct authoritative backends in the same scope.")
+            settings = backend["resource"].get("properties", {})
+            if settings.get("type") == "Pool" or settings.get("pool") is not None:
+                raise MigrationError("Nested source pools need a separately supported routing translation.")
+            check_routing_failures(backend)
+            if (type(member["priority"]) is not int or not 0 <= member["priority"] <= 100
+                    or type(member["weight"]) is not int or not 1 <= member["weight"] <= 100):
+                raise MigrationError("Source pool priorities/weights must be explicit and in reviewed ranges; "
+                                     "null/default values and zero weights need a separate routing decision.")
+            members[sid] = member
+        selected_members = set()
+        for backend in alias["backends"]:
+            sid = backend.get("sourceBackendId", "").lower()
+            provider = providers.get(backend["provider"])
+            if (sid not in members or sid in selected_members or not provider
+                    or sid not in {identifier.lower() for identifier in provider["sourceIds"]}):
+                raise MigrationError("Every source pool member must bind exactly once to its selected provider/backend.")
+            if any(backend[key] != members[sid][key] for key in ("priority", "weight")):
+                raise MigrationError("Source pool translation must preserve observed priorities and weights.")
+            selected_members.add(sid)
+            routes.setdefault((backend["provider"], backend["model"]), set()).add(pool_id.lower())
+    return routes
+
+
 def validate_selection(bundle, selection, verify_graph=True):
     validate_schema(selection, "selection")
     catalogs = validate_catalog(bundle["model-catalog.json"])
@@ -250,6 +346,7 @@ def validate_selection(bundle, selection, verify_graph=True):
         raise MigrationError("Selection is bound to a different model catalog; review and reselect.")
     providers = {p["id"]: p for p in catalogs["providers"]}
     source = {i["id"]: i for i in bundle["source-inventory.json"]["items"]}
+    pool_routes = source_pool_routes(bundle, selection)
     selected_providers, provider_names, selected_models, aliases, routing_names = set(), set(), set(), set(), set()
     previews = bundle["mapping.json"].get("nativeSyncPreviews", [])
     if not isinstance(previews, list):
@@ -298,6 +395,10 @@ def validate_selection(bundle, selection, verify_graph=True):
         if len(backend_records) > 1:
             raise MigrationError("Separate source backend/credential boundaries need separate provider selections.")
         for backend_record in backend_records:
+            check_routing_failures(backend_record)
+            properties = backend_record["resource"].get("properties", {})
+            if properties.get("type") == "Pool" or properties.get("pool") is not None:
+                raise MigrationError("Source pools map to explicit aliases, not provider credential boundaries.")
             facts = backend_record.get("facts", {})
             if not all(key in facts for key in ("headerNames", "queryParameterNames", "credentialExpressions", "certificateReferences")):
                 raise MigrationError("Recollect non-secret upstream authentication metadata before provider mapping.")
@@ -362,8 +463,16 @@ def validate_selection(bundle, selection, verify_graph=True):
                                not in {p.removeprefix("/anthropic/v1") for p in known_paths}
                                for path in selected["endpoints"]):
             raise MigrationError("Selected operations exceed the upstream catalog's observed capabilities.")
+        target_provider = next(p.get("name", p["id"]) for p in selection["providers"] if p["id"] == provider_id)
+        routed_pools = pool_routes.get((target_provider, selected["name"]), set())
         for sid in selected["sourceIds"]:
             item = source[sid]
+            check_routing_failures(item)
+            properties = item["resource"].get("properties", {})
+            if (item["domain"] == "backends" and (
+                    properties.get("type") == "Pool" or properties.get("pool") is not None)
+                    and sid.lower() not in routed_pools):
+                raise MigrationError("Source pool behavior requires its explicitly bound shared alias, not a model-only mapping.")
             if item["domain"] == "apis" and item.get("facts", {}).get("role") in ("rest", "mcp"):
                 raise MigrationError("Ordinary REST/MCP APIs are not model registrations.")
             policy_behaviors = [b["id"] for b in bundle["source-inventory.json"]["behaviors"]
@@ -371,14 +480,12 @@ def validate_selection(bundle, selection, verify_graph=True):
             if (item["policyShape"] and not item.get("facts", {}).get("routingOnly")
                     and not policy_translation(selection, sid, policy_behaviors)):
                 raise MigrationError("Untranslated policy behavior cannot be represented by a model selection.")
-            expected_backends = {
-                r["name"] for node in item["policyShape"] for r in node["references"] if r["domain"] == "backends"}
-            if item["domain"] == "apis" and item["resource"].get("properties", {}).get("backendId"):
-                expected_backends.add(item["resource"]["properties"]["backendId"].rsplit("/", 1)[-1])
+            expected_backends = backend_ids(item)
             provider_sources = next(p["sourceIds"] for p in selection["providers"] if p["id"] == provider_id)
-            actual_backends = {identifier.rsplit("/", 1)[-1] for identifier in provider_sources
+            actual_backends = {identifier.lower() for identifier in provider_sources
                                if source[identifier]["domain"] == "backends"}
-            if expected_backends and expected_backends != actual_backends:
+            if expected_backends and expected_backends != actual_backends and not (
+                    len(expected_backends) == 1 and expected_backends <= routed_pools):
                 raise MigrationError("Model provider selection crosses the observed backend boundary.")
             if item["domain"] == "api-operations":
                 if item["scope"] not in selected["sourceIds"]:
@@ -585,6 +692,14 @@ def validate_selection(bundle, selection, verify_graph=True):
                 raise MigrationError("Selected traffic needs an explicitly active admission key.")
     for selected in selection.get("aliases", []):
         bindings(selected)
+        for sid in selected["sourceIds"]:
+            item = source[sid]
+            check_routing_failures(item)
+            policy_behaviors = [b["id"] for b in bundle["source-inventory.json"]["behaviors"]
+                                if b["sourceId"] == sid and "statement" in b]
+            if (item["policyShape"] and not item.get("facts", {}).get("routingOnly")
+                    and not policy_translation(selection, sid, policy_behaviors)):
+                raise MigrationError("Untranslated policy behavior cannot be represented by an alias selection.")
         name(selected["name"])
         if (selected["name"].lower() in aliases or not explicit_id(selected["routingName"])
                 or selected["routingName"].casefold() in routing_names):
@@ -593,11 +708,19 @@ def validate_selection(bundle, selection, verify_graph=True):
         routing_names.add(selected["routingName"].casefold())
         if len({(b["provider"].lower(), b["model"].lower()) for b in selected["backends"]}) != len(selected["backends"]):
             raise MigrationError("A routing pool cannot duplicate the same model registration.")
+        protocols, endpoint_sets = set(), set()
         for backend in selected["backends"]:
-            if not any(model["name"] == backend["model"]
-                       and next(p.get("name", p["id"]) for p in selection["providers"] if p["id"] == model["provider"])
-                       == backend["provider"] for model in selection["models"]):
+            model = next((model for model in selection["models"] if model["name"] == backend["model"]
+                          and next(p.get("name", p["id"]) for p in selection["providers"] if p["id"] == model["provider"])
+                          == backend["provider"]), None)
+            if model is None:
                 raise MigrationError("Every routing backend needs an explicitly selected model registration.")
+            if selected.get("sourcePoolId") and not model.get("explicitAlias"):
+                raise MigrationError("Source pool models require explicitAlias so the shared alias owns their callable route.")
+            protocols.add(model["apiFormat"])
+            endpoint_sets.add(frozenset(model["endpoints"]))
+        if len(protocols) != 1 or len(endpoint_sets) != 1:
+            raise MigrationError("Routed models must share the selected API format and operation surface.")
     for model in selection["models"]:
         if model.get("explicitAlias") and not any(
                 backend["model"] == model["name"] and backend["provider"] == next(

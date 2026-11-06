@@ -700,6 +700,10 @@ def render_plan(bundle, result):
     if bundle["mapping.json"].get("selection"):
         lines.extend(["", "## Explicit models and operations", "", "```json",
                       json.dumps(bundle["mapping.json"]["selection"]["models"], indent=2), "```",
+                      "", "## Explicit model routing", "", "```json",
+                      json.dumps(bundle["mapping.json"]["selection"].get("aliases", []), indent=2), "```",
+                      "Source-pool bindings preserve observed membership, priorities and weights.",
+                      "Configuration read-back is not proof of failure triggers, recovery, or runtime failover.",
                       "", "## Separate removal proposals (not executable)", "", "```json",
                       json.dumps(bundle["mapping.json"].get("removalProposals", []), indent=2), "```",
                       "Proposals require complete account/model/alias evidence. An empty list is not proof",

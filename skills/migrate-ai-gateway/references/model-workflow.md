@@ -482,6 +482,94 @@ fields; the explicit alias entry owns the callable route.
 
 References are selected model registration names, not runtime deployment IDs.
 Each alias has 1-30 distinct gateway-bound backends, priorities 0-100 and weights
-1-100. Replacement requires `updateExisting: true`. The graph shares prerequisites
-and retains one owner per behavior. Routing does not establish arbitrary retry,
-circuit-breaker, expression or client-route equivalence; verify separately.
+1-100. All backends must share the selected API format and operation surface;
+different model families/providers are allowed, incompatible protocols are not.
+Replacement requires `updateExisting: true`. The graph shares prerequisites
+and retains one owner per behavior. Without source-pool bindings, this is an
+explicit destination topology decision, not proof of APIM pool translation.
+
+### Translate an observed APIM backend pool
+
+Read the selected backend's `properties.type`, `properties.pool.services` and
+each member backend from authoritative inventory. The
+[APIM 2024-05-01 backend contract](https://learn.microsoft.com/en-us/rest/api/apimanagement/backend/get?view=rest-apimanagement-2024-05-01)
+defines member ARM IDs, priorities and weights. Follow the effective API/policy
+route to that exact pool; do not identify it by a similar name in another scope.
+Resolve each member's runtime model and protocol independently using the catalog
+workflow above. A pool member URL identifies an upstream boundary, not a model
+family, deployment name or callable alias.
+
+Keep each provider bound to its single member backend and credential boundary,
+not the pool resource. Set participating models' `explicitAlias: true`. Their
+source bindings retain the routed API, operations and any supported routing-only
+policies. Add the pool to the shared alias's `sourceIds` and select `sourcePoolId`.
+Include the observed routing-policy resource in the alias's `sourceIds` when
+`set-backend-service` establishes the pool route.
+Each alias backend adds its exact `sourceBackendId`; `provider` remains the
+destination provider name, which may differ from its catalog identity.
+
+```json
+{
+  "name": "production",
+  "routingName": "customer/production",
+  "sourcePoolId": "<source-service-id>/backends/model-pool",
+  "sourceIds": [
+    "<source-service-id>/backends/model-pool",
+    "<source-service-id>/apis/inference",
+    "<source-service-id>/apis/inference/policies/policy"
+  ],
+  "evidence": "Observed API route, complete pool membership and selected model catalogs.",
+  "scopeDecision": "Preserve the evidenced pool configuration; verify runtime failure behavior separately.",
+  "backends": [
+    {"provider": "provider-a", "model": "model-a", "sourceBackendId": "<source-service-id>/backends/upstream-a", "priority": 0, "weight": 75},
+    {"provider": "provider-b", "model": "model-b", "sourceBackendId": "<source-service-id>/backends/upstream-b", "priority": 0, "weight": 25}
+  ]
+}
+```
+
+Compilation requires all distinct pool members exactly once, in the same source
+scope, bound to their selected providers. It rejects missing/extra/nested members,
+changed priorities/weights and unreviewed pool fields. Source priorities/weights
+must be explicit integers within the reviewed destination ranges. APIM permits
+null/omitted values and zero weights; the adapter does not invent defaults,
+enable a disabled member or silently drop it. Keep those cases unresolved until
+a supported separate routing decision is available.
+
+Equal-priority weights describe relative distribution within that priority
+group, not percentages across all priorities. Different priorities express
+preferred/fallback groups; a lower-priority group is not an ordinary weighted
+share of healthy primary traffic. Preserve numbers rather than normalizing
+across groups.
+
+### Assess failure behavior and verify routing
+
+The reviewed b22 model-alias contract exposes backend identities, priorities and
+weights, not a model `failureMode`, configurable retry policy or circuit breaker.
+Do not reuse MCP's unrelated `--failure-mode` option. Before mapping a route,
+inspect effective service/product/API/operation policies and fragments, plus
+pool/member backend circuit-breaker configuration. Record the actual failure
+status codes/error reasons, retry counts/delays, `Retry-After` handling, trip
+threshold/window/duration and recovery behavior where evidenced. Redacted
+expressions are unknown, not defaults.
+
+Source circuit breakers, retry statements and nonempty `on-error` handlers
+cannot become supported model-routing mappings under this contract. Planning
+rejects them even if the alias priorities match. An empty `on-error` container
+does not itself add failure behavior. Report unsupported behavior as an explicit
+adapter gap, retain the affected source path, and assess unaffected routes
+separately. Do not claim a platform limitation or remove a source safeguard to
+obtain a passing plan. New native failure controls require an authoritative
+CLI/API capability review before exposing them in selections or commands.
+
+For supported configurations, first verify the alias's exact model resource IDs,
+priority/weight values and prerequisite read-backs; preserve unrelated aliases
+and policies, and require `updateExisting: true` for a replacement. Offline
+regressions prove configuration translation, not service execution semantics.
+With separate approval of inference costs, credentials and resettable fault
+injection, verify weighted distribution among healthy equal-priority models,
+preferred-group routing, the observed conditions that activate fallback, and
+recovery to the preferred group. Include distinct models/providers in that
+verification; do not substitute two names for the same deployment. Retain
+redacted evidence and record each owned source behavior using the normal
+current-plan verification command. Without that evidence, describe routing as
+configuration-verified, not behavior-verified or ready for client cutover.

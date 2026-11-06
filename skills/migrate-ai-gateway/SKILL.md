@@ -333,6 +333,13 @@ before asking for model names or declaring runtime model IDs undetermined.
 Compare the discovered runtime model, protocol, and required operations; a broad
 OpenAI-shaped API or a model-list result is not automatically equivalent to
 inference registration.
+For pooled model routes, follow the backend pool to every concrete member and
+its selected model/account/credential boundary. Use the
+[source-pool translation](references/model-workflow.md#translate-an-observed-apim-backend-pool)
+to bind membership, priorities and weights to inventory evidence. Assess retries,
+error handlers, circuit-breaker trip conditions and recovery separately; alias
+priorities alone do not preserve those semantics. Do not mark an affected route
+migratable when a required failure behavior has no reviewed equivalent.
 For dependencies such as general REST, product/subscription access, portal
 behavior, or diagnostics, explain the required AI behavior and whether the
 dependency remains on APIM, needs a supported mapping, or is an adapter
@@ -679,7 +686,11 @@ are representable and others are residual; retain every behavior ID exactly once
 - Explicit key lifecycle selections can update state and timezone-qualified
   expiry without reading/copying/rotating keys or renaming them. Multi-backend
   alias selections compose exact selected model nodes with reviewed priorities
-  and weights; they do not imply arbitrary retry/circuit-breaker equivalence.
+  and weights. Optional source-pool bindings validate exact member/provider
+  boundaries and preserve observed priorities/weights. Routed models must share
+  the selected protocol/operations. Source circuit breakers, retries and nonempty
+  error handlers block model-routing translation; they do not become equivalent
+  merely because an alias has fallback priorities.
 - Products/subscriptions, gateway-wide client keys, identities, workspace
   topology, aliases, telemetry, network topology, custom domains, and arbitrary
   XML are not implicitly equivalent. Keep unsupported behavior visible.

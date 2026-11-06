@@ -19,10 +19,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from core import MigrationError, cli_failure_code, digest, semantic
 from execution import approve, execute, initialize, record_behavior, refresh, report, mutation_argv, selectors
 from gateway import capabilities, destination_inventory, exposed_options
-from inventory import source_inventory
+from inventory import inventory_item, source_inventory
 from model_inventory import NoRedirect, collect_models, import_models, validate_catalog
 from planning import validate_plan, policy_state, reviewed_arguments
-from selection import compile_selection, removal_proposals, validate_selection
+from selection import backend_ids, compile_selection, removal_proposals, validate_selection
 from core import State
 import migration
 from test_migration import Azure, SOURCE, TARGET, cli
@@ -771,6 +771,55 @@ class B22GraphTests(unittest.TestCase):
                 "scopeDecision": "Explicitly selected workspace scope rather than implicit APIM inheritance.",
                 **settings}
 
+    def pool_selection(self, priorities=(0, 0)):
+        _, selected, azure = graph_fixture()
+        api = SOURCE + "/apis/inference"
+        pool, other = SOURCE + "/backends/model-pool", SOURCE + "/backends/other"
+        policy = api + "/policies/policy"
+        members = [SOURCE + "/backends/upstream", other]
+        azure.collections[SOURCE + "/apis"]["value"][0]["properties"]["backendId"] = "model-pool"
+        azure.collections[SOURCE + "/backends"]["value"].extend([
+            {"id": other, "name": "other", "properties": {"url": "https://other.example",
+                "credentials": {"header": {"Authorization": ["{{upstream-key}}"]}}}},
+            {"id": pool, "name": "model-pool", "properties": {"type": "Pool", "pool": {"services": [
+                {"id": sid, "priority": priority, "weight": weight}
+                for sid, priority, weight in zip(members, priorities, (75, 25))]}}}])
+        azure.collections[api + "/policies"] = {"value": [{"id": policy, "properties": {
+            "value": '<policies><inbound><set-backend-service backend-id="model-pool"/></inbound>'
+                     '<backend><forward-request/></backend><on-error/></policies>'}}]}
+        models = catalog()
+        other_catalog = copy.deepcopy(models["providers"][0])
+        other_catalog.update(id="provider-two", endpoint="https://other.example")
+        other_catalog["models"][0].update(id="Owner/Different", family="different-family")
+        models["providers"].append(other_catalog)
+        other_provider = copy.deepcopy(selected["providers"][0])
+        other_provider.update(id="provider-two", name="destination-provider-two", sourceIds=[other])
+        other_provider["settings"]["custom"]["endpoint"] = "https://other.example"
+        selected["providers"].append(other_provider)
+        for model in selected["models"]:
+            model.update(explicitAlias=True)
+            model.pop("alias")
+            model.pop("routingName")
+            model["sourceIds"].append(policy)
+        other_model = copy.deepcopy(selected["models"][0])
+        other_model.update(provider="provider-two", id="Owner/Different", name="model-b")
+        selected["models"].append(other_model)
+        selected["aliases"] = [{
+            "name": "production", "routingName": "customer/production", "sourcePoolId": pool,
+            "sourceIds": [pool, *selected["models"][0]["sourceIds"]],
+            "evidence": "Observed route and exact pool-to-model bindings.",
+            "scopeDecision": "Preserve routing configuration; runtime failover requires separate proof.",
+            "backends": [
+                {"provider": provider, "model": model, "sourceBackendId": sid,
+                 "priority": priority, "weight": weight}
+                for provider, model, sid, priority, weight in zip(
+                    ("provider-one", "destination-provider-two"), ("model-a", "model-b"),
+                    members, priorities, (75, 25))]}]
+        selected["catalogDigest"] = digest(semantic(models))
+        value = initialize(source_inventory(SOURCE, azure), destination_inventory(TARGET, azure),
+                           capabilities(cli()), models)
+        return value, selected, azure
+
     def test_help_mentions_do_not_enable_removed_arguments(self):
         text = ("Command\n    az aigateway mcp update : --failure-mode is not supported.\n"
                 "Arguments\n    --versions : Supported versions.\n"
@@ -839,6 +888,182 @@ class B22GraphTests(unittest.TestCase):
         selected["aliases"][0]["backends"][0]["model"] = "unselected"
         with self.assertRaises(MigrationError):
             compile_selection(value, selected)
+
+    def test_source_pool_executes_distinct_models_and_providers_with_weights_and_priorities(self):
+        for priorities in ((0, 0), (0, 1)):
+            with self.subTest(priorities=priorities):
+                value, selected, azure = self.pool_selection(priorities)
+                result = compile_selection(value, selected)
+                result["plan-validation.json"] = validate_plan(result)
+                self.assertEqual(result["plan-validation.json"]["status"], "valid",
+                                 result["plan-validation.json"]["errors"])
+                alias = next(t for t in result["todos.json"]["items"] if t["id"] == "alias:production")
+                self.assertEqual(alias["resourceDependencies"],
+                                 ["model:model-a:provider-one", "model:model-b:destination-provider-two"])
+                expected = [{"resourceId": TARGET + "/workspaces/default/modelProviders/" + backend["provider"]
+                             + "/models/" + backend["model"], "priority": backend["priority"],
+                             "weight": backend["weight"]} for backend in selected["aliases"][0]["backends"]]
+                self.assertEqual(alias["arguments"]["backend-models"], expected)
+                pdigest = result["plan-validation.json"]["planDigest"]
+                with patch.dict(os.environ, {"UPSTREAM_TOKEN": "TEST_RUNTIME_ONLY"}):
+                    for todo in result["todos.json"]["items"]:
+                        approve(result, todo["id"], pdigest)
+                        execute(result, todo["id"], pdigest, lambda _: None, azure, cli)
+                alias_id = TARGET + "/workspaces/default/aliases/production"
+                self.assertEqual(azure.resources["model-alias"][alias_id]["properties"]["backendModels"], expected)
+                self.assertEqual({model["properties"]["deployment"]["modelName"]
+                                  for model in azure.resources["model"].values()}, {"Model/A", "Owner/Different"})
+                report(result, fresh=True)
+                self.assertEqual(result["context.json"]["completionStatus"], "incomplete")
+                self.assertTrue(all(call[call.index("--method") + 1] == "get"
+                                    for call in azure.calls if call[:2] == ["az", "rest"]))
+
+    def test_source_pool_rejects_unproven_membership_settings_and_model_surfaces(self):
+        for variant in ("missing-pool-binding", "missing-member-binding", "wrong-provider",
+                        "changed-priority", "changed-weight", "zero-weight", "null-priority",
+                        "omitted-weight", "duplicate-member", "missing-member", "nested-pool",
+                        "cross-scope-route", "implicit-model-alias", "different-operations"):
+            with self.subTest(variant=variant):
+                value, selected, azure = self.pool_selection()
+                alias = selected["aliases"][0]
+                pool = azure.collections[SOURCE + "/backends"]["value"][-1]
+                services = pool["properties"]["pool"]["services"]
+                if variant == "missing-pool-binding":
+                    alias.pop("sourcePoolId")
+                elif variant == "missing-member-binding":
+                    alias["backends"][0].pop("sourceBackendId")
+                elif variant == "wrong-provider":
+                    alias["backends"][0]["sourceBackendId"] = services[1]["id"]
+                elif variant == "changed-priority":
+                    alias["backends"][0]["priority"] = 1
+                elif variant == "changed-weight":
+                    alias["backends"][0]["weight"] = 50
+                elif variant == "zero-weight":
+                    services[0]["weight"] = 0
+                elif variant == "null-priority":
+                    services[0]["priority"] = None
+                elif variant == "omitted-weight":
+                    services[0].pop("weight")
+                elif variant == "duplicate-member":
+                    services[1] = copy.deepcopy(services[0])
+                elif variant == "missing-member":
+                    services.pop()
+                elif variant == "nested-pool":
+                    azure.collections[SOURCE + "/backends"]["value"][1]["properties"].update(
+                        type="Pool", pool={"services": []})
+                elif variant == "cross-scope-route":
+                    azure.collections[SOURCE + "/apis"]["value"][0]["properties"]["backendId"] = (
+                        SOURCE + "/workspaces/other/backends/model-pool")
+                elif variant == "implicit-model-alias":
+                    selected["models"][0].update(explicitAlias=False, alias="extra-route",
+                                                 routingName="customer/extra")
+                else:
+                    selected["models"][1]["endpoints"].append("/openai/v1/responses")
+                    value["model-catalog.json"]["providers"][1]["models"][0]["endpoints"].append("/responses")
+                    selected["catalogDigest"] = digest(semantic(value["model-catalog.json"]))
+                value["source-inventory.json"] = source_inventory(SOURCE, azure)
+                azure.calls.clear()
+                with self.assertRaises(MigrationError):
+                    compile_selection(value, selected)
+                self.assertEqual(azure.calls, [])
+
+    def test_model_routing_rejects_source_failure_behaviors_even_without_pool_bindings(self):
+        for variant in ("circuit-breaker", "retry", "error-handler", "alias-only-error-handler"):
+            with self.subTest(variant=variant):
+                value, selected, azure = graph_fixture()
+                api = SOURCE + "/apis/inference"
+                policy = api + "/policies/policy"
+                if variant == "circuit-breaker":
+                    azure.collections[SOURCE + "/backends"]["value"][0]["properties"]["circuitBreaker"] = {
+                        "rules": [{"failureCondition": {"count": 3, "interval": "PT1M",
+                                   "statusCodeRanges": [{"min": 429, "max": 429}]},
+                                   "tripDuration": "PT1M", "acceptRetryAfter": True}]}
+                else:
+                    content = ('<backend><retry count="3" interval="1" condition="true">'
+                               '<forward-request/></retry></backend>' if variant == "retry" else
+                               '<on-error><set-backend-service backend-id="upstream"/></on-error>')
+                    azure.collections[api + "/policies"] = {"value": [{"id": policy,
+                        "properties": {"value": "<policies>" + content + "</policies>"}}]}
+                    if variant == "alias-only-error-handler":
+                        model = selected["models"][0]
+                        model["explicitAlias"] = True
+                        selected["aliases"] = [{"name": model.pop("alias"), "routingName": model.pop("routingName"),
+                            "sourceIds": [policy], "evidence": "Not proof of equivalent error handling.",
+                            "scopeDecision": "Unsupported behavior must remain blocked.", "backends": [{
+                                "provider": "provider-one", "model": "model-a", "priority": 0, "weight": 100}]}]
+                    else:
+                        selected["models"][0]["sourceIds"].append(policy)
+                value["source-inventory.json"] = source_inventory(SOURCE, azure)
+                azure.calls.clear()
+                with self.assertRaisesRegex(MigrationError, "circuit-breaker|retries|error handlers"):
+                    compile_selection(value, selected)
+                self.assertEqual(azure.calls, [])
+
+    def test_source_pool_blocks_pool_and_member_circuit_breakers(self):
+        for index in (0, -1):
+            with self.subTest(backend=index):
+                value, selected, azure = self.pool_selection()
+                azure.collections[SOURCE + "/backends"]["value"][index]["properties"]["circuitBreaker"] = {
+                    "rules": [{"failureCondition": {"count": 1}, "tripDuration": "PT1M"}]}
+                value["source-inventory.json"] = source_inventory(SOURCE, azure)
+                with self.assertRaisesRegex(MigrationError, "circuit-breaker"):
+                    compile_selection(value, selected)
+
+    def test_source_pool_cannot_be_claimed_by_a_model_without_a_bound_alias(self):
+        value, selected, azure = graph_fixture()
+        pool = SOURCE + "/backends/unrouted-pool"
+        azure.collections[SOURCE + "/backends"]["value"].append({
+            "id": pool, "properties": {"type": "Pool", "pool": {"services": [
+                {"id": SOURCE + "/backends/upstream", "priority": 0, "weight": 100}]}}})
+        value["source-inventory.json"] = source_inventory(SOURCE, azure)
+        selected["models"][0]["sourceIds"].append(pool)
+        with self.assertRaisesRegex(MigrationError, "pool.*alias"):
+            compile_selection(value, selected)
+
+    def test_pool_backend_references_preserve_collection_like_service_and_workspace_names(self):
+        for root in (SOURCE.replace("/service/source", "/service/apis"),
+                     SOURCE + "/workspaces/products", SOURCE + "/workspaces/apis"):
+            with self.subTest(root=root):
+                item = inventory_item({
+                    "id": root + "/apis/inference/policies/policy", "properties": {
+                        "value": '<policies><inbound><set-backend-service backend-id="model-pool"/>'
+                                 '</inbound></policies>'}}, root + "/apis/inference", "api-policies")
+                self.assertEqual(backend_ids(item), {(root + "/backends/model-pool").lower()})
+
+    def test_source_pool_requires_explicit_alias_replacement_and_preserves_siblings(self):
+        value, selected, azure = self.pool_selection()
+        azure.gateway = {"id": TARGET, "type": "Microsoft.ApiManagement/aigateways",
+                         "location": "eastus2",
+                         "properties": {"provisioningState": "Succeeded"}}
+        root = TARGET + "/workspaces/default/aliases/"
+        existing = {"id": root + "production", "name": "production", "properties": {
+            "aliasName": "old-route", "backendModels": [], "policies": [{"type": "preserve"}]}}
+        unrelated = {"id": root + "unrelated", "name": "unrelated",
+                     "properties": {"aliasName": "unrelated-route", "backendModels": []}}
+        azure.resources["model-alias"] = {existing["id"]: copy.deepcopy(existing),
+                                         unrelated["id"]: copy.deepcopy(unrelated)}
+        value["destination-inventory.json"] = destination_inventory(TARGET, azure)
+        with self.assertRaises(MigrationError):
+            compile_selection(value, selected)
+        selected["aliases"][0]["updateExisting"] = True
+        result = compile_selection(value, selected)
+        result["plan-validation.json"] = validate_plan(result)
+        self.assertEqual(result["plan-validation.json"]["status"], "valid",
+                         result["plan-validation.json"]["errors"])
+        alias = next(t for t in result["todos.json"]["items"] if t["id"] == "alias:production")
+        self.assertEqual(alias["capabilityId"], "alias.update")
+        tampered = copy.deepcopy(result)
+        next(t for t in tampered["todos.json"]["items"] if t["id"] == "alias:production")[
+            "arguments"]["backend-models"][0]["priority"] = 10
+        self.assertEqual(validate_plan(tampered)["status"], "invalid")
+        pdigest = result["plan-validation.json"]["planDigest"]
+        with patch.dict(os.environ, {"UPSTREAM_TOKEN": "TEST_RUNTIME_ONLY"}):
+            for todo in result["todos.json"]["items"]:
+                approve(result, todo["id"], pdigest)
+                execute(result, todo["id"], pdigest, lambda _: None, azure, cli)
+        self.assertEqual(azure.resources["model-alias"][existing["id"]]["properties"]["policies"],
+                         existing["properties"]["policies"])
+        self.assertEqual(azure.resources["model-alias"][unrelated["id"]], unrelated)
 
     def test_policy_lists_cost_numbers_and_ip_ranges_are_validated(self):
         args = {"cost-limit": 12.5, "cost-period": "month", "cost-counter-key": ["Identity", "IPAddress"]}
