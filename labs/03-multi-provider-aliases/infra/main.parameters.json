@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": {
+      "value": "${AZURE_ENV_NAME}"
+    },
+    "location": {
+      "value": "${AZURE_LOCATION}"
+    },
+    "anthropicApiKey": {
+      "value": "${ANTHROPIC_API_KEY}"
+    },
+    "fastModel": {
+      "value": "${FAST_MODEL=claude-haiku-5-5}"
+    },
+    "smartModel": {
+      "value": "${SMART_MODEL=claude-sonnet-5-5}"
+    },
+    "supportChatModel": {
+      "value": "${SUPPORT_CHAT_MODEL}"
+    },
+    "supportChatTokensPerMinute": {
+      "value": "${SUPPORT_CHAT_TOKENS_PER_MINUTE=20000}"
+    },
+    "batchChatTokensPerMinute": {
+      "value": "${BATCH_CHAT_TOKENS_PER_MINUTE=2000}"
+    }
+  }
+}

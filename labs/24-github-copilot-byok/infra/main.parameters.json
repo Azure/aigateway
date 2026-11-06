@@ -1,0 +1,27 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": {
+      "value": "${AZURE_ENV_NAME}"
+    },
+    "location": {
+      "value": "${AZURE_LOCATION}"
+    },
+    "byokModelName": {
+      "value": "${BYOK_MODEL=gpt-6.1-sol}"
+    },
+    "byokModelVersion": {
+      "value": "${BYOK_MODEL_VERSION=2026-09-29}"
+    },
+    "byokModelSku": {
+      "value": "${BYOK_MODEL_SKU=GlobalStandard}"
+    },
+    "byokModelCapacity": {
+      "value": "${BYOK_MODEL_CAPACITY=100}"
+    },
+    "tokensPerMinute": {
+      "value": "${BYOK_TOKENS_PER_MINUTE=100000}"
+    }
+  }
+}

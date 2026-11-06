@@ -1,0 +1,19 @@
+{
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "aigw-key",
+      "description": "AI Gateway runtime key (Access > API keys)",
+      "password": true
+    }
+  ],
+  "servers": {
+    "ai-gateway-learn": {
+      "type": "http",
+      "url": "<gateway-url>/default/toolservers/learn/mcp",
+      "headers": {
+        "api-key": "${input:aigw-key}"
+      }
+    }
+  }
+}

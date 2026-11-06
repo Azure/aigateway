@@ -1,0 +1,8 @@
+# Direct dependencies. requirements.txt is generated from this file:
+#   uv pip compile requirements.in --universal --python-version 3.13 -o requirements.txt
+agent-framework-core==1.24.0
+agent-framework-openai==1.18.0
+agent-framework-foundry-hosting==1.0.0b261030
+azure-identity==1.27.0
+mcp==2.3.0
+python-dotenv==1.2.4

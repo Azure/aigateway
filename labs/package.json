@@ -1,0 +1,26 @@
+{
+  "name": "ai-gateway-labs",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Builds the Azure AI Gateway labs site into /docs, which a GitHub Actions workflow publishes to GitHub Pages.",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "check": "node build.mjs --strict",
+    "sync": "node build.mjs --sync",
+    "serve": "node tools/serve.mjs 4173",
+    "watch": "node build.mjs --watch",
+    "diagrams": "node tools/diagrams.mjs",
+    "releases": "node tools/product-releases.mjs",
+    "dev": "node build.mjs --watch & node tools/serve.mjs 4173",
+    "deploy:swa": "bash tools/deploy-swa.sh"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "gray-matter": "^4.0.3",
+    "marked": "^18.0.0",
+    "shiki": "^4.0.0"
+  }
+}

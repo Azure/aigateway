@@ -1,0 +1,24 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": {
+      "value": "${AZURE_ENV_NAME}"
+    },
+    "location": {
+      "value": "${AZURE_LOCATION}"
+    },
+    "hateSeverity": {
+      "value": "${CONTENT_SAFETY_HATE=Medium}"
+    },
+    "selfHarmSeverity": {
+      "value": "${CONTENT_SAFETY_SELF_HARM=Medium}"
+    },
+    "sexualSeverity": {
+      "value": "${CONTENT_SAFETY_SEXUAL=Medium}"
+    },
+    "violenceSeverity": {
+      "value": "${CONTENT_SAFETY_VIOLENCE=Low}"
+    }
+  }
+}

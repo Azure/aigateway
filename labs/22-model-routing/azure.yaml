@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+# Lab 22: "azd up" creates the quick start's gateway, model, and runtime API key, then a second model and the chat alias that routes across both.
+# The lab clones the repo's main branch from GitHub and runs azd up in this folder.
+name: aigw-lab22
+metadata:
+  template: aigw-lab22@1.0.0
+infra:
+  provider: bicep
+  path: infra

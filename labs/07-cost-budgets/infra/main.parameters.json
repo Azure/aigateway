@@ -1,0 +1,27 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": {
+      "value": "${AZURE_ENV_NAME}"
+    },
+    "location": {
+      "value": "${AZURE_LOCATION}"
+    },
+    "budgetAmount": {
+      "value": "${COST_LIMIT_AMOUNT=5}"
+    },
+    "period": {
+      "value": "${COST_LIMIT_PERIOD=day}"
+    },
+    "overrideAmount": {
+      "value": "${COST_LIMIT_OVERRIDE_AMOUNT=50}"
+    },
+    "entraObjectId": {
+      "value": "${AZURE_PRINCIPAL_ID}"
+    },
+    "entraAmount": {
+      "value": "${COST_LIMIT_ENTRA_AMOUNT=20}"
+    }
+  }
+}

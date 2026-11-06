@@ -1,0 +1,8 @@
+{
+  "_note": "Placeholder prices for the lab, not real ones. Replace <model-name> with the model names in your usage export (the Model column) and copy current prices for your region and deployment type from the provider's pricing page or your agreement. A versioned name such as my-model-2026-01-01 matches the key my-model.",
+  "currency": "USD",
+  "per_tokens": 1000000,
+  "models": {
+    "<model-name>": { "input": 1.00, "cached_input": 0.10, "output": 4.00 }
+  }
+}

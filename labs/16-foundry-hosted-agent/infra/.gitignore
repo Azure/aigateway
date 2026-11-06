@@ -1,0 +1,4 @@
+.azure/
+.env
+.venv/
+__pycache__/

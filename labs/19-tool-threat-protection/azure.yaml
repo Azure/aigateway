@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+# Lab 19: "azd up" creates a gateway, the learn MCP server, your AI Gateway Tools User role on it, and a runtime API
+# key. A second provision adds the Agent 365 tool threat protection policy.
+# The lab clones the repo's main branch from GitHub and runs azd up in this folder.
+name: aigw-lab19
+metadata:
+  template: aigw-lab19@1.0.0
+infra:
+  provider: bicep
+  path: infra

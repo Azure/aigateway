@@ -1,0 +1,87 @@
+/* A step's Troubleshoot button, next to Done: it opens the step's known errors in the Troubleshooting panel. */
+.step-ts {
+  flex: none; display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 6px 0 8px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--stroke-strong); background: var(--bg-elev); color: var(--fg-3); font-size: 12.5px; font-weight: 600; transition: all .2s;
+}
+.step-ts svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.step-ts b {
+  min-width: 18px; height: 18px; padding: 0 5px; display: grid; place-items: center; border-radius: 999px; background: var(--bg-3);
+  color: var(--fg-3); font-size: 11px; font-weight: 650; font-variant-numeric: tabular-nums; transition: inherit;
+}
+.step-ts:hover, .step-ts[aria-expanded="true"] { border-color: var(--warning-stroke); background: var(--warning-bg); color: var(--warning); }
+.step-ts:hover b { background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--warning); }
+
+/* Troubleshooting panel: the Troubleshooting page's sections in a side panel, with each error as a card. */
+.ts-drawer .ts-panel-filter {
+  position: static; margin: 0 14px 12px; padding: 6px 6px 6px 12px; background: var(--bg); box-shadow: none;
+  backdrop-filter: none; -webkit-backdrop-filter: none;
+}
+.ts-drawer .ts-panel-filter input { font-size: 14.5px; }
+.ts-row[hidden] { display: none; }
+.ts-row .setup-row-head { padding-left: 8px; }
+.ts-row-num, .ts-row-icon {
+  flex: none; width: 30px; height: 26px; display: grid; place-items: center; border-radius: 7px; background: var(--bg-3);
+  color: var(--fg-3); font: 600 12px var(--mono);
+}
+.ts-row-icon .i { width: 16px; height: 16px; }
+.ts-row.here { border-color: var(--brand-bg-2); }
+.ts-row.here .ts-row-num, .ts-row.here .ts-row-icon { background: var(--brand-bg); color: var(--brand-fg); }
+.ts-here {
+  flex: none; padding: 0 8px; border-radius: 999px; background: var(--brand-bg); color: var(--brand-fg); font-size: 11.5px;
+  font-weight: 600; line-height: 20px; white-space: nowrap;
+}
+.ts-row-content.prose > p:first-child { margin: 12px 0 10px; font-size: 13.5px; color: var(--fg-3); }
+/* The current lab's section doesn't need its link back to the lab. */
+.ts-row.here .ts-row-content.prose > p:first-child { display: none; }
+.ts-row.here .ts-row-content.prose > .table-wrap:nth-child(2) { margin-top: 14px; }
+
+/* One card per error: the symptom, then the labeled cause and fix. */
+.ts-row-content .table-wrap { margin: 0; overflow: visible; border: 0; border-radius: 0; }
+.ts-row-content table, .ts-row-content tbody, .ts-row-content tr, .ts-row-content td { display: block; }
+.ts-row-content table { font-size: 14px; }
+.ts-row-content thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.ts-row-content tr { margin: 0 0 10px; padding: 12px 14px; border: 1px solid var(--stroke); border-radius: var(--radius); background: var(--bg); }
+.ts-row-content tr[hidden] { display: none; }
+.ts-row-content tbody tr:hover { background: var(--bg); }
+.ts-row-content td, .ts-row-content tr:last-child td { padding: 0; border: 0; }
+.ts-row-content td + td { margin-top: 8px; }
+.ts-row-content td:first-child { color: var(--fg); font-weight: 600; }
+.ts-row-content td:first-child code { overflow-wrap: anywhere; }
+.ts-row-content td:nth-child(2)::before, .ts-row-content td:nth-child(3)::before {
+  display: block; margin-bottom: 2px; color: var(--fg-4); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+}
+.ts-row-content td:nth-child(2)::before { content: "Likely cause"; }
+.ts-row-content td:nth-child(3)::before { content: "Fix"; }
+.ts-drawer .ts-empty { margin: 4px 0; }
+
+/* The step whose Troubleshoot button opened the panel. */
+.ts-step-bar[hidden] { display: none; }
+.ts-step-bar { display: flex; align-items: center; gap: 8px; margin: 0 14px 10px; min-width: 0; }
+.ts-step-chip {
+  display: inline-flex; align-items: center; gap: 8px; min-width: 0; padding: 4px 12px 4px 4px; border-radius: 999px;
+  border: 1px solid var(--warning-stroke); background: var(--warning-bg); color: var(--fg); font-size: 13px; font-weight: 600;
+}
+.ts-step-kicker {
+  flex: none; padding: 0 8px; border-radius: 999px; background: color-mix(in srgb, var(--warning) 12%, transparent); color: color-mix(in srgb, var(--warning) 80%, var(--fg));
+  font-size: 10.5px; font-weight: 700; letter-spacing: .06em; line-height: 20px; text-transform: uppercase;
+}
+.ts-step-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ts-step-all {
+  flex: none; margin-left: auto; padding: 4px 8px; border: 0; border-radius: var(--radius-s); background: none; color: var(--brand-fg);
+  font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.ts-step-all:hover { background: var(--brand-bg); }
+
+/* The steps where readers see an error, under its symptom, on the page and in the panel. */
+.ts-where { display: block; margin-top: 4px; color: var(--fg-3); font-size: 12.5px; font-weight: 500; line-height: 1.5; }
+.ts-where-label {
+  margin-right: 4px; color: var(--fg-4); font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+}
+.ts-where a { color: inherit; text-decoration: underline; text-decoration-color: var(--stroke-strong); text-underline-offset: 2px; }
+.ts-where a:hover { color: var(--brand-fg); text-decoration-color: currentColor; }
+
+@media (max-width: 720px) {
+  .ts-drawer .ts-panel-filter { margin: 0 10px 10px; }
+  .ts-step-bar { margin: 0 10px 8px; }
+  .ts-row-content tr { padding: 10px 12px; }
+}

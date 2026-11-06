@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+# Lab 03: "azd up" creates the quick start's gateway, then an Anthropic provider, two Claude models, and three aliases.
+# The lab clones the repo's main branch from GitHub and runs azd up in this folder.
+name: aigw-lab03
+metadata:
+  template: aigw-lab03@1.0.0
+infra:
+  provider: bicep
+  path: infra

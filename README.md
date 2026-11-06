@@ -1,19 +1,34 @@
-# AI Gateway tier in Azure API Management
+# Azure AI Gateway
 
 **One gateway for every model and tool.**
-[AI Gateway tier in Azure API Management](https://aka.ms/aigateway/docs) is the AI-focused tier of Azure API
-Management. It gives developers one familiar way to call model APIs and MCP tools, while
+[Azure AI Gateway](https://learn.microsoft.com/azure/ai-gateway/overview) is a managed gateway for AI traffic: requests to AI models and
+Model Context Protocol (MCP) servers. It gives developers one familiar way to call model APIs and MCP tools, while
 platform teams enforce security, policy, networking, and observability.
 
 - **Govern model APIs** — Microsoft Foundry, OpenAI, Anthropic, Google Vertex, and more, while developers keep the SDKs they already use.
 - **Federate MCP tools** — combine MCP servers, OpenAPI APIs, and SaaS connectors behind one governed MCP endpoint.
 - **Enforce AI policies** — access, content safety, token, and rate controls, globally or per model and tool.
 - **Observe AI traffic** — token usage, latency, errors, and policy outcomes in dashboards and logs.
-- **Run on a trusted platform** — the Azure API Management platform, with Private Link, virtual network integration, and managed identity.
+- **Run on a trusted platform** — built on the Azure API Management gateway foundation, with Private Link, virtual network integration, and managed identity.
 
-> AI Gateway is in **public preview**, available free of charge. See the **[documentation](https://aka.ms/aigateway/docs)** to get started.
+> See the **[AI Gateway documentation](https://aka.ms/aigateway/docs)** to get started.
 
 ---
+
+## Hands-on labs
+
+**[Browse the labs → azure.github.io/aigateway](https://azure.github.io/aigateway/)**
+
+26 step-by-step labs for customers and field teams. They start with the core AI gateway use cases (publishing
+models behind aliases, priority and weighted model routing, federating MCP tools, token limits and cost budgets,
+content safety, keys and Entra ID, monitoring, and chargeback) and continue to emerging ones (streaming with accurate token counts, agent frameworks, Foundry hosted agents, coding agents,
+GitHub Copilot with your own models, Agent 365, private networking, and an enterprise reference architecture). Each lab has portal, Azure CLI, Bicep, or
+code tracks, so you can follow it in the way that fits how you work: on the labs site, directly on GitHub, or
+in a Jupyter notebook.
+
+**[Start the 5-minute quick start](labs/quickstart/README.md)** · **[Follow the labs on GitHub](labs/README.md)** ·
+**[Run the notebooks](labs/README.md#run-the-notebooks)** · **[Use them with a coding agent](labs/README.md#use-the-labs-with-a-coding-agent)** ·
+**[What's new](labs/RELEASE-NOTES.md)** · **[Contribute a lab](labs/AUTHORING.md)**
 
 ## Azure CLI
 
@@ -25,7 +40,7 @@ one-line Bash and PowerShell installers, or browse the
 ## Coding-agent plugin
 
 This repository hosts the official **plugin** for coding agents. It helps
-developers **build applications on top of an existing AI Gateway tier in Azure API Management resources**: it discovers the
+developers **build applications on top of an existing Azure AI Gateway**: it discovers the
 models and MCP tool servers registered in a gateway and integrates them into whatever
 you're building — call a model over the OpenAI-compatible passthrough, connect MCP
 tools, or scaffold a runnable agent — all from your coding agent.
@@ -56,19 +71,19 @@ directly from Git — no manual file downloads. Pick the tab for your agent:
 **Claude Code / GitHub Copilot CLI** (plugin marketplace protocol):
 
 ```
-/plugin marketplace add Azure/ai-gateway
+/plugin marketplace add Azure/aigateway
 /plugin install ai-gateway@azure
 ```
 
 **Cursor** — add this repository as a team marketplace from **Dashboard → Plugins →
-Add Marketplace → Import from Repo** (`https://github.com/Azure/ai-gateway`), then
+Add Marketplace → Import from Repo** (`https://github.com/Azure/aigateway`), then
 install **ai-gateway** from **Customize**. For local testing, symlink the repo into
 `~/.cursor/plugins/local/ai-gateway` and reload the window.
 
 **Gemini CLI**:
 
 ```
-gemini extensions install https://github.com/Azure/ai-gateway
+gemini extensions install https://github.com/Azure/aigateway
 ```
 
 ### Usage
@@ -77,13 +92,13 @@ Point the plugin at your gateway's **ARM resource id** (required to list its mod
 tools) and describe what you want to build:
 
 ```
-/ai-gateway:build /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.ApiManagement/service/<gateway> a service that summarizes support tickets
+/ai-gateway:build /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.ApiManagement/aigateways/<gateway> a service that summarizes support tickets
 ```
 
 Or explore first, then integrate:
 
 ```
-/ai-gateway:discover /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.ApiManagement/service/<gateway>
+/ai-gateway:discover /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.ApiManagement/aigateways/<gateway>
 ```
 
 ### Security
@@ -104,7 +119,7 @@ To report a security issue, see [SECURITY.md](SECURITY.md).
 ## Samples
 
 Looking for working examples? The [samples catalog](samples/README.md) curates end-to-end
-samples and infrastructure that build on the AI Gateway tier in Azure API Management.
+samples and infrastructure that build on Azure AI Gateway.
 
 ## Contributing
 

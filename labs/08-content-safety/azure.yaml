@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+# Lab 08: "azd up" creates the quick start's gateway, model, and runtime API key, then an alias with content safety.
+# The lab clones the repo's main branch from GitHub and runs azd up in this folder.
+name: aigw-lab08
+metadata:
+  template: aigw-lab08@1.0.0
+infra:
+  provider: bicep
+  path: infra

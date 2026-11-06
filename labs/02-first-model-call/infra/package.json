@@ -1,0 +1,16 @@
+{
+  "name": "ai-gateway-first-call",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Calls a model through Azure AI Gateway with the OpenAI npm package.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "start": "node first-call.ts"
+  },
+  "dependencies": {
+    "openai": "^7.0.0"
+  }
+}
