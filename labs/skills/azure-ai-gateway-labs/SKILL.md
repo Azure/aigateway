@@ -150,6 +150,18 @@ Before you create, change, or delete Azure resources, confirm the subscription a
   Copilot app share `~/.copilot/mcp-config.json`), a `.vscode/mcp.json` `http` server with a password input, or
   `mcpServers` in an SDK session. Tool results add tokens: a Learn search returns 26 to 52 KB, so one question with
   a search can send about 50,000 input tokens. Suspending the key returns `401` for both models and tools.
+- Claude Code can use the gateway's Claude models: `ANTHROPIC_BASE_URL=<runtime URL>/default/models/anthropic`
+  (without `/v1`), the runtime key in `ANTHROPIC_AUTH_TOKEN`, which it sends as a bearer token, and the aliases in
+  `ANTHROPIC_DEFAULT_OPUS_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL`, and `ANTHROPIC_DEFAULT_HAIKU_MODEL`. The
+  portal's import names them `<foundry-account-name>/<deployment>`. Unset `ANTHROPIC_API_KEY`: Claude Code sends it
+  in `x-api-key`, which answers `401`, and retries a `401` for minutes. Without a key, an `apiKeyHelper` setting can
+  run `az account get-access-token --resource https://azure-api.net/aigateway --query accessToken -o tsv`. Direct
+  Messages calls need the `anthropic-version` header. Claude Code's requests carry about 13,500 cached tokens, which
+  barely count toward token limits. It doesn't retry a `429`, and it reports a budget's `403` as "Failed to
+  authenticate": switch with `/model sonnet` or `--model sonnet`, because `--fallback-model` doesn't cover a `403`.
+  Add a gateway MCP server with
+  `claude mcp add --transport http --scope user <name> <url> --header 'api-key: ${AI_GATEWAY_API_KEY}'`, with
+  `--header` last, and allow its tools in `claude -p` with `--allowedTools "mcp__<name>"`.
 
 ## Lab catalog
 
@@ -198,6 +210,7 @@ Each entry shows the level, time, tracks, and the labs it needs.
 - **16** [Deploy a Foundry hosted agent behind AI Gateway](https://azure.github.io/aigateway/labs/16-foundry-hosted-agent/index.md) `16-foundry-hosted-agent` (Intermediate, 45 min · Portal, CLI, Code, Notebook · needs 02, 04): Deploy your own Microsoft Agent Framework agent to Foundry Hosted Agents with azd. The agent has no model deployment, no direct tool access, and no keys. It calls its model through AI Gateway with its own Microsoft Entra Agent ID, and reaches the Microsoft Learn MCP server through a Foundry toolbox that signs in with the project's managed identity. Run it locally, invoke it in Foundry, and cap its tokens without changing its code.
 - **17** [Build on your gateway with coding agents](https://azure.github.io/aigateway/labs/17-coding-agent-plugin/index.md) `17-coding-agent-plugin` (Beginner, 15 min · Code, Notebook · needs 02): Install the AI Gateway plugin in GitHub Copilot CLI, Claude Code, Cursor, or Gemini CLI, then let your coding agent discover the gateway's models and MCP tools and generate working client code.
 - **24** [Use your gateway's models and tools in GitHub Copilot](https://azure.github.io/aigateway/labs/24-github-copilot-byok/index.md) `24-github-copilot-byok` (Intermediate, 40 min · Portal, CLI, Bicep, Code, Notebook · needs 02): Point GitHub Copilot in VS Code, the Copilot CLI, the Copilot SDK, and the GitHub Copilot app at gpt-6.1-sol published by your gateway, then give them Microsoft Learn tools from an MCP server on the same gateway, so every model and tool call uses your key, your limits, and your monitoring.
+- **25** [Use your gateway's models and tools in Claude Code](https://azure.github.io/aigateway/labs/25-claude-code/index.md) `25-claude-code` (Intermediate, 40 min · Portal, CLI, Bicep, Code, Notebook · needs 02): Point Claude Code at the Claude models that your gateway publishes from Microsoft Foundry, with a token limit and a daily budget for each caller, then give it Microsoft Learn tools from an MCP server on the same gateway, so every model and tool call uses your key, your limits, and your monitoring.
 
 ### Production & emerging
 
@@ -214,7 +227,7 @@ Each entry shows the level, time, tracks, and the labs it needs.
 | :-- | :-- | :-- |
 | 30-minute essentials | Everyone | 00 → 01 → 02 → 04 |
 | Platform engineer | Build the shared AI platform | 01 → 02 → 03 → 22 → 04 → 09 → 12 → 18 → 21 |
-| App & agent developer | Ship apps and agents on governed endpoints | 02 → 03 → 22 → 23 → 04 → 15 → 16 → 17 → 24 |
+| App & agent developer | Ship apps and agents on governed endpoints | 02 → 03 → 22 → 23 → 04 → 15 → 16 → 17 → 24 → 25 |
 | Security & compliance | Protect data, identities, and tools | 10 → 11 → 08 → 05 → 09 → 19 → 20 |
 | FinOps & operations | Control spend and run the gateway | 06 → 23 → 07 → 13 → 14 |
 <!-- gh:end -->
@@ -239,6 +252,7 @@ Each entry shows the level, time, tracks, and the labs it needs.
 | Agent 365 governance: Inventory and block MCP servers and tools from the Microsoft 365 admin center | 20 Agent 365 governance |
 | Coding-agent plugin: Let Copilot, Claude Code, Cursor, or Gemini build on your gateway | 17 Coding-agent plugin |
 | GitHub Copilot on your models and tools: Run Copilot in VS Code, the CLI, the SDK, and the app on models and MCP tools your gateway governs | 24 GitHub Copilot BYOK |
+| Claude Code on your models and tools: Run Claude Code on Claude models from Foundry, with MCP tools, token limits, and budgets your gateway governs | 25 Claude Code |
 | Streaming with accurate usage: Stream replies token by token while limits, budgets, and monitoring count every token | 23 Streaming responses |
 <!-- gh:end -->
 

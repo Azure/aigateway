@@ -1070,5 +1070,5 @@ Delete the `.azure` folder in `infra` if you no longer need the environment. You
 | :-- | :-: | --: |
 | [15 · Agent frameworks](../15-agent-frameworks/README.md) | [All labs](../README.md) | [17 · Coding-agent plugin](../17-coding-agent-plugin/README.md) |
 
-<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (7 of 9)</sub>
+<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (7 of 10)</sub>
 <!-- gh:end -->

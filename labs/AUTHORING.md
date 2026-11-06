@@ -376,7 +376,7 @@ Kinds: `NOTE`, `TIP`, `IMPORTANT`, `WARNING`, `CAUTION`. A blockquote starting w
 - Diagrams in `assets/diagrams/`: `architecture.svg`, `request-lifecycle.svg`, `aliases.svg`,
   `mcp-federation.svg`, `policy-scopes.svg`, `identity-boundaries.svg`, `observability.svg`,
   `private-networking.svg`, `hosted-agent.svg`, `agent-365.svg`, `threat-protection.svg`, `token-limits.svg`,
-  `alias-routing.svg`, `streaming-usage.svg`, `quickstart.svg`.
+  `alias-routing.svg`, `streaming-usage.svg`, `quickstart.svg`, `github-copilot-byok.svg`, `claude-code.svg`.
 - Provider logos in `assets/providers/`: `microsoft-foundry.png`, `azure-openai.png`, `openai.png`,
   `anthropic.png`, `aws-bedrock.png`, `google-vertex.png`, `custom-models.png`.
 
