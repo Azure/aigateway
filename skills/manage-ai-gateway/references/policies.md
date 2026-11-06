@@ -293,6 +293,21 @@ withhold a result but cannot undo the tool execution.
 
 ### Agent hooks
 
+Agent hooks let a trusted decision service allow or deny an MCP tool action
+at the gateway boundary. Use a **before-tool** check to prevent an action
+such as an excessive refund; use an **after-tool** check to screen returned
+data before the caller receives it. An after-tool denial cannot undo an
+action that has already run.
+
+Read [Agent hooks policy: concepts, decisions, and limitations](https://ai.gateway.azure.com/docs/policies/agent-hooks)
+for the gateway's supported Agent Hooks contract, and
+[Create a pre-tool call hook](https://ai.gateway.azure.com/docs/policies/create-pre-tool-call-hook)
+for a working callback and allow/deny verification procedure.
+Hooks do not themselves implement a guardrail: the callback must evaluate
+the tool context and return the intended `allow` or `deny` verdict.
+
+For an existing, trusted Azure Function callback, a pre-tool policy entry is:
+
 ```json
 {
   "type": "agentHooks",
@@ -300,20 +315,45 @@ withhold a result but cannot undo the tool execution.
   "scope": "resource",
   "hooks": {
     "preToolCall": {
-      "endpoint": "https://hooks.example.com/review",
-      "authorization": {"type": "anonymous"}
+      "endpoint": "https://<function-app-hostname>/api/pre-tool-call",
+      "mode": "failClosed",
+      "authorization": {
+        "type": "apiKey",
+        "apiKey": {"headerName": "x-functions-key", "value": "<runtime-function-key>"}
+      }
     }
   }
 }
 ```
 
-This ToolServer-only policy requires an ID, resource scope, and at least one
-lifecycle; `postToolCall` is the other lifecycle. Supported shapes include
-`failClosed`/`failOpen` modes and endpoint/auth/header defaults or lifecycle
-overrides. Use trusted existing HTTPS callbacks with explicitly intended
-authorization. Anonymous auth is appropriate only for intentionally public
-callbacks; API-key/MI authorization needs its verified schema and protected
-input. Callback provisioning and access grants remain external prerequisites.
+To configure it:
+
+1. Select the ToolServer and choose `preToolCall` to block execution or
+   `postToolCall` to withhold results. The current portal supports one agent
+   hooks policy and one intervention point per server; do not infer support
+   for both from the free-form CLI policy argument.
+2. Obtain the existing HTTPS callback URL, its authentication details, and
+   approval to send it tool arguments/results. Callback deployment and access
+   grants are external prerequisites. Keep credentials out of the endpoint
+   URL; replace the example key only in approved protected input, not source
+   control, logs, or replay scripts.
+3. Keep `mode: "failClosed"` when a failed or invalid callback response must
+   block the action/result. Choose `failOpen` only with explicit approval to
+   let it proceed when evaluation is unavailable. This is failure handling,
+   not a replacement for the callback's normal allow/deny decision.
+4. Merge the entry into the ToolServer's complete policy array, preserving
+   its other entries and stable IDs. After confirming replacement impact,
+   apply with `az aigateway mcp update` and `--policies @policies.json`,
+   using the resolved subscription/gateway/server selectors.
+5. Read back the policy, then separately authorize safe allow and deny test
+   calls. Match callback verdicts with backend execution evidence: a blocked
+   request alone could be a callback failure under fail-closed behavior,
+   not proof that the intended guardrail matched.
+
+Use the selected callback's verified authentication schema. Anonymous
+authentication is only for deliberately public callbacks, not a way to skip
+credential setup. Do not retry side-effecting tool calls merely because a
+post-tool hook withheld their results.
 
 ## Mutation and verification
 

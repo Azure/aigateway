@@ -27,7 +27,7 @@ Questions and diagnostic requests remain read-only.
 | Model alias | Stable callable name and routing across registered models; an alias is not their ARM parent | [Models and routing](references/models-and-routing.md) |
 | MCP ToolServer | Gateway endpoint federating backend sources, with source credentials, protocol settings, and compatible policies | [MCP](references/mcp.md) |
 | Policy instance | Inline configuration on a workspace or asset; its type, attachment, accounting scope, and caller dimensions determine its effect | [Policies](references/policies.md) |
-| Runtime key / gateway identity | Keys identify incoming callers with gateway-wide access; managed identities authenticate gateway outbound access | [Keys and identities](references/keys-and-identities.md) |
+| Caller authentication / gateway identity | Prefer inbound Entra tokens with caller roles; optional API keys grant gateway-wide access. Gateway managed identities separately authenticate outbound access | [Authentication and identities](references/keys-and-identities.md) |
 | Telemetry exporter | Signal endpoints, export authentication, attributes, and payload capture; the destination and its access grants remain external | [Telemetry](references/telemetry-and-troubleshooting.md) |
 
 These relationships matter when composing changes. Publishing a model and
@@ -217,6 +217,20 @@ scope, necessary inputs, preserved-state decisions, and verification commands.
 Keep secret values out and retain confirmation stops for destructive replay.
 Repository files and ignore rules require approval before being changed.
 
-The references were reviewed against CLI `1.0.0b22`; their evidence baseline
-is in the capability inventory. Current task-specific help and release
-evidence take precedence over a permanent version assumption.
+## Keeping the references current
+
+The references were reviewed against CLI `1.0.0b22`; the dated/versioned
+evidence belongs in the [capability inventory](references/activities-and-cli-coverage.md),
+not in a new copy of this workflow for each release. This workflow describes
+stable resource relationships, authorization, preservation, and verification.
+
+A CLI release does not automatically require a skill rewrite. Compare the
+task's commands and relevant release changes with the recorded baseline.
+Update affected command recipes and capability evidence when flags, schemas,
+resource dispatch, or behavior change; update this workflow only when those
+changes alter the operating model or safeguards. Do not treat newer help as
+proof that a previously unsupported mutation is safe.
+
+The migration helper has a separate, stricter reviewed capability profile.
+A new CLI version must pass that profile's review and fresh plan approvals
+before migration writes; this management guidance does not bypass that gate.

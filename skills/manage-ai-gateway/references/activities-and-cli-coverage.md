@@ -50,7 +50,7 @@ All command names below are prefixed with `az aigateway`.
 | Foundry registration | Low-level provider and model create operations, then explicit aliases | Existing deployments and backend permissions; convenience `--foundry-resource-id` paths also grant external RBAC and are outside the allowed execution path | [Models](models-and-routing.md) |
 | Provider reconciliation | `model-provider sync --dry-run` and confirmed apply | Foundry only; sequential additions/stale removals; alias dependencies and optional default aliases need an explicit plan; Custom discovery/sync is a gap | [Models](models-and-routing.md) |
 | Model registration | `model create/show/list/update/delete` | Deployment metadata, supported endpoints and exposed API formats; not deployment provisioning or proof of a callable alias | [Models](models-and-routing.md) |
-| Alias routing | `model-alias create/show/list/update/delete` | Stable callable name, one to 30 unique same-gateway model targets, priority and weight | [Models](models-and-routing.md) |
+| Alias routing | `model-alias create/set/show/list/update/delete` | Stable callable name, one to 30 unique same-gateway model targets, priority and weight; `set` explicitly creates or updates | [Models](models-and-routing.md) |
 | Advanced alias selection | Gap | Auto-selection objectives, override grants, selection order, session preference, CEL backend conditions; typed backend fields expose only ID/priority/weight | [Models](models-and-routing.md) |
 | Workspace policies | `policy list/set/remove` and specialized setters | Token, cost, request-rate and IP controls on `workspaces/default`; workspace accounting scope; no arbitrary raw workspace-array write | [Policies](policies.md) |
 | Model policies | `model policy list/set/remove` and token/cost setters | Partial updates for compatible policies; explicit resource scope may require the raw host path; same-type setters can consolidate entries | [Policies](policies.md) |
@@ -74,11 +74,11 @@ All command names below are prefixed with `az aigateway`.
 
 ## Compatibility details
 
-- The reference advertises `policy show` and `telemetry-exporter wait`;
-  neither is exposed by the reviewed CLI. The corresponding paths are
-  `policy list` and bounded exporter read-back.
-- Alias `create --overwrite` is mentioned in the reference but is not
-  exposed by the inspected command. Existing aliases use explicit update.
+- Earlier reference examples advertised `policy show`,
+  `telemetry-exporter wait`, and alias `create --overwrite`; these are not
+  exposed by the reviewed CLI. The current command reference uses
+  `policy list`, bounded exporter read-back, and explicit alias `update`.
+  Alias `set` is available for intentional create-or-update behavior.
 - MCP `--failure-mode` is create-only and not returned on reads; its
   enforcement and an update cannot be established through that interface.
 - Custom provider authentication accepts `ApiKey`, not the portal's newer

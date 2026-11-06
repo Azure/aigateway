@@ -1,17 +1,29 @@
-# Models and routing reference
+# Model aliases, registrations, and routing
 
-This reference describes model providers, registrations, callable aliases,
-and their configuration on `Microsoft.ApiManagement/aigateways`. Use it with
-the [administrator workflow](../SKILL.md) and
+**Publish an alias before sending model traffic.** On
+`Microsoft.ApiManagement/aigateways`, clients send the alias's callable name
+(`properties.aliasName`) as the request's `model`. Registering a provider
+and model builds the backend configuration but does not publish that route.
+Even a single backend needs an alias; use a one-target alias when no traffic
+split is needed. This requirement concerns model traffic, not MCP ToolServers.
+
+Work backward from the name clients will call: choose the alias, identify its
+registered backend models, and configure their providers and access. Create
+missing resources in the opposite order: provider, model, then alias.
+Some onboarding/sync paths can create default aliases; inspect
+`model-alias list/show` rather than assuming registration created one.
+See the [multi-provider alias lab](https://github.com/Azure/aigateway/tree/main/labs/03-multi-provider-aliases)
+for a client-facing example. Use this reference with the
+[administrator workflow](../SKILL.md) and
 [native capability inventory](activities-and-cli-coverage.md).
 
 ## Resource model
 
 | Object | Configuration responsibility | Relationships and ownership |
 | --- | --- | --- |
+| Model alias | Callable name, backend target pool, priorities/weights, and alias-local policies | References registered models in the same gateway/default workspace; not their ARM parent |
 | Model provider | Backend endpoint, provider kind, and outbound authentication | Parent of model registrations; its connection settings are shared configuration |
 | Registered model | Backend deployment metadata, exposed API format/endpoints, and model-local policies | Belongs to one provider; can be referenced by aliases |
-| Model alias | Callable name, backend target pool, priorities/weights, and alias-local policies | References registered models in the same gateway/default workspace; not their ARM parent |
 | Backend account/deployment | Actual model hosting, deployment lifecycle, and backend permissions | External prerequisite, not created or deleted by gateway registration |
 
 Providers and models live at
@@ -119,8 +131,17 @@ explicitly even for a single target.
 
 Weights are relative, not percentages that must sum to 100. Priorities
 express preferred and less-preferred tiers; they are not another weight
-scale. Configuration establishes intended routing, not proof of an observed
-traffic distribution or a particular runtime retry sequence.
+scale. Use **equal priorities and different weights** for active-active load
+sharing or a canary rollout: 75 and 25 express a 3:1 request share among
+eligible models in that tier. They do not allocate tokens, cost, or capacity.
+Use **different priorities** for preferred capacity and fallback: priority 0
+is preferred over priority 1, regardless of their relative weights. A weight
+on a fallback model does not give it a share of normal preferred-tier traffic.
+
+Configuration establishes intended routing, not proof of an observed
+traffic distribution or a particular runtime retry sequence. Verify failover
+under separately authorized failure conditions before relying on it; priority
+alone does not configure retries, timeouts, or circuit breakers.
 
 Supplying backends on update defines the **entire target pool**. Retargeting
 can preserve the alias name while changing the backend capabilities and
@@ -287,11 +308,29 @@ az aigateway model-alias show --subscription "$SUBSCRIPTION" \
   -g "$RG" --gateway-name "$GATEWAY" -n "$ALIAS" -o json
 ```
 
-Both preferred-tier models share traffic according to their relative weights.
-A less-preferred target uses a higher priority value, such as 1, with its own
-weight. For updates, confirm complete-pool replacement or retargeting impact
-before sending `model-alias update`, which takes the same
-routing/description/backend inputs.
+Both models use priority 0 deliberately: they are active at the same tier,
+so their weights request a 75/25 split. Different priorities would instead
+prefer one model, not perform this canary split.
+
+For **priority-based failover**, replace the pool with model A preferred
+and model B as fallback:
+
+```bash
+az aigateway model-alias update --subscription "$SUBSCRIPTION" \
+  -g "$RG" --gateway-name "$GATEWAY" -n "$ALIAS" \
+  --backend-model resource-id="$MODEL_A_ID" priority=0 weight=100 \
+  --backend-model resource-id="$MODEL_B_ID" priority=1 weight=100
+```
+
+Each tier has one model, so the weights do not split traffic between A and B.
+Model B is a less-preferred option when the preferred tier cannot serve;
+confirm the actual runtime failure and retry behavior for the workload.
+The [routing lab](https://github.com/Azure/aigateway/tree/main/labs/22-model-routing)
+explores the two configurations.
+
+These are alternatives, not steps to run in sequence. For updates, confirm
+complete-pool replacement or retargeting impact before sending
+`model-alias update`, which takes the same routing/description/backend inputs.
 Unrequested alias policies and routing settings remain unchanged.
 
 ## Provider reconciliation

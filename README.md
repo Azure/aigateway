@@ -18,10 +18,9 @@ platform teams enforce security, policy, networking, and observability.
 ## Azure CLI
 
 Create and manage gateways, model registrations, MCP servers, and policies with
-`az aigateway`. The CLI is an external dependency published in **[Azure/aigateway](https://github.com/Azure/aigateway)**.
-See its **[current installation and quickstart](https://github.com/Azure/aigateway/tree/main/cli)** for
-one-line Bash and PowerShell installers, or browse the
-[current command reference](https://github.com/Azure/aigateway/blob/main/cli/command-reference.md).
+`az aigateway`. Install the published Azure CLI extension using the
+**[installation guide and quickstart](cli/README.md)** for Bash or PowerShell,
+or browse the [searchable command reference](cli/command-reference.md).
 Use the latest published CLI, including preview releases, rather than a local
 source build or an installer copied from an older release.
 
