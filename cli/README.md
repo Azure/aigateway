@@ -78,19 +78,20 @@ charges. Use a new, dedicated resource group and review pricing before proceedin
 
 ### 1. Sign in and create a gateway
 
-Choose a globally unique gateway name and a supported region.
+Create a gateway in your subscription and save `group` and `aigateway` defaults
+with `az configure` so you don't have to repeat `-g` and `--gateway-name` on
+every command.
 
 ```bash
 az login
-az account set --subscription "<subscription-id>"
 
 RG="rg-aigateway-quickstart"
-GATEWAY="<globally-unique-gateway-name>"
-LOCATION="<supported-region>"
+LOCATION="eastus2"
+GATEWAY="aigw-quickstart-$RANDOM"
 
 az group create --name "$RG" --location "$LOCATION"
 az aigateway create --resource-group "$RG" --name "$GATEWAY" --location "$LOCATION"
-az aigateway show --resource-group "$RG" --name "$GATEWAY" --output table
+az configure --defaults group="$RG" aigateway="$GATEWAY" output=json
 ```
 
 Creation waits for provisioning to finish. The gateway is an Azure AI Gateway
@@ -105,142 +106,122 @@ registration to your gateway; it does not deploy a new MCP server.
 
 ```bash
 az aigateway mcp create \
-  --resource-group "$RG" --gateway-name "$GATEWAY" --name learn \
+  --name learn \
   --endpoints '[{"kind":"mcp","namespace":"learn","mcp":{"transport":"streamableHttp","url":"https://learn.microsoft.com/api/mcp"}}]'
 
-az aigateway mcp list --resource-group "$RG" --gateway-name "$GATEWAY" --output table
-az aigateway mcp show --resource-group "$RG" --gateway-name "$GATEWAY" --name learn
+az aigateway mcp list --output table
+az aigateway mcp show --name learn
 ```
 
-Notice that `--name` now identifies the **MCP registration**; `--gateway-name`
-identifies its parent gateway. The output shows the registered server and its
-configuration, not a tool invocation. Use the
-[coding-agent plugin](../README.md#coding-agent-plugin) to build an application
-that consumes the gateway, or explore more commands in the
+Use the [coding-agent plugin](../README.md#coding-agent-plugin) to build an
+application that consumes the gateway, or explore more commands in the
 [command reference](command-reference.md).
 
 ### 3. Add models through a provider
 
 For this path, you need an **existing Foundry AI Services or Azure OpenAI
-account with model deployments**. Use a test account outside the tutorial
-resource group. You need permission to read the account and its deployments,
-update the gateway, and create role assignments on the account.
+account with model deployments**. You need permission to read the account and
+its deployments, update the gateway, and create role assignments on the account.
 
-The command below imports **every current deployment** into one gateway provider.
-It enables the gateway's system-assigned identity and grants that identity the
-**Foundry User** role on the account. It does not create model deployments;
-normal charges still apply when you use them.
-
-Use the existing account's name and resource group to look up its resource ID
-in your selected subscription. No need to copy a long ID from the portal.
-Use the account name, not a project or deployment name.
+The commands below look up your Foundry account by name across the subscription,
+import **every current deployment** into a gateway provider, enable the
+gateway's system-assigned identity with the **Foundry User** role on the
+account, and publish a callable model alias for each imported deployment.
 
 ```bash
-FOUNDRY_RG="<foundry-resource-group>"
-FOUNDRY_ACCOUNT="<foundry-account-name>"
-PROVIDER="foundry-models"
+# List Foundry accounts in your subscription
+az resource list --resource-group= --resource-type Microsoft.CognitiveServices/accounts \
+  --query "[?kind=='AIServices'].{Name:name, ResourceGroup:resourceGroup, Location:location}" -o table
 
-FOUNDRY_RESOURCE_ID="$(az cognitiveservices account show \
-  --resource-group "$FOUNDRY_RG" --name "$FOUNDRY_ACCOUNT" \
-  --query id --output tsv)"
+# Set your Foundry account name, import its models, and publish default aliases
+FOUNDRY_ACCOUNT="<foundry-account-name>"
+FOUNDRY_RESOURCE_ID="$(az resource list --resource-group= \
+  --resource-type Microsoft.CognitiveServices/accounts \
+  --name "$FOUNDRY_ACCOUNT" --query "[0].id" -o tsv)"
 
 az aigateway model-provider create \
-  -g "$RG" --gateway-name "$GATEWAY" --name "$PROVIDER" \
+  --name foundry-prod \
   --foundry-resource-id "$FOUNDRY_RESOURCE_ID"
-
-az aigateway model list \
-  -g "$RG" --gateway-name "$GATEWAY" \
-  --model-provider "$PROVIDER" --output table
+az aigateway model list --provider-name foundry-prod | az aigateway model-alias create
 ```
 
-Review the import summary for any failed registrations. Successfully imported
-models use their deployment names. Choose one from the list for the next step.
+### 4. Set gateway policies
 
-### 4. Set model policies
-
-Apply a token limit and content safety to the selected model. The example allows
-**10,000 tokens per minute per identity** and sets content safety severity to
-**Medium** for hate, self-harm, sexual, and violence categories. Adjust these
-example values to suit your application.
+Apply a gateway-wide token limit and content-safety baseline across models in
+the default workspace. The example allows **10,000 tokens per minute per
+identity** and sets content safety severity to **Medium** for hate, self-harm,
+sexual, and violence categories.
 
 ```bash
-MODEL="<imported-model-name>"
-
-az aigateway model policy set \
-  -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL" \
+az aigateway policy set \
   --token-limit 10000 --token-period minute --token-counter-key Identity \
   --content-safety Medium
 
-az aigateway model policy list \
-  -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL"
+az aigateway policy list
 ```
 
-These policies apply only to this gateway model registration, not every model
-in the provider or calls made directly to the backend. See
-[common model policies](command-reference.md#common-model-policies) to change
+You can also set policies on individual models with `az aigateway model policy set`.
+See [common model policies](command-reference.md#common-model-policies) to change
 one policy at a time.
 
 ### 5. Test the gateway
 
-This happy-path example assumes the earlier model setup succeeded, the gateway
-has an active API key, and your selected model supports
-`/openai/v1/chat/completions`. You need permission to read the key. Run the commands
-in order and stop if one reports an error. The examples select the sole active
-key; if there are several, list them with `az aigateway api-key list`, set
-`KEY_NAME` to your chosen name, and continue from `list-secrets`.
-Model calls can incur inference charges.
+Retrieve the gateway hostname, an active runtime key, and the first published
+model alias, then send a Chat Completions request. Model calls can incur
+inference charges.
 
-**Bash / curl** -- reuse the variables from the earlier steps:
+**Bash / curl** (uses `jq` to print the reply text):
 
 ```bash
-AI_GATEWAY_URL="$(az aigateway show -g "$RG" -n "$GATEWAY" \
-  --query properties.gatewayUrl -o tsv)"
-KEY_NAME="$(az aigateway api-key list -g "$RG" --gateway-name "$GATEWAY" \
-  --query "[?properties.state=='active'].name" -o tsv)" || exit 1
-if [ -z "$KEY_NAME" ] || [[ "$KEY_NAME" == *$'\n'* ]]; then
-  echo "Select exactly one active API key name before continuing." >&2
+AI_GATEWAY_URL="https://$(az aigateway show --query properties.frontend.defaultHostname -o tsv)"
+KEY_NAME="$(az aigateway api-key list --query "[?properties.state=='active'] | [0].name" -o tsv)"
+test -n "$KEY_NAME" || KEY_NAME="$(az aigateway api-key create --name default --display-name "Default key" --state active --query name -o tsv)"
+if ! AI_GATEWAY_API_KEY="$(az aigateway api-key list-secrets -n "$KEY_NAME" --query primaryKey -o tsv)"; then
+  echo "Failed to retrieve the API key secret." >&2
   exit 1
 fi
-AI_GATEWAY_API_KEY="$(az aigateway api-key list-secrets \
-  -g "$RG" --gateway-name "$GATEWAY" -n "$KEY_NAME" --query primaryKey -o tsv)" || exit 1
-: "${AI_GATEWAY_API_KEY:?No key value returned; check your key-read permissions.}"
-RUNTIME_MODEL="$(az aigateway model show \
-  -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL" \
-  --query properties.deployment.modelName -o tsv)"
+test -n "$AI_GATEWAY_API_KEY" || { echo "No API key secret was returned." >&2; exit 1; }
+MODEL="$(az aigateway model-alias list --query "[?contains(properties.supportedEndpoints, '/openai/v1/chat/completions')] | [0].properties.aliasName" -o tsv)"
+test -n "$MODEL" || { echo "No chat completions model alias was found." >&2; exit 1; }
 
-curl -fsS "${AI_GATEWAY_URL%/}/default/models/openai/v1/chat/completions" \
-  -H "Api-Key: $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
-  --data @- <<EOF
-{"model":"$RUNTIME_MODEL","messages":[{"role":"user","content":"Describe the AI Gateway SKU of Azure API Management in one sentence."}]}
-EOF
+curl -sS "${AI_GATEWAY_URL%/}/default/models/openai/v1/chat/completions" \
+  -H "Content-Type: application/json" \
+  -H "api-key: $AI_GATEWAY_API_KEY" \
+  -d '{"model":"'"$MODEL"'","messages":[{"role":"user","content":"Write a one-sentence status update."}]}' \
+  | jq -r '.choices[0].message.content'
 unset AI_GATEWAY_API_KEY
 ```
 
-**PowerShell / `irm`** -- set the same resource names in this shell:
+**PowerShell / `irm`**:
 
 ```powershell
-$RG = "rg-aigateway-quickstart"
-$GATEWAY = "<your-gateway-name>"
-$PROVIDER = "foundry-models"
-$MODEL = "<imported-model-name>"
+$GatewayUrl = "https://$((az aigateway show --query properties.frontend.defaultHostname -o tsv).Trim())"
+$KeyName = az aigateway api-key list --query "[?properties.state=='active'] | [0].name" -o tsv
+if (-not $KeyName) {
+  $KeyName = az aigateway api-key create --name default --display-name "Default key" --state active --query name -o tsv
+}
+$ApiKey = az aigateway api-key list-secrets -n $KeyName --query primaryKey -o tsv
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($ApiKey)) {
+  throw "Failed to retrieve the API key secret."
+}
+$Model = az aigateway model-alias list --query "[?contains(properties.supportedEndpoints, '/openai/v1/chat/completions')] | [0].properties.aliasName" -o tsv
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($Model)) {
+  throw "No chat completions model alias was found."
+}
 
-$AI_GATEWAY_URL = az aigateway show -g $RG -n $GATEWAY --query properties.gatewayUrl -o tsv
-$KEY_NAMES = @(az aigateway api-key list -g $RG --gateway-name $GATEWAY --query "[?properties.state=='active'].name" -o tsv)
-if ($LASTEXITCODE -ne 0 -or $KEY_NAMES.Count -ne 1) { throw "Select exactly one active API key name before continuing." }
-$KEY_NAME = $KEY_NAMES[0]
-$AI_GATEWAY_API_KEY = az aigateway api-key list-secrets -g $RG --gateway-name $GATEWAY -n $KEY_NAME --query primaryKey -o tsv
-if ($LASTEXITCODE -ne 0 -or !$AI_GATEWAY_API_KEY) { throw "Unable to read the API key; stop before calling the gateway." }
-$RUNTIME_MODEL = az aigateway model show -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER -n $MODEL --query properties.deployment.modelName -o tsv
+$headers = @{ "api-key" = $ApiKey }
 $body = @{
-  model = $RUNTIME_MODEL
-  messages = @(@{ role = "user"; content = "Describe the AI Gateway SKU of Azure API Management in one sentence." })
-} | ConvertTo-Json -Depth 5
+  model = $Model
+  messages = @(@{ role = "user"; content = "Write a one-sentence status update." })
+} | ConvertTo-Json -Depth 4
 
-$reply = irm -Method Post -Uri "$($AI_GATEWAY_URL.TrimEnd('/'))/default/models/openai/v1/chat/completions" `
-  -Headers @{ "Api-Key" = $AI_GATEWAY_API_KEY } -ContentType "application/json" `
-  -Body $body -ErrorAction Stop
-$reply.choices[0].message.content
-Remove-Variable AI_GATEWAY_API_KEY
+(Invoke-RestMethod `
+  -Method Post `
+  -Uri "$GatewayUrl/default/models/openai/v1/chat/completions" `
+  -Headers $headers `
+  -ContentType "application/json" `
+  -Body $body).choices[0].message.content
+Remove-Variable ApiKey
 ```
 
 Expect a short reply from the model (`choices[0].message.content` in the curl

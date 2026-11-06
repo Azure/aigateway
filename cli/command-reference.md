@@ -279,7 +279,7 @@ az aigateway list --output table
 az aigateway show -g "$RG" -n "$GATEWAY" --output json
 
 az aigateway show -g "$RG" -n "$GATEWAY" \
-  --query properties.gatewayUrl --output tsv
+  --query properties.frontend.defaultHostname --output tsv
 
 az aigateway version --query extensionVersion --output tsv
 ```
@@ -330,11 +330,12 @@ there are several, choose a name from the list, set `KEY_NAME`, and resume at
 **Bash** -- reuse `RG` and `GATEWAY` from the quickstart:
 
 ```bash
-AI_GATEWAY_URL="$(az aigateway show -g "$RG" -n "$GATEWAY" \
-  --query properties.gatewayUrl -o tsv)" || exit 1
+GATEWAY_HOST="$(az aigateway show -g "$RG" -n "$GATEWAY" \
+  --query properties.frontend.defaultHostname -o tsv)" || exit 1
+AI_GATEWAY_URL="https://${GATEWAY_HOST}"
 KEY_NAME="$(az aigateway api-key list -g "$RG" --gateway-name "$GATEWAY" \
   --query "[?properties.state=='active'].name" -o tsv)" || exit 1
-if [ -z "$AI_GATEWAY_URL" ] || [ -z "$KEY_NAME" ] || [[ "$KEY_NAME" == *$'\n'* ]]; then
+if [ -z "$GATEWAY_HOST" ] || [ -z "$KEY_NAME" ] || [[ "$KEY_NAME" == *$'\n'* ]]; then
   echo "A runtime URL and exactly one selected active API key are required." >&2
   exit 1
 fi
@@ -353,11 +354,12 @@ fi
 $RG = "rg-aigateway-quickstart"
 $GATEWAY = "<your-gateway-name>"
 
-$AI_GATEWAY_URL = az aigateway show -g $RG -n $GATEWAY --query properties.gatewayUrl -o tsv
-if ($LASTEXITCODE -ne 0) { throw "Unable to read the gateway URL." }
+$GATEWAY_HOST = az aigateway show -g $RG -n $GATEWAY --query properties.frontend.defaultHostname -o tsv
+if ($LASTEXITCODE -ne 0) { throw "Unable to read the gateway hostname." }
+$AI_GATEWAY_URL = "https://$($GATEWAY_HOST.Trim())"
 $KEY_NAMES = @(az aigateway api-key list -g $RG --gateway-name $GATEWAY --query "[?properties.state=='active'].name" -o tsv)
 if ($LASTEXITCODE -ne 0) { throw "Unable to list API keys." }
-if (!$AI_GATEWAY_URL -or $KEY_NAMES.Count -ne 1) { throw "A runtime URL and exactly one selected active API key are required." }
+if (!$GATEWAY_HOST -or $KEY_NAMES.Count -ne 1) { throw "A runtime URL and exactly one selected active API key are required." }
 $KEY_NAME = $KEY_NAMES[0]
 $AI_GATEWAY_API_KEY = az aigateway api-key list-secrets -g $RG --gateway-name $GATEWAY -n $KEY_NAME --query primaryKey -o tsv
 if ($LASTEXITCODE -ne 0 -or !$AI_GATEWAY_API_KEY) { throw "Unable to read the API key." }
