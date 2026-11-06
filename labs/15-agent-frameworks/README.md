@@ -724,5 +724,5 @@ Keep the gateway, the alias, and the `learn` MCP server. Other labs reuse them.
 | :-- | :-: | --: |
 | [14 · OpenTelemetry chargeback](../14-otel-chargeback/README.md) | [All labs](../README.md) | [16 · Foundry hosted agent](../16-foundry-hosted-agent/README.md) |
 
-<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (6 of 9)</sub>
+<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (6 of 10)</sub>
 <!-- gh:end -->
