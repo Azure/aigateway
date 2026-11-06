@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Azure/ai-gateway/migration/source-inventory.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "producer", "collectorVersion", "sourceId", "sku", "service", "capturedAt", "items", "behaviors", "coverage", "provenance", "conflicts"],
+  "properties": {
+    "schemaVersion": {"const": "5.0"},
+    "collectorVersion": {"type": "string", "minLength": 1},
+    "producer": {"const": "skill-local"},
+    "sourceId": {"type": "string", "minLength": 1},
+    "sku": {"enum": ["BasicV2", "StandardV2", "PremiumV2"]},
+    "service": {
+      "type": "object", "required": ["id", "sku", "properties"],
+      "properties": {
+        "id": {"type": "string"},
+        "sku": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}}},
+        "properties": {"type": "object"}
+      }
+    },
+    "capturedAt": {"type": "string", "format": "date-time"},
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "scope", "domain", "resource", "policyShape", "authority", "evidence"],
+        "properties": {
+          "id": {"type": "string"}, "scope": {"type": "string"}, "domain": {"type": "string"},
+          "resource": {"type": "object"}, "policyShape": {"type": "array"},
+          "facts": {"type": "object"},
+          "authority": {"enum": ["authoritative", "advisory"]},
+          "evidence": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "behaviors": {
+      "type": "array",
+      "items": {
+        "type": "object", "required": ["id", "sourceId", "type", "scope"],
+        "properties": {"id": {"type": "string"}, "sourceId": {"type": "string"}, "type": {"type": "string"}, "scope": {"type": "string"}}
+      }
+    },
+    "coverage": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["scope", "domain", "status", "authority", "establishesCompleteness", "evidence", "error"],
+        "properties": {
+          "scope": {"type": "string"}, "domain": {"type": "string"},
+          "status": {"enum": ["complete", "empty", "partial", "failed", "notApplicable"]},
+          "authority": {"enum": ["authoritative", "corroborated", "advisory", "conflicted", "insufficient"]},
+          "establishesCompleteness": {"type": "boolean"},
+          "evidence": {"type": "string"}, "error": {"type": ["string", "null"]},
+          "failedResourceIds": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "provenance": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {"type": "object", "additionalProperties": false, "required": ["kind", "sourceId", "apiVersions"],
+            "properties": {"kind": {"const": "live"}, "sourceId": {"type": "string"}, "apiVersions": {"type": "array", "items": {"type": "string"}}}},
+          {"type": "object", "additionalProperties": false, "required": ["kind", "path", "contentDigest", "authority", "approved"],
+            "properties": {"kind": {"enum": ["apiops", "arm"]}, "path": {"type": "string"}, "contentDigest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "authority": {"const": "advisory"}, "approved": {"const": true}}}
+        ]
+      }
+    },
+    "conflicts": {"type": "array", "items": {"type": "object", "additionalProperties": false,
+      "required": ["sourceId", "evidenceDigest", "reason"],
+      "properties": {"sourceId": {"type": "string"}, "evidenceDigest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "reason": {"type": "string"}}}}
+  }
+}

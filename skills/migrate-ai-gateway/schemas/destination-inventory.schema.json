@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Azure/ai-gateway/migration/destination-inventory.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "destinationId", "capturedAt", "exists", "collections", "errors"],
+  "properties": {
+    "schemaVersion": {"const": "1.0"}, "destinationId": {"type": "string", "minLength": 1},
+    "capturedAt": {"type": "string", "format": "date-time"}, "exists": {"type": "boolean"},
+    "collections": {
+      "type": "object", "required": ["gateway"], "additionalProperties": false,
+      "properties": {
+        "gateway": {"type": "array", "items": {"type": "object"}},
+        "model-provider": {"type": "array", "items": {"type": "object"}},
+        "model": {"type": "array", "items": {"type": "object"}},
+        "model-alias": {"type": "array", "items": {"type": "object"}},
+        "mcp": {"type": "array", "items": {"type": "object"}},
+        "api-key": {"type": "array", "items": {"type": "object"}},
+        "identity": {"type": ["object", "null"]},
+        "network": {"type": "object"},
+        "policy": {"type": "object"},
+        "telemetry-exporter": {"type": "array", "items": {"type": "object"}},
+        "private-endpoint-connection": {"type": "array", "items": {"type": "object"}}
+      }
+    },
+    "errors": {"type": "array", "items": {"type": "object", "required": ["domain", "code"]}}
+  },
+  "allOf": [
+    {"if": {"properties": {"exists": {"const": true}}}, "then": {"properties": {"collections": {"properties": {"gateway": {"minItems": 1, "maxItems": 1}}}}}},
+    {"if": {"properties": {"exists": {"const": false}}}, "then": {"properties": {"collections": {"properties": {"gateway": {"maxItems": 0}}}}}}
+  ]
+}

@@ -1,52 +1,57 @@
 ---
-description: Discover an AI Gateway's models and MCP tools, retrieve a credential, and integrate them into your app — call a model, connect MCP tools, or scaffold a runnable agent.
-argument-hint: [gateway resource id or host] [optional use case]
+description: Select or use supplied Azure AI Gateway assets and integrate them into an app, with or without gateway control-plane access.
+argument-hint: [gateway resource id, runtime endpoint, or connection details] [optional use case]
 ---
 
-# /ai-gateway:build
+# /aigateway:build
 
 Take the user all the way from discovery to working code that uses an existing
-AI Gateway's models and/or MCP tools — in whatever they're building. This command runs
+Azure AI Gateway's models and/or MCP tools — in whatever they're building. This command runs
 the **full** workflow in the bundled skill `skills/use-ai-gateway/SKILL.md` end to end:
 
-1. **Discover & select** the models and MCP tool servers in the gateway
-   (Part 1 of the skill). Use `$ARGUMENTS` for the target gateway (ARM
-   `gatewayResourceId` — required to list assets; a host alone is not enough, so resolve
-   or ask for the id if only a host is given) and, if present, the desired use case. Ask
-   the user to
-   confirm the selected assets before continuing.
-2. **Retrieve a credential** — list the gateway API keys and read the secret of the
-   chosen key. The **same** gateway key authenticates both the model passthrough and the
-   MCP tool servers, passed in the `Api-Key` header.
+1. **Identify & select** assets using Part 1 of the skill and `$ARGUMENTS`.
+   With authorized management reads, discover and explain a relevant shortlist.
+   Without control-plane access, use supplied model endpoints/callable names and
+   known MCP URLs; do not require an ARM ID or permission elevation. If only a host
+   is known, help with authentication/URL structure and ask for the missing published
+   model/protocol or MCP endpoint, not guessed assets. Explain relevant constraints
+   and unknowns, preserve explicit choices, and confirm the finite selection.
+2. **Establish runtime authentication** using Microsoft Entra ID or an existing
+   gateway key, following the skill. Prefer Entra for production and scoped access.
+   Retrieve a selected existing key only with explicit approval; never create or
+   rotate one. The current gateway contract uses `Authorization: Bearer` for both
+   credential types. Management access does not imply runtime invocation permission.
+   Runtime-only users use an existing secure binding or approved sign-in; do not
+   list keys or retrieve management secrets on that path.
 3. **Integrate** (Part 2 of the skill). Ask what the user is building and pick the path:
-   - **Call a model** over the gateway's OpenAI-compatible passthrough (any language or
-     raw HTTP).
+   - **Call a model** over its advertised protocol: Chat Completions, Responses,
+     Anthropic Messages, embeddings, or another documented operation.
    - **Connect MCP tools** from an MCP-capable client/app.
    - **Scaffold a standalone agent** with the **GitHub Copilot SDK**
-     (`github-copilot-sdk >= 1.0.0`) if the user wants a ready-to-run agent project —
-     default to Python unless they ask for TypeScript. Produce a complete, self-contained
-     project: agent code, `.env` / `.env.example`, `.gitignore` (must ignore `.env`),
-     `requirements.txt` (or `package.json`), and a `README.md`.
+     if the user wants a ready-to-run agent project. Follow the skill's current
+     SDK/runtime requirements; default to Python unless they ask for TypeScript.
+     Produce a complete project: agent code, `.env.example`, `.gitignore`
+     (must ignore `.env`), `requirements.txt` (or `package.json`), and a `README.md`.
+     Allowlist selected tools and require explicit permission decisions.
    Integrate into the user's existing project when they have one, respecting its language
    and conventions.
-4. **Run and verify** the integration once and report the outcome, distinguishing genuine
-   wiring bugs (`unknown_model`, `401`/`403`, missing env var) from benign backend
-   conditions (`429`/quota).
+4. **Run and verify** a bounded integration request with approval for cost and any
+   side effects. Report what actually worked; `429`/quota, timeout, or missing
+   credentials are failed/inconclusive checks, not a successful round trip.
 
 ### Guardrails
 
 - **Consumption only.** This is strictly read-only against the gateway. Never issue ARM
   `PUT`/`PATCH`/`DELETE` calls and never create, provision, or delete gateways, models,
   tools, connections, or products. If the user asks to provision anything, tell them
-  that is an administrator task done in the [AI Gateway Portal](https://ai.gateway.azure.com).
-- **Never hardcode secrets.** Read the gateway key from an environment variable and keep
-  `.env` out of source control. Warn the user that the written `.env` holds a live key
-  and to rotate it in the portal if it is ever exposed.
-- Use `properties.deployment.modelName` (exact dots/casing) as the model identifier —
-  prefer it over the ARM `name` or `displayName` (which some gateways reject with
-  `unknown_model`). Runtime calls use the gateway's `properties.gatewayUrl` host and the
-  `/default/` workspace segment: `<host>/default/models/openai/v1/...` and
-  `<host>/default/toolservers/<name>/mcp` (omitting `/default/` returns `404`).
-- Authenticate models and MCP tool servers with the `Api-Key` header — not
-  `Authorization: Bearer` (bearer-only auth is rejected, typically with a `401` or a
-  misleading `unknown_model`).
+  that is an administrator task done in the [Azure AI Gateway Portal](https://ai.gateway.azure.com).
+- **Never hardcode secrets.** Use environment variables or a secret store, never
+  browser bundles. Do not persist runtime tokens. Write a live API key to an ignored
+  `.env` only with explicit approval and an exposure warning.
+- Preserve the callable alias name, exact supported operation, verified gateway
+  runtime host, and `/default/` workspace. Do not substitute upstream endpoints,
+  backend deployment names for aliases, or guessed SDK paths.
+- Use the selected gateway's verified authentication contract. Never send an ARM
+  token as a runtime credential or fall back between identities to bypass a denial.
+- MCP discovery is version-aware and read-only. Never invoke tools without separate
+  approval, expose unselected tools, or generate approval-all permission handlers.

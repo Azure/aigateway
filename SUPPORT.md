@@ -10,7 +10,7 @@ For help and questions about using this project, please use:
 
 - **[GitHub Discussions](https://github.com/Azure/ai-gateway/discussions)** — Ask questions, share ideas, and discuss the project
 - **[GitHub Issues](https://github.com/Azure/ai-gateway/issues)** — Report bugs and request features
-- **[Documentation](https://learn.microsoft.com/azure/api-management/ai-gateway-overview)** — Read AI Gateway tier SKU in Azure API Management service documentation
+- **[Documentation](https://aka.ms/aigateway/docs)** — Read the Azure AI Gateway documentation
 
 ## Microsoft Support Policy
 
