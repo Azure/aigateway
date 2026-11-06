@@ -6,11 +6,9 @@ description: Assess and migrate explicitly supported APIM V2 configuration into 
 
 # Migrate APIM configuration to an Azure AI Gateway
 
-Invoked as `/ai-gateway:migrate-ai-gateway` or through `/ai-gateway:migrate`.
+Invoked as `/aigateway:migrate-ai-gateway` or through `/aigateway:migrate`.
 This is assisted configuration migration, not in-place service conversion or a blind
-API import. The source remains read-only. Developer consumption belongs in
-`skills/use-ai-gateway/SKILL.md`; ordinary administration belongs in
-`skills/manage-ai-gateway/SKILL.md`.
+API import. The source remains read-only.
 
 ## Assessment is not execution approval
 

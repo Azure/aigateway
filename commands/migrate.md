@@ -3,7 +3,7 @@ description: Assess and migrate supported APIM V2 configuration with read-only i
 argument-hint: <source-apim-resource-id> [<target-gateway> <target-resource-group> [target-region]] [--model-catalog-file <file>] [--apiops-artifact <path>] [--arm-template-file <file>]
 ---
 
-# /ai-gateway:migrate
+# /aigateway:migrate
 
 Follow `skills/migrate-ai-gateway/SKILL.md` and its bundled Python helper,
 schemas, and capability catalog. Resolve `$ARGUMENTS` into the source service ID
