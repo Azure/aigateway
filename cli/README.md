@@ -45,9 +45,10 @@ installation fails, correct the reported error and rerun the installer.
 
 ### Verify
 
+Every `az aigateway` command also accepts the `az aig` shorthand:
+
 ```bash
-az aigateway version
-az aigateway --help
+az aig version && az aig --help
 ```
 
 `version` reports `extensionName: aigateway`, `extensionVersion: 1.0.0b22`,

@@ -29,15 +29,15 @@ Read the command summary, arguments marked `[Required]`, allowed values, and
 examples. Some commands require a choice of inputs that is explained in the
 help text rather than marked on a single argument.
 
-To check which release you are using:
+To check which release you are using (every `az aigateway` command also accepts the `az aig` shorthand):
 
 ```bash
-az aigateway version
+az aig version && az aig --help
 ```
 
 ## Command groups
 
-Prefix each entry with `az aigateway`. These are the public, non-deprecated
+Prefix each entry with `az aigateway` (or `az aig`). These are the public, non-deprecated
 commands; each group and command accepts `--help`.
 
 | Group | Commands | Use it to |
