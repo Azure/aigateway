@@ -32,6 +32,8 @@ cases:
     required_commands: ['az aigateway create --subscription sub-eval --resource-group rg-eval --name gw-eval --location westus2']
     supplemental_reads:
       - az resource list --subscription sub-eval -g rg-eval --name gw-eval -o json
+      - az cognitiveservices account show --subscription sub-eval -g rg-models --name foundry-eval -o json
+      - az cognitiveservices account deployment list --subscription sub-eval -g rg-models --name foundry-eval -o json
       - az aigateway show --subscription sub-eval --ids /subscriptions/sub-eval/resourceGroups/rg-eval/providers/Microsoft.ApiManagement/aigateways/gw-eval -o json
       - az aigateway wait --subscription sub-eval --ids /subscriptions/sub-eval/resourceGroups/rg-eval/providers/Microsoft.ApiManagement/aigateways/gw-eval --created --timeout 1800 --interval 20
     pending_commands:

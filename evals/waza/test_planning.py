@@ -25,6 +25,23 @@ def answer(case):
 
 
 class Planning(unittest.TestCase):
+    def test_bootstrap_foundry_prerequisite_reads_keep_selected_scope(self):
+        case = next(c for c in cases() if c["id"] == "selected-rg-bootstrap")
+        required = case["required_commands"]
+        reads = [c for c in case["supplemental_reads"] if "cognitiveservices" in c]
+        self.assertEqual(len(reads), 2)
+        self.assertTrue(plan_matches(case, reads + required, required))
+        for changed in (
+                reads[0].replace("sub-eval", "foreign"),
+                reads[0].replace("rg-models", "other-rg"),
+                reads[0].replace("foundry-eval", "other-account"),
+                reads[1].replace("deployment list", "deployment create"),
+                reads[1].replace("--subscription sub-eval ", "")):
+            self.assertFalse(plan_matches(case, [changed, *required], required))
+        self.assertFalse(plan_matches(case, reads, required))
+        pending = case["pending_commands"][0]["command"]
+        self.assertFalse(plan_matches(case, [*reads, *required, pending], required))
+
     def test_actual_recorded_launcher_is_fail_closed_and_keeps_both_statuses(self):
         for condition in ("saved-failure", "empty-result", "occupied-result",
                           "changed-source", "missing-identity", "missing-python", "wrong-model"):

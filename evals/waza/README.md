@@ -8,16 +8,18 @@ The public skill names and boundaries are retained. A development-only
 planning agent denies all tools; it is not an installed runtime skill.
 
 **Current status:** planning completion is not established. The latest complete
-combined trial passed **15/18 original scenarios and 2/3 holdouts**. All 21
-recorded deny-all with zero tool calls/events/denials. It used 41.65935 AI credits
-and 180.577 seconds. Its four failures were evaluator comparisons: scoped
-preflight/parent reads, equivalent missing-metadata states and natural identity
-or approval wording. The earlier optional name-only gateway-root read is now
-corrected in a fresh execution; root inspection is not mandatory.
+combined trial passed **17/18 original scenarios and 3/3 holdouts**. All 21
+recorded deny-all with zero tool calls/events/denials. It used 42.0811 AI credits
+and 192.570 seconds. Its sole failure was an evaluator omission: the bootstrap
+plan read the exact selected Foundry account and its deployments before creation.
+Those authorized prerequisite reads were missing from that scenario's explicit
+read list. They are now enumerated with scope and mutation rejection tests.
+The earlier optional name-only gateway-root read is corrected in a fresh
+execution; root inspection is not mandatory.
 
 Offline replay of the unchanged latest combined outputs passes 21/21 behavior checks
 and 21/21 syntax checks after those evaluator corrections. The recorded fresh
-score remains 17/21. Correct derived URLs, SystemAssigned identity, natural
+score remains 20/21. Correct derived URLs, SystemAssigned identity, natural
 approval-action wording and colored JSON retain their meaning; scope, roles,
 composite counters, both post-create verification reads and alias write order
 remain strict. Only enumerated, task-scoped prerequisite/dependency reads are
