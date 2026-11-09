@@ -38,6 +38,7 @@ cases:
       - az cognitiveservices account deployment list --subscription sub-eval -g rg-models --name foundry-eval -o json
       - az aigateway show --subscription sub-eval --ids /subscriptions/sub-eval/resourceGroups/rg-eval/providers/Microsoft.ApiManagement/aigateways/gw-eval -o json
       - az aigateway wait --subscription sub-eval --ids /subscriptions/sub-eval/resourceGroups/rg-eval/providers/Microsoft.ApiManagement/aigateways/gw-eval --created --timeout 1800 --interval 20
+      - az aigateway model list --subscription sub-eval -g rg-eval --gateway-name gw-eval -o json
     pending_commands:
       - command: az aigateway model create --subscription sub-eval -g rg-eval --gateway-name gw-eval --foundry-resource-id /subscriptions/sub-eval/resourceGroups/rg-models/providers/Microsoft.CognitiveServices/accounts/foundry-eval --deployment already-exists
         approvals:

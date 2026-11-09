@@ -456,6 +456,23 @@ def local_help_probe(case, command):
     return ("--help", ()) in options and valid_command_syntax(command)
 
 
+def supplemental_read(case, command):
+    reads = list(case.get("supplemental_reads", []))
+    evidence = case["evidence"]
+    if case["skill"] == "manage-ai-gateway" and all(
+            isinstance(evidence.get(field), str) and evidence[field]
+            for field in ("subscription", "resourceGroup", "gateway")):
+        sub, rg, gateway = (evidence[field] for field in (
+            "subscription", "resourceGroup", "gateway"))
+        root = f"/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ApiManagement/aigateways/{gateway}"
+        reads.extend([
+            f"az aigateway show --subscription {sub} --ids {root} --output json",
+            f"az resource list --subscription {sub} --resource-group {rg} --name {gateway} --output json",
+        ])
+    return local_help_probe(case, command) or any(
+        safe_command_matches(read, command) for read in reads)
+
+
 def plan_matches(case, commands, required):
     phases = case.get("behavior_phases")
     if phases:
@@ -467,22 +484,18 @@ def plan_matches(case, commands, required):
                 remaining[0].pop(index)
                 if not remaining[0]:
                     remaining.pop(0)
-            elif not local_help_probe(case, command) and not any(
-                    safe_command_matches(read, command) for read in case.get("supplemental_reads", [])):
+            elif not supplemental_read(case, command):
                 return False
         return not remaining
     if len(commands) == len(required) and all(safe_command_matches(e, a)
                                              for e, a in zip(required, commands)):
         return True
-    # Only explicitly enumerated reads may supplement a plan. Writes cannot.
-    supplemental = case.get("supplemental_reads", [])
+    # Scoped parent preflight and explicitly enumerated reads cannot replace writes.
     index = 0
     for command in commands:
         if index < len(required) and safe_command_matches(required[index], command):
             index += 1
-        elif local_help_probe(case, command):
-            continue
-        elif not any(safe_command_matches(read, command) for read in supplemental):
+        elif not supplemental_read(case, command):
             return False
     return index == len(required)
 

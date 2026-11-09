@@ -59,7 +59,15 @@ least-privilege reads, explicit approvals, and evidence-aware recovery.
   bootstrap request is now explicitly single-deployment; case-only identity
   normalization does not broaden approval or import scope. These offline
   corrections change the candidate and reset repeatability, not the saved scores.
-  Paid runs are stopped with one invocation unused; it cannot establish three
+  A subsequently authorized frozen trial passed 19/21 again, but alias routing
+  and composite accounting passed. Its bootstrap model-inventory and stale-sync
+  parent-family reads were rejected by incomplete evaluator read coverage.
+  Offline correction now consistently accepts exact management parent preflight
+  and explicitly scopes the bootstrap model list, retaining required writes,
+  approvals and runtime-only isolation. A separate unchanged-output replay is
+  21/21, not a fresh score; the 60-test suite passes. No request/evidence/skill
+  change occurred in that correction, but repeatability resets.
+  Paid runs stopped after that first invocation, with two unused; they cannot establish three
   consecutive green trials. Session-local startup isolation and deny-all are
   not an OS filesystem/credential/network sandbox and do not test plugin
   discovery or progressive loading. Further execution needs sufficient explicit

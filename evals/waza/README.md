@@ -9,15 +9,36 @@ compatibility; these repeatedly inspected variants are not held-out validation.
 The public skill names and boundaries are retained. A development-only
 planning agent denies all tools; it is not an installed runtime skill.
 
-**Current status:** the corrected candidate passed all 21 scenarios in one fresh
+**Current status:** the latest fresh trial passed **16/18 originals and 3/3
+development variants, or 19/21**. Alias routing and composite accounting passed.
+Bootstrap and stale-sync assessment failed because the eval omitted two
+legitimate scoped reads, not because approval or mutation boundaries failed.
+All 21 tasks reached inference, passed syntax and recorded complete deny-all
+evidence with zero tool calls/events/denials. Benchmark/policy exits were 1/0.
+Paid execution stopped after this first invocation of the latest three-run
+authorization; two invocations remain unused.
+
+The bootstrap model-inventory read is now explicitly allowed for the selected
+gateway. Exact typed-root and same-name family preflight reads are consistently
+accepted across management tasks with supplied subscription/RG/gateway identity,
+rather than requiring another per-scenario list addition. Other asset reads
+remain explicitly task-scoped; this does not permit runtime-only ARM discovery,
+foreign scope, secret reads, extra writes or replacement of required commands.
+The alias's mandatory family check and mutation ordering remain strict.
+The 60-test offline suite and regenerated combined binding pass. A distinct
+unchanged-output replay now passes 21/21 behavior and syntax; the fresh score
+remains 19/21. No scenario request, evidence or skill text changed in this
+subsequent correction, but the grader change resets repeatability.
+
+The preceding corrected candidate passed all 21 scenarios in one fresh
 trial, but the next unchanged trial passed **16/18 originals and 3/3 development
 variants, or 19/21**. Bootstrap passed both trials. Three consecutive green trials
-are not established, and paid execution is stopped with one invocation unused.
+were not established, and execution stopped with one invocation then unused.
 Both trials reached inference for all 21 tasks, passed syntax throughout and
 recorded complete deny-all evidence with zero tool calls/events/denials.
 The first benchmark/policy exits were 0/0; the second were 1/0.
 
-The latest two behavior failures need different treatment:
+Those preceding two behavior failures needed different treatment:
 
 - Alias routing: the eval rejects native alias lists scoped to the selected
   subscription, RG and gateway. The plan retains the exact alias read/update/read
@@ -50,8 +71,8 @@ Offline regressions cover scoped alias lists, foreign targets, required read/
 write ordering, missing/late family checks, independent/extra counter dimensions,
 negation and malformed partition objects. Request and synthetic evidence meaning
 are unchanged; selected skill context changes because the precaution moved.
-The corrected candidate needs fresh validation and resets repeatability. One unused
-invocation cannot establish three consecutive green trials; genuine held-out,
+The subsequent correction needs fresh validation and resets repeatability. Two unused
+invocations cannot establish three consecutive green trials; genuine held-out,
 live CLI/data-plane and matched CLI-performance evidence remain absent.
 
 The two corrected frozen trials used **85.16745 AI credits**, 42 premium
@@ -60,6 +81,11 @@ requests/turns and 374.950 seconds. Each used Waza 0.40.1, Copilot SDK/runtime
 session-local SDK confirmed hooks disabled, zero installed plugins/user MCP
 servers, no managed startup keys and existing authentication. This is not an
 OS filesystem, credential or network sandbox.
+
+The latest trial used **42.86510 AI credits**, 21 premium requests/turns and
+188.562 seconds, through the same pinned Waza/runtime/model and verified
+startup profile. Inputs and all recorded prior artifacts stayed unchanged
+during execution. The result remains immutable.
 
 **Earlier bootstrap correction:** the request explicitly limits optional import
 to one selected existing deployment; the approved whole-account scenario remains
@@ -98,11 +124,13 @@ and syntax checks. The recorded fresh score remains 20/21, not 21/21.
 
 The original ceiling was exhausted: the initial trial and six additional
 invocations were used before the frozen-trial authorizations. Globally, the
-initial trial plus nine additional invocations have now been used. The latest
+initial trial plus ten additional invocations have now been used. The preceding
 approval allowed three corrected frozen trials using two remaining invocations
-plus one additional; two were executed and the last is unspent.
-Total assistant-owned usage is **404.35265 AI credits, 204 premium requests/turns
-and 1,806.367 seconds**, including the disclosed console-only invocation.
+plus one additional; two were executed and one remained unspent. The latest
+explicit approval allowed that remaining invocation plus two additional frozen
+trials. One was executed, failed and stopped the round; two remain unspent.
+Total assistant-owned usage is **447.21775 AI credits, 225 premium requests/turns
+and 1,994.929 seconds**, including the disclosed console-only invocation.
 No automatic rerun is scheduled. Earlier offline 21/21 replays remain historical
 evidence, not the score of a fresh output.
 

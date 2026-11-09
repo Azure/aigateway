@@ -367,6 +367,40 @@ exec """ + repr(sys.executable) + """ "$@"
         self.assertEqual(evaluate(case, json.dumps(result), "behavior")["status"], "fail")
         self.assertEqual(evaluate(case, json.dumps(result), "syntax")["status"], "pass")
 
+    def test_parent_preflight_scope_is_consistent_across_management_tasks(self):
+        for case in [*cases(), *yaml.safe_load((ROOT / "holdouts.yaml").read_text())["cases"]]:
+            evidence = case["evidence"]
+            if case["skill"] != "manage-ai-gateway" or not all(
+                    evidence.get(field) for field in ("subscription", "resourceGroup", "gateway")):
+                continue
+            sub, rg, gateway = (evidence[field] for field in (
+                "subscription", "resourceGroup", "gateway"))
+            family = f"az resource list --subscription {sub} --resource-group {rg} --name {gateway} --output json"
+            root = f"az aigateway show --subscription {sub} --ids /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ApiManagement/aigateways/{gateway} --output json"
+            with self.subTest(case=case["id"]):
+                for read in (family, root):
+                    commands = [read, *case.get("required_commands", [])]
+                    self.assertTrue(plan_matches(case, commands, case.get("required_commands", [])))
+                    for changed in (
+                            read.replace(sub, "foreign-sub"),
+                            read.replace(rg, "foreign-rg"),
+                            read.replace(gateway, "foreign-gateway"),
+                            read.replace(f"--subscription {sub} ", ""),
+                            read.replace("--output json", "--query secret")):
+                        self.assertFalse(plan_matches(case, [
+                            changed, *case.get("required_commands", [])],
+                            case.get("required_commands", [])))
+                for changed in (
+                        family.replace(f"--resource-group {rg} ", ""),
+                        family.replace(f"--name {gateway} ", ""),
+                        family.replace("resource list", "resource delete"),
+                        root.replace("/aigateways/", "/service/")):
+                    self.assertFalse(plan_matches(case, [
+                        changed, *case.get("required_commands", [])],
+                        case.get("required_commands", [])))
+        case = next(c for c in cases() if c["id"] == "runtime-only-known-endpoint")
+        self.assertFalse(plan_matches(case, [family], []))
+
     def test_approval_sentence_variants_do_not_accept_negation_or_broader_roles(self):
         case = next(c for c in cases() if c["id"] == "selected-rg-bootstrap")
         result = answer(case)
