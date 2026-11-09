@@ -6,10 +6,33 @@ managing Azure AI Gateway. They also cover read-only APIM feasibility assessment
 There are **18 synthetic scenarios** using the existing four skills; no skills,
 tools, or cloud resources are added.
 
-**Current status:** runnable Waza authoring fixtures and deterministic Python
-checks, not a completed Waza run. Waza is unavailable in the authoring environment.
-No model calls, Azure operations, installations, or measured performance are
-included. A passing mock echo is not agent quality, live coverage, or grade A.
+**Current status:** deterministic checks and a supplied local quality artifact
+have been reviewed. That artifact reports Copilot SDK / GPT-6.1 Sol, one run for
+each of 18 tasks: zero original contract passes, 18 contract failures, and no
+harness errors. It is not 18 established skill defects. The review found
+over-strict gate/identifier comparisons, underspecified output types, and an
+incorrect alias URL oracle. Those high-confidence defects are corrected below.
+No additional model trial or Azure call was made during review.
+
+Offline replay of the unchanged final outputs with the corrected rubric passes
+4/18: alias sibling preservation, exact alias endpoint, LRO reconciliation, and
+secret/marker refusal. The other 14 retain contract failures. Most involve
+typed fields answered with prose or detailed objects; runtime-only and stale-sync
+also omit required gate identifiers. The bootstrap plan includes an optional
+Foundry import awaiting separate approval, which the flat command allowlist does
+not represent as conditional. These are not proof of executed unsafe actions.
+No strings were coerced into successful booleans and no missing gates were waived.
+
+The supplied smoke artifact reports 18 passes with the mock executor. That checks
+synthetic harness assertions, not model behavior. The saved quality configuration
+still contains the old, untyped prompts. Regenerate it with the preparation
+command before any separately authorized rerun; do not reuse it unchanged.
+
+The original artifact remains local and ignored. Its redacted findings and
+follow-up are published in the [PR journal](https://github.com/Azure/aigateway/pull/38#issuecomment-6730494888),
+not as raw prompts/transcripts in this repository. Regrading existing outputs is
+offline analysis, not a new trial of changed instructions. Neither it nor a mock
+echo establishes a quality grade, tool isolation, live coverage or Grade A.
 
 ## Run the offline checks
 
@@ -38,9 +61,14 @@ Each task supplies synthetic `evidence.json` and the same neutral
 `output-contract.json` vocabulary, not its expected answer. The shared vocabulary
 exposes the union of gate/field identifiers, decisions, and categorical states
 including `unknown` and `unavailable`, without scenario-to-answer mappings.
-Scenario-specific field keys specify format, not conclusions. Required gate
-subsets, expected values, and command allowlists remain grader-only. Select the
-applicable unique gate set; copying every universal gate fails. This is a
+Scenario-specific typed output shapes specify format, not conclusions: booleans
+stay booleans, lists stay lists, and optional explanation goes in `notes`.
+Required gate subsets, expected values, and command allowlists remain grader-only.
+All required gates must be present; additional relevant known gates are allowed,
+but unknown/duplicate gates or copying every universal gate fail. Equivalent
+selected full IDs must match the exact scoped resource, not a foreign suffix.
+Reviewed read-only/assessment phase alternatives do not waive any safety,
+command-plan or no-execution check. This is a
 conservative contract test, not proof of unconstrained skill routing.
 All commands in an answer are proposals: this suite never authorizes execution.
 
@@ -99,6 +127,16 @@ SDK model connectivity and disclosure
 of the selected skill material require authorization; this preparation command
 does not establish those protections.
 
+**Do not rerun the supplied quality trial yet.** The pinned executor defaults
+to an allow-all permission callback unless an explicit handler/tool policy is
+supplied. Disabling plugins, selecting a fresh shell, setting `TMPDIR`, or using
+an isolated Python environment does not enforce a tool/file/network boundary.
+This suite has not established that boundary. A separately authorized rerun
+needs enforced, verified tool restrictions and agent-visible file isolation;
+read-capable tools can otherwise inspect grader/oracle files or unrelated host
+content. Recorded read-only tools in the reviewed artifact are evidence of that
+run's observed calls, not a guarantee of what was permitted.
+
 The program grader path is repository-root relative. Skill directories resolve
 relative to each eval file and name each of the four existing skill directories
 explicitly (including the extra parent traversal for the generated quality suite).
@@ -110,7 +148,8 @@ TMPDIR="$PWD/evals/waza/workspaces" \
   --output evals/waza/results/quality.json
 ```
 
-SDK may manage its bundled Copilot runtime/cache; this was not exercised here.
+SDK may manage its bundled Copilot runtime/cache; the reviewed result does not
+independently establish its cache/build or effective permission configuration.
 Do not use this command under a no-install restriction without checking that the
 approved runtime is already present. No prompt/LLM judge is configured.
 
@@ -140,7 +179,11 @@ approved runtime is already present. No prompt/LLM judge is configured.
 Native proposals are checked against the ordered reviewed allowlist with simple
 shell-token normalization: quoting/whitespace, option ordering, verified selector
 aliases, `--flag=value`, and order within repeated backend shorthand groups may
-vary. Command operation order, option values, target membership and multiplicity
+vary. An optional JSON output flag on create/update does not change the plan.
+Read commands still require their reviewed JSON output. Reconciliation reads
+current state before waiting and reads again afterward; a positive wait timeout
+may be shorter than the reviewed maximum, but not shorter than the interval.
+Command operation order, other option values, target membership and multiplicity
 remain exact: wrong values, extra options/actions, duplicate selectors, or missing
 targets fail. Unsupported aliases are not generalized across command groups.
 The command list must equal the ordered reviewed allowlist, with no extra actions;

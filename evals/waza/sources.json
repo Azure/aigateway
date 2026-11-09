@@ -29,6 +29,7 @@
   "references": [
     "https://raw.githubusercontent.com/microsoft/waza/v0.40.1/site/src/content/docs/guides/eval-yaml.mdx",
     "https://raw.githubusercontent.com/microsoft/waza/v0.40.1/internal/execution/mock.go",
+    "https://raw.githubusercontent.com/microsoft/waza/v0.40.1/internal/execution/copilot.go",
     "https://raw.githubusercontent.com/microsoft/waza/v0.40.1/internal/graders/program_grader.go",
     "https://raw.githubusercontent.com/microsoft/waza/v0.40.1/docs/graders/program.md",
     "https://raw.githubusercontent.com/microsoft/waza/v0.40.1/internal/orchestration/required_skills.go",

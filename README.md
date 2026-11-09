@@ -5,11 +5,11 @@
 to call model APIs and MCP tools, while
 platform teams enforce security, policy, networking, and observability.
 
-- **Govern model APIs** — Microsoft Foundry, OpenAI, Anthropic, Google Vertex, and more, while developers keep the SDKs they already use.
-- **Federate MCP tools** — combine MCP servers, OpenAPI APIs, and SaaS connectors behind one governed MCP endpoint.
-- **Enforce AI policies** — access, content safety, token, and rate controls, globally or per model and tool.
-- **Observe AI traffic** — token usage, latency, errors, and policy outcomes in dashboards and logs.
-- **Run on a trusted platform** — the Azure API Management platform, with Private Link, virtual network integration, and managed identity.
+- **Govern model APIs:** Microsoft Foundry, OpenAI, Anthropic, Google Vertex, and more, while developers keep the SDKs they already use.
+- **Federate MCP tools:** combine MCP servers, OpenAPI APIs, and SaaS connectors behind one governed MCP endpoint.
+- **Enforce AI policies:** access, content safety, token, and rate controls, globally or per model and tool.
+- **Observe AI traffic:** token usage, latency, errors, and policy outcomes in dashboards and logs.
+- **Run on a trusted platform:** the Azure API Management platform, with Private Link, virtual network integration, and managed identity.
 
 > Azure AI Gateway is in **public preview**, available free of charge. See the **[documentation](https://aka.ms/aigateway/docs)** to get started.
 
@@ -50,6 +50,13 @@ personas:
 | Skill `use-ai-gateway` | `/aigateway:use-ai-gateway` | Use AI assets from Azure AI Gateway to build intelligent applications. |
 | Skill `manage-ai-gateway` | `/aigateway:manage-ai-gateway` | Full administrator workflow for creating, configuring, and operating a gateway. |
 | Skill `migrate-ai-gateway` | `/aigateway:migrate-ai-gateway` | Inventory, assess, validate, and reconcile supported APIM V2 configuration to move the workload to Azure AI Gateway. |
+| Support utility `feedback-ai-gateway` | `/aigateway:feedback-ai-gateway` | Package one selected session and approved diagnostics for user-controlled support sharing. |
+
+The four public skill names and boundaries are unchanged. Migration remains
+bundled; feedback is a support utility, not a prerequisite to gateway work.
+All six commands are compatibility adapters into these skills. A skill selects
+one authoritative task recipe; adapters do not repeat its instructions or add
+mandatory inventories.
 
 ### Install
 
@@ -59,7 +66,13 @@ The root `plugin.json` uses **Agent Plugins 1.0**: the four skills are portable
 remain available. Shortcut support varies by host; the skills are the shared
 workflow, not separate implementations.
 
-**GitHub Copilot CLI** — install directly, without registering a marketplace:
+Development evaluations and regression tests live in `evals/` and `tests/`,
+outside the runtime `skills/` directories. Runtime migration schemas/catalogs
+and migration/feedback helpers remain bundled. The portable manifest has no
+standard file-exclusion field, so this does not promise that every host omits
+development files when downloading the repository.
+
+**GitHub Copilot CLI:** install directly, without registering a marketplace:
 
 ```bash
 copilot plugin install Azure/aigateway
@@ -72,7 +85,7 @@ copilot plugin marketplace add Azure/aigateway
 copilot plugin install aigateway@azure
 ```
 
-**VS Code / compatible Copilot products** — use the host's Agent Plugins
+**VS Code / compatible Copilot products:** use the host's Agent Plugins
 installation UI and add this repository's marketplace when supported. In VS
 Code, use **Chat: Plugins**; availability depends on the installed version and
 organization policy. Do not assume CLI-specific shortcuts load in every product.
@@ -84,7 +97,7 @@ organization policy. Do not assume CLI-specific shortcuts load in every product.
 /plugin install aigateway@azure
 ```
 
-**Cursor** — add this repository as a team marketplace from **Dashboard → Plugins →
+**Cursor:** add this repository as a team marketplace from **Dashboard → Plugins →
 Add Marketplace → Import from Repo** (`https://github.com/Azure/aigateway`), then
 install **aigateway** from **Customize**. For local testing, symlink the repo into
 `~/.cursor/plugins/local/aigateway` and reload the window.
@@ -189,7 +202,11 @@ reference needed for the current task. IaC, backend provisioning and unsupported
 native fields remain explicit separate work, not invented CLI operations.
 
 Run deterministic packaging/link/entry-point checks with
-`python3 -m unittest discover -s tests`. The [evaluation suite](evals/README.md)
+`python3 -m unittest discover -s tests`. Migration regressions now run with
+`python3 -m unittest discover -s tests/migrate`; feedback regressions run with
+`python3 -m unittest discover -s tests/feedback`. On macOS, select a non-symlink
+temporary directory through `TMPDIR` for migration tests; their path-safety
+checks intentionally reject symlink ancestors. The [evaluation suite](evals/README.md)
 defines Waza scenarios and quality/safety criteria for further improvement.
 Offline checks do not establish live model quality, cloud behavior or a grade A;
 authenticated trials and separately authorized Azure validation are distinct.

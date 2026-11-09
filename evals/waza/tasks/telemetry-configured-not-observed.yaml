@@ -39,7 +39,17 @@ inputs:
 
     executed: false, limitations (include "final-output-not-execution-proof").
 
-    Name applicable gates precisely; explain uncertainty through observations.
+    Use the supplied typed output shape: keep booleans, numbers, lists and categorical
+
+    states as those types, not explanatory strings or nested reports. Put optional
+
+    explanations in a separate notes field. Values come from evidence; unknown and
+
+    unavailable describe missing or denied evidence. Decision names describe the
+
+    requested phase, not successful execution. Name required gates precisely;
+
+    additional relevant identifiers from the shared vocabulary are allowed.
 
     The contract vocabulary is universal, not a scenario answer or a list of gates
 
@@ -48,11 +58,9 @@ inputs:
     Do not claim live validation, a quality grade, or that plans prove safe execution.
 
 
-    Contract field vocabulary (derive values from evidence):
-
-    selected keys: payloadCapture
-
-    observations keys: exporterConfigured, delivery, observedSpans, captureEnabled'
+    Output shape (types only; derive values from evidence): {"selected": {"payloadCapture": "boolean"},
+    "observations": {"exporterConfigured": "boolean", "delivery": "string", "observedSpans": "string",
+    "captureEnabled": "boolean"}}'
   files:
   - path: evidence.json
     content: "{\n  \"exporter\": {\n    \"kind\": \"OpenTelemetry\",\n    \"tracesEndpoint\": \"https://collector.example.invalid/v1/traces\"\

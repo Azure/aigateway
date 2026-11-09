@@ -198,7 +198,6 @@
   "stateIdentifiers": [
     "Foundry User",
     "conflict-disclosed",
-    "gateway-managed-identity",
     "identity-and-ip-combination",
     "initialize",
     "model-create-foundry-resource-id-and-deployment",

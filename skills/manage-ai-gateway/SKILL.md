@@ -63,6 +63,10 @@ own deterministic helpers and approvals; consumption/application work uses
 
 ## Resolve only what is needed now
 
+For an explanation using sufficient supplied evidence, skip CLI setup and
+resource discovery. The steps below apply only to the reads or writes needed
+for the requested result; the domain recipe is the authoritative task procedure.
+
 1. Reuse supplied facts. Resolve cloud/tenant, explicit subscription, RG and
    gateway for this task; select by identity/purpose, never list position.
    Use `--subscription`, not changed global defaults. Authenticate only if

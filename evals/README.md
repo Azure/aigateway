@@ -22,11 +22,16 @@ least-privilege reads, explicit approvals, and evidence-aware recovery.
   These use already available Python, PyYAML and jsonschema; no installation,
   credentials, models, or Azure calls.
 - **Harness:** checked-in Waza executor is `mock`, with two parallel workers.
-  Waza is unavailable here, so **no Waza harness run is claimed**. Mock only
-  echoes inputs; its grader additionally checks synthetic positive/missing-gate
-  answers. Those exercise assertions, not an assistant's behavior.
-- **Real evaluation:** not run. Requires explicit model/account/disclosure/cost
-  authorization, reviewed execution restrictions, and observed evidence.
+  A supplied local smoke artifact reports 18 passes and no errors. Mock echoes
+  inputs; its grader checks synthetic positive/missing-gate answers. These
+  exercise wiring and assertions, not an assistant's behavior or safety.
+- **Real evaluation:** a supplied Copilot SDK / GPT-6.1 Sol artifact reports
+  one run per task, 0 original passes, 18 contract failures and no harness errors.
+  The [redacted PR journal](https://github.com/Azure/aigateway/pull/38#issuecomment-6730494888)
+  distinguishes rubric defects from behavior findings. Corrected graders can be
+  replayed offline against those outputs; that is not a new model trial.
+  No enforced execution boundary or CLI-relative baseline was established.
+  Another trial requires separate authorization and verified restrictions.
 
 The suite guide defines per-task safety gates, quality dimensions, proposed
 latency/tool budgets against matched CLI baselines, and grade-A prerequisites.

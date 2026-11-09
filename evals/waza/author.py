@@ -20,11 +20,25 @@ reconcile/assess-only), selected (specific selected identifiers and contract),
 gates (specific safety gate names in kebab-case), observations (what the evidence
 does and does not establish), commands (proposed native CLI strings, or []),
 executed: false, limitations (include "final-output-not-execution-proof").
-Name applicable gates precisely; explain uncertainty through observations.
+Use the supplied typed output shape: keep booleans, numbers, lists and categorical
+states as those types, not explanatory strings or nested reports. Put optional
+explanations in a separate notes field. Values come from evidence; unknown and
+unavailable describe missing or denied evidence. Decision names describe the
+requested phase, not successful execution. Name required gates precisely;
+additional relevant identifiers from the shared vocabulary are allowed.
 The contract vocabulary is universal, not a scenario answer or a list of gates
 that all apply. Select only the gate identifiers relevant to this scenario.
 Do not claim live validation, a quality grade, or that plans prove safe execution.
 """
+
+
+def value_shape(value):
+    if isinstance(value, dict):
+        return {key: value_shape(child) for key, child in value.items()}
+    if isinstance(value, list):
+        return [value_shape(value[0])] if value else []
+    return {str: "string", bool: "boolean", int: "integer", float: "number",
+            type(None): "null"}[type(value)]
 
 
 def documents(mode="smoke", model="offline-mock", trials=1):
@@ -71,9 +85,9 @@ def documents(mode="smoke", model="offline-mock", trials=1):
             "inputs": {
                 "prompt": f"SCENARIO_ID={case['id']}\nUse {case['skill']}.\n"
                           + case["request"] + "\n" + OUTPUT_CONTRACT
-                          + "\nContract field vocabulary (derive values from evidence):"
-                          + "\nselected keys: " + ", ".join(case["expected"]["selected"])
-                          + "\nobservations keys: " + ", ".join(case["expected"]["observations"]),
+                          + "\nOutput shape (types only; derive values from evidence): "
+                          + json.dumps({section: value_shape(case["expected"][section])
+                                        for section in ("selected", "observations")}),
                 "files": [{"path": "evidence.json",
                            "content": json.dumps(case["evidence"], indent=2) + "\n"},
                           {"path": "output-contract.json"}],

@@ -11,8 +11,8 @@ import yaml
 from jsonschema import Draft7Validator
 from jsonschema.exceptions import ValidationError as SchemaError
 
-from author import documents
-from grade import ROOT, cases, check, normalize_command
+from author import documents, value_shape
+from grade import ROOT, cases, check, command_matches, normalize_command
 from oracles import compare_budget, discovery_sequence, valid_response
 
 
@@ -239,7 +239,7 @@ class Fixtures(unittest.TestCase):
         path = properties["supportedEndpoints"][0]
         self.assertTrue(path.startswith("/openai/"))
         self.assertEqual(case["expected"]["observations"]["url"],
-                         case["evidence"]["origin"] + "/default" + path)
+                         case["evidence"]["origin"] + "/default/models" + path)
         self.assertNotEqual(properties["aliasName"], case["evidence"]["alias"]["name"])
 
     def test_response_shape_fixture_oracles(self):
@@ -340,10 +340,72 @@ class Fixtures(unittest.TestCase):
             with self.assertRaises(ValueError):
                 check(case, json.dumps(answer))
 
+    def test_typed_shapes_expose_format_without_expected_answers(self):
+        sample = {"flag": False, "count": 3, "ids": ["synthetic-id"],
+                  "routing": [{"weight": 75}]}
+        self.assertEqual(value_shape(sample), {
+            "flag": "boolean", "count": "integer", "ids": ["string"],
+            "routing": [{"weight": "integer"}]})
+        for case in self.cases:
+            prompt = documents("quality")[f"tasks/{case['id']}.yaml"]["inputs"]["prompt"]
+            shape = json.loads(prompt.split("Output shape (types only; derive values from evidence): ")[1])
+            self.assertEqual(shape, {key: value_shape(case["expected"][key])
+                                     for key in ("selected", "observations")})
+
+    def test_additional_known_gates_do_not_hide_missing_required_gates(self):
+        vocabulary = documents()["fixtures/output-contract.json"]["gateIdentifiers"]
+        for case in self.cases:
+            answer = golden(case)
+            extra = next(gate for gate in vocabulary if gate not in answer["gates"])
+            answer["gates"].append(extra)
+            check(case, json.dumps(answer))
+            answer["gates"].remove(case["expected"]["gates"][0])
+            with self.assertRaises(ValueError):
+                check(case, json.dumps(answer))
+            answer = golden(case)
+            answer["gates"].append("unreviewed-gate")
+            with self.assertRaises(ValueError):
+                check(case, json.dumps(answer))
+
+    def test_equivalent_selected_ids_remain_bound_to_exact_resource(self):
+        for case in self.cases:
+            evidence = case["evidence"]
+            root = evidence.get("gatewayId")
+            if not root and all(k in evidence for k in ("subscription", "resourceGroup", "gateway")):
+                root = (f"/subscriptions/{evidence['subscription']}/resourceGroups/{evidence['resourceGroup']}"
+                        f"/providers/Microsoft.ApiManagement/aigateways/{evidence['gateway']}")
+            for key in ("gateway", "connection"):
+                if not root or key not in case["expected"]["selected"]:
+                    continue
+                answer = golden(case)
+                selected = root if key == "gateway" else root + "/privateEndpointConnections/" + evidence["connection"]
+                answer["selected"][key] = selected
+                check(case, json.dumps(answer))
+                answer["selected"][key] = selected.replace("/subscriptions/sub-eval/", "/subscriptions/foreign/")
+                with self.assertRaises(ValueError):
+                    check(case, json.dumps(answer))
+
+    def test_phase_alternatives_preserve_execution_and_safety_checks(self):
+        for case in self.cases:
+            for decision in case.get("accepted_decisions", []):
+                answer = golden(case)
+                answer["decision"] = decision
+                check(case, json.dumps(answer))
+                answer["executed"] = True
+                with self.assertRaises(ValueError):
+                    check(case, json.dumps(answer))
+            answer = golden(case)
+            answer["decision"] = "unreviewed-phase"
+            with self.assertRaises(ValueError):
+                check(case, json.dumps(answer))
+
     def test_equivalent_cli_flag_order_and_shorthand_assignments_pass(self):
         original = "az aigateway model-alias update --subscription sub-eval -g rg-eval --gateway-name gw-eval -n alias --backend-model resource-id=model-a priority=0 weight=75 --backend-model resource-id=model-b priority=0 weight=25"
         reordered = "az aigateway model-alias update --backend-model weight=25 priority=0 resource-id=model-b --name alias --resource-group rg-eval --backend-model priority=0 weight=75 resource-id=model-a --subscription=sub-eval --gateway-name gw-eval"
         self.assertEqual(normalize_command(original), normalize_command(reordered))
+        self.assertTrue(command_matches(original, reordered + " --output json"))
+        self.assertFalse(command_matches(original, reordered + " --output json --output json"))
+        self.assertFalse(command_matches(original, reordered + " --output table"))
         for case in self.cases:
             answer = golden(case)
             commands = []
@@ -369,6 +431,22 @@ class Fixtures(unittest.TestCase):
             + case["evidence"]["foundryAccountId"]
             + " --gateway-name gw-eval --resource-group rg-eval --subscription sub-eval")
         check(case, json.dumps(answer))
+
+    def test_wait_reconciliation_accepts_shorter_positive_bound(self):
+        case = next(c for c in self.cases if c["id"] == "lro-readiness-not-acceptance")
+        self.assertIn("show", case["required_commands"][0])
+        answer = golden(case)
+        answer["commands"][1] = answer["commands"][1].replace("--timeout 1800", "--timeout 300")
+        check(case, json.dumps(answer))
+        for timeout in ("0", "10", "1801", "unbounded"):
+            answer = golden(case)
+            answer["commands"][1] = answer["commands"][1].replace("--timeout 1800", "--timeout " + timeout)
+            with self.assertRaises(ValueError):
+                check(case, json.dumps(answer))
+        answer = golden(case)
+        answer["commands"][0], answer["commands"][1] = answer["commands"][1], answer["commands"][0]
+        with self.assertRaises(ValueError):
+            check(case, json.dumps(answer))
 
     def test_allowlist_flags_match_recorded_local_b22_help(self):
         provenance = json.loads((ROOT / "native-help.json").read_text())

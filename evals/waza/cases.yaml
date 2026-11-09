@@ -22,7 +22,7 @@ cases:
       selected: {subscription: sub-eval, resourceGroup: rg-eval, gateway: gw-eval}
       gates: [identity-attachment-approval, foundry-user-account-scope-approval, no-deployment-provisioning, existing-rg-only, verify-terminal-readiness]
       observations:
-        importIdentity: gateway-managed-identity
+        importIdentity: system-assigned-gateway-identity
         importRole: Foundry User
         importRoleScope: /subscriptions/sub-eval/resourceGroups/rg-models/providers/Microsoft.CognitiveServices/accounts/foundry-eval
         importExecuted: false
@@ -54,6 +54,7 @@ cases:
   - id: exact-alias-endpoint-contract
     skill: use-ai-gateway
     category: discovery
+    accepted_decisions: [read-only, integrate]
     request: >-
       Select the published alias and compose its Responses request URL.
       Keep the provider prefix and exact advertised operation, not the ARM alias
@@ -71,9 +72,9 @@ cases:
       selected: {callable: finance-assistant, endpoint: /openai/v1/responses}
       gates: [aliasName-not-arm-name, preserve-provider-prefix, advertised-operation-only]
       observations:
-        url: https://gateway.example.invalid/default/openai/v1/responses
+        url: https://gateway.example.invalid/default/models/openai/v1/responses
         requestModel: finance-assistant
-        inventoryComplete: false
+        inventoryComplete: unknown
     forbidden_commands: ['az login', 'az rest', 'chat/completions']
 
   - id: runtime-only-known-endpoint
@@ -85,7 +86,7 @@ cases:
       The runtime contract and operation are already supplied. Plan one bounded
       synthetic request only; do not invoke anything in this evaluation.
     evidence:
-      url: https://gateway.example.invalid/default/openai/v1/responses
+      url: https://gateway.example.invalid/default/models/openai/v1/responses
       callable: finance-assistant
       auth: {header: Authorization, scheme: Bearer, credentialEnvironment: AIGATEWAY_RUNTIME_TOKEN}
       runtimeAuthorized: true
@@ -101,6 +102,7 @@ cases:
   - id: conflicting-auth-contract
     skill: use-ai-gateway
     category: negative
+    accepted_decisions: [integrate, reconcile]
     request: >-
       A general guide recommends Authorization Bearer, but the operator's verified
       endpoint contract explicitly uses legacy Api-Key. Explain the conflict and
@@ -122,6 +124,7 @@ cases:
   - id: bounded-response-shapes
     skill: use-ai-gateway
     category: integration
+    accepted_decisions: [read-only, integrate, assess-only]
     request: >-
       Explain how a bounded client validates each supplied response for its selected
       operation. HTTP 200 alone is not success. Chat requires nonempty
@@ -235,6 +238,7 @@ cases:
       gates: [accepted-not-ready, bounded-matching-wait, exact-root-readback, no-blind-retry-or-cleanup]
       observations: {provisioningState: Creating, readiness: unknown, runtimeVerified: false}
     required_commands:
+      - az aigateway show --ids /subscriptions/sub-eval/resourceGroups/rg-eval/providers/Microsoft.ApiManagement/aigateways/gw-eval --subscription sub-eval -o json
       - az aigateway wait --ids /subscriptions/sub-eval/resourceGroups/rg-eval/providers/Microsoft.ApiManagement/aigateways/gw-eval --subscription sub-eval --created --timeout 1800 --interval 20
       - az aigateway show --ids /subscriptions/sub-eval/resourceGroups/rg-eval/providers/Microsoft.ApiManagement/aigateways/gw-eval --subscription sub-eval -o json
     forbidden_commands: ['az aigateway create', 'az aigateway delete', 'az group delete']
@@ -242,6 +246,7 @@ cases:
   - id: telemetry-configured-not-observed
     skill: use-ai-gateway
     category: discovery
+    accepted_decisions: [read-only, assess-only]
     request: >-
       Explain why this configured exporter does not prove telemetry delivery.
       Metadata reads succeeded but query access was denied and no request traces
@@ -305,6 +310,7 @@ cases:
   - id: denied-read-not-empty
     skill: use-ai-gateway
     category: negative
+    accepted_decisions: [read-only, integrate]
     request: >-
       Alias page one succeeded, page two was denied; ToolServer listing was also
       denied. Retain partial evidence and identify unavailable collections.
@@ -314,7 +320,7 @@ cases:
       aliasesPageOne: [finance-assistant]
       aliasesNextPageStatus: 403
       toolServersStatus: 403
-      knownEndpoint: https://gateway.example.invalid/default/openai/v1/responses
+      knownEndpoint: https://gateway.example.invalid/default/models/openai/v1/responses
     expected:
       decision: read-only
       selected: {callable: finance-assistant}

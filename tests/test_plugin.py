@@ -126,10 +126,18 @@ class PluginTests(unittest.TestCase):
                 )
                 self.assertIn("{{args}}", data["prompt"])
                 self.assertTrue(data["description"])
-                if name in {"build", "create", "discover", "manage"}:
-                    self.assertIn(f"commands/{name}.md", data["prompt"])
-                    self.assertEqual(data["description"], field(frontmatter(canonical), "description"))
-                    self.assertLess(len(data["prompt"]), 450)
+                self.assertIn(f"commands/{name}.md", data["prompt"])
+                self.assertNotIn("SKILL.md", data["prompt"])
+                self.assertEqual(data["description"], field(frontmatter(canonical), "description"))
+                self.assertLess(len(data["prompt"]), 180)
+                self.assertLess(len(canonical.read_text().splitlines()), 15)
+                self.assertEqual(canonical.read_text().count("SKILL.md"), 1)
+
+    def test_runtime_skills_do_not_bundle_development_tests(self):
+        self.assertFalse(list((ROOT / "skills").glob("*/tests/*")))
+        self.assertFalse(list((ROOT / "skills").glob("**/evals/*")))
+        self.assertTrue((ROOT / "tests/migrate/test_migration.py").exists())
+        self.assertTrue((ROOT / "tests/feedback/evals.json").exists())
 
     def test_entry_point_budgets_and_progressive_recipes(self):
         for name, byte_limit, line_limit in (
