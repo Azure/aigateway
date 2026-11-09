@@ -147,18 +147,15 @@ the published aliases or MCP endpoints and integrate the intended protocol.
 A successful management read is not a model or tool invocation test.
 Authorize any runtime test separately, especially for tools with side effects.
 
-## Updates and migration
+## Next steps
 
 Use [the reference](command-reference.md) to find commands and configuration
 examples; use task-specific `--help` to check the installed version's options.
 Keep the CLI version stable during an approved change.
 
-The [APIM migration skill](../skills/migrate-ai-gateway/SKILL.md) uses local
-helpers for source assessment, plan validation, approvals, and reporting,
-and native CLI commands for destination writes. There is no
-`az aigateway migration` subgroup in the reviewed release.
-Its stricter release/provenance checks require reviewing a new CLI capability
-profile and refreshing plan approvals before migration writes.
+For an existing APIM workload, follow the
+[APIM migration skill](../skills/migrate-ai-gateway/SKILL.md) for its supported
+scope, prerequisites, validation, and approval requirements.
 
 ## Removal
 
