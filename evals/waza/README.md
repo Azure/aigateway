@@ -22,21 +22,35 @@ The latest two behavior failures need different treatment:
 - Alias routing: the eval rejects native alias lists scoped to the selected
   subscription, RG and gateway. The plan retains the exact alias read/update/read
   order, full backend pool, fallback, policies and callable; its scoped list
-  rejection is an evaluator read-list omission. Separately, the plan omits the
+  rejection was an evaluator read-list omission, now corrected with exact
+  subscription/RG/gateway checks. Separately, the plan omits the
   same-name gateway-family check required by the management skill before
   name-selected writes. The current grader does not independently require that
-  check, so fixing the list comparison alone would not establish full adherence.
+  check. The corrected grader requires it before the update, allowing either
+  order for the two prerequisite reads; an alias list or late family read cannot
+  substitute for it. The skill now places this existing precaution next to
+  execution rather than leaving it only in target resolution.
 - Policy accounting: `identity/ipAddress combination` describes the same
   composite partition as the supported `identity/ipAddress` value. The eval
-  accepts the latter but rejects the former. Tokens, requests and the absence
+  previously accepted the latter but rejected the former. Both now match;
+  an explicit composite object with exactly the identity and IP dimensions also
+  matches. Tokens, requests and the absence
   of a billing hard cap are correct. This is a representation comparison, not
   demonstrated use of separate counters or an attempted quota bypass.
 
 No skill, grader, fixture or generated configuration changed between these
-trials. There is no new replay score or correction that relabels their results.
-Before spending again, correct the scoped-read and composite-partition checks
-offline, test their foreign-scope/separate-counter negatives, and resolve the
-alias family-preflight omission. Any correction resets repeatability. One unused
+trials. The subsequent offline correction does not relabel their fresh scores.
+A separate replay of their immutable outputs passes 21/21 and 20/21 behavior
+respectively, with 21/21 syntax in both. The second still fails the missing
+family preflight, even after both evaluator comparisons are corrected. This
+is evidence of a real omitted precaution, not a new trial or proof that the
+repositioned skill guidance fixes it.
+
+Offline regressions cover scoped alias lists, foreign targets, required read/
+write ordering, missing/late family checks, independent/extra counter dimensions,
+negation and malformed partition objects. Request and synthetic evidence meaning
+are unchanged; selected skill context changes because the precaution moved.
+The corrected candidate needs fresh validation and resets repeatability. One unused
 invocation cannot establish three consecutive green trials; genuine held-out,
 live CLI/data-plane and matched CLI-performance evidence remain absent.
 

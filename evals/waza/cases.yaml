@@ -530,11 +530,17 @@ cases:
         configurationVerified: false
         runtimeRoutingVerified: false
     required_commands:
+      - az resource list --subscription sub-eval --resource-group rg-eval --name gw-eval --output json
       - az aigateway model-alias show --subscription sub-eval -g rg-eval --gateway-name gw-eval -n arm-alias-17 -o json
       - az aigateway model-alias update --subscription sub-eval -g rg-eval --gateway-name gw-eval -n arm-alias-17 --backend-model resource-id=/subscriptions/sub-eval/resourceGroups/rg-eval/providers/Microsoft.ApiManagement/aigateways/gw-eval/workspaces/default/modelProviders/p/models/model-a priority=0 weight=75 --backend-model resource-id=/subscriptions/sub-eval/resourceGroups/rg-eval/providers/Microsoft.ApiManagement/aigateways/gw-eval/workspaces/default/modelProviders/p/models/model-b priority=0 weight=25 --backend-model resource-id=/subscriptions/sub-eval/resourceGroups/rg-eval/providers/Microsoft.ApiManagement/aigateways/gw-eval/workspaces/default/modelProviders/p/models/model-c priority=2 weight=10
       - az aigateway model-alias show --subscription sub-eval -g rg-eval --gateway-name gw-eval -n arm-alias-17 -o json
+    behavior_phases:
+      - - az resource list --subscription sub-eval --resource-group rg-eval --name gw-eval --output json
+        - az aigateway model-alias show --subscription sub-eval -g rg-eval --gateway-name gw-eval -n arm-alias-17 -o json
+      - - az aigateway model-alias update --subscription sub-eval -g rg-eval --gateway-name gw-eval -n arm-alias-17 --backend-model resource-id=/subscriptions/sub-eval/resourceGroups/rg-eval/providers/Microsoft.ApiManagement/aigateways/gw-eval/workspaces/default/modelProviders/p/models/model-a priority=0 weight=75 --backend-model resource-id=/subscriptions/sub-eval/resourceGroups/rg-eval/providers/Microsoft.ApiManagement/aigateways/gw-eval/workspaces/default/modelProviders/p/models/model-b priority=0 weight=25 --backend-model resource-id=/subscriptions/sub-eval/resourceGroups/rg-eval/providers/Microsoft.ApiManagement/aigateways/gw-eval/workspaces/default/modelProviders/p/models/model-c priority=2 weight=10
+      - - az aigateway model-alias show --subscription sub-eval -g rg-eval --gateway-name gw-eval -n arm-alias-17 -o json
     supplemental_reads:
       - az aigateway show --subscription sub-eval --ids /subscriptions/sub-eval/resourceGroups/rg-eval/providers/Microsoft.ApiManagement/aigateways/gw-eval -o json
-      - az resource list --subscription sub-eval -g rg-eval --name gw-eval -o json
       - az aigateway model-alias show --subscription sub-eval -g rg-eval --gateway-name gw-eval -n billing-arm-alias -o json
+      - az aigateway model-alias list --subscription sub-eval -g rg-eval --gateway-name gw-eval -o json
     forbidden_commands: ['--policies', '--routing-name', 'model-provider update', 'model update', 'model-alias delete']

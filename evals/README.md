@@ -47,11 +47,15 @@ least-privilege reads, explicit approvals, and evidence-aware recovery.
   in the suite guide and PR journal. The corrected candidate passed 21/21 in one
   fresh trial, then 19/21 in the next unchanged trial. Both have complete
   deny-all/zero-tool-activity evidence and 21/21 syntax. This is not three-trial
-  repeatability. The latest eval rejects a correctly scoped alias list and an
-  equivalent composite-counter label; separately, the alias plan omits the
-  management skill's same-name family preflight, which the grader does not
-  independently require. These need offline correction and negative tests before
-  more spending, not an unchanged rerun or a relabeled fresh score. The
+  repeatability. Offline corrections now accept the correctly scoped alias list
+  and equivalent composite-counter representation while independently requiring
+  the management skill's same-name family preflight before the alias update.
+  Foreign targets, late/missing preflight and independent counters remain
+  rejected. The existing skill precaution was moved next to execution to make
+  the required ordering harder to omit. A separate replay passes 21/21 and
+  20/21 behavior, with the second still failing its missing family check;
+  syntax passes throughout. These are unchanged old outputs, not fresh scores
+  or validation of the repositioned guidance. The
   bootstrap request is now explicitly single-deployment; case-only identity
   normalization does not broaden approval or import scope. These offline
   corrections change the candidate and reset repeatability, not the saved scores.

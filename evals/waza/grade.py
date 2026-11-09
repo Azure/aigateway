@@ -326,7 +326,15 @@ def equivalent_fact(expected, actual, key):
     if key in ("backendConfiguration", "policies") and expected == "unknown" and actual == "unavailable":
         return True
     if key == "ratePartition" and expected == "identity-and-ip-combination":
-        return actual in ("identity-and-ip-combination", "identity/ipAddress")
+        if isinstance(actual, str):
+            return (actual == "identity-and-ip-combination"
+                    or re.fullmatch(r"identity/ipAddress(?: combination)?", actual) is not None)
+        return (isinstance(actual, dict) and set(actual) == {"dimensions", "composition"}
+                and actual["composition"] == "composite"
+                and isinstance(actual["dimensions"], list)
+                and len(actual["dimensions"]) == 2
+                and all(isinstance(dimension, str) for dimension in actual["dimensions"])
+                and set(actual["dimensions"]) == {"identity", "ipAddress"})
     if isinstance(expected, dict):
         return isinstance(actual, dict) and all(
             field in actual and equivalent_fact(value, actual[field], field)

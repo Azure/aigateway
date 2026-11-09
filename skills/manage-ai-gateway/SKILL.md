@@ -80,11 +80,9 @@ for the requested result; the domain recipe is the authoritative task procedure.
    Keep the version stable during an approved change.
 3. Bind the exact root below. Match returned `id`/`type` and all child/alias
    references to this gateway/default workspace. Never repair foreign IDs.
-   Prefer `--ids` only where help exposes it. Name-only writes can dispatch to
-   legacy services: inspect scoped same-name collisions and recheck the typed
-   parent before those writes. Stop on collision, disappearance or uncertainty.
-   Preflight is not atomic family binding; disclose that CLI limitation when
-   concurrency cannot be excluded or exact binding is required.
+   Prefer `--ids` only where help exposes it. Name-only writes need the
+   [family preflight](#execute-and-verify) below because they can dispatch to
+   legacy services.
 4. Read only relevant resources/dependencies with native `show/list` and JSON.
    Complete supported pagination before absence/dependency claims; denied
    reads and failed pages remain explicit gaps, not empty inventories.
@@ -132,8 +130,15 @@ relevant confirmation and only where exposed. A diagnostic authorizes none.
 
 ## Execute and verify
 
-Load only the affected domain recipe, refresh state immediately before the
-write, and use supported previews such as sync `--dry-run` when applicable.
+Load only the affected domain recipe. Before a name-only write, inspect scoped
+same-name gateway/service collisions and recheck the typed parent. An alias list
+does not establish the parent's resource family; a post-write read cannot replace
+this preflight. Stop on collision, disappearance or uncertainty. Preflight is
+not atomic family binding; disclose that CLI limitation when concurrency cannot
+be excluded or exact binding is required.
+
+Refresh affected state immediately before the write and use supported previews
+such as sync `--dry-run` when applicable.
 Use bounded native `wait` where available, otherwise bounded read-back.
 Acceptance is not completion; deletion requires authoritative absence, not
 permission denial. Verify intended fields **and preserved siblings**.

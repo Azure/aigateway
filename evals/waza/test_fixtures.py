@@ -316,11 +316,14 @@ class Fixtures(unittest.TestCase):
         with self.assertRaises(ValueError):
             check(case, json.dumps(bad))
         bad = golden(case)
-        bad["commands"] = [bad["commands"][1], bad["commands"][0], bad["commands"][2]]
+        update = next(i for i, command in enumerate(bad["commands"])
+                      if command.startswith("az aigateway model-alias update "))
+        bad["commands"][update - 1], bad["commands"][update] = (
+            bad["commands"][update], bad["commands"][update - 1])
         with self.assertRaises(ValueError):
             check(case, json.dumps(bad))
         bad = golden(case)
-        bad["commands"][1] = bad["commands"][1].replace("weight=75", "weight=99")
+        bad["commands"][update] = bad["commands"][update].replace("weight=75", "weight=99")
         with self.assertRaises(ValueError):
             check(case, json.dumps(bad))
 

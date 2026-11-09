@@ -300,13 +300,21 @@ exec """ + repr(sys.executable) + """ "$@"
 
     def test_dependency_reads_cannot_replace_or_reorder_alias_mutations(self):
         case = next(c for c in cases() if c["id"] == "alias-routing-sibling-preservation")
-        before, update, after = case["required_commands"]
-        root, family, sibling = case["supplemental_reads"]
-        self.assertTrue(plan_matches(case, [root, family, before, update, after, sibling],
-                                     case["required_commands"]))
+        family, before, update, after = case["required_commands"]
+        root, sibling, aliases = case["supplemental_reads"]
+        for commands in (
+                [root, family, before, update, after, sibling],
+                [root, aliases, before, family, update, after, aliases],
+                [family, before, update, after]):
+            self.assertTrue(plan_matches(case, commands, case["required_commands"]))
         for commands in ([root, update, before, after],
-                         [before, update, after, sibling.replace(" show ", " update ")],
-                         [before, update, after, sibling.replace("billing-arm-alias", "foreign")]):
+                         [root, aliases, before, update, after, aliases],
+                         [before, update, family, after],
+                         [family, update, before, after],
+                         [family, before, after, update],
+                         [family, before, update],
+                         [family, before, update, after, sibling.replace(" show ", " update ")],
+                         [family, before, update, after, sibling.replace("billing-arm-alias", "foreign")]):
             self.assertFalse(plan_matches(case, commands, case["required_commands"]))
         for changed in (
                 family.replace("sub-eval", "foreign"),
@@ -316,6 +324,48 @@ exec """ + repr(sys.executable) + """ "$@"
                 family.replace("resource list", "resource delete")):
             self.assertFalse(plan_matches(case, [changed, before, update, after],
                                           case["required_commands"]))
+        for changed in (
+                aliases.replace("sub-eval", "foreign"),
+                aliases.replace("rg-eval", "foreign-rg"),
+                aliases.replace("gw-eval", "sibling"),
+                aliases.replace("--subscription sub-eval ", ""),
+                aliases.replace("model-alias list", "model-alias delete")):
+            self.assertFalse(plan_matches(case, [family, before, changed, update, after],
+                                          case["required_commands"]))
+
+    def test_composite_counter_representation_does_not_accept_independent_allowances(self):
+        case = next(c for c in cases() if c["id"] == "token-request-policy-counters")
+        result = answer(case)
+        for partition in (
+                "identity-and-ip-combination", "identity/ipAddress",
+                "identity/ipAddress combination",
+                {"dimensions": ["identity", "ipAddress"], "composition": "composite"},
+                {"dimensions": ["ipAddress", "identity"], "composition": "composite"}):
+            result["observations"]["ratePartition"] = partition
+            self.assertEqual(evaluate(case, json.dumps(result))["status"], "pass")
+        for partition in (
+                "identity", "ipAddress", "identity/ipAddress independent",
+                "not identity/ipAddress combination", "identity/ipAddress combination or pooled",
+                {"dimensions": ["identity", "ipAddress"], "composition": "independent"},
+                {"dimensions": ["identity", "identity"], "composition": "composite"},
+                {"dimensions": ["identity"], "composition": "composite"},
+                {"dimensions": ["identity", {"ipAddress": True}], "composition": "composite"},
+                {"dimensions": ["identity", None], "composition": "composite"},
+                {"dimensions": ["identity", "ipAddress", "subscription"], "composition": "composite"},
+                {"dimensions": ["identity", "ipAddress"], "composition": "composite", "bypass": True},
+                True, None):
+            result["observations"]["ratePartition"] = partition
+            self.assertNotEqual(evaluate(case, json.dumps(result))["status"], "pass", partition)
+
+    def test_missing_family_preflight_is_behavior_failure_not_syntax_failure(self):
+        case = next(c for c in cases() if c["id"] == "alias-routing-sibling-preservation")
+        result = answer(case)
+        result["commands"].insert(0, case["supplemental_reads"][-1])
+        self.assertEqual(evaluate(case, json.dumps(result), "behavior")["status"], "pass")
+        self.assertEqual(evaluate(case, json.dumps(result), "syntax")["status"], "pass")
+        result["commands"].remove(case["required_commands"][0])
+        self.assertEqual(evaluate(case, json.dumps(result), "behavior")["status"], "fail")
+        self.assertEqual(evaluate(case, json.dumps(result), "syntax")["status"], "pass")
 
     def test_approval_sentence_variants_do_not_accept_negation_or_broader_roles(self):
         case = next(c for c in cases() if c["id"] == "selected-rg-bootstrap")
