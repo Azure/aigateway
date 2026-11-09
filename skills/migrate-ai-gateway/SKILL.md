@@ -1,7 +1,10 @@
 ---
 name: migrate-ai-gateway
-version: 5.0.0
 description: Assess and migrate explicitly supported APIM V2 configuration into a separate Azure AI Gateway using redacted local inventory, deterministic plan validation, human approval, and granular az aigateway commands. Preserve unsupported behavior as questions or explicit residuals. V1 and AIGateway source profiles are reserved, not enabled.
+license: MIT
+metadata:
+  author: Microsoft
+  version: "5.0.0"
 ---
 
 # Migrate APIM configuration to an Azure AI Gateway

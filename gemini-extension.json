@@ -1,6 +1,6 @@
 {
   "name": "aigateway",
-  "version": "4.0.0",
+  "version": "4.1.0",
   "description": "Create, configure, manage, and build applications on Azure AI Gateway. Includes read-only developer integration and assisted APIM V2 migration with local validation and explicit approval.",
   "commands": [
     "./commands/aigateway/discover.toml",

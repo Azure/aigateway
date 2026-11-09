@@ -1,7 +1,47 @@
 # Gateway lifecycle
 
 Apply [target resolution and safeguards](../SKILL.md) first. These examples
-use its scope variables and an existing resource group.
+use its scope variables. An existing resource group is the default; create a
+new one only when bootstrap explicitly includes it.
+
+## Quickstart: selected scope, not hidden setup
+
+For "create a gateway and call a Foundry model", compose these separate steps:
+selected RG/gateway, selected Foundry registration, callable alias, and a
+bounded consumer request. Do not create unrequested MCP servers, policies,
+keys or exporters just because a quickstart demonstrates them.
+
+1. Reuse an existing subscription/RG and CLI installation when possible.
+   The hosted quickstart requires Azure CLI >=2.75.0. Only for requested
+   setup/upgrade, follow the official installer/release checksum instructions
+   and verify `az aigateway version`; do not install for a simple question.
+2. If explicitly requested, inspect `az group show --subscription "$SUBSCRIPTION"
+   -n "$RG"` first. Only authoritative ResourceGroupNotFound establishes
+   absence; a denied/failed read does not. Explain region/cost/ownership, then:
+
+   ```bash
+   az group create --subscription "$SUBSCRIPTION" --name "$RG" \
+     --location "$LOCATION" -o json
+   ```
+
+   Verify the returned RG identity/location. Never overwrite existing tags or
+   delete the RG on failure. Do not change `az configure` global defaults.
+3. Create the typed gateway below and verify readiness. For selected existing
+   Foundry accounts, follow [approved onboarding](models-and-routing.md).
+   Prefer single-deployment onboarding for "add one model"; provider onboarding
+   is an explicitly approved import of every current deployment.
+4. Inspect model `supportedEndpoints`, create only the selected alias with
+   explicit backend priority/weight, and read back `properties.aliasName`.
+5. Use the [consumer skill](../../use-ai-gateway/SKILL.md) for the verified
+   runtime origin, exact operation, selected existing credential and response
+   validation. Secret retrieval, key creation and billable invocation need
+   specific authorization; do not choose the first/master key or manufacture
+   a default key. Registration is not a successful data-plane round trip.
+
+Source: [hosted CLI quickstart](https://ai.gateway-df.azure.com/docs/quickstarts/cli).
+Its global defaults, bulk imports and key selection are examples, not permission
+to broaden this task. Header/model-name differences from the older CLI
+quickstart must be resolved through the selected runtime contract.
 
 ## Discover and inspect
 
@@ -19,7 +59,7 @@ metadata, not a fabricated hostname.
 
 ## Create
 
-Establish the exact subscription, existing RG, available region, unique name,
+Establish the exact subscription, selected RG, available region, unique name,
 and intended optional settings. Check the subscription's provider readiness
 and supported `aigateways` locations through authorized read-only Azure CLI
 discovery if needed. Missing registration is an owner prerequisite; do not

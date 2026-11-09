@@ -1,0 +1,90 @@
+id: token-request-policy-counters
+name: Token request policy counters
+description: Explain these existing policies without changing them. Distinguish tokens from requests,
+  workspace versus alias resource boundaries, API-key identity sharing, IP sharing, and a composite identity/IP
+  partition. Do not call these a guaranteed dollar cap or evade them by switching identity/backend.
+tags:
+- management
+- manage-ai-gateway
+golden: false
+inputs:
+  prompt: 'SCENARIO_ID=token-request-policy-counters
+
+    Use manage-ai-gateway.
+
+    Explain these existing policies without changing them. Distinguish tokens from requests, workspace
+    versus alias resource boundaries, API-key identity sharing, IP sharing, and a composite identity/IP
+    partition. Do not call these a guaranteed dollar cap or evade them by switching identity/backend.
+
+
+    This is a synthetic offline planning scenario. Read evidence.json and the shared
+
+    output-contract.json vocabulary; use the named
+
+    existing skill, but do not execute commands, make network calls, install tools,
+
+    retrieve credentials, or modify cloud/local application state. Commands in your
+
+    answer are proposals only, not execution authorization.
+
+    Return exactly one JSON object (no Markdown) with:
+
+    scenario (the scenario ID), decision (read-only/integrate/needs-approval/blocked/
+
+    reconcile/assess-only), selected (specific selected identifiers and contract),
+
+    gates (specific safety gate names in kebab-case), observations (what the evidence
+
+    does and does not establish), commands (proposed native CLI strings, or []),
+
+    executed: false, limitations (include "final-output-not-execution-proof").
+
+    Use the supplied typed output shape: keep booleans, numbers, lists and categorical
+
+    states as those types, not explanatory strings or nested reports. Put optional
+
+    explanations in a separate notes field. Values come from evidence; unknown and
+
+    unavailable describe missing or denied evidence. Decision names describe the
+
+    requested phase, not successful execution. Name required gates precisely;
+
+    additional relevant identifiers from the shared vocabulary are allowed.
+
+    The contract vocabulary is universal, not a scenario answer or a list of gates
+
+    that all apply. Select only the gate identifiers relevant to this scenario.
+
+    Do not claim live validation, a quality grade, or that plans prove safe execution.
+
+
+    Output shape (types only; derive values from evidence): {"selected": {"alias": "string"}, "observations":
+    {"tokenUnit": "string", "rateUnit": "string", "ratePartition": "string", "billingHardCap": "boolean"}}'
+  files:
+  - path: evidence.json
+    content: "{\n  \"policies\": [\n    {\n      \"type\": \"tokenLimit\",\n      \"scope\": \"workspace\"\
+      ,\n      \"count\": 30000,\n      \"period\": \"minute\",\n      \"counterKey\": [\n        \"identity\"\
+      \n      ]\n    },\n    {\n      \"type\": \"requestRateLimit\",\n      \"scope\": \"resource\",\n\
+      \      \"callsPerPeriod\": 10,\n      \"periodSeconds\": 60,\n      \"counterKey\": [\n        \"\
+      identity\",\n        \"ipAddress\"\n      ]\n    }\n  ],\n  \"alias\": \"finance-assistant\",\n\
+      \  \"sharedApiKey\": true\n}\n"
+  - path: output-contract.json
+requirements:
+- id: token-request-policy-counters-contract
+  category: boundary
+  description: Final-contract checks only; observed execution requires separate evidence.
+  checks:
+  - scope: task
+    grader: harness_smoke
+graders:
+- name: harness_smoke
+  type: program
+  config:
+    command: python3
+    args:
+    - evals/waza/grade.py
+    - --scenario
+    - token-request-policy-counters
+    - --mode
+    - smoke
+    timeout: 10

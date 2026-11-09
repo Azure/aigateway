@@ -63,7 +63,8 @@ grant backend access:
 
 Gateway identity attachment is a separately confirmed
 [identity operation](keys-and-identities.md). External permissions must
-already be prepared. Foundry account keys are not retrieved as ordinary
+already be prepared for low-level registration; the scoped Foundry onboarding
+exception below discloses and confirms its own account-level role grant. Foundry account keys are not retrieved as ordinary
 discovery.
 
 Provider updates can change display/description and partially merge
@@ -225,8 +226,55 @@ az aigateway model-provider create --subscription "$SUBSCRIPTION" \
 Foundry can instead use `authentication.kind: "ApiKey"` with
 `apiKey: {"headerName":"<backend-header>","value":"<runtime-secret>"}`.
 The convenience `--foundry-resource-id` create paths also enable identity
-and grant Foundry User externally; they are outside this skill's allowed
-execution path.
+and grant Foundry User externally. Use them only through the scoped approval
+workflow below; low-level registration remains the path when access is
+already prepared or those side effects are not authorized.
+
+### Approved Foundry onboarding
+
+Use the account/deployment explicitly selected by the user. If discovery is
+needed, authorized `az resource list`/`az cognitiveservices account show` and
+`deployment list/show` reads can establish identity and current deployments.
+Never pick `[0]`, infer an account from a display label, or interpret a denied
+read as an empty deployment list. Validate the full account ID, subscription,
+endpoint and intended gateway before offering a change.
+
+Installed b22 task-specific help establishes two different scopes:
+
+| Command | Registration effect | Access effects requiring scoped approval |
+| --- | --- | --- |
+| `model create --foundry-resource-id --deployment` | One existing deployment; creates/reuses its account-named provider | Enables gateway system identity and grants Foundry User at the selected account scope |
+| `model-provider create --foundry-resource-id` | Every current deployment under one provider; `--name` selects provider name | Same identity and account-level grant, **not** deployment-only access |
+
+Read relevant registrations and gateway identity first. Explain the selected
+account/deployment(s), affected provider/model names, existing state, grant
+scope, cost and partial-failure risk; obtain immediate confirmation of identity
+and RBAC effects and, for provider onboarding, the **entire deployment set**.
+Do not add general `az role assignment create`, mass account import, stale
+removal, or sync. A request for a provider does not imply bulk model import.
+Use low-level registration if the external grant is not approved.
+
+After that approval, use only the matching command:
+
+```bash
+# Single selected deployment; account-level access effects were approved.
+az aigateway model create --subscription "$SUBSCRIPTION" \
+  -g "$RG" --gateway-name "$GATEWAY" \
+  --foundry-resource-id "$FOUNDRY_ID" --deployment "$DEPLOYMENT"
+
+# Alternative: explicitly approved import of every current deployment.
+az aigateway model-provider create --subscription "$SUBSCRIPTION" \
+  -g "$RG" --gateway-name "$GATEWAY" -n "$PROVIDER" \
+  --foundry-resource-id "$FOUNDRY_ID"
+```
+
+These are alternatives, not a sequence. Do not replay blindly: the CLI can
+leave identity/grant/provider or earlier model writes after later failures.
+Read back exact provider/model IDs, deployment metadata and gateway identity.
+If external role verification is not permitted, report it as unverified, not
+absent or effective. Registering a model does not create its deployment or
+prove inference. Create a selected alias only when requested, then use the
+consumer workflow for a separately authorized runtime check.
 
 ### Custom provider
 

@@ -32,7 +32,7 @@ typed-gateway capability.
 | Native | An exposed command/typed input supplies an execution path for the recorded capability |
 | Native JSON | A native argument accepts the referenced payload shape; service acceptance and runtime effect remain separate evidence |
 | Gap | No confirmed native path for the complete capability or field |
-| External | Resource or permission changes owned outside this skill's gateway-only boundary |
+| External | Resource or permission changes owned outside the gateway boundary, except the explicitly approved RG/Foundry bootstrap paths |
 
 These classifications describe distinct dimensions of support. A free-form
 argument does not establish service applicability, an inherited portal label
@@ -45,9 +45,9 @@ All command names below are prefixed with `az aigateway`.
 
 | Area | Native surface | Configuration and support boundaries | Reference |
 | --- | --- | --- | --- |
-| Gateway lifecycle | `list/show/create/update/delete/wait/version` | Typed gateway identity, provisioning, tags and tier; existing RG; tags replace the supplied set | [Lifecycle](gateway-lifecycle.md) |
+| Gateway lifecycle | `list/show/create/update/delete/wait/version` | Typed gateway identity, provisioning, tags/tier; selected RG creation only for explicit bootstrap; tags replace the supplied set | [Lifecycle](gateway-lifecycle.md) |
 | Model provider | `model-provider create/show/list/update/delete` | Foundry/Custom registration and nested endpoint/auth settings; underlying accounts remain external | [Models](models-and-routing.md) |
-| Foundry registration | Low-level provider and model create operations, then explicit aliases | Existing deployments and backend permissions; convenience `--foundry-resource-id` paths also grant external RBAC and are outside the allowed execution path | [Models](models-and-routing.md) |
+| Foundry registration | Low-level creates or approved `--foundry-resource-id` onboarding, then selected aliases | Existing deployments; convenience commands enable gateway identity and grant Foundry User at selected account scope; provider onboarding imports every deployment, requiring explicit scope approval | [Models](models-and-routing.md) |
 | Provider reconciliation | `model-provider sync --dry-run` and confirmed apply | Foundry only; sequential additions/stale removals; alias dependencies and optional default aliases need an explicit plan; Custom discovery/sync is a gap | [Models](models-and-routing.md) |
 | Model registration | `model create/show/list/update/delete` | Deployment metadata, supported endpoints and exposed API formats; not deployment provisioning or proof of a callable alias | [Models](models-and-routing.md) |
 | Alias routing | `model-alias create/show/list/update/delete` | Stable callable name, one to 30 unique same-gateway model targets, priority and weight | [Models](models-and-routing.md) |
@@ -69,11 +69,16 @@ All command names below are prefixed with `az aigateway`.
 | Telemetry exporters | `telemetry-exporter create/show/list/update/delete` plus native JSON | Existing destinations, OTLP signals/auth, claim attributes and payload capture; no exporter wait in the reviewed CLI | [Telemetry](telemetry-and-troubleshooting.md) |
 | Runtime/query evidence | Gap | No established native inference/MCP test or metrics/trace/KQL query subgroup; portal/destination evidence is separate | [Operations](telemetry-and-troubleshooting.md) |
 | Invocation roles and app consent | External | Microsoft.Authorization, Entra applications/consent, and connector ACL changes, including grants scoped to a gateway/asset | Owner prerequisite |
-| Supporting infrastructure | External | RGs, deployments, identities, networks/DNS/private endpoints, telemetry stores/DCRs, provider/feature registration and external permissions | Owner prerequisite |
+| Supporting infrastructure | External, with narrow bootstrap exceptions | Only selected RG creation and disclosed Foundry onboarding grants are exceptions; deployments, identities, networks/DNS/private endpoints, telemetry stores/DCRs, registrations and other permissions remain external | Owner prerequisite |
 | Historical product areas | Outside the confirmed typed-gateway surface | A2A agents, triggers, source connector administration, and old APIM API/backend/XML flows | Separate product capability |
 
 ## Compatibility details
 
+- The hosted quickstart uses `workspace policy` examples; installed b22 exposes
+  `az aigateway policy` for the implicit default workspace, not a `workspace`
+  group. Use task-specific help to resolve that syntax difference. Its content
+  safety example is not evidence that b22 can set that policy on typed gateways;
+  retain the explicit applicability gap in [policies](policies.md).
 - The reference advertises `policy show` and `telemetry-exporter wait`;
   neither is exposed by the reviewed CLI. The corresponding paths are
   `policy list` and bounded exporter read-back.

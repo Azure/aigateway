@@ -1,0 +1,1691 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/microsoft/waza/main/schemas/task.schema.json",
+  "title": "Waza Task Definition",
+  "description": "Schema for waza task YAML files that define individual evaluation test cases.",
+  "type": "object",
+  "required": [
+    "id",
+    "name",
+    "inputs"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique identifier for this task."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Display name for this task."
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable summary of what this task tests."
+    },
+    "enabled": {
+      "type": "boolean",
+      "description": "Whether this task is active. Defaults to true when omitted."
+    },
+    "golden": {
+      "type": "boolean",
+      "description": "Existing must-pass task designation. Selected release policies require first-attempt passes in both arms for every planned trial."
+    },
+    "context_dir": {
+      "type": "string",
+      "description": "Override the context/fixtures directory for this task."
+    },
+    "timeout_seconds": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Per-task timeout in seconds, overriding the eval-level default."
+    },
+    "first_event_timeout_seconds": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "Per-task override for the eval-level first_event_timeout_seconds. 0 disables the first-event (session-start hang) watchdog for this task."
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Tags for filtering or grouping tasks."
+    },
+    "inputs": {
+      "$ref": "#/$defs/inputs"
+    },
+    "expected": {
+      "$ref": "#/$defs/expected"
+    },
+    "requirements": {
+      "type": "array",
+      "description": "Descriptive task-local intent linked to explicit existing grader declarations. Not runtime enforcement or proof of satisfaction.",
+      "items": {
+        "type": "object",
+        "required": ["id", "category", "description"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "category": {"enum": ["outcome", "boundary", "recovery", "quality"]},
+          "description": {"type": "string", "minLength": 1},
+          "checks": {
+            "type": "array",
+            "description": "Empty or absent means uncovered/unresolved, not success.",
+            "items": {
+              "type": "object",
+              "required": ["scope", "grader"],
+              "additionalProperties": false,
+              "properties": {
+                "scope": {"enum": ["eval", "task", "checkpoint"]},
+                "grader": {"type": "string", "minLength": 1},
+                "after_turn": {"type": "integer", "minimum": 1}
+              },
+              "if": {"properties": {"scope": {"const": "checkpoint"}}},
+              "then": {"required": ["after_turn"]},
+              "else": {"not": {"required": ["after_turn"]}}
+            }
+          }
+        }
+      }
+    },
+    "graders": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/validatorInline"
+      },
+      "description": "Task-level graders applied to this task's output."
+    },
+    "checkpoints": {
+      "type": "array",
+      "description": "Graders run after an intermediate turn, using the same configuration as task graders.",
+      "items": {
+        "type": "object",
+        "required": ["after_turn", "graders"],
+        "additionalProperties": false,
+        "properties": {
+          "after_turn": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "graders": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "allOf": [
+                {"$ref": "#/$defs/validatorInline"},
+                {"properties": {"config": {"not": {"required": ["evidence_context"]}}}}
+              ]
+            }
+          },
+          "on_failure": {
+            "type": "string",
+            "enum": ["continue", "stop"],
+            "default": "continue"
+          }
+        }
+      }
+    },
+    "skill_directories": {
+      "type": "array",
+      "description": "List of directories containing agent skills for this task (overrides eval-level skill_directories)",
+      "items": {
+        "type": "string"
+      }
+    },
+    "instruction_files": {
+      "type": "array",
+      "description": "Instruction files to apply to this task in addition to eval-level instruction_files. Paths are resolved relative to the active context/fixtures directory.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "command_mocks": {
+      "type": "array",
+      "description": "Task-level command mocks; when present, replaces the eval-level command_mocks list. Use an empty list to disable inherited mocks for this task.",
+      "items": {
+        "$ref": "#/$defs/commandMock"
+      }
+    },
+    "mcp_mocks": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Task-level MCP mocks. Each entry replaces the eval-level mock with the same name for this task only, and a new name adds a mock; other eval-level mocks still apply. Requires an enclosing eval schemaVersion of 1.1 or newer and executor copilot-sdk; finite sequences require scenario 2.0. Omit the field to use the eval-level list.",
+      "items": {
+        "$ref": "#/$defs/mcpMock"
+      }
+    }
+  },
+  "$defs": {
+    "commandMock": {
+      "type": "object",
+      "required": ["name", "responses"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "expect_calls": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "responses": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/commandMockResponse"
+          }
+        }
+      }
+    },
+    "commandMockResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "args_regex": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "environment": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "workdir": {
+          "type": "string"
+        },
+        "stdout": {},
+        "stderr": {
+          "type": "string"
+        },
+        "exit_code": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255,
+          "default": 0
+        },
+        "fixture": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "items": {
+            "$ref": "#/$defs/commandMockStep"
+          },
+          "description": "Finite per-matcher outputs; accepted at runtime only when the enclosing eval uses scenario schema 2.0."
+        }
+      },
+      "oneOf": [
+        { "required": ["args"] },
+        { "required": ["args_regex"] }
+      ],
+      "allOf": [
+        { "not": { "required": ["args", "args_regex"] } },
+        { "not": { "required": ["stdout", "fixture"] } },
+        {
+          "if": { "required": ["sequence"] },
+          "then": {
+            "not": {
+              "anyOf": [
+                { "required": ["stdout"] },
+                { "required": ["stderr"] },
+                { "required": ["exit_code"] },
+                { "required": ["fixture"] }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "commandMockStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "anyOf": [
+        { "required": ["stdout"] },
+        { "required": ["stderr"] },
+        { "required": ["exit_code"] },
+        { "required": ["fixture"] }
+      ],
+      "properties": {
+        "stdout": {},
+        "stderr": { "type": "string" },
+        "exit_code": { "type": "integer", "minimum": 0, "maximum": 255 },
+        "fixture": { "type": "string", "minLength": 1 },
+        "delay_ms": { "type": "integer", "minimum": 0, "maximum": 300000 }
+      },
+      "not": {
+        "required": ["stdout", "fixture"]
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Input stimulus for the task. Must specify either prompt or prompt_file (not both).",
+      "not": {
+        "required": [
+          "responder",
+          "follow_up_prompts"
+        ]
+      },
+      "oneOf": [
+        {
+          "required": [
+            "prompt"
+          ]
+        },
+        {
+          "required": [
+            "prompt_file"
+          ]
+        }
+      ],
+      "properties": {
+        "prompt": {
+          "type": "string",
+          "description": "The prompt message sent to the agent."
+        },
+        "prompt_file": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Path to a file containing the prompt message, relative to the task YAML directory."
+        },
+        "context": {
+          "type": "object",
+          "description": "Arbitrary key-value metadata passed to the agent. If fixture is set to a relative path, files from that fixture file or directory are copied into the task workspace.",
+          "properties": {
+            "fixture": {
+              "type": "string",
+              "description": "Relative path to a file or directory whose contents are copied into the task workspace before the agent runs."
+            }
+          },
+          "additionalProperties": true
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/resourceRef"
+          },
+          "description": "File references or inline content provided to the agent."
+        },
+        "repos": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/gitResource"
+          },
+          "description": "Local git repositories materialized into the workspace before the task runs (e.g. via 'git worktree add')."
+        },
+        "workdir": {
+          "type": "string",
+          "description": "Optional relative path inside the workspace to use as the agent's working directory. Must not contain path traversal."
+        },
+        "environment": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Unsupported compatibility field; values are not applied during task execution. Non-empty maps produce a task-load warning and an unsupported task.environment preflight diagnostic."
+        },
+        "follow_up_prompts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Sequential follow-up prompts sent after the initial prompt, reusing the same session and workspace. Mutually exclusive with responder."
+        },
+        "responder": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["instructions", "max_followups"],
+          "description": "LLM-backed surrogate user that answers the skill's follow-up questions. Mutually exclusive with follow_up_prompts.",
+          "properties": {
+            "model": {
+              "type": "string",
+              "description": "Model used for the responder LLM. Defaults to the eval-level config.model."
+            },
+            "instructions": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Describes the target configuration the responder represents and the rule for abstaining."
+            },
+            "max_followups": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Maximum number of responder replies before the loop stops."
+            }
+          }
+        }
+      }
+    },
+    "resourceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A file reference by path or inline content.",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Path to the file relative to context_dir."
+        },
+        "content": {
+          "type": "string",
+          "description": "Inline file content."
+        }
+      }
+    },
+    "gitResource": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A local git repository to materialize into the workspace.",
+      "required": ["type", "source", "dest"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["worktree"],
+          "description": "Materialization strategy. Currently only 'worktree' (uses `git worktree add` against a local source repo) is supported."
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Local filesystem path to a git repository to source the checkout from."
+        },
+        "commit": {
+          "type": "string",
+          "description": "Optional commit SHA, branch, or tag to check out. Defaults to the source repo's HEAD. Branch/tag names use `--detach` so they don't conflict with the source checkout."
+        },
+        "dest": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Required relative subdirectory under the workspace where the repo is materialized. `git worktree add` refuses targets that already exist, and the workspace root is created up-front, so `dest` must point at a non-existent subdirectory. Must not contain `..` segments."
+        }
+      }
+    },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Expected outcomes and constraints for grading.",
+      "properties": {
+        "outcomes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/outcomeSpec"
+          },
+          "description": "Structured outcome expectations."
+        },
+        "tool_calls": {
+          "type": "object",
+          "description": "Expected tool call patterns."
+        },
+        "behavior": {
+          "$ref": "#/$defs/behaviorRules"
+        },
+        "output_contains": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Strings that must appear in the agent output."
+        },
+        "output_not_contains": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Strings that must not appear in the agent output."
+        },
+        "should_trigger": {
+          "type": "boolean",
+          "description": "Whether the skill should be triggered."
+        }
+      }
+    },
+    "outcomeSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Category of the expected outcome."
+        },
+        "value": {
+          "description": "Expected value for this outcome."
+        },
+        "condition": {
+          "type": "string",
+          "description": "Predicate expression for this outcome."
+        }
+      }
+    },
+    "behaviorRules": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Behavioral constraints for the agent during this task.",
+      "properties": {
+        "max_tool_calls": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Maximum number of tool invocations allowed."
+        },
+        "max_iterations": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Maximum number of conversation rounds."
+        },
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Maximum total token usage allowed."
+        },
+        "required_tools": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Tools that must be used during execution."
+        },
+        "forbidden_tools": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Tools that must not be used during execution."
+        },
+        "max_response_time_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum allowed response time in milliseconds."
+        }
+      }
+    },
+    "validatorInline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ],
+      "description": "A grader/validator embedded in a task.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Identifier for this grader."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "code",
+            "prompt",
+            "text",
+            "file",
+            "json_schema",
+            "program",
+            "behavior",
+            "action_sequence",
+            "skill_invocation",
+            "trigger",
+            "diff",
+            "tool_constraint",
+            "tool_calls"
+          ],
+          "description": "The grader type."
+        },
+        "assertions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Assertion expressions evaluated by the grader."
+        },
+        "rubric": {
+          "type": "string",
+          "description": "Evaluation rubric text (used by prompt graders)."
+        },
+        "weight": {
+          "type": "number",
+          "description": "Relative weight of this grader's score."
+        },
+        "config": {
+          "type": "object",
+          "description": "Type-specific configuration for this grader."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {"type": {"const": "tool_calls"}},
+            "required": ["type"]
+          },
+          "then": {
+            "properties": {"config": {"$ref": "#/$defs/toolCallsGraderConfig"}}
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "code"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "config": {
+                "$ref": "#/$defs/codeGraderConfig"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "text"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "config": {
+                "$ref": "#/$defs/textGraderConfig"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "file"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "config": {
+                "$ref": "#/$defs/fileGraderConfig"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "behavior"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "config": {
+                "$ref": "#/$defs/behaviorGraderConfig"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "action_sequence"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "config": {
+                "$ref": "#/$defs/actionSequenceGraderConfig"
+              }
+            },
+            "required": [
+              "config"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "skill_invocation"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "config": {
+                "$ref": "#/$defs/skillInvocationGraderConfig"
+              }
+            },
+            "required": [
+              "config"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "tool_constraint"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "config": {
+                "$ref": "#/$defs/toolConstraintGraderConfig"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "trigger"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "config": {
+                "$ref": "#/$defs/triggerGraderConfig"
+              }
+            },
+            "required": [
+              "config"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "prompt"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "config": {
+                "$ref": "#/$defs/promptGraderConfig"
+              }
+            },
+            "required": [
+              "config"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "json_schema"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "config": {
+                "$ref": "#/$defs/jsonSchemaGraderConfig"
+              }
+            },
+            "required": [
+              "config"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "program"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "config": {
+                "$ref": "#/$defs/programGraderConfig"
+              }
+            },
+            "required": [
+              "config"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "diff"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "config": {
+                "$ref": "#/$defs/diffGraderConfig"
+              }
+            },
+            "required": [
+              "config"
+            ]
+          }
+        }
+      ]
+    },
+    "codeGraderConfig": {
+      "type": "object",
+      "required": [
+        "assertions"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "assertions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "language": {
+          "type": "string",
+          "enum": [
+            "python",
+            "javascript"
+          ],
+          "default": "python"
+        }
+      }
+    },
+    "textGraderConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": [
+            "contains"
+          ]
+        },
+        {
+          "required": [
+            "not_contains"
+          ]
+        },
+        {
+          "required": [
+            "contains_cs"
+          ]
+        },
+        {
+          "required": [
+            "not_contains_cs"
+          ]
+        },
+        {
+          "required": [
+            "regex_match"
+          ]
+        },
+        {
+          "required": [
+            "regex_not_match"
+          ]
+        }
+      ],
+      "properties": {
+        "contains": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Substrings that MUST appear in the output (case-insensitive)."
+        },
+        "not_contains": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Substrings that MUST NOT appear in the output (case-insensitive)."
+        },
+        "contains_cs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Substrings that MUST appear in the output (case-sensitive)."
+        },
+        "not_contains_cs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Substrings that MUST NOT appear in the output (case-sensitive)."
+        },
+        "regex_match": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Regex patterns that MUST match somewhere in the output."
+        },
+        "regex_not_match": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Regex patterns that MUST NOT match anywhere in the output."
+        }
+      }
+    },
+    "fileGraderConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": [
+            "must_exist"
+          ]
+        },
+        {
+          "required": [
+            "must_not_exist"
+          ]
+        },
+        {
+          "required": [
+            "content_patterns"
+          ]
+        }
+      ],
+      "properties": {
+        "must_exist": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "must_not_exist": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "content_patterns": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/fileContentPattern"
+          }
+        }
+      }
+    },
+    "fileContentPattern": {
+      "type": "object",
+      "required": [
+        "path"
+      ],
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": [
+            "path",
+            "must_match"
+          ]
+        },
+        {
+          "required": [
+            "path",
+            "must_not_match"
+          ]
+        }
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "must_match": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "must_not_match": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "behaviorGraderConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": [
+            "max_tool_calls"
+          ]
+        },
+        {
+          "required": [
+            "max_tokens"
+          ]
+        },
+        {
+          "required": [
+            "required_tools"
+          ]
+        },
+        {
+          "required": [
+            "forbidden_tools"
+          ]
+        },
+        {
+          "required": [
+            "max_duration_ms"
+          ]
+        }
+      ],
+      "properties": {
+        "max_tool_calls": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "required_tools": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "forbidden_tools": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "max_duration_ms": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "actionSequenceGraderConfig": {
+      "type": "object",
+      "required": [
+        "matching_mode",
+        "expected_actions"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "matching_mode": {
+          "type": "string",
+          "enum": [
+            "exact_match",
+            "in_order_match",
+            "any_order_match"
+          ]
+        },
+        "expected_actions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "skillInvocationGraderConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": [
+            "required_skills"
+          ],
+          "properties": {
+            "required_skills": {
+              "minItems": 1
+            }
+          }
+        },
+        {
+          "required": [
+            "forbidden_skills"
+          ],
+          "properties": {
+            "forbidden_skills": {
+              "minItems": 1
+            }
+          }
+        }
+      ],
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "required_skills"
+            ],
+            "properties": {
+              "required_skills": {
+                "minItems": 1
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "mode"
+            ]
+          }
+        }
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "exact_match",
+            "in_order",
+            "any_order"
+          ]
+        },
+        "required_skills": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "forbidden_skills": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "allow_extra": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "triggerGraderConfig": {
+      "type": "object",
+      "required": [
+        "skill_path",
+        "mode"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "skill_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "positive",
+            "negative"
+          ]
+        },
+        "threshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.6
+        }
+      }
+    },
+    "toolArgumentMatchers": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "minProperties": 1,
+        "maxProperties": 1,
+        "additionalProperties": false,
+        "properties": {
+          "equals": {},
+          "regex": {
+            "type": "string",
+            "minLength": 1
+          },
+          "contains": {
+            "type": "string",
+            "minLength": 1
+          },
+          "range": {
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": false,
+            "properties": {
+              "gte": {
+                "type": "number"
+              },
+              "lte": {
+                "type": "number"
+              },
+              "gt": {
+                "type": "number"
+              },
+              "lt": {
+                "type": "number"
+              }
+            }
+          },
+          "json_schema": {
+            "type": "object",
+            "minProperties": 1
+          }
+        }
+      }
+    },
+    "toolCallsGraderConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "anyOf": [
+        {"required": ["required_tools"]},
+        {"required": ["forbidden_tools"]},
+        {"required": ["min_calls"]},
+        {"required": ["max_calls"]},
+        {"required": ["expect"]}
+      ],
+      "properties": {
+        "required_tools": {"type": "array", "items": {"type": "string"}},
+        "forbidden_tools": {"type": "array", "items": {"type": "string"}},
+        "min_calls": {"type": "integer", "minimum": 0},
+        "max_calls": {"type": "integer", "minimum": 0},
+        "expect": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["tool"],
+            "additionalProperties": false,
+            "properties": {
+              "tool": {"type": "string", "minLength": 1},
+              "args": {"$ref": "#/$defs/toolArgumentMatchers"}
+            }
+          }
+        }
+      }
+    },
+    "toolConstraintGraderConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": [
+            "expect_tools"
+          ]
+        },
+        {
+          "required": [
+            "reject_tools"
+          ]
+        },
+        {
+          "required": [
+            "allow_only"
+          ]
+        }
+      ],
+      "properties": {
+        "expect_tools": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "tool"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "tool": {
+                "type": "string",
+                "minLength": 1
+              },
+              "command_pattern": {
+                "type": "string"
+              },
+              "skill_pattern": {
+                "type": "string"
+              },
+              "path_pattern": {
+                "type": "string"
+              },
+              "args": {
+                "$ref": "#/$defs/toolArgumentMatchers"
+              }
+            }
+          }
+        },
+        "reject_tools": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "tool"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "tool": {
+                "type": "string",
+                "minLength": 1
+              },
+              "command_pattern": {
+                "type": "string"
+              },
+              "skill_pattern": {
+                "type": "string"
+              },
+              "path_pattern": {
+                "type": "string"
+              },
+              "args": {
+                "$ref": "#/$defs/toolArgumentMatchers"
+              }
+            }
+          }
+        },
+        "allow_only": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "tool"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "tool": {
+                "type": "string",
+                "minLength": 1
+              },
+              "command_pattern": {
+                "type": "string"
+              },
+              "skill_pattern": {
+                "type": "string"
+              },
+              "path_pattern": {
+                "type": "string"
+              },
+              "args": {
+                "$ref": "#/$defs/toolArgumentMatchers"
+              }
+            }
+          }
+        }
+      }
+    },
+    "promptGraderConfig": {
+      "type": "object",
+      "allOf": [{
+        "if": {"required": ["evidence_context"]},
+        "then": {"properties": {
+          "continue_session": {"const": false},
+          "mode": {"const": "independent"}
+        }}
+      }],
+      "anyOf": [
+        {"required": ["prompt"]},
+        {"required": ["rubric"]}
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "evidence_context": {"$ref": "#/$defs/promptEvidenceContext"},
+        "prompt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rubric": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Existing built-in rubric name or local markdown rubric path; descriptive task metadata does not change judge execution."
+        },
+        "model": {
+          "type": "string"
+        },
+        "reasoning_effort": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "xhigh", "max"],
+          "description": "Override the eval judge_reasoning_effort; requires executor copilot-sdk."
+        },
+        "continue_session": {
+          "type": "boolean",
+          "default": false
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "independent",
+            "pairwise"
+          ],
+          "default": "independent"
+        }
+      }
+    },
+    "promptEvidenceContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Required frozen actor evidence for a fresh isolated final prompt judge. Not supported in checkpoints.",
+      "properties": {
+        "files": {"$ref": "#/$defs/judgeEvidencePaths"},
+        "evaluator_only": {"$ref": "#/$defs/judgeEvidencePaths"}
+      }
+    },
+    "judgeEvidencePaths": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1024,
+        "allOf": [
+          {"not": {"pattern": "[\\\\:*?\\[\\]\\x00]"}},
+          {"not": {"pattern": "(^/|/$|//|(^|/)\\.{1,2}(/|$))"}}
+        ]
+      }
+    },
+    "jsonSchemaGraderConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": [
+            "schema"
+          ]
+        },
+        {
+          "required": [
+            "schema_file"
+          ]
+        }
+      ],
+      "properties": {
+        "schema": {
+          "type": "object"
+        },
+        "schema_file": {
+          "type": "string"
+        },
+        "extract_json": {
+          "type": "boolean",
+          "default": false,
+          "description": "Extract exactly one JSON object or array from prose or a Markdown JSON code block before validation."
+        }
+      }
+    },
+    "programGraderConfig": {
+      "type": "object",
+      "required": [
+        "command"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "timeout": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 30
+        }
+      }
+    },
+    "diffGraderConfig": {
+      "type": "object",
+      "required": [
+        "expected_files"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "expected_files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/expectedFile"
+          }
+        },
+        "context_dir": {
+          "type": "string"
+        },
+        "update_snapshots": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "expectedFile": {
+      "type": "object",
+      "required": [
+        "path"
+      ],
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": [
+            "path",
+            "snapshot"
+          ]
+        },
+        {
+          "required": [
+            "path",
+            "contains"
+          ]
+        }
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "snapshot": {
+          "type": "string"
+        },
+        "contains": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "mcpMock": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false,
+      "description": "A deterministic MCP mock server backed by inline tools and/or JSON fixture files.",
+      "anyOf": [
+        {
+          "required": [
+            "fixtures"
+          ]
+        },
+        {
+          "required": [
+            "tools"
+          ]
+        }
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "MCP server name exposed to the agent."
+        },
+        "fixtures": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Directory containing JSON fixture files, resolved relative to eval.yaml, not the task file. Each file can define one tool or a {\"tools\": {...}} bundle."
+        },
+        "tools": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/mcpMockTool"
+          },
+          "description": "Inline mocked tools keyed by MCP tool name."
+        }
+      }
+    },
+    "mcpMockTool": {
+      "type": "object",
+      "required": [
+        "responses"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": "string",
+          "description": "Tool description returned from tools/list."
+        },
+        "input_schema": {
+          "type": ["object", "null"],
+          "description": "JSON Schema input schema returned from tools/list. Omit it or use null for the default tool schema."
+        },
+        "responses": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/mcpMockResponse"
+          },
+          "description": "Ordered fixture responses. The first matching response is returned."
+        }
+      }
+    },
+    "mcpMockResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": [
+            "return"
+          ]
+        },
+        {
+          "required": [
+            "error"
+          ]
+        },
+        {
+          "required": [
+            "sequence"
+          ]
+        }
+      ],
+      "allOf": [
+        {
+          "if": { "required": ["sequence"] },
+          "then": {
+            "not": {
+              "anyOf": [
+                { "required": ["return"] },
+                { "required": ["error"] }
+              ]
+            }
+          }
+        }
+      ],
+      "properties": {
+        "match": {
+          "type": "object",
+          "description": "Exact full-arguments match for this response."
+        },
+        "match_schema": {
+          "type": "object",
+          "description": "JSON Schema that call arguments must satisfy."
+        },
+        "match_regex": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Per-field regular expressions matched against stringified argument values."
+        },
+        "return": {
+          "description": "JSON value returned by the mocked tool."
+        },
+        "error": {
+          "type": "string",
+          "description": "Fixture error returned by the mocked tool."
+        },
+        "sequence": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "items": {
+            "$ref": "#/$defs/mcpMockStep"
+          },
+          "description": "Finite per-matcher results consumed once per call; scenario eval schema 2.0 only."
+        }
+      }
+    },
+    "mcpMockStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "oneOf": [
+        { "required": ["return"] },
+        { "required": ["error"] }
+      ],
+      "properties": {
+        "return": {},
+        "error": { "type": "string", "minLength": 1 },
+        "delay_ms": { "type": "integer", "minimum": 0, "maximum": 300000 }
+      }
+    }
+  }
+}

@@ -98,9 +98,12 @@ metadata may still have separate read access to that known observability store.
 If neither a permitted lookup nor supplied destination is available, retain
 client evidence and hand off the missing destination/correlation information.
 
-1. If permitted, GET
-   `/workspaces/default/telemetryExporters` below the selected gateway using
-   the child-resource API version from the main skill. Project only exporter
+1. If permitted, use native `az aigateway telemetry-exporter list/show` with
+   explicit subscription and selected gateway selectors. Only for needed
+   fields absent from native output or a verified legacy contract, GET
+   `/workspaces/default/telemetryExporters` below that gateway using the
+   child-resource API version from [runtime integration](runtime-integration.md).
+   Project only exporter
    kind, linked `applicationInsights.resourceId`, configured signal endpoints,
    and payload-capture state. Do not display connection strings, credentials,
    headers or managed-identity secrets.

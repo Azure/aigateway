@@ -1,0 +1,28 @@
+{
+  "extensionVersion": "1.0.0b22",
+  "collectedOn": "2026-11-08",
+  "method": "Local az aigateway version -o json and each listed command --help. Only fixture-relevant options and help fingerprints retained; configured default values omitted. No resource calls, wheel verification, or new-RP dispatch test.",
+  "semantics": {
+    "singleDeployment": "model create --foundry-resource-id <account-id> --deployment <existing-deployment-name>; enables system identity and grants Foundry User at account scope",
+    "lowLevelModel": "model create --provider-name <provider> --name <model> --deployment-config <object>; not --deployment for low-level JSON",
+    "wholeAccount": "model-provider create --foundry-resource-id <account-id>; imports every current deployment, enables system identity and grants Foundry User at account scope; --name overrides the account-named provider",
+    "aliasUpdate": "Repeated --backend-model resource-id=<model-id> priority=<0-100> weight=<1-100>; reads ETag, sends supplied properties with If-Match, fails stale writes without retry; lower priority preferred and weights relative within tier"
+  },
+  "commands": [
+    {"command": "az resource list", "verifiedFixtureOptions": ["--subscription", "--resource-group", "--name", "--output"], "helpStdoutSha256": "f09c794b9e74f9b497eccc722d4c8109719c063e9836aafa5c15033aacbfc8b4", "collectedOn": "2026-11-09", "semantics": "Core Azure metadata read; only exact selected name/resource-group/subscription combinations are reviewed here. Help exposes jsonc as colored JSON, not table/tsv."},
+    {"command": "az cognitiveservices account show", "verifiedFixtureOptions": ["--subscription", "--resource-group", "--name", "--output"], "helpStdoutSha256": "0e7fe4db98d362dbb74f6ecaf52d9d62335f49a6877208bd933b5dae07d10700", "collectedOn": "2026-11-09", "semantics": "Core Azure read of the existing selected account; no identity, role, account or deployment mutation."},
+    {"command": "az cognitiveservices account deployment list", "verifiedFixtureOptions": ["--subscription", "--resource-group", "--name", "--output"], "helpStdoutSha256": "c683fef7bed0eb7aab60b54e943444b9a9f7f2f75e137d20a108aff9a1f879c1", "collectedOn": "2026-11-09", "semantics": "Core Azure read of existing deployments on the exact selected account, not deployment creation."},
+    {"command": "az aigateway version", "verifiedFixtureOptions": ["-o", "--output"], "helpStdoutSha256": "2556844886c1347189f86fc1a013f302ba4bf52d4bc8dced42e1016809a8912d", "collectedOn": "2026-11-09", "semantics": "Reads installed package metadata without signing in or making a resource call. Each recorded command help exposes the global --help/-h exit-only flags."},
+    {"command": "az aigateway create", "verifiedFixtureOptions": ["--subscription", "--resource-group", "--name", "--location", "-g", "-n"], "helpStdoutSha256": "3adbbefbd766636f460f50a56f89b8b87056b00bad7aaced4ec76562dba5019a"},
+    {"command": "az aigateway model create", "verifiedFixtureOptions": ["--subscription", "-g", "--resource-group", "--gateway-name", "--foundry-resource-id", "--deployment", "--provider-name", "--model-provider", "--name", "-n", "--deployment-config", "--api-format", "--supported-endpoints"], "helpStdoutSha256": "213fd0f7dea7b6da173308951816d7ec800c4edfe24aad64fdcbf2cb6298ff70"},
+    {"command": "az aigateway model list", "verifiedFixtureOptions": ["--subscription", "-g", "--resource-group", "--gateway-name", "--provider-name", "--model-provider", "-o", "--output"], "helpStdoutSha256": "f895fccf7f0c5fa58fc58e60b68ae3ff933997c070accd9ae1a3f48855151a6a"},
+    {"command": "az aigateway model-alias list", "verifiedFixtureOptions": ["--subscription", "-g", "--resource-group", "--gateway-name", "-o", "--output"], "helpStdoutSha256": "addd310f49e8f2e47cbe2dad22b7673e46f4781ab263491f54b5d385bc6adfe5"},
+    {"command": "az aigateway model-alias show", "verifiedFixtureOptions": ["--subscription", "-g", "--resource-group", "--gateway-name", "-n", "--name", "-o", "--output"], "helpStdoutSha256": "d53237041818410603c35d570103b662a0447d1ca79e784a8503382ef164b814"},
+    {"command": "az aigateway model-alias update", "verifiedFixtureOptions": ["--subscription", "-g", "--resource-group", "--gateway-name", "-n", "--name", "--backend-model", "--backend-models"], "helpStdoutSha256": "32335e2a328e71850943596c1fab4468f02b437e251da4cd97e488b2302cd9bc"},
+    {"command": "az aigateway model-provider create", "verifiedFixtureOptions": ["--subscription", "-g", "--resource-group", "--gateway-name", "-n", "--name", "--provider-name", "--foundry-resource-id"], "helpStdoutSha256": "413f0fc4115bb80b499d43a5171c915cef6dd76335558a7902e24bd45cf09662"},
+    {"command": "az aigateway model-provider sync", "verifiedFixtureOptions": ["--subscription", "-g", "--resource-group", "--gateway-name", "-n", "--name", "--provider-name", "--dry-run"], "helpStdoutSha256": "5b15944b5dd4fbecb46e18cf6a88847a9aeb19fdfd7eee6e6272ad9d79401c37"},
+    {"command": "az aigateway network private-endpoint-connection show", "verifiedFixtureOptions": ["--subscription", "-g", "--resource-group", "--gateway-name", "-n", "--name", "--connection-name", "-o", "--output"], "helpStdoutSha256": "2cce68f83e28945b2c263b92b2e3ab9fb07119d50e9665f65678df84e01d53d0"},
+    {"command": "az aigateway show", "verifiedFixtureOptions": ["--subscription", "-g", "--resource-group", "-n", "--name", "--gateway-name", "--ids", "-o", "--output"], "helpStdoutSha256": "750618c0841da44ff309ede34ce5ccff71d2917f55af864a4d3a3d87d4af38b8"},
+    {"command": "az aigateway wait", "verifiedFixtureOptions": ["--subscription", "--ids", "--created", "--timeout", "--interval"], "helpStdoutSha256": "f2879f4b7570a97e899ef4c575fdadf1c7fb33109b7f5c630bb3bd683ed0171c"}
+  ]
+}
