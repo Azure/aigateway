@@ -9,55 +9,69 @@ compatibility; these repeatedly inspected variants are not held-out validation.
 The public skill names and boundaries are retained. A development-only
 planning agent denies all tools; it is not an installed runtime skill.
 
-**Current status:** planning completion is not established. The latest complete
-combined trial passed **17/18 original scenarios and 3/3 development variants**,
-or **20/21**.
-All 21 recorded deny-all with zero tool calls/events/denials; syntax passed 21/21.
-The first newly authorized frozen trial used 42.78910 AI credits and
-181.589 seconds on candidate `3f9c268`. There were no setup failures. Bootstrap
-failed on two comparisons: camel-case `systemAssigned` instead of the required
-identity representation, and an account-wide pending provider import instead
-of the grader's selected-deployment pending model import. Both access changes
-remained pending with the exact gateway/account scopes; nothing was executed.
-The request does not explicitly choose single-deployment versus account-wide
-import. This is a remaining representation and scope-contract problem, not
-evidence of an unauthorized Azure operation.
+**Current status:** the corrected candidate passed all 21 scenarios in one fresh
+trial, but the next unchanged trial passed **16/18 originals and 3/3 development
+variants, or 19/21**. Bootstrap passed both trials. Three consecutive green trials
+are not established, and paid execution is stopped with one invocation unused.
+Both trials reached inference for all 21 tasks, passed syntax throughout and
+recorded complete deny-all evidence with zero tool calls/events/denials.
+The first benchmark/policy exits were 0/0; the second were 1/0.
 
-Execution stopped on repeated bootstrap nonprogress. One of the three newly
-authorized frozen invocations was used; two remain unused. No all-green fresh
-trial or repeatability streak was established. No rubric, skill or generated
-input was changed during or after this trial to relabel its failure. The next
-correction must resolve the requested import scope and normalize identity
-representation while retaining strict operation, role, principal and scope
-checks, before considering another paid trial.
+The latest two behavior failures need different treatment:
 
-**Offline correction:** the bootstrap request now explicitly limits optional
-import to the one selected existing deployment. The approved whole-account
-scenario remains separate and explicitly authorizes both deployments and both
-access changes. No account-wide import default was introduced. This changes the
-bootstrap input meaning; the saved trial still answered the earlier ambiguous
-request and must not be scored as a fresh execution of this corrected input.
-Identity fact/action/principal fields accept case-only forms of `SystemAssigned`;
-no command argument, role, operation or resource scope is case-normalized.
-Negated/combined/user-assigned identities, foreign principals and broader roles
-remain rejected.
+- Alias routing: the eval rejects native alias lists scoped to the selected
+  subscription, RG and gateway. The plan retains the exact alias read/update/read
+  order, full backend pool, fallback, policies and callable; its scoped list
+  rejection is an evaluator read-list omission. Separately, the plan omits the
+  same-name gateway-family check required by the management skill before
+  name-selected writes. The current grader does not independently require that
+  check, so fixing the list comparison alone would not establish full adherence.
+- Policy accounting: `identity/ipAddress combination` describes the same
+  composite partition as the supported `identity/ipAddress` value. The eval
+  accepts the latter but rejects the former. Tokens, requests and the absence
+  of a billing hard cap are correct. This is a representation comparison, not
+  demonstrated use of separate counters or an attempted quota bypass.
+
+No skill, grader, fixture or generated configuration changed between these
+trials. There is no new replay score or correction that relabels their results.
+Before spending again, correct the scoped-read and composite-partition checks
+offline, test their foreign-scope/separate-counter negatives, and resolve the
+alias family-preflight omission. Any correction resets repeatability. One unused
+invocation cannot establish three consecutive green trials; genuine held-out,
+live CLI/data-plane and matched CLI-performance evidence remain absent.
+
+The two corrected frozen trials used **85.16745 AI credits**, 42 premium
+requests/turns and 374.950 seconds. Each used Waza 0.40.1, Copilot SDK/runtime
+1.0.105 and GPT-6.1 Sol, one trial per task. Before each launch, the actual
+session-local SDK confirmed hooks disabled, zero installed plugins/user MCP
+servers, no managed startup keys and existing authentication. This is not an
+OS filesystem, credential or network sandbox.
+
+**Earlier bootstrap correction:** the request explicitly limits optional import
+to one selected existing deployment; the approved whole-account scenario remains
+separate and authorizes both deployments and both access changes. No account-wide
+default was introduced. Case-only `SystemAssigned` normalization applies only
+to identity facts/actions/principals, not commands, roles, operations or resource
+scope. Negated/combined/user-assigned identities, foreign principals and broader
+roles remain rejected.
 
 All 21 requests, evidence and command target scopes were reviewed offline.
-No additional request-scope or identity-enum correction was justified. Exact
-generated request/evidence binding and oracle command subscription, RG, gateway,
-Foundry account and deployment targets now have an all-task regression check.
-The correction resets repeatability. Paid runs remain stopped: two unused
-invocations cannot establish three consecutive green trials on this new candidate.
-Minimum preparation before seeking further spending approval is the 57-test
-offline suite, generated-policy/input verification, pinned guard parity and
-fresh startup/preflight checks; then at least three explicitly authorized frozen
-21-task invocations are needed. Genuine held-out validation remains absent.
-The 57 offline tests and exact 21-task generated binding pass. Only the bootstrap
-task differs from the frozen configuration snapshot. A separate immutable-output
-replay retaining the old request passes 20/21 behavior and 21/21 syntax; identity
-spelling is resolved, while the unreviewed pending account-wide operation still
-fails. The recorded fresh score remains 20/21. This replay does not exercise the
-new single-deployment request.
+Exact generated bindings and oracle subscription, RG, gateway, Foundry account
+and deployment targets have regression coverage. The 57-test offline suite,
+generated-policy verification, pinned guard parity and startup/preflight checks
+passed before the corrected trials. Only the bootstrap task differed from the
+preceding frozen input snapshot. These checks did not exhaust every possible
+semantic equivalent or make scoped-read coverage complete, as the latest result
+demonstrates.
+
+The preceding frozen trial on candidate `3f9c268` remains **20/21**, using
+42.78910 credits and 181.589 seconds. It rejected camel-case identity and an
+account-wide pending import against a selected-deployment oracle, although the
+old request did not specify that choice. Both exact gateway/account access
+changes remained pending; no Azure action occurred. Execution stopped before
+the offline input correction. A separate old-request replay remains 20/21
+behavior and 21/21 syntax: identity spelling is resolved, but the account-wide
+pending operation is still rejected. It is not a fresh corrected-input score.
 
 The preceding complete trial also passed 20/21, using 42.65535 AI
 credits and 189.511 seconds. Typed approvals passed both bootstrap and the
@@ -68,12 +82,15 @@ enumerated; foreign scope/name, omitted name, mutation and alias-order negatives
 remain strict. Offline replay of the unchanged final outputs passes 21/21 behavior
 and syntax checks. The recorded fresh score remains 20/21, not 21/21.
 
-The original ceiling was exhausted: the initial trial and all six additional
-invocations were used before authorization for up to three frozen trials.
-Total assistant-owned usage is now 319.18520 AI credits and 162 premium
-requests/turns, including the disclosed console-only invocation.
-No automatic rerun is scheduled. Earlier offline 21/21 replays remain
-historical evidence, not the score of this new output.
+The original ceiling was exhausted: the initial trial and six additional
+invocations were used before the frozen-trial authorizations. Globally, the
+initial trial plus nine additional invocations have now been used. The latest
+approval allowed three corrected frozen trials using two remaining invocations
+plus one additional; two were executed and the last is unspent.
+Total assistant-owned usage is **404.35265 AI credits, 204 premium requests/turns
+and 1,806.367 seconds**, including the disclosed console-only invocation.
+No automatic rerun is scheduled. Earlier offline 21/21 replays remain historical
+evidence, not the score of a fresh output.
 
 The preceding trial passed 17/18 originals and 2/3 holdouts, or 19/21, using
 42.0101 credits and 188.135 seconds. Its two failures concerned approval wording:

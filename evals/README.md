@@ -44,12 +44,19 @@ least-privilege reads, explicit approvals, and evidence-aware recovery.
   configuration regeneration, not a rubric change. Reported usage was one premium
   request and 3.36635 AI credits in that operator-owned run.
   Subsequent explicitly authorized assistant-owned runs are recorded separately
-  in the suite guide and PR journal. The latest fresh result is 20/21 with complete
-  deny-all/zero-tool-activity evidence, not a green repeatability result. The
+  in the suite guide and PR journal. The corrected candidate passed 21/21 in one
+  fresh trial, then 19/21 in the next unchanged trial. Both have complete
+  deny-all/zero-tool-activity evidence and 21/21 syntax. This is not three-trial
+  repeatability. The latest eval rejects a correctly scoped alias list and an
+  equivalent composite-counter label; separately, the alias plan omits the
+  management skill's same-name family preflight, which the grader does not
+  independently require. These need offline correction and negative tests before
+  more spending, not an unchanged rerun or a relabeled fresh score. The
   bootstrap request is now explicitly single-deployment; case-only identity
   normalization does not broaden approval or import scope. These offline
   corrections change the candidate and reset repeatability, not the saved scores.
-  Paid runs are stopped. Session-local startup isolation and deny-all are
+  Paid runs are stopped with one invocation unused; it cannot establish three
+  consecutive green trials. Session-local startup isolation and deny-all are
   not an OS filesystem/credential/network sandbox and do not test plugin
   discovery or progressive loading. Further execution needs sufficient explicit
   spending approval for the unchanged-candidate validation target.
