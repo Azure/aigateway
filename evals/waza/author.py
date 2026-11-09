@@ -257,9 +257,9 @@ def main():
     parser.add_argument("--model")
     selection = parser.add_mutually_exclusive_group()
     selection.add_argument("--holdouts", action="store_true",
-                        help="Prepare the separate three-task holdout suite, not the 18-task baseline")
+                        help="Prepare the separate three-task development-variant suite, not the 18-task baseline")
     selection.add_argument("--include-holdouts", action="store_true",
-                           help="Prepare original 18 plus the three independent holdout tasks")
+                           help="Prepare original 18 plus the three development variants")
     parser.add_argument("--trials", type=int, default=1)
     args = parser.parse_args()
     if args.trials < 1:

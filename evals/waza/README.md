@@ -3,12 +3,15 @@
 These scenarios check whether an assistant preserves the selected gateway,
 runtime contract, and approval boundaries when discovering, integrating, or
 managing Azure AI Gateway. They also cover read-only APIM feasibility assessment.
-There are **18 baseline scenarios and three separately selected holdouts**.
+There are **18 baseline scenarios and three separately selected development
+variants**. Historical `holdout` task IDs, filenames and CLI flags remain for
+compatibility; these repeatedly inspected variants are not held-out validation.
 The public skill names and boundaries are retained. A development-only
 planning agent denies all tools; it is not an installed runtime skill.
 
 **Current status:** planning completion is not established. The latest complete
-combined trial passed **17/18 original scenarios and 3/3 holdouts**, or **20/21**.
+combined trial passed **17/18 original scenarios and 3/3 development variants**,
+or **20/21**.
 All 21 recorded deny-all with zero tool calls/events/denials; syntax passed 21/21.
 The first newly authorized frozen trial used 42.78910 AI credits and
 181.589 seconds on candidate `3f9c268`. There were no setup failures. Bootstrap
@@ -27,6 +30,34 @@ input was changed during or after this trial to relabel its failure. The next
 correction must resolve the requested import scope and normalize identity
 representation while retaining strict operation, role, principal and scope
 checks, before considering another paid trial.
+
+**Offline correction:** the bootstrap request now explicitly limits optional
+import to the one selected existing deployment. The approved whole-account
+scenario remains separate and explicitly authorizes both deployments and both
+access changes. No account-wide import default was introduced. This changes the
+bootstrap input meaning; the saved trial still answered the earlier ambiguous
+request and must not be scored as a fresh execution of this corrected input.
+Identity fact/action/principal fields accept case-only forms of `SystemAssigned`;
+no command argument, role, operation or resource scope is case-normalized.
+Negated/combined/user-assigned identities, foreign principals and broader roles
+remain rejected.
+
+All 21 requests, evidence and command target scopes were reviewed offline.
+No additional request-scope or identity-enum correction was justified. Exact
+generated request/evidence binding and oracle command subscription, RG, gateway,
+Foundry account and deployment targets now have an all-task regression check.
+The correction resets repeatability. Paid runs remain stopped: two unused
+invocations cannot establish three consecutive green trials on this new candidate.
+Minimum preparation before seeking further spending approval is the 57-test
+offline suite, generated-policy/input verification, pinned guard parity and
+fresh startup/preflight checks; then at least three explicitly authorized frozen
+21-task invocations are needed. Genuine held-out validation remains absent.
+The 57 offline tests and exact 21-task generated binding pass. Only the bootstrap
+task differs from the frozen configuration snapshot. A separate immutable-output
+replay retaining the old request passes 20/21 behavior and 21/21 syntax; identity
+spelling is resolved, while the unreviewed pending account-wide operation still
+fails. The recorded fresh score remains 20/21. This replay does not exercise the
+new single-deployment request.
 
 The preceding complete trial also passed 20/21, using 42.65535 AI
 credits and 189.511 seconds. Typed approvals passed both bootstrap and the
@@ -98,9 +129,10 @@ skill references plus recorded local CLI help. It does not put oracle answers
 in inputs or change installed skill behavior. Offline replay of the first
 corrected result remains 8/18 for behavior; recorded version/help coverage changes
 syntax assessment to 16 pass/two unscored, not a fresh quality score.
-The three holdouts have now been inspected during development; corrections informed by them are
-development evidence, not newly unseen acceptance evidence. Completion requires all original and
-holdout scenarios passing with complete policy evidence across three frozen
+The three development variants have been repeatedly inspected; corrections informed by them are
+development evidence, not held-out acceptance evidence. Genuine held-out evaluation
+remains absent. Planning repeatability requires all original and development
+variant scenarios passing with complete policy evidence across three frozen
 trials. Live CLI/data-plane and matched CLI performance evidence need separate
 authorization; neither is established here.
 
@@ -446,31 +478,33 @@ The offline policy checker fails whole-suite evidence: one recorded deny-all,
 and replay scores remain unchanged. The input-wiring fix changes neither grader
 semantics nor runtime skills and requires an operator-authorized new result.
 
-### Separate holdouts
+### Separate development variants
 
 `holdouts.yaml` adds a nondefault Messages/Api-Key contract, a selected-deployment
 request without identity/role approval, and changed-source sync with add-only
-approval and denied discovery. These are new inputs, not renamed baseline tasks.
-They are authored and statically validated, **not executed or replay-validated**.
+approval and denied discovery. They were distinct authored inputs, not renamed
+baseline tasks, but have now been repeatedly executed and inspected during
+development. They are **not genuine held-out evaluation**. Historical filenames,
+task IDs and selection flags are retained for compatibility.
 Select them explicitly with `author.py --quality --authorized --model gpt-6.1-sol
 --trials 1 --holdouts`; it writes `authorized-holdouts/`. Verify and preflight that
 directory separately, and use another new result filename if a three-task run
 is separately authorized. They are not added to the default 18-task cost budget.
 
-For an explicitly authorized original-plus-holdout invocation, add
+For an explicitly authorized original-plus-variant invocation, add
 `--include-holdouts` instead of `--holdouts`. This writes `authorized-combined/`
-with the unchanged 18 baseline tasks and three unchanged holdout tasks, each
+with the current 18 baseline tasks and three development variants, each
 using its own grader selection. Verify/preflight `authorized-combined/eval.yaml`
 and select a fresh result filename. One trial per task now means **21 trials
 per invocation**, not 18; this selection does not increase the authorized
-invocation ceiling. Once a holdout result informs a correction, distinguish
-that development use from frozen repeatability evidence.
+invocation ceiling. Development results and frozen repeatability evidence must
+remain separate; neither substitutes for genuine held-out validation.
 
 ## Scenario behavior boundaries
 
 | Task | Required boundary |
 | --- | --- |
-| `selected-rg-bootstrap` | Existing selected RG; disclose gateway identity attachment and Foundry User assignment on the exact existing Foundry account; separate approval before convenience import; no new deployment |
+| `selected-rg-bootstrap` | Existing selected RG and one selected existing deployment, not account-wide import; disclose gateway identity attachment and Foundry User assignment on the exact existing Foundry account; separate approval before convenience import; no new deployment |
 | `native-task-scoped-discovery` | Native selected-alias reads with explicit subscription; no unrelated inventory or secret reads |
 | `exact-alias-endpoint-contract` | Exact `properties.aliasName` and `properties.supportedEndpoints`; retain `/default/` and advertised provider prefix |
 | `runtime-only-known-endpoint` | Known endpoint works without ARM/login/version/install/network-freshness checks; existing-app integration and environment credential references |

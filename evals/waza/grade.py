@@ -230,6 +230,10 @@ def safe_command_matches(expected, actual):
         return False
 
 
+def system_assigned(value):
+    return isinstance(value, str) and value.casefold() == "systemassigned"
+
+
 def approval_matches(expected, actual):
     if not isinstance(actual, list) or len(expected) != len(actual):
         return False
@@ -254,14 +258,16 @@ def approval_matches(expected, actual):
                 action = row["action"]
                 if (set(action) == {"operation", "identityType"}
                         and action["operation"] == "identity.assign"
-                        and action["identityType"] == "SystemAssigned"):
+                        and system_assigned(action["identityType"])):
                     result.append(("SystemAssigned", row["scope"]))
                 elif (set(action) == {"operation", "role", "principal"}
                         and action["operation"] == "role.assign"
                         and isinstance(action["role"], str)
                         and identity_scope is not None
-                        and action["principal"] == {
-                            "identityType": "SystemAssigned", "resourceId": identity_scope}):
+                        and isinstance(action["principal"], dict)
+                        and set(action["principal"]) == {"identityType", "resourceId"}
+                        and system_assigned(action["principal"]["identityType"])
+                        and action["principal"]["resourceId"] == identity_scope):
                     result.append((action["role"], row["scope"]))
                 else:
                     return None
@@ -314,8 +320,9 @@ def equivalent_fact(expected, actual, key):
     if isinstance(expected, str) and expected.startswith("az aigateway "):
         return safe_command_matches(expected, actual)
     if key == "importIdentity" and expected == "SystemAssigned":
-        return actual in ("SystemAssigned", "system-assigned",
-                          "system-assigned-gateway-identity", "system-assigned managed identity")
+        return system_assigned(actual) or actual in (
+            "system-assigned", "system-assigned-gateway-identity",
+            "system-assigned managed identity")
     if key in ("backendConfiguration", "policies") and expected == "unknown" and actual == "unavailable":
         return True
     if key == "ratePartition" and expected == "identity-and-ip-combination":

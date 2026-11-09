@@ -1,8 +1,9 @@
 id: selected-rg-bootstrap
 name: Selected rg bootstrap
-description: Prepare a gateway in the selected existing RG with its existing Foundry deployments. Creation
-  is approved, but identity attachment and role grants are not approved. Disclose the convenience import
-  side effects and their exact scope. Propose a reproducible native CLI plan; do not execute it.
+description: Prepare a gateway in the selected existing RG. Any optional Foundry import is limited to
+  the one selected existing deployment in the supplied evidence, not every deployment on the account.
+  Creation is approved, but identity attachment and role grants are not approved. Disclose the convenience
+  import side effects and their exact scope. Propose a reproducible native CLI plan; do not execute it.
 tags:
 - management
 - manage-ai-gateway
@@ -12,7 +13,8 @@ inputs:
 
     Use manage-ai-gateway.
 
-    Prepare a gateway in the selected existing RG with its existing Foundry deployments. Creation is approved,
+    Prepare a gateway in the selected existing RG. Any optional Foundry import is limited to the one selected
+    existing deployment in the supplied evidence, not every deployment on the account. Creation is approved,
     but identity attachment and role grants are not approved. Disclose the convenience import side effects
     and their exact scope. Propose a reproducible native CLI plan; do not execute it.
 

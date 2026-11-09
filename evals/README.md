@@ -1,7 +1,9 @@
 # Azure AI Gateway evaluations
 
 The [Waza suite](waza/README.md) covers 18 synthetic management, discovery,
-integration, and negative scenarios, plus three separately selected holdouts.
+integration, and negative scenarios, plus three separately selected development
+variants. Their historical `holdout` names remain for compatibility; they have
+been repeatedly inspected and do not provide genuine held-out validation.
 It checks selected subscriptions and gateways, exact callable/auth contracts,
 least-privilege reads, explicit approvals, and evidence-aware recovery.
 
@@ -40,11 +42,17 @@ least-privilege reads, explicit approvals, and evidence-aware recovery.
   tool calls. Whole-suite policy evidence fails because 17 policies are missing.
   This is not 18 skill regressions. The corrected input resources require
   configuration regeneration, not a rubric change. Reported usage was one premium
-  request and 3.36635 AI credits; no new run was made by the implementing agent.
-  The supported deny-all profile is statically bound; whole-suite effective
-  runtime enforcement remains unverified. It is
-  not an OS filesystem/credential/network sandbox and does not test plugin
-  discovery or loading. The operator owns every Waza command and new result filename.
+  request and 3.36635 AI credits in that operator-owned run.
+  Subsequent explicitly authorized assistant-owned runs are recorded separately
+  in the suite guide and PR journal. The latest fresh result is 20/21 with complete
+  deny-all/zero-tool-activity evidence, not a green repeatability result. The
+  bootstrap request is now explicitly single-deployment; case-only identity
+  normalization does not broaden approval or import scope. These offline
+  corrections change the candidate and reset repeatability, not the saved scores.
+  Paid runs are stopped. Session-local startup isolation and deny-all are
+  not an OS filesystem/credential/network sandbox and do not test plugin
+  discovery or progressive loading. Further execution needs sufficient explicit
+  spending approval for the unchanged-candidate validation target.
 
 The suite guide defines per-task behavior boundaries, separate representation/
 syntax checks, approval-pending plans, quality dimensions, proposed

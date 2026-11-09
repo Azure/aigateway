@@ -14,7 +14,7 @@ import yaml
 from jsonschema import Draft7Validator
 
 from author import documents, task_context
-from grade import ROOT, behavior_expected, cases, evaluate, plan_matches, command_matches
+from grade import ROOT, behavior_expected, cases, evaluate, plan_matches, command_matches, normalize_command
 from verify_planning import verify, verify_result, verify_preflight
 
 
@@ -25,6 +25,90 @@ def answer(case):
 
 
 class Planning(unittest.TestCase):
+    def test_identity_enum_case_does_not_change_assignment_or_principal_scope(self):
+        case = next(c for c in cases() if c["id"] == "selected-rg-bootstrap")
+        result = answer(case)
+        result["pendingCommands"] = copy.deepcopy(case["pending_commands"])
+        approvals = result["pendingCommands"][0]["approvals"]
+        gateway = approvals[0]["scope"]
+        for spelling in ("SystemAssigned", "systemAssigned", "systemassigned", "SYSTEMASSIGNED"):
+            result["observations"]["importIdentity"] = spelling
+            approvals[0]["action"] = {"operation": "identity.assign", "identityType": spelling}
+            approvals[1]["action"] = {
+                "operation": "role.assign", "role": "Foundry User",
+                "principal": {"identityType": spelling, "resourceId": gateway}}
+            self.assertEqual(evaluate(case, json.dumps(result))["status"], "pass")
+        valid = copy.deepcopy(result)
+        for spelling in ("UserAssigned", "SystemAssigned, UserAssigned", "None",
+                         "notSystemAssigned", "System Assigned", True, None):
+            for target in ("fact", "identity", "principal"):
+                result = copy.deepcopy(valid)
+                if target == "fact":
+                    result["observations"]["importIdentity"] = spelling
+                elif target == "identity":
+                    result["pendingCommands"][0]["approvals"][0]["action"]["identityType"] = spelling
+                else:
+                    result["pendingCommands"][0]["approvals"][1]["action"]["principal"]["identityType"] = spelling
+                self.assertNotEqual(evaluate(case, json.dumps(result))["status"], "pass",
+                                    (target, spelling))
+
+    def test_bootstrap_scope_is_explicit_and_does_not_authorize_bulk_import(self):
+        case = next(c for c in cases() if c["id"] == "selected-rg-bootstrap")
+        self.assertIn("one selected existing deployment", case["request"])
+        self.assertIn("not every deployment", case["request"])
+        result = answer(case)
+        result["pendingCommands"] = copy.deepcopy(case["pending_commands"])
+        self.assertEqual(evaluate(case, json.dumps(result))["status"], "pass")
+        command = result["pendingCommands"][0]["command"]
+        result["pendingCommands"][0]["command"] = command.replace(
+            "model create", "model-provider create").replace(" --deployment already-exists", "")
+        self.assertEqual(evaluate(case, json.dumps(result))["status"], "fail")
+        result["pendingCommands"][0]["command"] = command.replace("already-exists", "other-deployment")
+        self.assertEqual(evaluate(case, json.dumps(result))["status"], "fail")
+        bulk = next(c for c in cases() if c["id"] == "approved-foundry-onboarding-scope")
+        self.assertIn("separately approved whole-account import", bulk["request"])
+        self.assertEqual(evaluate(bulk, json.dumps(answer(bulk)))["status"], "pass")
+
+    def test_all_planning_inputs_preserve_requests_evidence_and_oracle_target_scopes(self):
+        variants = yaml.safe_load((ROOT / "holdouts.yaml").read_text())["cases"]
+        inventory = cases() + variants
+        docs = documents("quality", "gpt-6.1-sol", combined=True)
+        self.assertEqual(len(inventory), 21)
+        for case in inventory:
+            with self.subTest(scenario=case["id"]):
+                task = docs[f"tasks/{case['id']}.yaml"]
+                self.assertTrue(task["inputs"]["prompt"].startswith(
+                    f"SCENARIO_ID={case['id']}\n{case['request']}\n"))
+                self.assertEqual(json.loads(task["inputs"]["files"][0]["content"]), case["evidence"])
+                self.assertNotIn("pending_commands", task["inputs"]["prompt"])
+                self.assertNotIn("supplemental_reads", task["inputs"]["prompt"])
+                self.assertNotIn("approval_matches", task["inputs"]["prompt"])
+                evidence = case["evidence"]
+                gateway_id = evidence.get("gatewayId")
+                if not gateway_id and all(k in evidence for k in ("subscription", "resourceGroup", "gateway")):
+                    gateway_id = (f"/subscriptions/{evidence['subscription']}/resourceGroups/"
+                                  f"{evidence['resourceGroup']}/providers/Microsoft.ApiManagement/"
+                                  f"aigateways/{evidence['gateway']}")
+                commands = (case.get("required_commands", []) + case.get("supplemental_reads", [])
+                            + [row["command"] for row in case.get("pending_commands", [])])
+                for command in commands:
+                    route, options = normalize_command(command)
+                    flags = dict(options)
+                    if "--subscription" in flags:
+                        self.assertEqual(flags["--subscription"], (evidence["subscription"],))
+                    if "--ids" in flags:
+                        self.assertEqual(flags["--ids"], (gateway_id,))
+                    if "--foundry-resource-id" in flags:
+                        self.assertEqual(flags["--foundry-resource-id"], (evidence["foundryAccountId"],))
+                    if "--deployment" in flags:
+                        self.assertEqual(flags["--deployment"],
+                                         (evidence.get("foundryDeployment", evidence.get("deployment")),))
+                    if "--resource-group" in flags:
+                        selected_rg = evidence.get("resourceGroup")
+                        if route[:2] == ("az", "cognitiveservices"):
+                            selected_rg = evidence["foundryAccountId"].split("/")[4]
+                        self.assertEqual(flags["--resource-group"], (selected_rg,))
+
     def test_typed_approval_operations_do_not_score_explanatory_sentences(self):
         case = next(c for c in cases() if c["id"] == "selected-rg-bootstrap")
         result = answer(case)

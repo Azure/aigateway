@@ -7,7 +7,9 @@ cases:
       - references/models-and-routing.md#Approved Foundry onboarding
     category: management
     request: >-
-      Prepare a gateway in the selected existing RG with its existing Foundry deployments.
+      Prepare a gateway in the selected existing RG. Any optional Foundry import
+      is limited to the one selected existing deployment in the supplied evidence,
+      not every deployment on the account.
       Creation is approved, but identity attachment and role grants are not approved.
       Disclose the convenience import side effects and their exact scope. Propose a
       reproducible native CLI plan; do not execute it.
