@@ -1,0 +1,273 @@
+{
+  "site": {
+    "title": "Azure AI Gateway Labs",
+    "tagline": "Hands-on labs to govern every model, tool, and agent from one gateway.",
+    "repo": "https://github.com/Azure/aigateway",
+    "pages": "https://azure.github.io/aigateway/",
+    "branch": "main",
+    "docs": "https://ai.gateway.azure.com/docs",
+    "portal": "https://ai.gateway.azure.com",
+    "learn": "https://learn.microsoft.com/azure/ai-gateway/overview"
+  },
+  "categories": [
+    {
+      "id": "foundations",
+      "title": "Foundations",
+      "color": "violet",
+      "description": "Concepts, provisioning, and your first governed call."
+    },
+    {
+      "id": "models",
+      "title": "Models & routing",
+      "color": "azure",
+      "description": "Publish Foundry and third-party models behind stable aliases."
+    },
+    {
+      "id": "tools",
+      "title": "MCP & tools",
+      "color": "cyan",
+      "description": "Federate MCP servers, APIs, and connectors behind one endpoint."
+    },
+    {
+      "id": "governance",
+      "title": "Governance & cost",
+      "color": "magenta",
+      "description": "Token limits, budgets, content safety, and gateway-wide baselines."
+    },
+    {
+      "id": "security",
+      "title": "Security & identity",
+      "color": "green",
+      "description": "API keys, Microsoft Entra ID, RBAC, and backend identities."
+    },
+    {
+      "id": "observability",
+      "title": "Observability & FinOps",
+      "color": "amber",
+      "description": "Dashboards, traces, OpenTelemetry, and chargeback."
+    },
+    {
+      "id": "agents",
+      "title": "Agents",
+      "color": "violet",
+      "description": "Route agent frameworks, hosted agents, and coding agents through the gateway."
+    },
+    {
+      "id": "production",
+      "title": "Production & emerging",
+      "color": "slate",
+      "description": "Private networking, Agent 365, threat protection, and reference architectures."
+    }
+  ],
+  "paths": [
+    {
+      "id": "essentials",
+      "title": "30-minute essentials",
+      "persona": "Everyone",
+      "icon": "rocket",
+      "description": "Provision a gateway, publish a model and an MCP server, and make your first governed calls.",
+      "labs": [
+        "00-how-ai-gateway-works",
+        "01-provision-gateway",
+        "02-first-model-call",
+        "04-federate-mcp-tools"
+      ]
+    },
+    {
+      "id": "platform",
+      "title": "Platform engineer",
+      "persona": "Build the shared AI platform",
+      "icon": "platform",
+      "description": "Stand up a production-ready gateway with multi-provider models, tool federation, baselines, and private networking.",
+      "labs": [
+        "01-provision-gateway",
+        "02-first-model-call",
+        "03-multi-provider-aliases",
+        "22-model-routing",
+        "04-federate-mcp-tools",
+        "09-gateway-baselines",
+        "12-backend-identity",
+        "18-private-networking",
+        "21-enterprise-reference"
+      ]
+    },
+    {
+      "id": "developer",
+      "title": "App & agent developer",
+      "persona": "Ship apps and agents on governed endpoints",
+      "icon": "code",
+      "description": "Call models and MCP tools from SDKs, agent frameworks, Foundry Hosted Agents, and coding agents.",
+      "labs": [
+        "02-first-model-call",
+        "03-multi-provider-aliases",
+        "22-model-routing",
+        "23-streaming-responses",
+        "04-federate-mcp-tools",
+        "15-agent-frameworks",
+        "16-foundry-hosted-agent",
+        "17-coding-agent-plugin",
+        "24-github-copilot-byok"
+      ]
+    },
+    {
+      "id": "security",
+      "title": "Security & compliance",
+      "persona": "Protect data, identities, and tools",
+      "icon": "shield",
+      "description": "Move from keys to Entra ID, enforce content safety, restrict tools, and adopt Agent 365 protections.",
+      "labs": [
+        "10-api-keys",
+        "11-entra-rbac",
+        "08-content-safety",
+        "05-mcp-tool-controls",
+        "09-gateway-baselines",
+        "19-tool-threat-protection",
+        "20-agent-365-governance"
+      ]
+    },
+    {
+      "id": "finops",
+      "title": "FinOps & operations",
+      "persona": "Control spend and run the gateway",
+      "icon": "chart",
+      "description": "Throttle tokens, enforce budgets, observe usage, and attribute cost to teams with OpenTelemetry.",
+      "labs": [
+        "06-token-limits",
+        "23-streaming-responses",
+        "07-cost-budgets",
+        "13-monitoring",
+        "14-otel-chargeback"
+      ]
+    }
+  ],
+  "useCases": {
+    "core": [
+      {
+        "title": "One endpoint for every model",
+        "lab": "03-multi-provider-aliases",
+        "icon": "models",
+        "text": "Foundry, Azure OpenAI, OpenAI, Anthropic, Bedrock, and Vertex AI behind stable aliases."
+      },
+      {
+        "title": "Priority & weighted routing",
+        "lab": "22-model-routing",
+        "icon": "route",
+        "text": "Canary a new model, run A/B tests, or prefer purchased capacity behind one alias."
+      },
+      {
+        "title": "Token limits & quotas",
+        "lab": "06-token-limits",
+        "icon": "gauge",
+        "text": "Cap tokens per minute, hour, or day for each caller."
+      },
+      {
+        "title": "Budgets & cost control",
+        "lab": "07-cost-budgets",
+        "icon": "coins",
+        "text": "Dollar budgets per key, per Entra identity, or across the gateway."
+      },
+      {
+        "title": "Federated MCP tools",
+        "lab": "04-federate-mcp-tools",
+        "icon": "tools",
+        "text": "One governed MCP endpoint for remote servers, APIs, and connectors."
+      },
+      {
+        "title": "Keyless access with Entra ID",
+        "lab": "11-entra-rbac",
+        "icon": "key",
+        "text": "RBAC for users, apps, and managed identities down to a single alias."
+      },
+      {
+        "title": "Observability & tracing",
+        "lab": "13-monitoring",
+        "icon": "chart",
+        "text": "Tokens, cost, outcomes, and policy spans in one dashboard."
+      },
+      {
+        "title": "Content safety",
+        "lab": "08-content-safety",
+        "icon": "shield",
+        "text": "Screen prompts, tool inputs, and responses before they reach a backend."
+      }
+    ],
+    "emerging": [
+      {
+        "title": "Agent frameworks & hosted agents",
+        "lab": "16-foundry-hosted-agent",
+        "icon": "agent",
+        "text": "Route every model and tool call an agent makes through one control point."
+      },
+      {
+        "title": "Tool allow and block lists",
+        "lab": "05-mcp-tool-controls",
+        "icon": "filter",
+        "text": "Expose only approved tools with exact lists and patterns."
+      },
+      {
+        "title": "Chargeback with token claims",
+        "lab": "14-otel-chargeback",
+        "icon": "receipt",
+        "text": "Attribute tokens and cost to tenants, apps, and cost centers."
+      },
+      {
+        "title": "Tool threat protection",
+        "lab": "19-tool-threat-protection",
+        "icon": "radar",
+        "text": "Defender and Purview evaluate tool calls for injection and data risk."
+      },
+      {
+        "title": "Agent 365 governance",
+        "lab": "20-agent-365-governance",
+        "icon": "building",
+        "text": "Inventory and block MCP servers and tools from the Microsoft 365 admin center."
+      },
+      {
+        "title": "Coding-agent plugin",
+        "lab": "17-coding-agent-plugin",
+        "icon": "sparkle",
+        "text": "Let Copilot, Claude Code, Cursor, or Gemini build on your gateway."
+      },
+      {
+        "title": "GitHub Copilot on your models and tools",
+        "lab": "24-github-copilot-byok",
+        "icon": "code",
+        "text": "Run Copilot in VS Code, the CLI, the SDK, and the app on models and MCP tools your gateway governs."
+      },
+      {
+        "title": "Streaming with accurate usage",
+        "lab": "23-streaming-responses",
+        "icon": "stream",
+        "text": "Stream replies token by token while limits, budgets, and monitoring count every token."
+      }
+    ]
+  },
+  "shortTitles": {
+    "quickstart": "Quick start",
+    "00-how-ai-gateway-works": "How AI Gateway works",
+    "01-provision-gateway": "Provision a gateway",
+    "02-first-model-call": "First model call",
+    "03-multi-provider-aliases": "Multi-provider aliases",
+    "04-federate-mcp-tools": "Federate MCP tools",
+    "05-mcp-tool-controls": "Tool allow & block lists",
+    "06-token-limits": "Token limits",
+    "07-cost-budgets": "Cost budgets",
+    "08-content-safety": "Content safety",
+    "09-gateway-baselines": "Gateway-wide baselines",
+    "10-api-keys": "Runtime API keys",
+    "11-entra-rbac": "Entra ID & RBAC",
+    "12-backend-identity": "Backend identities",
+    "13-monitoring": "Monitoring",
+    "14-otel-chargeback": "OpenTelemetry chargeback",
+    "15-agent-frameworks": "Agent frameworks",
+    "16-foundry-hosted-agent": "Foundry hosted agent",
+    "17-coding-agent-plugin": "Coding-agent plugin",
+    "18-private-networking": "Private networking",
+    "19-tool-threat-protection": "Tool threat protection",
+    "20-agent-365-governance": "Agent 365 governance",
+    "21-enterprise-reference": "Enterprise reference",
+    "22-model-routing": "Priority & weighted routing",
+    "23-streaming-responses": "Streaming responses",
+    "24-github-copilot-byok": "GitHub Copilot BYOK"
+  }
+}

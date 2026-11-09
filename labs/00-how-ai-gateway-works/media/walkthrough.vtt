@@ -1,0 +1,189 @@
+WEBVTT
+
+1
+00:00:01.610 --> 00:00:04.090
+Welcome to the Azure AI Gateway labs.
+
+2
+00:00:04.090 --> 00:00:08.090
+In three minutes, you'll see what the gateway does, follow one request through it,
+
+3
+00:00:08.090 --> 00:00:09.730
+and tour the portal.
+
+4
+00:00:10.780 --> 00:00:14.060
+Every team that ships AI hits the same questions.
+
+5
+00:00:14.060 --> 00:00:16.780
+Which models may we call, with which keys?
+
+6
+00:00:16.780 --> 00:00:18.460
+Who spent the tokens?
+
+7
+00:00:18.460 --> 00:00:23.420
+AI Gateway answers them in one place: apps and agents call one gateway,
+
+8
+00:00:23.420 --> 00:00:26.100
+and it routes to models and tools.
+
+9
+00:00:27.129 --> 00:00:28.809
+The gateway has two faces.
+
+10
+00:00:28.809 --> 00:00:31.769
+The data plane is the runtime endpoint your code calls.
+
+11
+00:00:31.769 --> 00:00:35.809
+The control plane is this portal and the Azure Resource Manager API,
+
+12
+00:00:35.809 --> 00:00:39.009
+which you can drive with the CLI or Bicep.
+
+13
+00:00:40.041 --> 00:00:42.201
+Now follow one request.
+
+14
+00:00:42.201 --> 00:00:45.081
+The gateway checks the caller's key or Entra token,
+
+15
+00:00:45.081 --> 00:00:49.001
+then evaluates every policy before calling the backend.
+
+16
+00:00:49.001 --> 00:00:57.161
+A blocked call gets a predictable status: 401, 403, 429, or 400.
+
+17
+00:00:57.161 --> 00:00:59.521
+Either way, it's recorded.
+
+18
+00:01:00.534 --> 00:01:04.494
+Here's the portal, at ai.gateway.azure.com.
+
+19
+00:01:04.494 --> 00:01:08.974
+The switcher in the top bar picks your gateway, and Home shows its runtime endpoint.
+
+20
+00:01:08.974 --> 00:01:11.374
+The left rail holds everything you manage.
+
+21
+00:01:11.374 --> 00:01:14.054
+Press Control K to search from anywhere.
+
+22
+00:01:15.060 --> 00:01:19.220
+Catalog is what developers browse: every published model and MCP server,
+
+23
+00:01:19.220 --> 00:01:22.780
+with a playground to try it and code samples to copy.
+
+24
+00:01:23.812 --> 00:01:27.012
+Models opens on aliases, the names your apps send.
+
+25
+00:01:27.012 --> 00:01:29.172
+Here, chat points at gpt-6-luna.
+
+26
+00:01:29.172 --> 00:01:33.332
+Move it to a newer model, and no client code changes.
+
+27
+00:01:33.332 --> 00:01:36.332
+Backend models shows what each provider serves.
+
+28
+00:01:37.290 --> 00:01:40.650
+MCP servers give agents one endpoint for their tools.
+
+29
+00:01:40.650 --> 00:01:44.930
+This Microsoft Learn server federates two sources, learn and docs,
+
+30
+00:01:44.930 --> 00:01:49.570
+and tool availability decides which tools agents can see and call.
+
+31
+00:01:50.551 --> 00:01:52.471
+Access decides who can call.
+
+32
+00:01:52.471 --> 00:01:57.911
+Use Microsoft Entra ID roles, which we recommend, or API keys like this one.
+
+33
+00:01:57.911 --> 00:02:01.911
+In the other direction, the gateway's managed identity signs in to Foundry,
+
+34
+00:02:01.911 --> 00:02:04.591
+so apps never hold provider keys.
+
+35
+00:02:05.573 --> 00:02:07.893
+Policies are the guardrails.
+
+36
+00:02:07.893 --> 00:02:12.773
+This gateway has a request limit and a token limit at gateway scope, covering every model,
+
+37
+00:02:12.773 --> 00:02:18.653
+plus tighter limits on individual assets, like 1,000 tokens a minute on one alias.
+
+38
+00:02:19.646 --> 00:02:22.526
+To add one, select Add policy.
+
+39
+00:02:22.526 --> 00:02:27.326
+Choose a type, then a scope: the whole gateway, or individual assets.
+
+40
+00:02:27.326 --> 00:02:28.766
+Then set the limits.
+
+41
+00:02:28.766 --> 00:02:30.886
+We'll cancel without saving.
+
+42
+00:02:31.951 --> 00:02:37.071
+Once Application Insights is connected, Monitoring shows model and tool calls, tokens,
+
+43
+00:02:37.071 --> 00:02:44.271
+and estimated cost, and which policies blocked requests, like the 429s from that limited alias.
+
+44
+00:02:44.271 --> 00:02:47.271
+Traces follow any call end to end.
+
+45
+00:02:48.216 --> 00:02:49.296
+That's the map.
+
+46
+00:02:49.296 --> 00:02:55.056
+Next, provision your own gateway in Lab 01, or pick the learning path for your role.
+
+47
+00:02:55.056 --> 00:02:57.016
+See you in the labs.

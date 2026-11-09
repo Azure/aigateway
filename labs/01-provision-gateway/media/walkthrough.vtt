@@ -1,0 +1,201 @@
+WEBVTT
+
+1
+00:00:01.610 --> 00:00:04.810
+Welcome to Lab one of the Azure AI Gateway labs.
+
+2
+00:00:04.810 --> 00:00:08.010
+In three minutes, you'll provision your own gateway from the portal,
+
+3
+00:00:08.010 --> 00:00:13.010
+find its runtime URL and managed identity, and learn where everything lives.
+
+4
+00:00:13.653 --> 00:00:15.333
+Here's what provisioning does.
+
+5
+00:00:15.333 --> 00:00:18.693
+You choose a name, a resource group, and a region.
+
+6
+00:00:18.693 --> 00:00:25.013
+Azure creates a connector gateway, then the AI Gateway, with a system-assigned managed identity.
+
+7
+00:00:25.013 --> 00:00:29.213
+You get back one runtime URL for every app and agent.
+
+8
+00:00:29.861 --> 00:00:35.821
+In the AI Gateway portal, open the gateway switcher at the top, and choose Create new gateway.
+
+9
+00:00:36.431 --> 00:00:40.031
+The dialog suggests a unique name and confirms it's available.
+
+10
+00:00:40.031 --> 00:00:42.671
+Select refresh to generate another.
+
+11
+00:00:42.671 --> 00:00:47.991
+The name becomes part of your runtime URL, so keep it to twenty-four characters or fewer.
+
+12
+00:00:48.515 --> 00:00:53.555
+Pick your subscription, and create a new resource group, or reuse an existing one.
+
+13
+00:00:53.555 --> 00:00:55.155
+Then choose a region.
+
+14
+00:00:55.155 --> 00:00:59.515
+This lab uses East US 2, but any available region works.
+
+15
+00:01:00.184 --> 00:01:01.864
+Expand Advanced.
+
+16
+00:01:01.864 --> 00:01:05.464
+The system-assigned managed identity is on by default.
+
+17
+00:01:05.464 --> 00:01:06.504
+Keep it.
+
+18
+00:01:06.504 --> 00:01:10.344
+The gateway uses it to reach Foundry and other Entra-protected backends,
+
+19
+00:01:10.344 --> 00:01:13.024
+so your apps never hold provider keys.
+
+20
+00:01:13.617 --> 00:01:16.697
+Under Networking, keep public routing for this lab.
+
+21
+00:01:16.697 --> 00:01:20.937
+Private routing reaches private backends through secure outbound connections,
+
+22
+00:01:20.937 --> 00:01:23.537
+and it can't be changed after creation.
+
+23
+00:01:24.181 --> 00:01:26.021
+Select Create gateway.
+
+24
+00:01:26.021 --> 00:01:32.181
+All gateways tracks progress live: creating the resource group, deploying, then activating.
+
+25
+00:01:32.181 --> 00:01:38.221
+About a minute and a half later, it shows Succeeded, with the runtime URL right in the list.
+
+26
+00:01:38.859 --> 00:01:41.419
+Home now shows your new gateway in the switcher.
+
+27
+00:01:41.419 --> 00:01:46.299
+The setup guide lists what's next: add a model, test it, and apply policies.
+
+28
+00:01:46.299 --> 00:01:48.339
+That's where lab two picks up.
+
+29
+00:01:48.995 --> 00:01:50.435
+A quick tour.
+
+30
+00:01:50.435 --> 00:01:53.395
+Discover is the catalog developers browse.
+
+31
+00:01:53.395 --> 00:01:56.355
+Models and MCP servers are what you publish.
+
+32
+00:01:56.355 --> 00:02:00.355
+Access holds Entra ID role assignments and API keys.
+
+33
+00:02:00.355 --> 00:02:02.515
+Policies are your guardrails.
+
+34
+00:02:02.515 --> 00:02:06.275
+Monitoring shows usage, cost, and traces.
+
+35
+00:02:06.275 --> 00:02:09.355
+And Networking is read-only after creation.
+
+36
+00:02:10.103 --> 00:02:11.703
+Open Managed identities.
+
+37
+00:02:11.703 --> 00:02:14.343
+The system-assigned identity is enabled, with its principal ID.
+
+38
+00:02:14.343 --> 00:02:20.983
+In later labs, you grant it access to Foundry, so the gateway authenticates outbound for you.
+
+39
+00:02:21.749 --> 00:02:23.269
+Now verify from a terminal.
+
+40
+00:02:23.269 --> 00:02:27.589
+Read the host name from the resource, then call a model route without a key.
+
+41
+00:02:27.589 --> 00:02:30.229
+HTTP 404 is what you want.
+
+42
+00:02:30.229 --> 00:02:33.509
+DNS, TLS, and the gateway all answer.
+
+43
+00:02:33.509 --> 00:02:35.789
+There are simply no models yet.
+
+44
+00:02:36.365 --> 00:02:37.765
+Prefer automation?
+
+45
+00:02:37.765 --> 00:02:41.285
+A single Azure CLI call creates the AI gateways resource.
+
+46
+00:02:41.285 --> 00:02:45.605
+Or use a short Bicep file that outputs the URL and principal ID.
+
+47
+00:02:45.605 --> 00:02:48.765
+The lab includes both, plus a Jupyter notebook.
+
+48
+00:02:49.429 --> 00:02:52.509
+Keep this gateway, because every later lab reuses it.
+
+49
+00:02:52.509 --> 00:02:55.389
+When you finish the labs, delete the resource group.
+
+50
+00:02:55.389 --> 00:02:57.589
+Next up: lab two.

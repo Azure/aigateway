@@ -1,0 +1,72 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+
+# Lab 16: a Foundry hosted agent that reaches its model and its MCP tools only through Azure AI Gateway, without keys.
+# The Foundry project has no model deployments: the agent calls the gateway alias in AI_GATEWAY_MODEL with a Microsoft
+# Entra token, and reaches the gateway's MCP server through a toolbox whose connection signs in with the project's
+# managed identity.
+requiredVersions:
+  azd: '>=1.37.0'
+  extensions:
+    azure.ai.agents: '>=1.0.0'
+    azure.ai.connections: '>=1.0.0'
+    azure.ai.toolboxes: '>=1.0.0'
+name: aigw-lab16-hosted-agent
+services:
+  ai-project:
+    host: azure.ai.project
+
+  # A RemoteTool connection to the gateway's MCP server. Foundry calls it with a token of the project's managed
+  # identity for the gateway's audience: no key is stored anywhere.
+  gateway-mcp:
+    host: azure.ai.connection
+    uses:
+      - ai-project
+    category: RemoteTool
+    authType: ProjectManagedIdentity
+    audience: https://azure-api.net/aigateway
+    target: ${AI_GATEWAY_URL}/default/toolservers/${AI_GATEWAY_MCP_SERVER}/mcp
+    metadata:
+      type: custom_MCP
+    env:
+      AI_GATEWAY_URL: ${AI_GATEWAY_URL}
+      AI_GATEWAY_MCP_SERVER: ${AI_GATEWAY_MCP_SERVER}
+
+  # A toolbox that exposes the connection's MCP tools to the agent at one Foundry endpoint
+  gateway-tools:
+    host: azure.ai.toolbox
+    uses:
+      - ai-project
+      - gateway-mcp
+    description: Microsoft Learn tools through Azure AI Gateway
+    tools:
+      - type: mcp
+        server_label: learn
+        connection: gateway-mcp
+        require_approval: never
+
+  gateway-agent:
+    host: azure.ai.agent
+    project: src/gateway-agent
+    language: python
+    codeConfiguration:
+      runtime: python_3_13
+      entryPoint: main.py
+    uses:
+      - ai-project
+      - gateway-tools
+    kind: hosted
+    name: gateway-agent
+    description: Answers Microsoft technology questions with Microsoft Learn tools, through Azure AI Gateway.
+    protocols:
+      - protocol: responses
+        version: 2.0.0
+    env:
+      AI_GATEWAY_URL: ${AI_GATEWAY_URL}
+      AI_GATEWAY_MODEL: ${AI_GATEWAY_MODEL}
+      TOOLBOX_ENDPOINT: ${TOOLBOX_GATEWAY_TOOLS_MCP_ENDPOINT}
+    container:
+      resources:
+        cpu: '0.5'
+        memory: 1Gi
+infra:
+  provider: microsoft.foundry

@@ -1,0 +1,28 @@
+[
+  {
+    "type": "tokenLimit",
+    "count": 100000,
+    "period": "minute",
+    "counterKey": ["identity"],
+    "scope": "workspace"
+  },
+  {
+    "type": "requestRateLimit",
+    "callsPerPeriod": 600,
+    "periodSeconds": 60,
+    "counterKey": ["identity"],
+    "scope": "workspace"
+  },
+  {
+    "type": "contentSafety",
+    "hateSeverity": "Medium",
+    "violenceSeverity": "Medium",
+    "sexualSeverity": "Medium",
+    "selfHarmSeverity": "Medium"
+  },
+  {
+    "type": "ipFilter",
+    "action": "Allow",
+    "cidrRanges": ["203.0.113.10/32"]
+  }
+]

@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+# Lab 02: "azd up" creates a resource group with an AI gateway, a Foundry account with a gpt-5-mini deployment,
+# and publishes the model through the gateway with an alias and a runtime API key.
+# The lab clones the repo's main branch from GitHub and runs azd up in this folder.
+name: aigw-lab02
+metadata:
+  template: aigw-lab02@1.0.0
+infra:
+  provider: bicep
+  path: infra

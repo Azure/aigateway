@@ -1,0 +1,41 @@
+// Chargeback starter: tokens per tenant, caller, client app, API key, and model, from AI Gateway request logs.
+// This is a starting point. Check the attribute names in one request's correlated log before you rely on a column.
+//
+// Where to run it: the Log Analytics workspace behind your Application Insights resource, Logs, KQL mode.
+// Then export the result as CSV, or call the query API, and price it with chargeback_report.py.
+//
+// What it needs:
+// - The Logs signal, and each claim you group by enabled for Logs in Monitoring › Settings › Logging ›
+//   Token claim attributes. Claims are exported as azure.ai_gateway.identity.claims.<claim>.
+// - Token usage that the backend reported, exported as azure.ai_gateway.client.usage.*. Chat Completions reports
+//   prompt_tokens and completion_tokens, and cached input tokens are part of the prompt tokens. The input_tokens and
+//   output_tokens fallbacks cover APIs that use those names.
+// Requests without reported usage, such as calls a policy rejected, aren't counted. Missing usage means "unknown",
+// not zero.
+let lookback = 30d;
+OTelLogs
+| where TimeGenerated > ago(lookback)
+| extend InputTokens = coalesce(tolong(Attributes["azure.ai_gateway.client.usage.prompt_tokens"]),
+                                tolong(Attributes["azure.ai_gateway.client.usage.input_tokens"])),
+         CachedInputTokens = coalesce(tolong(Attributes["azure.ai_gateway.client.usage.prompt_tokens_details.cached_tokens"]),
+                                      tolong(Attributes["azure.ai_gateway.client.usage.input_tokens_details.cached_tokens"])),
+         OutputTokens = coalesce(tolong(Attributes["azure.ai_gateway.client.usage.completion_tokens"]),
+                                 tolong(Attributes["azure.ai_gateway.client.usage.output_tokens"]))
+| where isnotnull(InputTokens) or isnotnull(OutputTokens)
+| extend Tenant = tostring(Attributes["azure.ai_gateway.identity.claims.tid"]),
+         ObjectId = tostring(Attributes["azure.ai_gateway.identity.claims.oid"]),
+         // v2 tokens carry azp, v1 tokens carry appid. Both identify the client application.
+         ClientApp = coalesce(tostring(Attributes["azure.ai_gateway.identity.claims.azp"]),
+                              tostring(Attributes["azure.ai_gateway.identity.claims.appid"])),
+         // Empty unless you add a custom claim named cost_center and your tokens carry it.
+         CostCenter = tostring(Attributes["azure.ai_gateway.identity.claims.cost_center"]),
+         ApiKeyId = tostring(Attributes["azure.ai_gateway.api_key_id"]),
+         Alias = tostring(Attributes["gen_ai.request.model"]),
+         Model = coalesce(tostring(Attributes["gen_ai.response.model"]), tostring(Attributes["gen_ai.request.model"]))
+| summarize Requests = count(),
+            InputTokens = sum(coalesce(InputTokens, long(0))),
+            CachedInputTokens = sum(coalesce(CachedInputTokens, long(0))),
+            OutputTokens = sum(coalesce(OutputTokens, long(0)))
+    by Tenant, ObjectId, ClientApp, CostCenter, ApiKeyId, Alias, Model
+| extend TotalTokens = InputTokens + OutputTokens
+| order by TotalTokens desc

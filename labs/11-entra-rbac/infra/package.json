@@ -1,0 +1,17 @@
+{
+  "name": "ai-gateway-call-with-entra",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Calls a model through Azure AI Gateway with a Microsoft Entra ID token.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "start": "node call-with-entra.ts"
+  },
+  "dependencies": {
+    "@azure/identity": "^4.5.0",
+    "openai": "^7.0.0"
+  }
+}

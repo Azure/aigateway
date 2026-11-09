@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+# Lab 04: "azd up" creates a gateway, the learn MCP server that federates Microsoft Learn, and a runtime API key.
+# The lab clones the repo's main branch from GitHub and runs azd up in this folder.
+name: aigw-lab04
+metadata:
+  template: aigw-lab04@1.0.0
+infra:
+  provider: bicep
+  path: infra

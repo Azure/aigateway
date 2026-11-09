@@ -1,0 +1,5 @@
+node_modules/
+.swa/
+__pycache__/
+.env
+.venv/

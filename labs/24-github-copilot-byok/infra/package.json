@@ -1,0 +1,19 @@
+{
+  "name": "ai-gateway-github-copilot-byok",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Runs a GitHub Copilot SDK session on a model published by Azure AI Gateway (bring your own key).",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "start": "node copilot-sdk.ts"
+  },
+  "dependencies": {
+    "@github/copilot-sdk": "^1.0.26"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5"
+  }
+}

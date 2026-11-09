@@ -1,0 +1,102 @@
+// Starting-point KQL queries for AI Gateway telemetry. Adapt them to your traffic before you rely on them.
+//
+// Where to run them: the Log Analytics workspace behind your Application Insights resource, Logs, KQL mode.
+// Select one query and run it.
+//
+// AI Gateway exports OpenTelemetry (OTLP) signals. Traces land in the OTelSpans table and logs in the
+// OTelLogs table; span and log attributes are in the dynamic Attributes column. Attribute names follow the
+// OpenTelemetry GenAI and MCP semantic conventions (gen_ai.request.model, gen_ai.response.model,
+// gen_ai.operation.name, gen_ai.tool.name, mcp.method.name) plus gateway attributes (azure.ai_gateway.*,
+// azure.apim.*). Run `OTelSpans | take 10` first and check the names your data actually carries.
+// Token and cost metrics go to the Azure Monitor workspace (Prometheus), not to these tables.
+
+// 1. Model and tool server requests over time, by outcome
+OTelSpans
+| where TimeGenerated > ago(24h)
+| where Kind =~ "Server"
+| extend Route = tostring(Attributes["http.route"]),
+         Status = coalesce(toint(Attributes["http.response.status_code"]), toint(Attributes["http.status_code"]), toint(ResultCode))
+| extend Asset = case(Route contains "/models/", "model", Route contains "/toolservers/", "tool server", "other"),
+         Outcome = case(Status between (200 .. 399), "2xx-3xx", Status between (400 .. 499), "4xx", Status >= 500, "5xx", "unknown")
+| summarize Requests = count() by bin(TimeGenerated, 15m), Series = strcat(Asset, " ", Outcome)
+| render timechart
+
+// 2. Model calls by requested alias, resolved model, and API key, with errors and latency
+OTelSpans
+| where TimeGenerated > ago(24h)
+| where Kind =~ "Server" and tostring(Attributes["http.route"]) contains "/models/"
+| extend RequestedModel = tostring(Attributes["gen_ai.request.model"]),
+         ResolvedModel = tostring(Attributes["azure.ai_gateway.resolved_model.name"]),
+         ApiKeyId = tostring(Attributes["azure.ai_gateway.api_key_id"]),
+         Status = coalesce(toint(Attributes["http.response.status_code"]), toint(Attributes["http.status_code"]), toint(ResultCode))
+| summarize Calls = count(), Errors4xx = countif(Status between (400 .. 499)), Errors5xx = countif(Status >= 500),
+            P95DurationMs = percentile(DurationMs, 95)
+    by RequestedModel, ResolvedModel, ApiKeyId
+| order by Calls desc
+
+// 3. Token usage reported by the backend, per model and API key (from request logs)
+//    Chat Completions reports prompt/completion tokens; the Responses API reports input/output tokens.
+//    Cached input tokens are part of the input tokens. Missing usage means "unknown", not zero.
+OTelLogs
+| where TimeGenerated > ago(24h)
+| extend Model = tostring(Attributes["gen_ai.request.model"]),
+         ApiKeyId = tostring(Attributes["azure.ai_gateway.api_key_id"]),
+         InputTokens = coalesce(tolong(Attributes["azure.ai_gateway.client.usage.prompt_tokens"]), tolong(Attributes["azure.ai_gateway.client.usage.input_tokens"])),
+         OutputTokens = coalesce(tolong(Attributes["azure.ai_gateway.client.usage.completion_tokens"]), tolong(Attributes["azure.ai_gateway.client.usage.output_tokens"])),
+         CachedInputTokens = coalesce(tolong(Attributes["azure.ai_gateway.client.usage.prompt_tokens_details.cached_tokens"]), tolong(Attributes["azure.ai_gateway.client.usage.input_tokens_details.cached_tokens"]))
+| where isnotnull(InputTokens) or isnotnull(OutputTokens)
+| summarize Requests = count(), InputTokens = sum(InputTokens), CachedInputTokens = sum(CachedInputTokens),
+            OutputTokens = sum(OutputTokens)
+    by Model, ApiKeyId
+| extend TotalTokens = InputTokens + OutputTokens
+| order by TotalTokens desc
+
+// 4. Policy impact: which policies ran, and how often the request ended in 4xx
+//    A 4xx on a trace where a policy ran usually means that policy rejected it. Open the trace to confirm.
+let requests = OTelSpans
+| where TimeGenerated > ago(24h)
+| where Kind =~ "Server"
+| project TraceId, Status = coalesce(toint(Attributes["http.response.status_code"]), toint(Attributes["http.status_code"]), toint(ResultCode));
+OTelSpans
+| where TimeGenerated > ago(24h)
+| extend PolicyType = tostring(Attributes["azure.apim.policy.type"]), ErrorType = tostring(Attributes["error.type"])
+| where isnotempty(PolicyType)
+| where PolicyType !in ("forward-request", "set-backend-service", "llm-emit-token-metric", "llm-emit-cost-metric")
+| join kind=inner requests on TraceId
+| summarize Requests = dcount(TraceId), RequestsEndingIn4xx = dcountif(TraceId, Status between (400 .. 499)),
+            ErrorTypes = make_set_if(ErrorType, isnotempty(ErrorType), 5), LastExecuted = max(TimeGenerated)
+    by PolicyType
+| order by RequestsEndingIn4xx desc
+
+// 5. Slowest model calls: total time versus time spent waiting for the backend
+let backend = OTelSpans
+| where TimeGenerated > ago(24h)
+| where Name == "backend"
+| project TraceId, BackendMs = DurationMs;
+OTelSpans
+| where TimeGenerated > ago(24h)
+| where Kind =~ "Server" and tostring(Attributes["http.route"]) contains "/models/"
+| project TimeGenerated, TraceId, Model = tostring(Attributes["gen_ai.request.model"]), TotalMs = DurationMs
+| join kind=leftouter backend on TraceId
+| extend GatewayMs = TotalMs - BackendMs
+| project TimeGenerated, TraceId, Model, TotalMs, BackendMs, GatewayMs
+| top 20 by TotalMs desc
+
+// 6. MCP tool calls by tool name
+OTelSpans
+| where TimeGenerated > ago(24h)
+| extend Operation = coalesce(tostring(Attributes["gen_ai.operation.name"]), tostring(Attributes["azure.ai_gateway.operation.name"]), tostring(Attributes["mcp.method.name"])),
+         ToolName = tostring(Attributes["gen_ai.tool.name"])
+| where Operation =~ "tools/call" or Name startswith "tools/call "
+| where isnotempty(ToolName)
+| summarize Calls = count(), Errors = countif(StatusCode =~ "Error") by ToolName
+| order by Calls desc
+
+// 7. Every span of one trace, in order (paste a trace ID from Monitoring › Traces)
+let traceId = "<trace-id>";
+OTelSpans
+| where TimeGenerated > ago(30d)
+| where TraceId == traceId
+| project TimeGenerated, SpanId, ParentSpanId, Name, Kind, DurationMs, StatusCode,
+          PolicyType = tostring(Attributes["azure.apim.policy.type"]), Attributes
+| order by TimeGenerated asc

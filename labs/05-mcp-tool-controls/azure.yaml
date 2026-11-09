@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+# Lab 05: "azd up" creates a gateway, the learn MCP server with tool rules and a request rate limit, and a runtime API key.
+# The lab clones the repo's main branch from GitHub and runs azd up in this folder.
+name: aigw-lab05
+metadata:
+  template: aigw-lab05@1.0.0
+infra:
+  provider: bicep
+  path: infra

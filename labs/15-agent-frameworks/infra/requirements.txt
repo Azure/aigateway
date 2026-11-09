@@ -1,0 +1,23 @@
+# Tested together on Python 3.13 (Python 3.10 or later is required).
+#   python -m venv .venv
+#   source .venv/bin/activate          # Windows: .venv\Scripts\Activate.ps1
+#   pip install -r requirements.txt
+# Pick only the framework you need if you prefer: each group below is independent, except the shared lines.
+
+# Shared
+mcp==1.30.0
+openai==3.26.0
+python-dotenv==1.2.4
+
+# Microsoft Agent Framework
+agent-framework-core==1.21.0
+agent-framework-openai==1.15.0
+
+# OpenAI Agents SDK
+openai-agents==0.23.1
+
+# LangChain and LangGraph
+langchain==1.4.3
+langchain-openai==1.6.7
+langgraph==1.2.14
+langchain-mcp-adapters==0.3.2

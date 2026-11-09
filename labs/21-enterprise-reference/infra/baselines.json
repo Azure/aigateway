@@ -1,0 +1,16 @@
+[
+  {
+    "type": "requestRateLimit",
+    "callsPerPeriod": 120,
+    "periodSeconds": 60,
+    "counterKey": ["identity"],
+    "scope": "workspace"
+  },
+  {
+    "type": "costLimit",
+    "amount": 20,
+    "period": "day",
+    "counterKey": ["identity"],
+    "scope": "workspace"
+  }
+]

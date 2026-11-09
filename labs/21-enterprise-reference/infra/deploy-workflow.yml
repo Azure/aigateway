@@ -1,0 +1,117 @@
+# Sample GitHub Actions workflow for the enterprise reference deployment.
+#
+# Copy this file to .github/workflows/deploy-ai-gateway.yml in your own repository, with the lab's infra folder at the
+# repository root (infra/main.bicep, infra/main.bicepparam, infra/prod.bicepparam, infra/scripts/...).
+#
+# It signs in to Azure with OpenID Connect (no client secret is stored in GitHub), installs the aigateway CLI extension
+# that the scripts use, previews the change with what-if, deploys the subscription-scope template, connects the
+# gateway's telemetry to Application Insights, applies the gateway-wide baseline policies, and runs the smoke test.
+#
+# One-time setup (see the lab for the commands):
+#   - A Microsoft Entra app registration (or user-assigned managed identity) with a federated credential for each
+#     GitHub environment: issuer https://token.actions.githubusercontent.com,
+#     subject repo:<org>/<repo>:environment:<dev|prod>, audience api://AzureADTokenExchange.
+#   - That identity needs Contributor and Role Based Access Control Administrator on the target subscription,
+#     because the template creates resource groups and role assignments.
+#   - GitHub environments named dev and prod (add required reviewers to prod), each with the variables
+#     AZURE_CLIENT_ID, AZURE_TENANT_ID, and AZURE_SUBSCRIPTION_ID.
+name: Deploy AI Gateway
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        type: choice
+        options:
+          - dev
+          - prod
+        default: dev
+  push:
+    branches:
+      - main
+    paths:
+      - infra/**
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-ai-gateway-${{ inputs.environment || 'dev' }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || 'dev' }}
+    env:
+      DEPLOYMENT_LOCATION: eastus2
+      PARAMETERS_FILE: ${{ (inputs.environment || 'dev') == 'prod' && 'infra/prod.bicepparam' || 'infra/main.bicepparam' }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Sign in to Azure with OpenID Connect
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install the aigateway CLI extension
+        run: curl -fsSL https://aka.ms/aigateway-cli-install | sh
+
+      - name: Preview changes
+        run: |
+          az deployment sub what-if \
+            --name "aigw-${{ github.run_id }}" \
+            --location "$DEPLOYMENT_LOCATION" \
+            --template-file infra/main.bicep \
+            --parameters "$PARAMETERS_FILE"
+
+      - name: Deploy
+        id: deploy
+        run: |
+          OUTPUTS="$(az deployment sub create \
+            --name "aigw-${{ github.run_id }}" \
+            --location "$DEPLOYMENT_LOCATION" \
+            --template-file infra/main.bicep \
+            --parameters "$PARAMETERS_FILE" \
+            --query properties.outputs --output json)"
+          # Deployment output names can come back with a different first-letter casing, so match case-insensitively.
+          out() { jq -r --arg k "$1" 'to_entries[] | select((.key | ascii_upcase) == $k) | .value.value' <<<"$OUTPUTS"; }
+          {
+            echo "resource-group=$(out AI_GATEWAY_RESOURCE_GROUP)"
+            echo "gateway=$(out AI_GATEWAY_NAME)"
+            echo "gateway-url=$(out AI_GATEWAY_URL)"
+            echo "alias=$(out AI_GATEWAY_MODEL)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Connect telemetry
+        env:
+          RG: ${{ steps.deploy.outputs.resource-group }}
+          GATEWAY: ${{ steps.deploy.outputs.gateway }}
+        run: bash infra/scripts/connect-telemetry.sh
+
+      - name: Apply gateway baseline policies
+        env:
+          RG: ${{ steps.deploy.outputs.resource-group }}
+          GATEWAY: ${{ steps.deploy.outputs.gateway }}
+        run: bash infra/scripts/apply-baselines.sh infra/baselines.json
+
+      - name: Smoke test
+        env:
+          RG: ${{ steps.deploy.outputs.resource-group }}
+          GATEWAY: ${{ steps.deploy.outputs.gateway }}
+        run: bash infra/scripts/smoke-test.sh "${{ steps.deploy.outputs.alias }}" web-chat learn
+
+      - name: Summary
+        run: |
+          {
+            echo "### AI Gateway deployed"
+            echo "- Environment: ${{ inputs.environment || 'dev' }}"
+            echo "- Gateway: ${{ steps.deploy.outputs.gateway }}"
+            echo "- Endpoint: ${{ steps.deploy.outputs.gateway-url }}"
+            echo "- Alias: ${{ steps.deploy.outputs.alias }}"
+          } >> "$GITHUB_STEP_SUMMARY"

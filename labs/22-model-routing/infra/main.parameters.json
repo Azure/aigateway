@@ -1,0 +1,24 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": {
+      "value": "${AZURE_ENV_NAME}"
+    },
+    "location": {
+      "value": "${AZURE_LOCATION}"
+    },
+    "candidateModelName": {
+      "value": "${CANDIDATE_MODEL=gpt-6.1-sol}"
+    },
+    "candidateModelVersion": {
+      "value": "${CANDIDATE_MODEL_VERSION=2026-09-29}"
+    },
+    "strategy": {
+      "value": "${ROUTING_STRATEGY=weighted}"
+    },
+    "candidateWeight": {
+      "value": "${ROUTING_CANDIDATE_WEIGHT=20}"
+    }
+  }
+}

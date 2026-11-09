@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+# Lab 11: "azd up" creates the quick start's gateway, model, and runtime API key, then grants you an AI Gateway role.
+# The lab clones the repo's main branch from GitHub and runs azd up in this folder.
+name: aigw-lab11
+metadata:
+  template: aigw-lab11@1.0.0
+infra:
+  provider: bicep
+  path: infra

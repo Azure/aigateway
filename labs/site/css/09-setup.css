@@ -1,0 +1,121 @@
+/* Setup guide: the lab checklists, the side panel, the /setup/ page marks, the badges, and the toast action. */
+
+/* A lab's "One-time setup" checklist (<!-- setup: … -->) */
+.setup-check { margin: 0 0 24px; border: 1px solid var(--stroke); border-radius: var(--radius-l); background: var(--bg-2); overflow: hidden; }
+.setup-check svg { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.setup-check .btn-sm svg { width: 16px; height: 16px; }
+.setup-check-head { display: flex; align-items: flex-start; gap: 12px; padding: 14px 14px 8px 16px; }
+.setup-check-icon { flex: none; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 9px; background: var(--brand-bg); color: var(--brand-fg); }
+.setup-check-head p { flex: 1; min-width: 0; margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; line-height: 1.45; }
+.setup-check-head strong { font-size: 15.5px; }
+.setup-check-count { font-size: 12px; font-weight: 600; line-height: 1.6; color: var(--brand-fg); background: var(--brand-bg); padding: 0 8px; border-radius: 999px; }
+.setup-check-count:empty { display: none; }
+.setup-check-sub { flex-basis: 100%; font-size: 13.5px; color: var(--fg-3); }
+.setup-check-list { list-style: none; margin: 0 !important; padding: 0 8px 8px !important; display: grid; gap: 1px; }
+.setup-check-list li {
+  display: flex; align-items: flex-start; gap: 12px; margin: 0; padding: 8px 10px; border-radius: var(--radius);
+  transition: opacity .2s, transform .22s var(--ease), background .15s;
+}
+.setup-check-list li:hover { background: var(--bg-3); }
+.setup-check-list li.leaving { opacity: 0; transform: translateX(14px); }
+.setup-check-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.4; }
+.setup-check-text a { font-weight: 600; font-size: 14.5px; }
+.setup-check-when { font-size: 13px; color: var(--fg-3); }
+.setup-check-done { margin: 0 !important; display: flex; align-items: center; gap: 10px; padding: 10px 16px; font-size: 14px; color: var(--fg-2); }
+.setup-check-done svg { color: var(--success); }
+.setup-check-done .link-btn { margin-left: auto; font-size: 13.5px; font-weight: 600; }
+.setup-check.all-done { background: var(--success-bg); border-color: var(--success-stroke); }
+.setup-check.all-done .setup-check-head { display: none; }
+
+/* The round tick, in the checklists and the panel */
+.setup-tick {
+  flex: none; width: 22px; height: 22px; margin-top: 1px; padding: 0; display: grid; place-items: center; border-radius: 50%;
+  border: 1.5px solid var(--fg-4); background: var(--bg-elev); color: transparent; cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s, transform .15s var(--ease);
+}
+.setup-tick svg, .setup-tick .i { width: 14px; height: 14px; stroke-width: 2.2; }
+.setup-tick:hover { border-color: var(--success); color: var(--success); }
+.setup-tick:active { transform: scale(.92); }
+.setup-tick[aria-pressed="true"] { background: var(--success-solid); border-color: var(--success-solid); color: #fff; }
+
+/* Badges and pills: "3 left", "4 of 7 done" */
+.setup-badge {
+  display: inline-flex; align-items: center; margin-left: auto; padding: 0 7px; border-radius: 999px; font-size: 11px; font-weight: 600;
+  line-height: 18px; background: var(--brand-bg); color: var(--brand-fg); white-space: nowrap;
+}
+.btn .setup-badge { margin-left: 2px; }
+.setup-badge.done { padding: 0 3px; background: var(--success-bg); color: var(--success); }
+.setup-badge .i { width: 12px !important; height: 12px !important; stroke-width: 2.4; }
+.setup-pill {
+  display: inline-flex; align-items: center; gap: 4px; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  line-height: 22px; background: var(--brand-bg); color: var(--brand-fg); white-space: nowrap;
+}
+.setup-pill.done { background: var(--success-bg); color: var(--success); }
+.setup-pill .i { width: 14px; height: 14px; stroke-width: 2.2; }
+.setup-pill-hero { height: 32px; padding: 0 12px; font-size: 13px; }
+
+/* The side panel */
+.setup-drawer .drawer-card { width: min(600px, 100%); }
+.setup-drawer .drawer-head h2 { flex: 0 1 auto; }
+.setup-drawer .drawer-head .icon-btn { margin-left: auto; }
+.setup-meter { height: 4px; margin: 4px 20px 12px; border-radius: 2px; background: var(--bg-4); overflow: hidden; }
+.setup-meter span { display: block; height: 100%; transform: scaleX(var(--p, 0)); transform-origin: left; background: var(--grad); transition: transform .35s var(--ease); }
+.setup-rows { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 2px 14px 18px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; align-content: start; }
+.setup-row { border: 1px solid var(--stroke); border-radius: var(--radius-l); background: var(--bg-elev); scroll-margin-top: 4px; transition: border-color .15s, box-shadow .15s; }
+.setup-row.open { border-color: var(--stroke-strong); box-shadow: var(--shadow-s); }
+.setup-row.ref { background: var(--bg-2); }
+.setup-row-head { display: flex; align-items: center; gap: 6px; padding: 6px 8px 6px 12px; }
+.setup-ref-icon { flex: none; width: 22px; display: grid; place-items: center; color: var(--fg-4); }
+.setup-ref-icon .i { width: 18px; height: 18px; }
+.setup-row-toggle {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 6px 6px; border: 0; border-radius: var(--radius);
+  background: none; color: var(--fg); font: inherit; text-align: left; cursor: pointer;
+}
+.setup-row-toggle:hover { background: var(--bg-3); }
+.setup-row-text { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.setup-row-title { font-weight: 600; font-size: 14.5px; line-height: 1.35; }
+.setup-row-title code, .setup-row-when code { font-size: .9em; }
+.setup-row-when { font-size: 12.5px; line-height: 1.4; color: var(--fg-3); }
+.setup-row-toggle > .i { width: 16px; height: 16px; color: var(--fg-4); transition: transform .2s var(--ease); }
+.setup-row.open .setup-row-toggle > .i { transform: rotate(90deg); }
+.setup-row.done .setup-row-title { color: var(--fg-3); }
+.setup-row-body { padding: 0 16px 14px; border-top: 1px solid var(--stroke-2); }
+.setup-row-content.prose { font-size: 14.5px; line-height: 1.6; }
+.setup-row-content.prose > :first-child { margin-top: 14px; }
+.setup-row-content.prose h3 { margin: 22px 0 8px; font-size: 16px; }
+.setup-row-content.prose p, .setup-row-content.prose ul, .setup-row-content.prose ol { margin-bottom: 12px; }
+.setup-row-content .code { margin-bottom: 14px; }
+.setup-loading { color: var(--fg-4); }
+.setup-row-actions { display: flex; justify-content: flex-end; padding-top: 2px; }
+.setup-row-actions .btn-secondary { color: var(--success); border-color: var(--success-stroke); background: var(--success-bg); }
+.setup-help { display: flex; align-items: center; gap: 8px; margin: 6px 6px 0; font-size: 13px; color: var(--fg-3); }
+.setup-help .i { width: 16px; height: 16px; color: var(--fg-4); }
+.setup-foot-end { display: flex; gap: 8px; }
+
+/* The /setup/ page: a "Mark as done" bar under each task heading, and done marks in the nav */
+.setup-mark { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: -2px 0 18px; }
+.setup-mark-when { font-size: 13.5px; color: var(--fg-3); }
+.setup-mark [aria-pressed="true"] { background: var(--success-bg); border-color: var(--success-stroke); color: var(--success); }
+.rn-nav-list a.setup-done > span::after { content: " ✓"; color: var(--success); font-weight: 700; }
+
+/* Toast with an action, such as Undo */
+.toast.has-action { pointer-events: auto; padding-right: 8px; }
+.toast-action {
+  margin-left: 6px; padding: 4px 12px; border: 0; border-radius: 999px; cursor: pointer;
+  background: color-mix(in srgb, var(--bg) 18%, transparent); color: var(--bg); font: 600 13px var(--font);
+}
+.toast-action:hover { background: color-mix(in srgb, var(--bg) 28%, transparent); }
+
+@media (max-width: 720px) {
+  .setup-check-head { flex-wrap: wrap; }
+  .setup-check-head .btn { margin-left: 46px; }
+  .setup-rows { padding: 2px 10px 14px; }
+  .setup-row-body { padding: 0 12px 12px; }
+  .setup-drawer .drawer-foot { flex-wrap: wrap; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .setup-check-list li, .setup-meter span, .setup-row-toggle > .i { transition: none; }
+}
+@media print {
+  .setup-tick, .setup-check-head .btn, .setup-mark { display: none !important; }
+}

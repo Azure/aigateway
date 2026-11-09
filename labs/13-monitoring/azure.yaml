@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+# Lab 13: "azd up" creates the quick start's gateway, model, and runtime API key, then an Application Insights
+# destination, and connects the gateway to it over OpenTelemetry once Azure has created the OTLP endpoints.
+# The lab clones the repo's main branch from GitHub and runs azd up in this folder.
+name: aigw-lab13
+metadata:
+  template: aigw-lab13@1.0.0
+infra:
+  provider: bicep
+  path: infra
+hooks:
+  # The telemetry exporter needs the component's OTLP endpoints and the Monitoring Metrics Publisher role on its data
+  # collection rule, and Azure creates the endpoints and the rule a few minutes after the deployment turns OTLP
+  # ingestion on. So after each deployment, azd runs connect-telemetry.sh: it waits for them, assigns the role, then
+  # deploys the exporter. When azd provision finds no changes to deploy, it skips this hook too: run
+  # "azd hooks run postprovision" to run it on its own. Running it again is harmless.
+  postprovision:
+    posix:
+      shell: sh
+      run: ./infra/connect-telemetry.sh infra/otel-exporter.bicepparam
+    windows:
+      shell: pwsh
+      run: ./infra/connect-telemetry.ps1 -ParametersFile infra/otel-exporter.bicepparam

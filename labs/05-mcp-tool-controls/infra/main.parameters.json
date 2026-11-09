@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": {
+      "value": "${AZURE_ENV_NAME}"
+    },
+    "location": {
+      "value": "${AZURE_LOCATION}"
+    },
+    "allowedTools": {
+      "value": "${MCP_ALLOWED_TOOLS=[\"*_search\"]}"
+    },
+    "blockedTools": {
+      "value": "${MCP_BLOCKED_TOOLS=[\"*code_sample*\"]}"
+    },
+    "serverAccess": {
+      "value": "${MCP_SERVER_ACCESS=active}"
+    },
+    "callsPerPeriod": {
+      "value": "${REQUEST_RATE_LIMIT=5}"
+    },
+    "periodSeconds": {
+      "value": "${REQUEST_RATE_LIMIT_PERIOD=30}"
+    },
+    "counterKey": {
+      "value": "${REQUEST_RATE_LIMIT_COUNTER_KEY=[\"identity\"]}"
+    }
+  }
+}
