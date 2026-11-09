@@ -8,22 +8,46 @@ The public skill names and boundaries are retained. A development-only
 planning agent denies all tools; it is not an installed runtime skill.
 
 **Current status:** planning completion is not established. The latest complete
-combined trial passed **17/18 original scenarios and 3/3 holdouts**. All 21
-recorded deny-all with zero tool calls/events/denials. It used 42.0811 AI credits
-and 192.570 seconds. Its sole failure was an evaluator omission: the bootstrap
-plan read the exact selected Foundry account and its deployments before creation.
-Those authorized prerequisite reads were missing from that scenario's explicit
-read list. They are now enumerated with scope and mutation rejection tests.
+combined trial passed **17/18 original scenarios and 2/3 holdouts**, or **19/21**.
+All 21 recorded deny-all with zero tool calls/events/denials. It used 42.0101 AI
+credits and 188.135 seconds. Both failures concern approval-action wording:
+the bootstrap and Foundry role-scope holdout proposed the exact pending command
+and exact two approval scopes, but their account-versus-deployment explanations
+did not match the evaluator's anchored sentence grammar. Syntax passed throughout.
+No execution or tool-policy failure was found.
+
+Paid execution stopped on this repeated comparison problem rather than adding
+more accepted sentences and spending another trial. The initial trial and five
+of six additional invocations have been used; one remains unused. Total
+assistant-owned usage is 233.74075 AI credits and 120 premium requests/turns,
+including the previously disclosed console-only invocation. There is no
+all-green fresh trial or repeatability streak.
+
+The preceding fresh trial passed 17/18 originals and 3/3 holdouts, or 20/21,
+using 42.0811 credits and 192.570 seconds. Its bootstrap plan read the exact
+selected Foundry account and its deployments before creation. Those authorized
+prerequisite reads were missing from that scenario's explicit read list; they
+are now enumerated with scope and mutation rejection tests.
 The earlier optional name-only gateway-root read is corrected in a fresh
 execution; root inspection is not mandatory.
 
-Offline replay of the unchanged latest combined outputs passes 21/21 behavior checks
-and 21/21 syntax checks after those evaluator corrections. The recorded fresh
-score remains 20/21. Correct derived URLs, SystemAssigned identity, natural
+Offline replay of that preceding trial's unchanged outputs passes 21/21 behavior
+and syntax checks after the prerequisite correction; its recorded fresh score
+remains 20/21. The latest trial remains 19/21 behavior and 21/21 syntax under
+the unchanged evaluator. Correct derived URLs, SystemAssigned identity, natural
 approval-action wording and colored JSON retain their meaning; scope, roles,
 composite counters, both post-create verification reads and alias write order
 remain strict. Only enumerated, task-scoped prerequisite/dependency reads are
 accepted. A replay does not test the changed skill or establish repeatability.
+
+### Open question
+
+How should approval operations be represented independently of explanatory prose?
+The current exact command and scope checks are necessary, but the action sentence
+grammar remains an unreliable semantic proxy. A durable correction must separate
+typed approval operations from explanation without teaching scenario answers or
+accepting negated, broader-role or wrong-scope approvals. That design is unresolved;
+the latest two failures are not reclassified as fresh passes.
 
 The task-context correction supplies selected sections directly from the public
 skill references plus recorded local CLI help. It does not put oracle answers
