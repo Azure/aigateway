@@ -8,22 +8,34 @@ The public skill names and boundaries are retained. A development-only
 planning agent denies all tools; it is not an installed runtime skill.
 
 **Current status:** planning completion is not established. The latest complete
-combined trial passed **17/18 original scenarios and 2/3 holdouts**, or **19/21**.
-All 21 recorded deny-all with zero tool calls/events/denials. It used 42.0101 AI
-credits and 188.135 seconds. Both failures concern approval-action wording:
+combined trial passed **17/18 original scenarios and 3/3 holdouts**, or **20/21**.
+All 21 recorded deny-all with zero tool calls/events/denials. It used 42.65535 AI
+credits and 189.511 seconds. Typed approvals passed both bootstrap and the
+Foundry role-scope holdout. The sole remaining recorded failure was the alias
+grader rejecting a scoped same-name gateway-family inventory read required by
+the management skill before name-selected operations. That exact read is now
+enumerated; foreign scope/name, omitted name, mutation and alias-order negatives
+remain strict. Offline replay of the unchanged final outputs passes 21/21 behavior
+and syntax checks. The recorded fresh score remains 20/21, not 21/21.
+
+The authorized ceiling is exhausted: the initial trial and all six additional
+invocations have been used. Total assistant-owned usage is 276.39610 AI credits
+and 141 premium requests/turns, including the disclosed console-only invocation.
+There is no all-green fresh trial or repeatability streak. Further model calls
+require new authorization; no automatic rerun is scheduled.
+
+The preceding trial passed 17/18 originals and 2/3 holdouts, or 19/21, using
+42.0101 credits and 188.135 seconds. Its two failures concerned approval wording:
 the bootstrap and Foundry role-scope holdout proposed the exact pending command
 and exact two approval scopes, but their account-versus-deployment explanations
 did not match the evaluator's anchored sentence grammar. Syntax passed throughout.
 No execution or tool-policy failure was found.
 
-Paid execution stopped on this repeated comparison problem rather than adding
-more accepted sentences and spending another trial. The initial trial and five
-of six additional invocations have been used; one remains unused. Total
-assistant-owned usage is 233.74075 AI credits and 120 premium requests/turns,
-including the previously disclosed console-only invocation. There is no
-all-green fresh trial or repeatability streak.
+Execution paused on that repeated comparison problem rather than adding more
+sentence special cases. The subsequent correction separates typed approval
+operations from explanations and used the final authorized invocation.
 
-The preceding fresh trial passed 17/18 originals and 3/3 holdouts, or 20/21,
+An earlier fresh trial passed 17/18 originals and 3/3 holdouts, or 20/21,
 using 42.0811 credits and 192.570 seconds. Its bootstrap plan read the exact
 selected Foundry account and its deployments before creation. Those authorized
 prerequisite reads were missing from that scenario's explicit read list; they
@@ -31,10 +43,11 @@ are now enumerated with scope and mutation rejection tests.
 The earlier optional name-only gateway-root read is corrected in a fresh
 execution; root inspection is not mandatory.
 
-Offline replay of that preceding trial's unchanged outputs passes 21/21 behavior
+Offline replay of that earlier trial's unchanged outputs passes 21/21 behavior
 and syntax checks after the prerequisite correction; its recorded fresh score
-remains 20/21. The latest trial remains 19/21 behavior and 21/21 syntax under
-the unchanged evaluator. Correct derived URLs, SystemAssigned identity, natural
+remains 20/21. The prior sentence-format trial remains 19/21 behavior and 21/21
+syntax; its output is not rewritten into typed approvals. Correct derived URLs,
+SystemAssigned identity, natural
 approval-action wording and colored JSON retain their meaning; scope, roles,
 composite counters, both post-create verification reads and alias write order
 remain strict. Only enumerated, task-scoped prerequisite/dependency reads are
@@ -57,7 +70,8 @@ moving pending work into the approved command plan fail. Sentence wording is not
 a proxy for those checks. No scenario-to-answer mapping enters model inputs.
 The prior bounded sentence format remains only for historical compatibility;
 its unchanged outputs and recorded failures are not retroactively converted into
-typed approvals or fresh passes. This correction requires a new model trial.
+typed approvals or fresh passes. The final authorized fresh trial exercised
+this typed contract; both formerly failing approval scenarios passed.
 
 The task-context correction supplies selected sections directly from the public
 skill references plus recorded local CLI help. It does not put oracle answers

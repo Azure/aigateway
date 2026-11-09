@@ -533,5 +533,6 @@ cases:
       - az aigateway model-alias show --subscription sub-eval -g rg-eval --gateway-name gw-eval -n arm-alias-17 -o json
     supplemental_reads:
       - az aigateway show --subscription sub-eval --ids /subscriptions/sub-eval/resourceGroups/rg-eval/providers/Microsoft.ApiManagement/aigateways/gw-eval -o json
+      - az resource list --subscription sub-eval -g rg-eval --name gw-eval -o json
       - az aigateway model-alias show --subscription sub-eval -g rg-eval --gateway-name gw-eval -n billing-arm-alias -o json
     forbidden_commands: ['--policies', '--routing-name', 'model-provider update', 'model update', 'model-alias delete']

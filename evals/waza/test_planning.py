@@ -217,13 +217,21 @@ exec """ + repr(sys.executable) + """ "$@"
     def test_dependency_reads_cannot_replace_or_reorder_alias_mutations(self):
         case = next(c for c in cases() if c["id"] == "alias-routing-sibling-preservation")
         before, update, after = case["required_commands"]
-        root, sibling = case["supplemental_reads"]
-        self.assertTrue(plan_matches(case, [root, before, update, after, sibling],
+        root, family, sibling = case["supplemental_reads"]
+        self.assertTrue(plan_matches(case, [root, family, before, update, after, sibling],
                                      case["required_commands"]))
         for commands in ([root, update, before, after],
                          [before, update, after, sibling.replace(" show ", " update ")],
                          [before, update, after, sibling.replace("billing-arm-alias", "foreign")]):
             self.assertFalse(plan_matches(case, commands, case["required_commands"]))
+        for changed in (
+                family.replace("sub-eval", "foreign"),
+                family.replace("rg-eval", "foreign-rg"),
+                family.replace("gw-eval", "sibling"),
+                family.replace("--name gw-eval ", ""),
+                family.replace("resource list", "resource delete")):
+            self.assertFalse(plan_matches(case, [changed, before, update, after],
+                                          case["required_commands"]))
 
     def test_approval_sentence_variants_do_not_accept_negation_or_broader_roles(self):
         case = next(c for c in cases() if c["id"] == "selected-rg-bootstrap")
