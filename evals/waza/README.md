@@ -17,6 +17,8 @@ All 21 tasks reached inference, passed syntax and recorded complete deny-all
 evidence with zero tool calls/events/denials. Benchmark/policy exits were 1/0.
 Paid execution stopped after this first invocation of the latest three-run
 authorization; two invocations remain unused.
+The user subsequently chose **Stop paid trials**. No further paid invocation
+is scheduled; planning completion remains unestablished.
 
 The bootstrap model-inventory read is now explicitly allowed for the selected
 gateway. Exact typed-root and same-name family preflight reads are consistently
@@ -25,10 +27,40 @@ rather than requiring another per-scenario list addition. Other asset reads
 remain explicitly task-scoped; this does not permit runtime-only ARM discovery,
 foreign scope, secret reads, extra writes or replacement of required commands.
 The alias's mandatory family check and mutation ordering remain strict.
-The 60-test offline suite and regenerated combined binding pass. A distinct
-unchanged-output replay now passes 21/21 behavior and syntax; the fresh score
+At that correction, the 60-test offline suite and regenerated combined binding
+passed. A distinct unchanged-output replay passed 21/21 behavior and syntax; the fresh score
 remains 19/21. No scenario request, evidence or skill text changed in this
 subsequent correction, but the grader change resets repeatability.
+
+**Offline audit after stopping paid trials:** the eval also accepted bootstrap
+and approved Foundry create plans without the same-name family check required
+by the management recipe. A shared check now requires that inventory before
+the tested name-selected writes, including when a scenario omits it from its
+required-command list. Bootstrap and approved import explicitly include it.
+Parent reads do not substitute for child reads, prerequisites or post-write
+verification; approved Foundry post-write reads may occur in either order.
+Repeated exact already-required child reads are now accepted as additional
+reads, but an early read cannot discharge a later read-back or replace a write.
+This corrects a synthetic alias-plan false negative without adding new asset
+scope, secret reads or mutation permissions.
+No skill text, request, evidence, import scope or approval requirement changed.
+
+The audit covers all 21 tasks, nine management scenarios and 47 read-comparison
+rows, with equivalent flag/quoting forms and unsafe scope, identity, role,
+negation, missing-operation and ordering cases. It inspected 243 saved task/run
+records across 12 immutable results, including setup failures, not 243 new model
+calls. All 63 offline evaluation and 10 plugin regressions pass. A new distinct
+replay of the latest result still passes 21/21 behavior; the fresh score remains
+19/21. All 23 generated configuration/input files match the frozen snapshot.
+Older plans that omit preflight are not made safe by accepting equivalent reads;
+historical command diagnostics do not rescore their trials. This grader-only
+change resets repeatability. There was no Waza, model or Azure execution.
+
+These planning suites assess application of the supplied skill/reference/help
+text to fixed synthetic evidence. They do not establish that a product discovers,
+selects or progressively loads the skill, or behaves equivalently with live
+tools. The read comparison remains deliberately bounded, not an exhaustive
+equivalence checker for arbitrary CLI queries or projections.
 
 The preceding corrected candidate passed all 21 scenarios in one fresh
 trial, but the next unchanged trial passed **16/18 originals and 3/3 development
@@ -46,7 +78,7 @@ Those preceding two behavior failures needed different treatment:
   rejection was an evaluator read-list omission, now corrected with exact
   subscription/RG/gateway checks. Separately, the plan omits the
   same-name gateway-family check required by the management skill before
-  name-selected writes. The current grader does not independently require that
+  name-selected writes. At that trial the grader did not independently require that
   check. The corrected grader requires it before the update, allowing either
   order for the two prerequisite reads; an alias list or late family read cannot
   substitute for it. The skill now places this existing precaution next to

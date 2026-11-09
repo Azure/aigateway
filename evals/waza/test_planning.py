@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -14,7 +15,8 @@ import yaml
 from jsonschema import Draft7Validator
 
 from author import documents, task_context
-from grade import ROOT, behavior_expected, cases, evaluate, plan_matches, command_matches, normalize_command
+from grade import (ROOT, behavior_expected, cases, evaluate, plan_matches,
+                   command_matches, normalize_command, parent_reads, supplemental_read)
 from verify_planning import verify, verify_result, verify_preflight
 
 
@@ -282,13 +284,14 @@ exec """ + repr(sys.executable) + """ "$@"
         case = next(c for c in cases() if c["id"] == "approved-foundry-onboarding-scope")
         self.assertEqual([command for phase in case["behavior_phases"] for command in phase],
                          case["required_commands"])
-        create, models, identity = case["required_commands"]
-        self.assertTrue(plan_matches(case, [create, identity, models], case["required_commands"]))
-        for commands in ([identity, models, create], [create, identity], [create, models]):
+        family, create, models, identity = case["required_commands"]
+        self.assertTrue(plan_matches(case, [family, create, identity, models], case["required_commands"]))
+        for commands in ([family, identity, models, create], [family, create, identity],
+                         [family, create, models]):
             self.assertFalse(plan_matches(case, commands, case["required_commands"]))
         for read in case["supplemental_reads"]:
             self.assertFalse(plan_matches(case, [
-                read.replace("sub-eval", "foreign"), create, models, identity],
+                read.replace("sub-eval", "foreign"), family, create, models, identity],
                 case["required_commands"]))
 
     def test_colored_json_does_not_accept_table_or_weaken_typed_binding(self):
@@ -400,6 +403,97 @@ exec """ + repr(sys.executable) + """ "$@"
                         case.get("required_commands", [])))
         case = next(c for c in cases() if c["id"] == "runtime-only-known-endpoint")
         self.assertFalse(plan_matches(case, [family], []))
+
+    def test_all_read_comparisons_preserve_equivalence_scope_and_required_coverage(self):
+        inventory = cases() + yaml.safe_load((ROOT / "holdouts.yaml").read_text())["cases"]
+        for case in inventory:
+            required = case.get("required_commands", [])
+            if case.get("behavior_phases"):
+                self.assertEqual([c for phase in case["behavior_phases"] for c in phase], required)
+            reads = [*required, *case.get("supplemental_reads", []), *parent_reads(case)]
+            for read in reads:
+                route, options = normalize_command(read)
+                if route[-1:] not in (("show",), ("list",), ("wait",)):
+                    continue
+                with self.subTest(case=case["id"], route=route):
+                    words = list(route)
+                    aliases = {"--resource-group": "-g", "--name": "-n", "--output": "-o"}
+                    for flag, values in reversed(options):
+                        words.extend([aliases.get(flag, flag), *values])
+                    equivalent = shlex.join(words)
+                    self.assertTrue(command_matches(read, equivalent))
+                    if read in required:
+                        index = required.index(read)
+                        changed = [*required[:index], equivalent, *required[index + 1:]]
+                        self.assertTrue(plan_matches(case, changed, required))
+                    else:
+                        self.assertTrue(supplemental_read(case, equivalent))
+                    for field in ("--subscription", "--resource-group", "--gateway-name",
+                                  "--name", "--provider-name", "--ids"):
+                        flags = dict(options)
+                        if field not in flags:
+                            continue
+                        negative_words = list(route)
+                        for flag, values in options:
+                            negative_words.append(flag)
+                            negative_words.extend("foreign-target" if flag == field else value
+                                                  for value in values)
+                        negative = shlex.join(negative_words)
+                        self.assertFalse(command_matches(read, negative))
+                        self.assertFalse(plan_matches(case, [negative, *required], required))
+                    self.assertFalse(command_matches(read, read + " --subscription foreign"))
+                    self.assertFalse(command_matches(read, read + " --query secret"))
+                    if route[:2] == ("az", "aigateway") and len(route) > 3:
+                        self.assertFalse(command_matches(
+                            read, shlex.join(["az", "aigateway", "show",
+                                             *shlex.split(read)[len(route):]])))
+            if required:
+                self.assertFalse(plan_matches(case, [], required))
+
+    def test_family_preflight_is_required_before_every_name_selected_write(self):
+        for case in cases():
+            parents = parent_reads(case)
+            required = case.get("required_commands", [])
+            writes = [command for command in required
+                      if normalize_command(command)[0][-1:] in (("create",), ("update",))]
+            if not parents or not writes:
+                continue
+            with self.subTest(case=case["id"]):
+                family = parents[1]
+                without = [command for command in required
+                           if not command_matches(family, command)]
+                self.assertFalse(plan_matches(case, without, required))
+                self.assertFalse(plan_matches(case, [*without, family], required))
+                self.assertTrue(plan_matches(case, required, required))
+                # Shared protection still applies if a future scenario forgets
+                # to put its preflight into the required-operation list.
+                missing_oracle_read = copy.deepcopy(case)
+                missing_oracle_read.pop("behavior_phases", None)
+                missing_oracle_read["required_commands"] = without
+                self.assertFalse(plan_matches(missing_oracle_read, without, without))
+                self.assertTrue(plan_matches(missing_oracle_read, [family, *without], without))
+
+    def test_repeated_required_reads_do_not_substitute_for_later_required_operations(self):
+        inventory = cases() + yaml.safe_load((ROOT / "holdouts.yaml").read_text())["cases"]
+        for case in inventory:
+            required = case.get("behavior_commands", case.get("required_commands", []))
+            for read in required:
+                if normalize_command(read)[0][-1:] not in (("show",), ("list",), ("wait",)):
+                    continue
+                with self.subTest(case=case["id"], read=read):
+                    self.assertTrue(plan_matches(case, [read, *required, read], required))
+        case = next(c for c in cases() if c["id"] == "alias-routing-sibling-preservation")
+        family, before, update, after = case["required_commands"]
+        self.assertTrue(plan_matches(case, [family, before, before, update, after],
+                                     case["required_commands"]))
+        self.assertFalse(plan_matches(case, [family, before, after, update],
+                                      case["required_commands"]))
+        self.assertFalse(plan_matches(case, [family, before, before, after],
+                                      case["required_commands"]))
+        blocked = copy.deepcopy(case)
+        blocked.pop("behavior_phases")
+        blocked["behavior_commands"] = []
+        self.assertFalse(plan_matches(blocked, [before], []))
 
     def test_approval_sentence_variants_do_not_accept_negation_or_broader_roles(self):
         case = next(c for c in cases() if c["id"] == "selected-rg-bootstrap")

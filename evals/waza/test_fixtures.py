@@ -293,7 +293,9 @@ class Fixtures(unittest.TestCase):
         self.assertEqual(expected["importRole"], "Foundry User")
         self.assertEqual(expected["importedDeployments"], case["evidence"]["currentDeployments"])
         self.assertFalse(expected["selectedDeploymentApprovalAuthorizesWholeAccount"])
-        self.assertIn("--foundry-resource-id " + expected["importRoleScope"], case["required_commands"][0])
+        create = next(command for command in case["required_commands"]
+                      if command.startswith("az aigateway model-provider create "))
+        self.assertIn("--foundry-resource-id " + expected["importRoleScope"], create)
         self.assertIn("--deployment deployment-chat", expected["selectedDeploymentCommand"])
         self.assertEqual(expected["selectedDeploymentPath"], "model-create-foundry-resource-id-and-deployment")
 

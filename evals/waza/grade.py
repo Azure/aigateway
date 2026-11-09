@@ -456,8 +456,7 @@ def local_help_probe(case, command):
     return ("--help", ()) in options and valid_command_syntax(command)
 
 
-def supplemental_read(case, command):
-    reads = list(case.get("supplemental_reads", []))
+def parent_reads(case):
     evidence = case["evidence"]
     if case["skill"] == "manage-ai-gateway" and all(
             isinstance(evidence.get(field), str) and evidence[field]
@@ -465,15 +464,41 @@ def supplemental_read(case, command):
         sub, rg, gateway = (evidence[field] for field in (
             "subscription", "resourceGroup", "gateway"))
         root = f"/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ApiManagement/aigateways/{gateway}"
-        reads.extend([
+        return [
             f"az aigateway show --subscription {sub} --ids {root} --output json",
             f"az resource list --subscription {sub} --resource-group {rg} --name {gateway} --output json",
-        ])
+        ]
+    return []
+
+
+def supplemental_read(case, command):
+    reads = [*case.get("supplemental_reads", []), *parent_reads(case)]
+    for read in case.get("behavior_commands", case.get("required_commands", [])):
+        route, _ = normalize_command(read)
+        if route[-1:] in (("show",), ("list",), ("wait",)):
+            reads.append(read)
     return local_help_probe(case, command) or any(
         safe_command_matches(read, command) for read in reads)
 
 
 def plan_matches(case, commands, required):
+    parents = parent_reads(case)
+    family_checked = False
+    for command in commands:
+        if parents and safe_command_matches(parents[1], command):
+            family_checked = True
+        try:
+            route, options = normalize_command(command)
+        except ValueError:
+            return False
+        flags = dict(options)
+        write = (route[:2] == ("az", "aigateway") and route[-1:] in (
+            ("create",), ("update",), ("delete",), ("set",), ("remove",),
+            ("assign",), ("approve",), ("reject",), ("sync",)))
+        if (parents and write and "--ids" not in flags and "--help" not in flags
+                and not (route[-1:] == ("sync",) and "--dry-run" in flags)
+                and not family_checked):
+            return False
     phases = case.get("behavior_phases")
     if phases:
         remaining = [list(phase) for phase in phases]

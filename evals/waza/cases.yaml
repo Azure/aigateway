@@ -31,7 +31,9 @@ cases:
         importRole: Foundry User
         importRoleScope: /subscriptions/sub-eval/resourceGroups/rg-models/providers/Microsoft.CognitiveServices/accounts/foundry-eval
         importExecuted: false
-    required_commands: ['az aigateway create --subscription sub-eval --resource-group rg-eval --name gw-eval --location westus2']
+    required_commands:
+      - az resource list --subscription sub-eval --resource-group rg-eval --name gw-eval --output json
+      - az aigateway create --subscription sub-eval --resource-group rg-eval --name gw-eval --location westus2
     supplemental_reads:
       - az resource list --subscription sub-eval -g rg-eval --name gw-eval -o json
       - az cognitiveservices account show --subscription sub-eval -g rg-models --name foundry-eval -o json
@@ -468,10 +470,12 @@ cases:
         identityAndRoleVerified: false
         runtimeVerified: false
     required_commands:
+      - az resource list --subscription sub-eval --resource-group rg-eval --name gw-eval --output json
       - az aigateway model-provider create --subscription sub-eval -g rg-eval --gateway-name gw-eval -n foundry-approved --foundry-resource-id /subscriptions/sub-eval/resourceGroups/rg-models/providers/Microsoft.CognitiveServices/accounts/foundry-eval
       - az aigateway model list --subscription sub-eval -g rg-eval --gateway-name gw-eval --provider-name foundry-approved -o json
       - az aigateway show --subscription sub-eval -g rg-eval -n gw-eval -o json
     behavior_phases:
+      - [az resource list --subscription sub-eval --resource-group rg-eval --name gw-eval --output json]
       - [az aigateway model-provider create --subscription sub-eval -g rg-eval --gateway-name gw-eval -n foundry-approved --foundry-resource-id /subscriptions/sub-eval/resourceGroups/rg-models/providers/Microsoft.CognitiveServices/accounts/foundry-eval]
       - - az aigateway model list --subscription sub-eval -g rg-eval --gateway-name gw-eval --provider-name foundry-approved -o json
         - az aigateway show --subscription sub-eval -g rg-eval -n gw-eval -o json

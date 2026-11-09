@@ -21,11 +21,12 @@ least-privilege reads, explicit approvals, and evidence-aware recovery.
   response-shape, MCP-sequence and budget-formula checks. Run from the repository root:
 
   ```bash
-  PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s evals/waza -p 'test_*.py' -v
+  uv run --no-project --with pyyaml --with jsonschema \
+    python -m unittest discover -s evals/waza -p 'test_*.py' -q
   ```
 
-  These use already available Python, PyYAML and jsonschema; no installation,
-  credentials, models, or Azure calls.
+  These use uv-managed Python, PyYAML and jsonschema without credentials,
+  model calls or Azure calls. Missing Python/dependencies may require uv downloads.
 - **Harness:** checked-in Waza executor is `mock`, with two parallel workers.
   A supplied local smoke artifact reports 18 passes and no errors. Mock echoes
   inputs; its grader checks synthetic positive/missing-gate answers. These
@@ -68,10 +69,28 @@ least-privilege reads, explicit approvals, and evidence-aware recovery.
   21/21, not a fresh score; the 60-test suite passes. No request/evidence/skill
   change occurred in that correction, but repeatability resets.
   Paid runs stopped after that first invocation, with two unused; they cannot establish three
-  consecutive green trials. Session-local startup isolation and deny-all are
+  consecutive green trials. The user subsequently chose **Stop paid trials**;
+  no further paid invocation is scheduled. Session-local startup isolation and deny-all are
   not an OS filesystem/credential/network sandbox and do not test plugin
   discovery or progressive loading. Further execution needs sufficient explicit
   spending approval for the unchanged-candidate validation target.
+
+**Stopped-spending offline audit:** safe parent reads are consistently compared,
+but bootstrap and approved Foundry create plans could still omit the management
+recipe's family preflight. The shared plan checker now requires it before the
+tested name-selected writes. Scope/identity/role/negation and required child-read,
+mutation and read-back ordering remain strict. All 21 inputs retain their user
+intent and supplied evidence; no skill text or approval boundary changed.
+Repeated exact required child reads are accepted without replacing later
+read-back or missing writes; unrelated reads remain excluded.
+All 63 offline evaluation and 10 plugin regressions pass. The audit inspected
+12 immutable results and kept its diagnostics separate from saved fresh scores.
+The latest output still replays at 21/21; its fresh score remains 19/21.
+Repeatability is reset, not established, and paid trials remain stopped.
+
+This is fixed-input instruction-following evidence, not a test of actual skill
+discovery, selection or progressive loading. Genuine held-out evaluation,
+live CLI/data-plane behavior and matched CLI performance remain absent.
 
 The suite guide defines per-task behavior boundaries, separate representation/
 syntax checks, approval-pending plans, quality dimensions, proposed
