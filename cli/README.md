@@ -95,8 +95,7 @@ az aigateway show --resource-group "$RG" --name "$GATEWAY" --output table
 
 Creation waits for provisioning to finish. The gateway is an Azure AI Gateway
 resource (`Microsoft.ApiManagement/aigateways`); omitting `--sku` lets the
-service apply its default SKU (`Standard`), or pass
-`--sku Standard|Premium|Consumption` on `create` and `update`.
+service apply its default SKU (`Standard`), or pass `--sku Standard`.
 
 ### 2. Register an MCP server
 

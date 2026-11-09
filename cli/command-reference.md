@@ -129,8 +129,7 @@ command's help.
 
 Create a gateway in an existing resource group (all three arguments below are
 required). Use a globally unique name for `GATEWAY`; omitting `--sku` lets the
-service apply its default SKU (`Standard`), or pass
-`--sku Standard|Premium|Consumption` on `create` and `update`:
+service apply its default SKU (`Standard`), or pass `--sku Standard`:
 
 ```bash
 az aigateway create \
@@ -539,7 +538,7 @@ Remove-Variable AI_GATEWAY_API_KEY, request, responseHeaders
   `az aigateway model-provider sync` later to reconcile gateway models with
   newly added or removed Foundry deployments.
 - **Updates:** gateway `update --tags` replaces the existing tag set, and
-  `update --sku Standard|Premium|Consumption` changes the gateway tier. `model-provider update --foundry`
+  `update --sku Standard` sets the gateway tier. `model-provider update --foundry`
   and `--custom` deep-merge partial JSON updates with the existing provider
   configuration so you do not need to re-supply unchanged fields or existing
   API keys. Use `model policy` for token limits/content safety and `mcp source`
