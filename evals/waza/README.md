@@ -7,7 +7,29 @@ There are **18 baseline scenarios and three separately selected holdouts**.
 The public skills and their boundaries are unchanged. A development-only
 planning agent denies all tools; it is not an installed runtime skill.
 
-**Current status:** deterministic checks and a supplied local quality artifact
+**Current status:** planning completion is not established. The first corrected
+18-task trial passed 8/18 with recorded deny-all on every task and zero tool
+calls/events/denials. It used 30.9943 AI credits and 156.181 seconds.
+The next trial's console summary reported 12/18 passes, 35.79605 AI credits and
+163.499 seconds, but an assistant shell-preparation error left `--output` empty:
+the shell continued after an unavailable `python` command. No full result was
+saved and post-result policy verification could not run. That aggregate is not
+accepted whole-suite policy or repeatability evidence. Further paid runs stopped;
+one of six additional authorized invocations was used.
+
+The task-context correction supplies selected sections directly from the public
+skill references plus recorded local CLI help. It does not put oracle answers
+in inputs or change installed skill behavior. Offline replay of the first
+corrected result remains 8/18 for behavior; recorded version/help coverage changes
+syntax assessment to 16 pass/two unscored, not a fresh quality score.
+The three holdouts remain unexecuted. Completion requires all original and
+holdout scenarios passing with complete policy evidence across three frozen
+trials. Live CLI/data-plane and matched CLI performance evidence need separate
+authorization; neither is established here.
+
+## Historical baseline review
+
+Deterministic checks and a supplied local quality artifact
 have been reviewed. That artifact reports Copilot SDK / GPT-6.1 Sol, one run for
 each of 18 tasks: zero original contract passes, 18 contract failures, and no
 harness errors. It is not 18 established skill defects. The review found
@@ -42,13 +64,14 @@ Offline assessment of the unchanged baseline outputs under this new contract:
 The two behavior-contract failures are the bootstrap's flat conditional plan
 and the approved Foundry plan's additional reads/unmatched ordered command
 representation. They are not established unapproved executions. Remaining typed
-facts and unrecorded CLI syntax need a new operator-run planning trial or review;
+facts and unrecorded CLI syntax needed a new authorized planning trial or review;
 the baseline's zero original passes and previous replay's four passes are unchanged.
 
 The supplied smoke artifact reports 18 passes with the mock executor. That checks
 synthetic harness assertions, not model behavior. The saved quality configuration
-still contains the old, untyped prompts. Regenerate it with the preparation
-command before any separately authorized rerun; do not reuse it unchanged.
+made before the corrections contains old, untyped prompts. Regenerate it with
+the preparation command before any separately authorized rerun; do not reuse it
+unchanged.
 
 The original artifact remains local and ignored. Its redacted findings and
 follow-up are published in the [PR journal](https://github.com/Azure/aigateway/pull/38#issuecomment-6730494888),
@@ -101,8 +124,10 @@ Reviewed read-only/assessment phase alternatives do not waive any safety,
 command-plan or no-execution check. This is a
 conservative contract test, not proof of unconstrained skill routing.
 All commands in an answer are proposals: this suite never authorizes execution.
-New quality tasks instead supply selected skill text, synthetic evidence and
-types inline, without gate vocabulary, expected values, files or grader answers.
+New quality tasks instead supply selected skill text, task-specific authoritative
+reference sections, recorded local help, synthetic evidence and types inline.
+They also copy the identical evidence resource, without gate vocabulary,
+expected values or grader answers.
 The migration input is its assessment entry point before mapping/execution.
 No additional domain recipe is duplicated in the harness.
 
@@ -137,12 +162,12 @@ No remote repositories, remote graders, responders, or live MCP servers are used
 ## Explicit switch to authorized quality evaluation
 
 Do not just change `executor`: mock graders must be replaced as well.
-The operator, not the agent implementing these corrections, runs the following
-commands. No Waza command, mock run, model trial or Azure call was executed during
-this correction pass. After authorizing the specific model, source disclosure,
+Only the explicitly authorized executor runs these commands. Offline preparation
+does not itself authorize a paid trial. After authorizing the model, source disclosure,
 account, cost and trial budget, prepare and check the **18-task, one-trial** suite:
 
 ```bash
+set -euo pipefail
 uv run --no-project --with pyyaml --with jsonschema \
   python evals/waza/author.py --quality --authorized --model gpt-6.1-sol --trials 1
 uv run --no-project --with pyyaml --with jsonschema \
@@ -160,7 +185,7 @@ does not authenticate, install anything, or run a model. It changes the executor
 to `copilot-sdk`, the model, trial count, separate behavior/syntax graders,
 and must-pass task designation. Verification rejects stale prompts, extra tasks,
 agent shadowing and changes to the generated policy binding.
-Regenerate configurations made before the evidence-resource correction. The
+Regenerate configurations made before the evidence-resource or task-context correction. The
 previous inline-only profile was schema-valid but triggered Waza's empty-sandbox
 path guard on relative links inside 17 tasks' quoted skill text. Each task now
 supplies one legitimate `evidence.json` resource identical to its inline synthetic
@@ -203,8 +228,10 @@ and selected instructions already inline.
 
 That supported binding is configured and tested statically. The operator's
 2026-11-09 planning artifact records `deny_all` and zero calls/events/denials for
-one executed task. The other 17 stopped at input setup, without policy evidence;
-whole-suite enforcement remains **unverified**. It does not sandbox
+one executed task. The other 17 stopped at input setup, without policy evidence.
+The first corrected trial subsequently recorded this evidence for all 18 tasks,
+with zero calls/events/denials. The later log-only trial has no retained policy
+records and must not inherit that earlier verification. This does not sandbox
 the process filesystem, credentials or network, nor by itself prevent ambient
 SDK/CLI configuration reads, hooks/server startup, caches or model-provider
 transport. Disabled plugins, uv, `TMPDIR` and a fresh shell do not establish
@@ -252,8 +279,11 @@ runtime is already present rather than permitting an unreviewed install.
 After preflight and the operator's boundary/cost decision:
 
 ```bash
+set -euo pipefail
+: "${PLANNING_HOME:?Set the verified isolated profile before running}"
 mkdir -p evals/waza/results evals/waza/workspaces
 RESULT="evals/waza/results/quality-planning-gpt-6.1-sol-$(date -u +%Y%m%dT%H%M%SZ).json"
+test -n "$RESULT"
 if test -e "$RESULT"; then
   printf 'Refusing to overwrite %s\n' "$RESULT"
   false
@@ -282,6 +312,11 @@ else
 fi
 ```
 
+Preparation is fail-closed: a missing command, unset profile, failed timestamp,
+or existing output path stops before Waza. Keep `set -euo pipefail` when adapting
+this block, and check every separately generated result path before execution.
+Do not replace uv's `python` with an unchecked system executable. A blank Waza
+`--output` does not save a result in v0.40.1.
 The verifier runs for a saved result even if Waza exits nonzero. Keep both
 statuses: a saved benchmark failure is not a successful run, and a policy-check
 pass is not a quality pass. The final status remains failure when either fails.
@@ -344,13 +379,18 @@ shell-token normalization: quoting/whitespace, option ordering, verified selecto
 aliases, `--flag=value`, and order within repeated backend shorthand groups may
 vary. An optional JSON output flag on create/update does not change the plan.
 Read commands still require their reviewed JSON output. Reconciliation reads
-current state before waiting and reads again afterward; a positive wait timeout
-may be shorter than the reviewed maximum, but not shorter than the interval.
+current state after waiting; repeating the supplied initial read is optional.
+Positive wait timeouts/intervals may be shorter than the reviewed bounds, but a
+timeout cannot be shorter than the interval.
 In the new behavior check command operation order, other option values, target membership and multiplicity
 remain exact: wrong values, extra options/actions, duplicate selectors, or missing
 targets fail. Unsupported aliases are not generalized across command groups.
 The approved command list follows the ordered reviewed operations; only explicitly
-enumerated scoped supplemental reads are allowed. A private-connection explanation
+enumerated scoped supplemental reads and recorded local version/help probes are
+allowed. Local probes cannot replace required operations and are not allowed in
+runtime-only tasks. An exact typed gateway ID may replace name selectors for a
+reviewed gateway read, but names cannot replace a required exact typed ID.
+A private-connection explanation
 may use supplied evidence without a new read. Pending Foundry imports must be
 separate and carry both exact gateway-identity and account-role approval scopes.
 An approval-pending command cannot appear in the approved list.

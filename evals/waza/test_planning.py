@@ -1,5 +1,6 @@
 import copy
 import json
+import os
 import re
 import subprocess
 import tempfile
@@ -274,11 +275,33 @@ class Planning(unittest.TestCase):
         self.assertNotIn("uv run", block)
         with tempfile.TemporaryDirectory() as directory:
             completed = subprocess.run(["bash", "-c", block], cwd=directory,
+                                       env={**os.environ, "PLANNING_HOME": directory},
                                        capture_output=True, text=True)
             self.assertNotEqual(completed.returncode, 0)
             self.assertIn("VERIFIER_EXECUTED", completed.stdout)
             self.assertIn("Waza exit: 7", completed.stdout)
             self.assertIn("Policy-check exit: 3", completed.stdout)
+
+    def test_preparation_failure_cannot_launch_documented_paid_command(self):
+        text = (ROOT / "README.md").read_text()
+        block = next(block for block in text.split("```bash\n")[1:]
+                     if 'RESULT="evals/waza/results/quality-planning-' in block).split("```")[0]
+        block, count = re.subn(
+            r'if (?:COPILOT_HOME|TMPDIR)=.*?--output "\$RESULT"; then',
+            'if (printf "UNEXPECTED_LAUNCH\\\\n"; exit 7); then', block, flags=re.S)
+        block, verifier_count = re.subn(
+            r'if uv run.*?--result "\$RESULT"; then',
+            'if false; then', block, flags=re.S)
+        self.assertEqual((count, verifier_count), (1, 1))
+        self.assertNotIn("waza run", block)
+        self.assertNotIn("uv run", block)
+        with tempfile.TemporaryDirectory() as directory:
+            for prefix in ('unset PLANNING_HOME\n',
+                           'PLANNING_HOME="$PWD"\ndate() { return 9; }\n'):
+                completed = subprocess.run(["bash", "-c", prefix + block], cwd=directory,
+                                           capture_output=True, text=True)
+                self.assertNotEqual(completed.returncode, 0)
+                self.assertNotIn("UNEXPECTED_LAUNCH", completed.stdout)
 
     def test_stale_config_and_missing_runtime_evidence_fail_closed(self):
         docs = documents("quality", "gpt-6.1-sol")
