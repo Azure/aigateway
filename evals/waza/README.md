@@ -8,16 +8,16 @@ The public skill names and boundaries are retained. A development-only
 planning agent denies all tools; it is not an installed runtime skill.
 
 **Current status:** planning completion is not established. The latest complete
-combined trial passed **11/18 original scenarios and 2/3 holdouts**. All 21
-recorded deny-all with zero tool calls/events/denials. It used 41.19985 AI credits
-and 179.355 seconds. Seven of its eight failed tasks had evaluator
-representation or plan-comparison defects; one optional gateway-root read used
-name selectors instead of the supplied typed ID. The consumer skill now makes
-that binding explicit, without making root inspection mandatory.
+combined trial passed **15/18 original scenarios and 2/3 holdouts**. All 21
+recorded deny-all with zero tool calls/events/denials. It used 41.65935 AI credits
+and 180.577 seconds. Its four failures were evaluator comparisons: scoped
+preflight/parent reads, equivalent missing-metadata states and natural identity
+or approval wording. The earlier optional name-only gateway-root read is now
+corrected in a fresh execution; root inspection is not mandatory.
 
-Offline replay of the unchanged combined outputs passes 20/21 behavior checks
+Offline replay of the unchanged latest combined outputs passes 21/21 behavior checks
 and 21/21 syntax checks after those evaluator corrections. The recorded fresh
-score remains 13/21. Correct derived URLs, SystemAssigned identity, natural
+score remains 17/21. Correct derived URLs, SystemAssigned identity, natural
 approval-action wording and colored JSON retain their meaning; scope, roles,
 composite counters, both post-create verification reads and alias write order
 remain strict. Only enumerated, task-scoped prerequisite/dependency reads are
@@ -28,7 +28,7 @@ skill references plus recorded local CLI help. It does not put oracle answers
 in inputs or change installed skill behavior. Offline replay of the first
 corrected result remains 8/18 for behavior; recorded version/help coverage changes
 syntax assessment to 16 pass/two unscored, not a fresh quality score.
-The three holdouts have now executed once; corrections informed by them are
+The three holdouts have now been inspected during development; corrections informed by them are
 development evidence, not newly unseen acceptance evidence. Completion requires all original and
 holdout scenarios passing with complete policy evidence across three frozen
 trials. Live CLI/data-plane and matched CLI performance evidence need separate
@@ -288,6 +288,26 @@ used here. The non-model probe used the actual embedded SDK APIs
 `user.settings.get`, `plugins.list`, `mcp.config.list`, `managedSettings.read`,
 `getStatus` and `getAuthStatus`. The runtime-only executable does not support
 the standalone CLI's `help` or `--version` commands.
+
+The canonical recorded one-shot launcher is `run_planning.sh`. It requires a
+fresh result path, writable result parent and its already prepared
+`<result-stem>.identity.json`: matching config/model/trial selection,
+configuration snapshot, source and prior-artifact hashes, and actual SDK
+startup-profile evidence. Preparation is a separate fail-fast step using
+uv-managed Python; a failed preparation must not be followed by a benchmark.
+The launcher checks the receipt and frozen hashes before the single Waza
+invocation, verifies any saved result even when Waza fails, and records both
+statuses plus post-run immutability. Inert tests exercise this exact file,
+including empty/occupied output, missing Python/identity, changed source,
+unapproved model and saved benchmark failure. It does not authorize a trial,
+start a login, verify an OS sandbox or retry.
+
+For an already prepared recorded combined invocation, use the same launcher:
+
+```bash
+PLANNING_HOME="$VERIFIED_PROFILE" bash evals/waza/run_planning.sh \
+  evals/waza/authorized-combined/eval.yaml "$PREPARED_NEW_RESULT"
+```
 
 The program grader still resolves from the repository root and receives final
 output on stdin. SDK may manage its bundled runtime/cache; verify the approved

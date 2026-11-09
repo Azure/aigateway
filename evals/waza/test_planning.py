@@ -1,8 +1,10 @@
 import copy
+import hashlib
 import json
 import os
 import re
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -23,6 +25,84 @@ def answer(case):
 
 
 class Planning(unittest.TestCase):
+    def test_actual_recorded_launcher_is_fail_closed_and_keeps_both_statuses(self):
+        for condition in ("saved-failure", "empty-result", "occupied-result",
+                          "changed-source", "missing-identity", "missing-python", "wrong-model"):
+            with self.subTest(condition=condition), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                result = "evals/waza/results/fresh.json"
+                config = "evals/waza/authorized-combined/eval.yaml"
+                (root / result).parent.mkdir(parents=True)
+                (root / config).parent.mkdir(parents=True)
+                (root / config).write_text(json.dumps({
+                    "config": {"model": "gpt-6.1-sol", "trials_per_task": 1},
+                }))
+                snapshot = root / "snapshot"
+                snapshot.mkdir()
+                profile = root / "profile"
+                profile.mkdir()
+                (profile / "settings.json").write_text('{"disableAllHooks":true}')
+                source = root / "source.txt"
+                source.write_text("frozen")
+                identity = root / "evals/waza/results/fresh.identity.json"
+                identity.write_text(json.dumps({
+                    "result": result, "config": config, "configSnapshot": "snapshot",
+                    "model": "gpt-6.1-sol", "trialsPerTask": 1, "sourceCommit": "inert-test",
+                    "sourceDigests": {"source.txt": hashlib.sha256(source.read_bytes()).hexdigest()},
+                    "originalDigests": {},
+                    "profileEvidence": {
+                        "hooksDisabled": True, "installedPlugins": 0, "userMcpServers": 0,
+                        "managedStartupKeys": 0, "existingAuthentication": True,
+                    },
+                }))
+                binary = root / "bin"
+                binary.mkdir()
+                uv = binary / "uv"
+                uv.write_text("""#!/usr/bin/env bash
+set -eu
+if [[ "$*" == *"waza run"* ]]; then
+  printf 'WAZA_CALLED\\n' >> "$EVENTS"
+  printf '{}' > "$RESULT"
+  exit 7
+fi
+if [[ "$*" == *"verify_planning.py"* ]]; then
+  if [[ "$*" == *"--result"* ]]; then
+    printf 'VERIFIER_CALLED\\n' >> "$EVENTS"
+    exit 3
+  fi
+  exit 0
+fi
+while test "$1" != python; do shift; done
+shift
+exec """ + repr(sys.executable) + """ "$@"
+""")
+                uv.chmod(0o755)
+                if condition == "empty-result":
+                    result = ""
+                elif condition == "occupied-result":
+                    (root / result).write_text("original")
+                elif condition == "changed-source":
+                    source.write_text("changed")
+                elif condition == "missing-identity":
+                    identity.unlink()
+                elif condition == "missing-python":
+                    uv.write_text("#!/usr/bin/env bash\nexit 9\n")
+                elif condition == "wrong-model":
+                    (root / config).write_text('{"config":{"model":"unapproved","trials_per_task":1}}')
+                events = root / "events.txt"
+                done = subprocess.run(["bash", str(ROOT / "run_planning.sh"), config, result],
+                                      cwd=root, env={**os.environ, "PATH": str(binary) + ":" + os.environ["PATH"],
+                                                     "PLANNING_HOME": str(profile), "EVENTS": str(events)},
+                                      capture_output=True, text=True)
+                self.assertNotEqual(done.returncode, 0)
+                if condition == "saved-failure":
+                    self.assertEqual(events.read_text(), "WAZA_CALLED\nVERIFIER_CALLED\n")
+                    status = json.loads((root / "evals/waza/results/fresh.status.json").read_text())
+                    self.assertEqual((status["wazaExit"], status["policyExit"]), (7, 3))
+                    self.assertEqual(status["changedSource"], [])
+                else:
+                    self.assertFalse(events.exists(), "Preparation failure launched inert Waza")
+
     def test_equivalent_fact_formats_preserve_runtime_and_counter_boundaries(self):
         case = next(c for c in cases() if c["id"] == "exact-alias-endpoint-contract")
         result = answer(case)
@@ -88,6 +168,42 @@ class Planning(unittest.TestCase):
                          [before, update, after, sibling.replace(" show ", " update ")],
                          [before, update, after, sibling.replace("billing-arm-alias", "foreign")]):
             self.assertFalse(plan_matches(case, commands, case["required_commands"]))
+
+    def test_approval_sentence_variants_do_not_accept_negation_or_broader_roles(self):
+        case = next(c for c in cases() if c["id"] == "selected-rg-bootstrap")
+        result = answer(case)
+        result["pendingCommands"] = copy.deepcopy(case["pending_commands"])
+        result["observations"]["importIdentity"] = "system-assigned"
+        approvals = result["pendingCommands"][0]["approvals"]
+        approvals[0]["action"] = "Enable the gateway system-assigned managed identity for Foundry onboarding."
+        approvals[1]["action"] = (
+            "Grant Foundry User to the gateway system-assigned managed identity "
+            "at the entire Foundry account scope, not just the selected deployment.")
+        self.assertEqual(evaluate(case, json.dumps(result))["status"], "pass")
+        for field, changed in (
+            ("importIdentity", "UserAssigned"),
+            ("importIdentity", "SystemAssigned, UserAssigned"),
+        ):
+            result["observations"][field] = changed
+            self.assertEqual(evaluate(case, json.dumps(result))["status"], "fail")
+        result["observations"]["importIdentity"] = "system-assigned"
+        for changed in ("Do not enable the gateway system-assigned managed identity.",
+                        "Enable the gateway user-assigned managed identity.",
+                        "Enable the gateway system-assigned managed identity. Grant Owner too."):
+            approvals[0]["action"] = changed
+            self.assertEqual(evaluate(case, json.dumps(result))["status"], "fail")
+
+    def test_runtime_metadata_unavailable_is_not_empty_or_runtime_failure(self):
+        case = next(c for c in cases() if c["id"] == "runtime-only-known-endpoint")
+        result = answer(case)
+        result["observations"].update(backendConfiguration="unavailable", policies="unavailable")
+        self.assertEqual(evaluate(case, json.dumps(result))["status"], "pass")
+        result["observations"]["policies"] = "empty"
+        self.assertEqual(evaluate(case, json.dumps(result))["status"], "fail")
+        case = next(c for c in cases() if c["id"] == "private-endpoint-approval")
+        result = answer(case)
+        result["observations"]["privateReachability"] = "unavailable"
+        self.assertEqual(evaluate(case, json.dumps(result))["status"], "fail")
 
     def test_combined_selection_keeps_each_independent_input_and_grader(self):
         baseline = documents("quality", "gpt-6.1-sol")

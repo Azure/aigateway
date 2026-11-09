@@ -31,6 +31,7 @@ cases:
         importExecuted: false
     required_commands: ['az aigateway create --subscription sub-eval --resource-group rg-eval --name gw-eval --location westus2']
     supplemental_reads:
+      - az resource list --subscription sub-eval -g rg-eval --name gw-eval -o json
       - az aigateway show --subscription sub-eval --ids /subscriptions/sub-eval/resourceGroups/rg-eval/providers/Microsoft.ApiManagement/aigateways/gw-eval -o json
       - az aigateway wait --subscription sub-eval --ids /subscriptions/sub-eval/resourceGroups/rg-eval/providers/Microsoft.ApiManagement/aigateways/gw-eval --created --timeout 1800 --interval 20
     pending_commands:
@@ -232,7 +233,9 @@ cases:
       observations: {connectionStatus: Pending, privateReachability: unknown, decisionCompleted: false}
     required_commands: ['az aigateway network private-endpoint-connection show --subscription sub-eval -g rg-eval --gateway-name gw-eval -n pec-eval -o json']
     behavior_commands: []
-    supplemental_reads: ['az aigateway network private-endpoint-connection show --subscription sub-eval -g rg-eval --gateway-name gw-eval -n pec-eval -o json']
+    supplemental_reads:
+      - az aigateway network private-endpoint-connection show --subscription sub-eval -g rg-eval --gateway-name gw-eval -n pec-eval -o json
+      - az aigateway show --subscription sub-eval --ids /subscriptions/sub-eval/resourceGroups/rg-eval/providers/Microsoft.ApiManagement/aigateways/gw-eval -o json
     forbidden_commands: [' approve ', ' reject ', ' delete ', 'network update', 'az network', 'az role assignment']
 
   - id: lro-readiness-not-acceptance

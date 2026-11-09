@@ -247,13 +247,18 @@ def approval_matches(expected, actual):
             if (not isinstance(row, dict) or set(row) != {"action", "scope"}
                     or not isinstance(row["action"], str) or not isinstance(row["scope"], str)):
                 return None
-            action = aliases.get(row["action"], row["action"])
-            if re.fullmatch(r"(?:enable|attach|assign) the gateway system-assigned managed identity",
+            action = row["action"].strip().removesuffix(".")
+            action = aliases.get(action, action)
+            if re.fullmatch(r"(?:enable|attach|assign) (?:the )?gateway system-assigned "
+                            r"(?:managed )?identity(?: for Foundry onboarding)?",
                             action, re.I):
                 action = "SystemAssigned"
             elif re.fullmatch(
-                    r"(?:grant|assign) Foundry User to the gateway identity"
-                    r"(?: at account scope, not deployment-only scope)?", action, re.I):
+                    r"(?:grant|assign) Foundry User to (?:the )?gateway "
+                    r"(?:system-assigned (?:managed )?)?identity"
+                    r"(?: at (?:the entire Foundry )?account scope"
+                    r"(?:, not (?:deployment-only scope|just the selected deployment))?)?",
+                    action, re.I):
                 action = "Foundry User"
             result.append((action, row["scope"]))
         return sorted(result)
@@ -287,7 +292,10 @@ def equivalent_fact(expected, actual, key):
     if isinstance(expected, str) and expected.startswith("az aigateway "):
         return safe_command_matches(expected, actual)
     if key == "importIdentity" and expected == "SystemAssigned":
-        return actual in ("SystemAssigned", "system-assigned-gateway-identity")
+        return actual in ("SystemAssigned", "system-assigned",
+                          "system-assigned-gateway-identity", "system-assigned managed identity")
+    if key in ("backendConfiguration", "policies") and expected == "unknown" and actual == "unavailable":
+        return True
     if key == "ratePartition" and expected == "identity-and-ip-combination":
         return actual in ("identity-and-ip-combination", "identity/ipAddress")
     if isinstance(expected, dict):
