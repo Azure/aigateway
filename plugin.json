@@ -1,0 +1,14 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "aigateway",
+  "description": "Use and administer Azure AI Gateway with task-scoped native CLI workflows, verified runtime contracts, guarded APIM V2 migration and local feedback.",
+  "version": "4.1.0",
+  "author": {
+    "name": "Microsoft",
+    "url": "https://www.microsoft.com"
+  },
+  "homepage": "https://github.com/Azure/aigateway",
+  "repository": "https://github.com/Azure/aigateway",
+  "license": "MIT",
+  "keywords": ["ai-gateway", "agents", "mcp", "models", "azure", "integration", "management", "migration"]
+}

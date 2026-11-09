@@ -1,0 +1,42 @@
+{
+  "wazaTag": "v0.40.1",
+  "wazaTagRefSha": "e0c251df896bee4e0f9b38a693a6105bf7eadd19",
+  "wazaTagObjectType": "commit",
+  "retrievedOn": "2026-11-08",
+  "nativeCliHelp": {
+    "path": "native-help.json",
+    "extensionVersion": "1.0.0b22",
+    "apiVersion": "2025-09-01-preview",
+    "scope": "Actual installed local version/help only; no installed-wheel, dispatch, or live Azure verification."
+  },
+  "schemas": [
+    {
+      "path": "schemas/eval.schema.json",
+      "source": "https://raw.githubusercontent.com/microsoft/waza/v0.40.1/schemas/eval.schema.json",
+      "sha256": "b1d414ce4c146e987e432dfbb708e9c5d3e7c94cc728b68326b0d835dea12837"
+    },
+    {
+      "path": "schemas/task.schema.json",
+      "source": "https://raw.githubusercontent.com/microsoft/waza/v0.40.1/schemas/task.schema.json",
+      "sha256": "8b0f94029121fb667d4cdccc81d202266518aa351618743780eff286ee1e4987"
+    }
+  ],
+  "license": {
+    "path": "schemas/LICENSE",
+    "source": "https://raw.githubusercontent.com/microsoft/waza/v0.40.1/LICENSE",
+    "sha256": "7df20dcdf9197e9945c14858d41c60f11b52b93e5b69e2b63416b874d598d322"
+  },
+  "references": [
+    "https://raw.githubusercontent.com/microsoft/waza/v0.40.1/site/src/content/docs/guides/eval-yaml.mdx",
+    "https://raw.githubusercontent.com/microsoft/waza/v0.40.1/internal/execution/mock.go",
+    "https://raw.githubusercontent.com/microsoft/waza/v0.40.1/internal/graders/program_grader.go",
+    "https://raw.githubusercontent.com/microsoft/waza/v0.40.1/docs/graders/program.md",
+    "https://raw.githubusercontent.com/microsoft/waza/v0.40.1/internal/orchestration/required_skills.go",
+    "https://raw.githubusercontent.com/microsoft/waza/v0.40.1/cmd/waza/cmd_run.go",
+    "https://raw.githubusercontent.com/microsoft/waza/v0.40.1/LICENSE",
+    "https://raw.githubusercontent.com/microsoft/waza/v0.40.1/README.md",
+    "https://raw.githubusercontent.com/Azure/aigateway/main/cli/command-reference.md",
+    "https://raw.githubusercontent.com/Azure/aigateway/main/cli/README.md"
+  ],
+  "note": "Schemas are unmodified public tag content. Their embedded $id values reference main. The pinned README retains a v0.39.1 release-boundary paragraph; schema retrieval does not verify any installed binary or latest-release claim."
+}

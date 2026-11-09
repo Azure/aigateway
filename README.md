@@ -19,11 +19,13 @@ platform teams enforce security, policy, networking, and observability.
 
 Create and manage gateways, model registrations, MCP servers, and policies with
 `az aigateway`. The CLI is an external dependency published in **[Azure/aigateway](https://github.com/Azure/aigateway)**.
-See its **[current installation and quickstart](https://github.com/Azure/aigateway/tree/main/cli)** for
+See the **[hosted CLI quickstart](https://ai.gateway-df.azure.com/docs/quickstarts/cli)** for
 one-line Bash and PowerShell installers, or browse the
 [current command reference](https://github.com/Azure/aigateway/blob/main/cli/command-reference.md).
-Use the latest published CLI, including preview releases, rather than a local
-source build or an installer copied from an older release.
+Use the official published CLI, including reviewed preview releases, rather than
+a local source build. Ordinary tasks reuse the installed version and task-specific
+help; installation/upgrade is separate approved work, not a prerequisite to every
+question. Migration retains its stricter release/provenance validation.
 
 ## Coding-agent plugin
 
@@ -40,8 +42,8 @@ personas:
 | Component | Invoked as | Purpose |
 | --------- | ---------- | ------- |
 | Command `discover` | `/aigateway:discover` | Read-only: list a gateway's models and MCP tool servers and pick the ones that fit your use case. |
-| Command `build` | `/aigateway:build` | End-to-end: discover, retrieve a credential, and integrate the models/tools into your app. |
-| Command `create` | `/aigateway:create` | Create a gateway and verify that it is ready for configuration. |
+| Command `build` | `/aigateway:build` | Integrate supplied or discovered assets using an existing secure credential; selected secret retrieval and live checks require authorization. |
+| Command `create` | `/aigateway:create` | Create a gateway; include selected RG/Foundry bootstrap only when explicitly requested and approved. |
 | Command `manage` | `/aigateway:manage` | Configure and operate a gateway and its assets. |
 | Command `migrate` | `/aigateway:migrate` | Run the assisted, capability-gated APIM V2 migration workflow or resume its verified state. |
 | Command `feedback` | `/aigateway:feedback` | Package one selected agent session into a local ZIP for user-controlled sharing; anonymization and review are mandatory for GitHub issues. |
@@ -51,10 +53,31 @@ personas:
 
 ### Install
 
-The plugin is hosted in this repository, so your coding agent can install it
-directly from Git — no manual file downloads. Pick the tab for your agent:
+The root `plugin.json` uses **Agent Plugins 1.0**: the four skills are portable
+`skills/<name>/SKILL.md` components. Copilot CLI shortcuts are thin wrappers in
+`com.github.copilot/commands/`; Claude/Cursor manifests and Gemini TOML commands
+remain available. Shortcut support varies by host; the skills are the shared
+workflow, not separate implementations.
 
-**Claude Code / GitHub Copilot CLI** (plugin marketplace protocol):
+**GitHub Copilot CLI** — install directly, without registering a marketplace:
+
+```bash
+copilot plugin install Azure/aigateway
+```
+
+Or use this repository's **azure** marketplace:
+
+```bash
+copilot plugin marketplace add Azure/aigateway
+copilot plugin install aigateway@azure
+```
+
+**VS Code / compatible Copilot products** — use the host's Agent Plugins
+installation UI and add this repository's marketplace when supported. In VS
+Code, use **Chat: Plugins**; availability depends on the installed version and
+organization policy. Do not assume CLI-specific shortcuts load in every product.
+
+**Claude Code**:
 
 ```
 /plugin marketplace add Azure/aigateway
@@ -72,10 +95,14 @@ install **aigateway** from **Customize**. For local testing, symlink the repo in
 gemini extensions install https://github.com/Azure/aigateway
 ```
 
+This layout follows the public awesome-copilot plugin conventions. It does
+**not** claim that `aigateway@awesome-copilot` has been accepted or published.
+Use the direct repository or `aigateway@azure` installation above.
+
 ### Usage
 
-Point the plugin at your gateway's **ARM resource id** (required to list its models and
-tools) and describe what you want to build:
+For management-enriched discovery, provide the gateway's ARM resource ID and
+your use case; listing requires authorized management reads:
 
 ```
 /aigateway:build /subscriptions/.../aigateways/<gateway> a service that summarizes support tickets
@@ -87,21 +114,41 @@ Or explore first, then integrate:
 /aigateway:discover /subscriptions/.../aigateways/<gateway>
 ```
 
+For a known endpoint, no ARM ID, subscription inventory or management sign-in
+is needed. Supply the exact URL, callable name, operation and existing secure
+credential **binding**, never a secret value:
+
+```text
+/aigateway:build Integrate https://<published-host>/default/models/openai/v1/chat/completions
+using the published alias support/assistant and the existing AI_GATEWAY_API_KEY
+binding. The owner verified bearer authentication. Modify my existing Python app;
+do not make a live call yet.
+```
+
+Published runtime examples differ: the older CLI quickstart uses `Api-Key` and
+direct model names, while the hosted quickstart uses bearer authentication and
+aliases. The skill preserves the **selected gateway's verified contract**,
+not an assumed universal header/model shape or an automatic fallback after 401.
+
 #### Manage
 
 Administrators can create a gateway or manage an existing one:
 
 ```
 /aigateway:create my-gateway my-resource-group eastus2
-/aigateway:manage my-gateway my-resource-group add a Foundry model provider
+/aigateway:manage my-gateway my-resource-group register one selected existing Foundry deployment
 ```
 
 The [administrator skill](skills/manage-ai-gateway/SKILL.md) provides native CLI
 runbooks for gateway lifecycle, models and aliases, MCP sources, policies, keys,
 identities, networking, and telemetry. It manages only
-`Microsoft.ApiManagement/aigateways` and its own children; external resources and
-role grants must already be prepared. Routine create/update intent authorizes the
-requested work; destructive, access-sensitive, and secret-related operations have
+`Microsoft.ApiManagement/aigateways` and its own children. Explicit bootstrap
+can create a selected RG and use selected Foundry onboarding after disclosure
+and approval of gateway identity and account-level Foundry User grants. Provider
+onboarding imports every current deployment; "add one model" is not bulk-import
+permission. Other external infrastructure and grants remain prerequisites.
+Routine create/update intent authorizes the requested work; destructive,
+access-sensitive, and secret-related operations have
 specific confirmation gates. [Portal activity coverage and CLI gaps](skills/manage-ai-gateway/references/activities-and-cli-coverage.md)
 are explicit rather than bypassed with REST or legacy resource types.
 
@@ -112,6 +159,9 @@ Administrators can assess and migrate supported APIM V2 configuration to Azure A
 ```
 /aigateway:migrate /subscriptions/.../Microsoft.ApiManagement/aigateways/<source-apim>
 ```
+
+Use the source's actual verified ARM ID and family; do not rewrite a legacy
+`Microsoft.ApiManagement/service` ID to `aigateways`.
 
 The assessment inventories AI assets first, then assesses
 migrating all discovered AI APIs or a feasible subset.
@@ -129,6 +179,29 @@ session and approved diagnostics into a **local ZIP**. Nothing is uploaded
 automatically; you choose how to share it. Anonymization is optional for private
 sharing. Sharing through a [GitHub issue](https://github.com/Azure/aigateway/issues/new)
 requires anonymization, review of the ZIP and issue text, and your explicit approval.
+
+### Scenario coverage and evaluation
+
+The existing skills cover gateway lifecycle, model registration and alias
+routing, MCP federation, policy/finops controls, access, networking/private
+connections, observability and data-plane integration. They load only the
+reference needed for the current task. IaC, backend provisioning and unsupported
+native fields remain explicit separate work, not invented CLI operations.
+
+Run deterministic packaging/link/entry-point checks with
+`python3 -m unittest discover -s tests`. The [evaluation suite](evals/README.md)
+defines Waza scenarios and quality/safety criteria for further improvement.
+Offline checks do not establish live model quality, cloud behavior or a grade A;
+authenticated trials and separately authorized Azure validation are distinct.
+
+### Format references
+
+- [Copilot CLI plugin reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference)
+  and [shared plugin formats](https://docs.github.com/en/copilot/reference/plugin-and-marketplace-reference).
+- [awesome-copilot plugin guide](https://github.com/github/awesome-copilot/blob/main/docs/README.plugins.md)
+  and [portable Azure exemplar](https://github.com/github/awesome-copilot/blob/main/plugins/azure-cloud-development/plugin.json).
+- [CLI b22 release](https://github.com/Azure/aigateway/releases/tag/cli-v1.0.0b22)
+  and [hosted documentation](https://ai.gateway-df.azure.com/docs/quickstarts/cli).
 
 ## Samples
 

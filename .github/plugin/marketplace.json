@@ -1,0 +1,14 @@
+{
+  "name": "azure",
+  "owner": {
+    "name": "Microsoft"
+  },
+  "plugins": [
+    {
+      "name": "aigateway",
+      "source": "./",
+      "description": "Use and administer Azure AI Gateway with native CLI workflows and guarded runtime integration, migration and feedback.",
+      "version": "4.1.0"
+    }
+  ]
+}

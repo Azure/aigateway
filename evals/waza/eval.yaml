@@ -1,0 +1,31 @@
+name: aigateway-offline-smoke
+scenario: aigateway-follow-up
+schemaVersion: '2.0'
+description: Synthetic plans, not live Azure/model coverage or a quality grade.
+version: '1.0'
+config:
+  trials_per_task: 1
+  timeout_seconds: 120
+  parallel: true
+  workers: 2
+  max_attempts: 1
+  executor: mock
+  model: offline-mock
+  inject_skill_body: false
+  skill_directories:
+  - ../../skills/manage-ai-gateway
+  - ../../skills/use-ai-gateway
+  - ../../skills/migrate-ai-gateway
+  - ../../skills/feedback-ai-gateway
+  required_skills:
+  - manage-ai-gateway
+  - use-ai-gateway
+  - migrate-ai-gateway
+  - feedback-ai-gateway
+metrics:
+- name: harness_smoke
+  weight: 1
+  threshold: 1
+  description: Binary contract/plumbing checks, not an A grade.
+tasks:
+- tasks/*.yaml

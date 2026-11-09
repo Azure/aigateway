@@ -1,7 +1,10 @@
 ---
 name: feedback-ai-gateway
-version: 1.0.0
 description: Packages one selected Copilot, Claude, Gemini, Cursor, or other coding-agent session and approved diagnostics into a local feedback ZIP. Use when users invoke /aigateway:feedback, request session telemetry for Azure AI Gateway product feedback, or prepare a migration-session bug report. Supports optional anonymization for private handoff and requires anonymization, archive review, and explicit approval for GitHub issue publication.
+license: MIT
+metadata:
+  author: Microsoft
+  version: "1.0.0"
 ---
 
 # Collect Azure AI Gateway session feedback

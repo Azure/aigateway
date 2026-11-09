@@ -1,0 +1,59 @@
+# Azure AI Gateway evaluations
+
+The [Waza suite](waza/README.md) covers 18 synthetic management, discovery,
+integration, and negative scenarios across the existing skill boundaries.
+It checks selected subscriptions and gateways, exact callable/auth contracts,
+least-privilege reads, explicit approvals, and evidence-aware recovery.
+
+## What is ready
+
+- **Authored:** `waza/eval.yaml`, 18 tasks, synthetic evidence, contract graders,
+  and an explicit authorized `copilot-sdk` configuration preparation command.
+  All tasks share neutral gate/field/state vocabulary, not scenario answers;
+  native command comparisons allow equivalent flag ordering while retaining
+  exact scopes, values and operation order.
+- **Static/offline:** deterministic fixture, pinned-schema, grader-negative,
+  response-shape, MCP-sequence and budget-formula checks. Run from the repository root:
+
+  ```bash
+  PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s evals/waza -p 'test_*.py' -v
+  ```
+
+  These use already available Python, PyYAML and jsonschema; no installation,
+  credentials, models, or Azure calls.
+- **Harness:** checked-in Waza executor is `mock`, with two parallel workers.
+  Waza is unavailable here, so **no Waza harness run is claimed**. Mock only
+  echoes inputs; its grader additionally checks synthetic positive/missing-gate
+  answers. Those exercise assertions, not an assistant's behavior.
+- **Real evaluation:** not run. Requires explicit model/account/disclosure/cost
+  authorization, reviewed execution restrictions, and observed evidence.
+
+The suite guide defines per-task safety gates, quality dimensions, proposed
+latency/tool budgets against matched CLI baselines, and grade-A prerequisites.
+No measured baseline, live coverage, or letter grade is claimed. Final-output
+checks cannot prove that an assistant avoided transient mutations or tool-side
+secret disclosure.
+
+## Authoring provenance
+
+The complete [eval](https://raw.githubusercontent.com/microsoft/waza/v0.40.1/schemas/eval.schema.json)
+and [task](https://raw.githubusercontent.com/microsoft/waza/v0.40.1/schemas/task.schema.json)
+schemas were read from public raw **Waza `v0.40.1`**, with tag commit
+`e0c251df896bee4e0f9b38a693a6105bf7eadd19`.
+They are preserved unmodified, checked against that immutable commit, with SHA-256 digests in
+[`waza/sources.json`](waza/sources.json) and an upstream MIT notice.
+
+Pinned [CLI runner](https://raw.githubusercontent.com/microsoft/waza/v0.40.1/cmd/waza/cmd_run.go),
+[mock executor](https://raw.githubusercontent.com/microsoft/waza/v0.40.1/internal/execution/mock.go)
+and [program grader](https://raw.githubusercontent.com/microsoft/waza/v0.40.1/internal/graders/program_grader.go)
+establish `waza run`, scenario schema 2.0, parallel configuration, eval-relative
+skill directories, mock echo behavior, and stdin/exit-status grading.
+Exact commands, authorization switch, source caveats and limitations are in the
+[suite guide](waza/README.md). The tag README retains an older `v0.39.1`
+release-boundary paragraph; tag schema provenance is not binary verification.
+
+Actual installed native CLI **1.0.0b22** version/help evidence is recorded in
+[`waza/native-help.json`](waza/native-help.json). Offline checks verify fixture
+options against that surface, including Foundry single-deployment onboarding
+and alias priority/weight updates. Help reads do not establish live behavior,
+installed-wheel provenance, or new-RP dispatch.

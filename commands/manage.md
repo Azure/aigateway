@@ -1,30 +1,18 @@
 ---
-description: Configure and operate an Azure AI Gateway, including assets, model policies, identities, networking, and secret rotation.
+description: Configure and operate Azure AI Gateway assets, policies, access, networking and telemetry with native CLI commands.
 argument-hint: <gateway-name> <resource-group> <operation>
 ---
 
 # /aigateway:manage
 
-Configure and operate an existing Azure AI Gateway for an authorized administrator or
-platform engineer. Follow the complete workflow in
-`skills/manage-ai-gateway/SKILL.md`, especially **Configure gateway assets** and
-**Operate**. Use the current native `az aigateway` command group, scoped to
-`Microsoft.ApiManagement/aigateways` and its own default-workspace children.
-Do not mutate external prerequisites, use legacy service destinations, run
-Foundry convenience onboarding with external role-grant side effects, or
-bypass a missing command with REST.
+Read and follow `skills/manage-ai-gateway/SKILL.md`. Use `$ARGUMENTS` to resolve
+the explicit subscription, target and desired result. Load only affected domain
+recipes and inspect task-scoped native state. Diagnostics remain read-only;
+routine create/update intent does not require repeated confirmation.
 
-Use `$ARGUMENTS` to resolve the target and operation. Confirm the active
-subscription and inspect current state before proposing commands. Prefer read-only
-`list` and `show` operations when the user's intent is diagnostic. Explicit intent
-authorizes routine creates and updates. Follow the skill's specific confirmation
-gates for destructive/access changes, secret retrieval, OAuth initiation, and
-sensitive payload capture. Report unsupported CLI activities explicitly.
-
-If the request is to assess, plan, execute, or resume an APIM migration, stop
-this workflow and use `skills/migrate-ai-gateway/SKILL.md` (or direct the user to
-`/aigateway:migrate`). Use its local inventory/validation helpers and do not
-use management commands to bypass its capability or approval gates.
-After any mutation, verify from the command result and, where supported, the
-corresponding `show` or `list` command. Report the outcome without exposing
-secrets.
+Respect specific destructive/access/secret approvals, scoped Foundry onboarding
+effects, preserved siblings and CLI capability gaps. Never use REST writes,
+legacy destinations or hidden external setup. Verify matching resource fields
+and completion; report partial or unverified effects without secrets.
+APIM assessment/execution/resume belongs to `skills/migrate-ai-gateway/SKILL.md`,
+not management commands bypassing migration validation or approval.
