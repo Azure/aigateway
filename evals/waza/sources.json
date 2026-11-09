@@ -25,8 +25,17 @@
       "https://raw.githubusercontent.com/microsoft/waza/e0c251df896bee4e0f9b38a693a6105bf7eadd19/internal/orchestration/agent_graders.go"
     ],
     "contract": "Selected .agent.md tools: [] binds deny_all through SDK AvailableTools, fail-closed permission callback and pre-tool-use denial hook. Agent resolution uses directories, not direct filenames; SKILL.md can shadow agent loading. Disabling skills bypasses resolution.",
-    "localValidation": "Static binding and synthetic policy-evidence checks only; Waza/runtime enforcement not executed.",
+    "localValidation": "Static binding, pinned empty-sandbox guard parity and synthetic policy-evidence checks; no Waza/runtime execution by the implementing agent. Operator artifact records deny_all/zero calls for one executed task; 17 tasks stopped before execution.",
     "limits": "No OS filesystem, credential or network sandbox; no claim about ambient runtime configuration, hooks/server startup or model-provider transport."
+  },
+  "planningInputResources": {
+    "reviewedOn": "2026-11-09",
+    "source": "https://raw.githubusercontent.com/microsoft/waza/e0c251df896bee4e0f9b38a693a6105bf7eadd19/internal/orchestration/runner.go",
+    "sourceSha256": "f48b5932c050c0353b04dd52ec34f43eae5f7c2de10ed0fa109f88d5f45a9f85",
+    "guardLines": "1846-1857",
+    "resourceLoadingLines": "1702-1715,2092-2098",
+    "contract": "Empty loaded resources plus ./ or ../ anywhere in the task prompt fails before Execute. Nonempty inline inputs.files content creates ResourceFile before this guard. Each planning task supplies only its synthetic evidence.json, also inline; never grader answers, broad directories or placeholder files.",
+    "validation": "Offline Python parity of the pinned guard and inline loading predicate, all 18 baseline and three holdout generated prompts, meaningful resource content/schema and unchanged deny-all/oracle isolation. Not a fresh Waza execution."
   },
   "schemas": [
     {

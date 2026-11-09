@@ -160,6 +160,14 @@ does not authenticate, install anything, or run a model. It changes the executor
 to `copilot-sdk`, the model, trial count, separate behavior/syntax graders,
 and must-pass task designation. Verification rejects stale prompts, extra tasks,
 agent shadowing and changes to the generated policy binding.
+Regenerate configurations made before the evidence-resource correction. The
+previous inline-only profile was schema-valid but triggered Waza's empty-sandbox
+path guard on relative links inside 17 tasks' quoted skill text. Each task now
+supplies one legitimate `evidence.json` resource identical to its inline synthetic
+evidence. No placeholder, broad directory, grader source or expected answer is
+copied. Tools remain denied; references in quoted skill text are not file-read
+requests. Offline tests cover the exact pinned guard and resource-loading
+predicate for all 18 tasks and three holdouts. They do not execute Waza.
 Authentication must already be prepared
 through the operator's approved Copilot account flow. Do not acquire Azure
 credentials or grant permissions.
@@ -193,8 +201,10 @@ tools, including reads of grader answers. A read-tool allowlist alone would
 not isolate file paths, so this profile permits **no tools**, with evidence
 and selected instructions already inline.
 
-That supported binding is configured and tested statically. Its effective
-runtime enforcement is **not yet locally verified**. It does not sandbox
+That supported binding is configured and tested statically. The operator's
+2026-11-09 planning artifact records `deny_all` and zero calls/events/denials for
+one executed task. The other 17 stopped at input setup, without policy evidence;
+whole-suite enforcement remains **unverified**. It does not sandbox
 the process filesystem, credentials or network, nor prevent ambient SDK/CLI
 configuration reads, hooks/server startup, caches or model-provider transport.
 Disabled plugins, uv, `TMPDIR`, `COPILOT_HOME` and a fresh shell do not establish
@@ -212,20 +222,55 @@ After preflight and the operator's boundary/cost decision:
 ```bash
 mkdir -p evals/waza/results evals/waza/workspaces
 RESULT="evals/waza/results/quality-planning-gpt-6.1-sol-$(date -u +%Y%m%dT%H%M%SZ).json"
-test ! -e "$RESULT" && \
-  TMPDIR="$PWD/evals/waza/workspaces" COPILOT_AUTO_UPDATE=false WAZA_NO_UPDATE_CHECK=1 \
-  uv run --no-project --with pyyaml --with jsonschema \
-  waza run evals/waza/authorized-quality/eval.yaml --no-cache --output "$RESULT" && \
-  uv run --no-project --with pyyaml --with jsonschema \
-  python evals/waza/verify_planning.py evals/waza/authorized-quality/eval.yaml --result "$RESULT"
+if test -e "$RESULT"; then
+  printf 'Refusing to overwrite %s\n' "$RESULT"
+  false
+else
+  if TMPDIR="$PWD/evals/waza/workspaces" COPILOT_AUTO_UPDATE=false WAZA_NO_UPDATE_CHECK=1 \
+    uv run --no-project --with pyyaml --with jsonschema \
+    waza run evals/waza/authorized-quality/eval.yaml --no-cache --output "$RESULT"; then
+    WAZA_STATUS=0
+  else
+    WAZA_STATUS=$?
+  fi
+  if test -f "$RESULT"; then
+    if uv run --no-project --with pyyaml --with jsonschema \
+      python evals/waza/verify_planning.py evals/waza/authorized-quality/eval.yaml --result "$RESULT"; then
+      POLICY_STATUS=0
+    else
+      POLICY_STATUS=$?
+    fi
+  else
+    printf 'No saved result to verify\n'
+    POLICY_STATUS=1
+  fi
+  printf 'Result: %s\nWaza exit: %s\nPolicy-check exit: %s\n' "$RESULT" "$WAZA_STATUS" "$POLICY_STATUS"
+  test "$WAZA_STATUS" -eq 0 && test "$POLICY_STATUS" -eq 0
+fi
 ```
 
+The verifier runs for a saved result even if Waza exits nonzero. Keep both
+statuses: a saved benchmark failure is not a successful run, and a policy-check
+pass is not a quality pass. The final status remains failure when either fails.
 Post-run verification requires recorded `deny_all` on every run, zero tool
 calls/events and zero denials. Missing policy evidence fails verification;
 do not infer enforcement from a compliant final JSON. Denied attempts must be
 reviewed even when execution was blocked. This is evidence of the tool policy,
 not a whole-process sandbox. Never overwrite `quality-gpt-6.1-sol.json`.
 No prompt/LLM judge is configured and no automatic retry/hill-climbing loop is added.
+
+The immutable `quality-planning-gpt-6.1-sol-20261109T031346Z.json` reports 18 failed
+tasks and zero aggregate errors, but 17 runs have the shared relative-path input
+error and no model output. Only `apim-assess-not-execute` reached the model:
+syntax passes; behavior fails `observations.residuals` (three narrative entries
+rather than the compact supported residual facts). This does not establish
+unauthorized execution or 18 skill regressions. Reported usage is one turn,
+one premium request, 10,430 input and 759 output tokens, 3.36635 AI credits,
+and 25.2 seconds elapsed, not a verified currency charge or CLI-relative metric.
+The offline policy checker fails whole-suite evidence: one recorded deny-all,
+17 missing policies and zero recorded calls/events/denials. Earlier baseline
+and replay scores remain unchanged. The input-wiring fix changes neither grader
+semantics nor runtime skills and requires an operator-authorized new result.
 
 ### Separate holdouts
 

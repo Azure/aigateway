@@ -1,5 +1,7 @@
 import copy
 import json
+import re
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -159,12 +161,71 @@ class Planning(unittest.TestCase):
         for name, task in docs.items():
             if not name.startswith("tasks/"):
                 continue
-            self.assertNotIn("files", task["inputs"])
+            case = next(c for c in cases() if c["id"] == task["id"])
+            self.assertEqual(task["inputs"]["files"], [{
+                "path": "evidence.json",
+                "content": json.dumps(case["evidence"], indent=2) + "\n"}])
             prompt = task["inputs"]["prompt"]
             self.assertIn("Synthetic evidence:", prompt)
             self.assertNotIn("gateIdentifiers", prompt)
             self.assertNotIn("required_commands", prompt)
             self.assertNotIn("grade.py", prompt)
+
+    def test_pinned_empty_sandbox_guard_and_legitimate_resource_loading(self):
+        # runner.go:1846-1857 at the commit recorded in sources.json.
+        def rejected(prompt, resources):
+            return not resources and ("./" in prompt or "../" in prompt)
+
+        self.assertTrue(rejected("Read ./input.md", []))
+        self.assertTrue(rejected("Read ../input.md", []))
+        self.assertFalse(rejected("All evidence is inline.", []))
+        self.assertFalse(rejected("Read ./input.md", [{"path": "input.md", "content": "input"}]))
+        matched = 0
+        for holdouts in (False, True):
+            scenario_cases = (yaml.safe_load((ROOT / "holdouts.yaml").read_text())["cases"]
+                              if holdouts else cases())
+            docs = documents("quality", "gpt-6.1-sol", holdouts=holdouts)
+            for name, task in docs.items():
+                if not name.startswith("tasks/"):
+                    continue
+                files = task["inputs"]["files"]
+                case = next(c for c in scenario_cases if c["id"] == task["id"])
+                self.assertEqual(len(files), 1)
+                self.assertEqual(files[0]["path"], "evidence.json")
+                self.assertEqual(json.loads(files[0]["content"]), case["evidence"])
+                # runner.go:2092-2098 loads nonempty inline content as ResourceFile.
+                loaded = [f for f in files if f.get("content")]
+                self.assertEqual(len(loaded), 1)
+                self.assertFalse(rejected(task["inputs"]["prompt"], loaded), task["id"])
+                matched += rejected(task["inputs"]["prompt"], [])
+                with tempfile.TemporaryDirectory() as sandbox:
+                    path = Path(sandbox) / files[0]["path"]
+                    path.write_text(files[0]["content"])
+                    self.assertEqual(json.loads(path.read_text()), case["evidence"])
+        # The old generated input failed for 17 baseline tasks; removal must regress.
+        self.assertGreaterEqual(matched, 17)
+
+    def test_documented_saved_result_verification_preserves_failure_statuses(self):
+        text = (ROOT / "README.md").read_text()
+        block = next(block for block in text.split("```bash\n")[1:]
+                     if 'RESULT="evals/waza/results/quality-planning-' in block).split("```")[0]
+        # Substitute inert commands before execution; never launch uv/Waza/model.
+        block, run_count = re.subn(
+            r'if TMPDIR=.*?--output "\$RESULT"; then',
+            'if (printf "{}" > "$RESULT"; exit 7); then', block, flags=re.S)
+        block, verifier_count = re.subn(
+            r'if uv run.*?--result "\$RESULT"; then',
+            'if (printf "VERIFIER_EXECUTED\\\\n"; exit 3); then', block, flags=re.S)
+        self.assertEqual((run_count, verifier_count), (1, 1))
+        self.assertNotIn("waza run", block)
+        self.assertNotIn("uv run", block)
+        with tempfile.TemporaryDirectory() as directory:
+            completed = subprocess.run(["bash", "-c", block], cwd=directory,
+                                       capture_output=True, text=True)
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("VERIFIER_EXECUTED", completed.stdout)
+            self.assertIn("Waza exit: 7", completed.stdout)
+            self.assertIn("Policy-check exit: 3", completed.stdout)
 
     def test_stale_config_and_missing_runtime_evidence_fail_closed(self):
         docs = documents("quality", "gpt-6.1-sol")

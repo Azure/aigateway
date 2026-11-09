@@ -34,6 +34,9 @@ Do not claim live validation, a quality grade, or that plans prove safe executio
 PLANNING_CONTRACT = """
 This is a fixed-input planning task. All tools are denied. The selected skill text
 and evidence are supplied below, so do not try to read files or invoke a skill.
+The sandbox also receives evidence.json containing exactly the inline synthetic
+evidence. Relative links in the quoted skill are context, not requests to load
+more files; file and skill tools remain denied.
 Return one JSON object with scenario, selected, observations, commands (array of
 native CLI proposals whose changes already have the required approval),
 pendingCommands (array of {command, approvals} for optional work requiring further
@@ -136,8 +139,10 @@ def documents(mode="smoke", model="offline-mock", trials=1, holdouts=False):
                 + "\nFact shape (types only): " + json.dumps(value_shape(behavior_expected(case)))
                 + "\nSelected skill text:\n" + skill_text(case)
                 + "\nSynthetic evidence:\n" + json.dumps(case["evidence"], indent=2))
-            # All model input is inline; graders/answers are never fixture inputs.
-            task["inputs"].pop("files")
+            # A real evidence resource satisfies Waza's empty-sandbox path guard.
+            task["inputs"]["files"] = [
+                {"path": "evidence.json",
+                 "content": json.dumps(case["evidence"], indent=2) + "\n"}]
             task["graders"] = [
                 {"name": name, "type": "program",
                  "config": {"command": "python3",

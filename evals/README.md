@@ -10,7 +10,8 @@ least-privilege reads, explicit approvals, and evidence-aware recovery.
 - **Authored:** `waza/eval.yaml`, 18 tasks, synthetic evidence, contract graders,
   and an explicit authorized `copilot-sdk` configuration preparation command.
   New quality tasks supply selected skill text and evidence inline, without
-  grader files or expected answers. A development-only `tools: []` agent denies
+  grader files or expected answers, plus one matching synthetic evidence resource
+  to satisfy Waza's relative-path/empty-sandbox guard. A development-only `tools: []` agent denies
   all model tools; it does not change installed runtime skills.
   Native command comparisons allow equivalent flag ordering while retaining
   exact scopes, values and operation order.
@@ -33,8 +34,15 @@ least-privilege reads, explicit approvals, and evidence-aware recovery.
   distinguishes rubric defects from behavior findings. Corrected graders can be
   replayed offline against those outputs; that is not a new model trial.
   The original run established neither enforced tool isolation nor a paired CLI
-  baseline. The new supported deny-all profile is statically bound, but effective
-  runtime enforcement remains unverified until the operator's next run. It is
+  baseline. A newer operator planning artifact reports 18 failed tasks, but 17
+  stopped before the model at a shared empty-sandbox path guard. The one executed
+  task passes syntax and fails residual-fact behavior; it records deny-all and zero
+  tool calls. Whole-suite policy evidence fails because 17 policies are missing.
+  This is not 18 skill regressions. The corrected input resources require
+  configuration regeneration, not a rubric change. Reported usage was one premium
+  request and 3.36635 AI credits; no new run was made by the implementing agent.
+  The supported deny-all profile is statically bound; whole-suite effective
+  runtime enforcement remains unverified. It is
   not an OS filesystem/credential/network sandbox and does not test plugin
   discovery or loading. The operator owns every Waza command and new result filename.
 
