@@ -6,7 +6,7 @@ from pathlib import Path
 
 import yaml
 
-from grade import ROOT, cases
+from grade import ROOT, behavior_expected, cases
 
 OUTPUT_CONTRACT = """
 This is a synthetic offline planning scenario. Read evidence.json and the shared
@@ -31,6 +31,30 @@ that all apply. Select only the gate identifiers relevant to this scenario.
 Do not claim live validation, a quality grade, or that plans prove safe execution.
 """
 
+PLANNING_CONTRACT = """
+This is a fixed-input planning task. All tools are denied. The selected skill text
+and evidence are supplied below, so do not try to read files or invoke a skill.
+Return one JSON object with scenario, selected, observations, commands (array of
+native CLI proposals whose changes already have the required approval),
+pendingCommands (array of {command, approvals} for optional work requiring further
+approval), and executed: false. No proposal may be executed in this evaluation.
+Each pending approval is {action, scope}; disclose each exact external side effect.
+Keep approved work and pending work separate. Omit unsupported command recipes;
+report missing information rather than guessing. A read-back is not verification.
+Use the typed fact shape below; explanations belong in notes. Facts come from
+evidence. Missing evidence stays unknown/unavailable, not an invented success.
+No decision label, gate identifier or special limitation phrase is required.
+"""
+
+
+def skill_text(case):
+    path = ROOT.parents[1] / "skills" / case["skill"] / "SKILL.md"
+    text = path.read_text()
+    if case["skill"] == "migrate-ai-gateway":
+        # This suite assesses only; execution/mapping recipes are not in scope.
+        text = text.split("## 2. Initialize and map")[0]
+    return text
+
 
 def value_shape(value):
     if isinstance(value, dict):
@@ -41,13 +65,14 @@ def value_shape(value):
             type(None): "null"}[type(value)]
 
 
-def documents(mode="smoke", model="offline-mock", trials=1):
+def documents(mode="smoke", model="offline-mock", trials=1, holdouts=False):
     quality = mode == "quality"
     metric = "contract_assertions" if quality else "harness_smoke"
     skills = ["manage-ai-gateway", "use-ai-gateway",
               "migrate-ai-gateway", "feedback-ai-gateway"]
     skill_prefix = "../../../skills" if quality else "../../skills"
-    scenario_cases = cases()
+    scenario_cases = (yaml.safe_load((ROOT / "holdouts.yaml").read_text())["cases"]
+                      if holdouts else cases())
     states = set()
     for case in scenario_cases:
         evidence = json.dumps(case["evidence"])
@@ -69,7 +94,7 @@ def documents(mode="smoke", model="offline-mock", trials=1):
         "decisionIdentifiers": ["read-only", "integrate", "needs-approval", "blocked", "reconcile", "assess-only"],
         "selectedFieldIdentifiers": sorted({key for c in scenario_cases for key in c["expected"]["selected"]}),
         "observationFieldIdentifiers": sorted({key for c in scenario_cases for key in c["expected"]["observations"]}),
-        "gateIdentifiers": sorted({gate for c in scenario_cases for gate in c["expected"]["gates"]}),
+        "gateIdentifiers": sorted({gate for c in scenario_cases for gate in c["expected"].get("gates", [])}),
         "stateIdentifiers": sorted(states),
         "limitationIdentifiers": ["final-output-not-execution-proof"],
         "stateMeaning": "unknown: not established; unavailable: denied/missing evidence. Values are not assigned to any scenario here.",
@@ -105,6 +130,26 @@ def documents(mode="smoke", model="offline-mock", trials=1):
                            "timeout": 10},
             }],
         }
+        if quality:
+            task["inputs"]["prompt"] = (
+                f"SCENARIO_ID={case['id']}\n{case['request']}\n{PLANNING_CONTRACT}"
+                + "\nFact shape (types only): " + json.dumps(value_shape(behavior_expected(case)))
+                + "\nSelected skill text:\n" + skill_text(case)
+                + "\nSynthetic evidence:\n" + json.dumps(case["evidence"], indent=2))
+            # All model input is inline; graders/answers are never fixture inputs.
+            task["inputs"].pop("files")
+            task["graders"] = [
+                {"name": name, "type": "program",
+                 "config": {"command": "python3",
+                            "args": ["evals/waza/grade.py", "--scenario", case["id"],
+                                     "--mode", name, *(["--holdouts"] if holdouts else [])],
+                            "timeout": 10}}
+                for name in ("behavior", "syntax")]
+            task["requirements"][0]["checks"] = [
+                {"scope": "task", "grader": "behavior"},
+                {"scope": "task", "grader": "syntax"}]
+            task["requirements"][0]["description"] = (
+                "Typed representation and scenario behavior are separate checks; no execution evidence.")
         tasks[f"tasks/{case['id']}.yaml"] = task
     spec = {
         "name": "aigateway-quality-contracts" if quality else "aigateway-offline-smoke",
@@ -124,6 +169,18 @@ def documents(mode="smoke", model="offline-mock", trials=1):
                      "description": "Binary contract/plumbing checks, not an A grade."}],
         "tasks": ["tasks/*.yaml"],
     }
+    if quality:
+        spec["skill"] = "aigateway-planning"
+        spec["config"].update(
+            skill_directories=[".."], required_skills=["aigateway-planning"],
+            inject_skill_body=True)
+        spec["metrics"] = [
+            {"name": name, "weight": 1, "threshold": 1,
+             "description": ("Scenario facts, scoped approved/pending actions; not observed execution."
+                             if name == "behavior" else "Output types and CLI syntax, not skill quality.")}
+            for name in ("behavior", "syntax")]
+        spec["name"] = "aigateway-planning-holdouts" if holdouts else "aigateway-planning-quality"
+        contract = {"description": "Fixed-input planning: no gate vocabulary or scenario answers."}
     return {"eval.yaml": spec, "fixtures/output-contract.json": contract, **tasks}
 
 
@@ -144,6 +201,8 @@ def main():
     parser.add_argument("--authorized", action="store_true",
                         help="Attest explicit model-call/source-disclosure authorization; this does not run Waza")
     parser.add_argument("--model")
+    parser.add_argument("--holdouts", action="store_true",
+                        help="Prepare the separate three-task holdout suite, not the 18-task baseline")
     parser.add_argument("--trials", type=int, default=1)
     args = parser.parse_args()
     if args.trials < 1:
@@ -151,10 +210,10 @@ def main():
     if args.quality:
         if not args.authorized or not args.model or not args.model.strip():
             parser.error("--quality requires --authorized and an explicitly chosen --model")
-        materialize(ROOT / "authorized-quality",
-                    documents("quality", args.model, args.trials))
+        materialize(ROOT / ("authorized-holdouts" if args.holdouts else "authorized-quality"),
+                    documents("quality", args.model, args.trials, args.holdouts))
     else:
-        if args.authorized or args.model or args.trials != 1:
+        if args.authorized or args.model or args.trials != 1 or args.holdouts:
             parser.error("model/authorization/trial overrides apply only to --quality")
         materialize(ROOT, documents())
 

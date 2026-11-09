@@ -9,6 +9,20 @@
     "apiVersion": "2025-09-01-preview",
     "scope": "Actual installed local version/help only; no installed-wheel, dispatch, or live Azure verification."
   },
+  "planningToolPolicy": {
+    "reviewedOn": "2026-11-09",
+    "commit": "e0c251df896bee4e0f9b38a693a6105bf7eadd19",
+    "sources": [
+      "https://raw.githubusercontent.com/microsoft/waza/e0c251df896bee4e0f9b38a693a6105bf7eadd19/internal/execution/toolpolicy.go",
+      "https://raw.githubusercontent.com/microsoft/waza/e0c251df896bee4e0f9b38a693a6105bf7eadd19/internal/execution/copilot.go",
+      "https://raw.githubusercontent.com/microsoft/waza/e0c251df896bee4e0f9b38a693a6105bf7eadd19/internal/skill/agent.go",
+      "https://raw.githubusercontent.com/microsoft/waza/e0c251df896bee4e0f9b38a693a6105bf7eadd19/internal/orchestration/runner.go",
+      "https://raw.githubusercontent.com/microsoft/waza/e0c251df896bee4e0f9b38a693a6105bf7eadd19/internal/orchestration/agent_graders.go"
+    ],
+    "contract": "Selected .agent.md tools: [] binds deny_all through SDK AvailableTools, fail-closed permission callback and pre-tool-use denial hook. Agent resolution uses directories, not direct filenames; SKILL.md can shadow agent loading. Disabling skills bypasses resolution.",
+    "localValidation": "Static binding and synthetic policy-evidence checks only; Waza/runtime enforcement not executed.",
+    "limits": "No OS filesystem, credential or network sandbox; no claim about ambient runtime configuration, hooks/server startup or model-provider transport."
+  },
   "schemas": [
     {
       "path": "schemas/eval.schema.json",

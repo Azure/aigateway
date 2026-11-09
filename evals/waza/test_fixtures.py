@@ -68,12 +68,14 @@ class Fixtures(unittest.TestCase):
             self.assertTrue(config["parallel"])
             self.assertEqual(config["workers"], 2)
             self.assertEqual(config["max_attempts"], 1)
-            self.assertEqual(set(config["required_skills"]), {
-                "manage-ai-gateway", "use-ai-gateway", "migrate-ai-gateway", "feedback-ai-gateway"})
+            self.assertEqual(set(config["required_skills"]), (
+                {"aigateway-planning"} if mode == "quality" else {
+                    "manage-ai-gateway", "use-ai-gateway", "migrate-ai-gateway", "feedback-ai-gateway"}))
             self.assertEqual(config["executor"], "mock" if mode == "smoke" else "copilot-sdk")
             spec_dir = ROOT if mode == "smoke" else ROOT / "authorized-quality"
             self.assertEqual(
                 {str((spec_dir / p).resolve()) for p in config["skill_directories"]},
+                {str(ROOT.resolve())} if mode == "quality" else
                 {str((ROOT.parent.parent / "skills" / skill).resolve())
                  for skill in config["required_skills"]},
             )
@@ -325,7 +327,7 @@ class Fixtures(unittest.TestCase):
     def test_shared_neutral_vocabulary_makes_contract_identifiers_expressible(self):
         smoke = documents()["fixtures/output-contract.json"]
         quality = documents("quality", "operator-selected-model")["fixtures/output-contract.json"]
-        self.assertEqual(smoke, quality)
+        self.assertNotIn("gateIdentifiers", quality)
         self.assertEqual(set(smoke["gateIdentifiers"]),
                          {gate for case in self.cases for gate in case["expected"]["gates"]})
         self.assertNotIn("cases", smoke)
@@ -348,9 +350,9 @@ class Fixtures(unittest.TestCase):
             "routing": [{"weight": "integer"}]})
         for case in self.cases:
             prompt = documents("quality")[f"tasks/{case['id']}.yaml"]["inputs"]["prompt"]
-            shape = json.loads(prompt.split("Output shape (types only; derive values from evidence): ")[1])
-            self.assertEqual(shape, {key: value_shape(case["expected"][key])
-                                     for key in ("selected", "observations")})
+            from grade import behavior_expected
+            shape = json.loads(prompt.split("Fact shape (types only): ")[1].split("\nSelected skill text:")[0])
+            self.assertEqual(shape, value_shape(behavior_expected(case)))
 
     def test_additional_known_gates_do_not_hide_missing_required_gates(self):
         vocabulary = documents()["fixtures/output-contract.json"]["gateIdentifiers"]
