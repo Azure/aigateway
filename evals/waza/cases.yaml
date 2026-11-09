@@ -379,6 +379,10 @@ cases:
       gates: [fresh-preview-after-change, exact-removal-approval, inspect-all-alias-dependencies, denied-discovery-not-empty, no-whole-sequence-replay, add-only-preserves-stale]
       observations: {previousApprovalValid: false, removalExecuted: false, discoveryComplete: false}
     required_commands: ['az aigateway model-provider sync --subscription sub-eval -g rg-eval --gateway-name gw-eval -n foundry-eval --dry-run']
+    supplemental_reads:
+      - az aigateway show --subscription sub-eval --ids /subscriptions/sub-eval/resourceGroups/rg-eval/providers/Microsoft.ApiManagement/aigateways/gw-eval -o json
+      - az aigateway model list --subscription sub-eval -g rg-eval --gateway-name gw-eval --provider-name foundry-eval -o json
+      - az aigateway model-alias list --subscription sub-eval -g rg-eval --gateway-name gw-eval -o json
     forbidden_commands: ['--yes', 'model delete', 'model-alias update', '--create-default-aliases']
 
   - id: apim-assess-not-execute
@@ -459,6 +463,16 @@ cases:
       - az aigateway model-provider create --subscription sub-eval -g rg-eval --gateway-name gw-eval -n foundry-approved --foundry-resource-id /subscriptions/sub-eval/resourceGroups/rg-models/providers/Microsoft.CognitiveServices/accounts/foundry-eval
       - az aigateway model list --subscription sub-eval -g rg-eval --gateway-name gw-eval --provider-name foundry-approved -o json
       - az aigateway show --subscription sub-eval -g rg-eval -n gw-eval -o json
+    behavior_phases:
+      - [az aigateway model-provider create --subscription sub-eval -g rg-eval --gateway-name gw-eval -n foundry-approved --foundry-resource-id /subscriptions/sub-eval/resourceGroups/rg-models/providers/Microsoft.CognitiveServices/accounts/foundry-eval]
+      - - az aigateway model list --subscription sub-eval -g rg-eval --gateway-name gw-eval --provider-name foundry-approved -o json
+        - az aigateway show --subscription sub-eval -g rg-eval -n gw-eval -o json
+    supplemental_reads:
+      - az aigateway show --subscription sub-eval --ids /subscriptions/sub-eval/resourceGroups/rg-eval/providers/Microsoft.ApiManagement/aigateways/gw-eval -o json
+      - az resource list --subscription sub-eval -g rg-eval --name gw-eval -o json
+      - az cognitiveservices account show --subscription sub-eval -g rg-models -n foundry-eval -o json
+      - az cognitiveservices account deployment list --subscription sub-eval -g rg-models -n foundry-eval -o json
+      - az aigateway model list --subscription sub-eval -g rg-eval --gateway-name gw-eval -o json
     forbidden_commands: ['az role assignment create', 'az cognitiveservices account deployment create', 'model-provider sync', 'az group create']
 
   - id: alias-routing-sibling-preservation
@@ -512,4 +526,7 @@ cases:
       - az aigateway model-alias show --subscription sub-eval -g rg-eval --gateway-name gw-eval -n arm-alias-17 -o json
       - az aigateway model-alias update --subscription sub-eval -g rg-eval --gateway-name gw-eval -n arm-alias-17 --backend-model resource-id=/subscriptions/sub-eval/resourceGroups/rg-eval/providers/Microsoft.ApiManagement/aigateways/gw-eval/workspaces/default/modelProviders/p/models/model-a priority=0 weight=75 --backend-model resource-id=/subscriptions/sub-eval/resourceGroups/rg-eval/providers/Microsoft.ApiManagement/aigateways/gw-eval/workspaces/default/modelProviders/p/models/model-b priority=0 weight=25 --backend-model resource-id=/subscriptions/sub-eval/resourceGroups/rg-eval/providers/Microsoft.ApiManagement/aigateways/gw-eval/workspaces/default/modelProviders/p/models/model-c priority=2 weight=10
       - az aigateway model-alias show --subscription sub-eval -g rg-eval --gateway-name gw-eval -n arm-alias-17 -o json
-    forbidden_commands: ['--policies', '--routing-name', 'billing-arm-alias', 'model-provider update', 'model update', 'model-alias delete']
+    supplemental_reads:
+      - az aigateway show --subscription sub-eval --ids /subscriptions/sub-eval/resourceGroups/rg-eval/providers/Microsoft.ApiManagement/aigateways/gw-eval -o json
+      - az aigateway model-alias show --subscription sub-eval -g rg-eval --gateway-name gw-eval -n billing-arm-alias -o json
+    forbidden_commands: ['--policies', '--routing-name', 'model-provider update', 'model update', 'model-alias delete']

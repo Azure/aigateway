@@ -57,6 +57,8 @@ def normalize_command(command):
         while index < len(words) and not words[index].startswith("-"):
             values.append(words[index])
             index += 1
+        if route[-1:] in (("show",), ("list",)) and flag == "--output" and values == ["jsonc"]:
+            values = ["json"]
         if flag == "--backend-model":
             values.sort()
         options.append((flag, tuple(values)))
@@ -71,6 +73,8 @@ def command_matches(expected, actual):
     actual_route, actual_options = normalize_command(actual)
     if expected_route == actual_route == ("az", "aigateway", "show"):
         wanted, supplied = dict(expected_options), dict(actual_options)
+        if len(supplied) != len(actual_options):
+            return False
         ids = supplied.get("--ids", ())
         if "--ids" not in wanted and len(ids) == 1:
             match = re.fullmatch(
@@ -202,7 +206,7 @@ def behavior_expected(case):
     if case["id"] == "policy-denial-no-provider-bypass":
         expected["observations"].pop("fallbackAttempted")
         expected["observations"]["fallbackPlanned"] = False
-    if case["id"] == "approved-foundry-onboarding-scope":
+    if "importIdentity" in expected["observations"]:
         expected["observations"]["importIdentity"] = "SystemAssigned"
     if case["id"] == "runtime-only-known-endpoint":
         expected["selected"].update(
@@ -243,7 +247,15 @@ def approval_matches(expected, actual):
             if (not isinstance(row, dict) or set(row) != {"action", "scope"}
                     or not isinstance(row["action"], str) or not isinstance(row["scope"], str)):
                 return None
-            result.append((aliases.get(row["action"], row["action"]), row["scope"]))
+            action = aliases.get(row["action"], row["action"])
+            if re.fullmatch(r"(?:enable|attach|assign) the gateway system-assigned managed identity",
+                            action, re.I):
+                action = "SystemAssigned"
+            elif re.fullmatch(
+                    r"(?:grant|assign) Foundry User to the gateway identity"
+                    r"(?: at account scope, not deployment-only scope)?", action, re.I):
+                action = "Foundry User"
+            result.append((action, row["scope"]))
         return sorted(result)
     return identities(expected) == identities(actual)
 
@@ -276,6 +288,8 @@ def equivalent_fact(expected, actual, key):
         return safe_command_matches(expected, actual)
     if key == "importIdentity" and expected == "SystemAssigned":
         return actual in ("SystemAssigned", "system-assigned-gateway-identity")
+    if key == "ratePartition" and expected == "identity-and-ip-combination":
+        return actual in ("identity-and-ip-combination", "identity/ipAddress")
     if isinstance(expected, dict):
         return isinstance(actual, dict) and all(
             field in actual and equivalent_fact(value, actual[field], field)
@@ -320,6 +334,10 @@ def evaluate(case, output, component="behavior"):
             value = actual.get(key)
             if section == "selected":
                 value = selected_identity(case, key, value)
+                if (key == "endpoint" and isinstance(wanted, str) and wanted.startswith("/") and
+                        case["evidence"].get("origin") and
+                        value == case["evidence"]["origin"] + "/default/models" + wanted):
+                    value = wanted
                 if key == "endpoint" and value is None:
                     value = actual.get("callable")
             if equivalent_fact(wanted, value, key):
@@ -394,6 +412,20 @@ def local_help_probe(case, command):
 
 
 def plan_matches(case, commands, required):
+    phases = case.get("behavior_phases")
+    if phases:
+        remaining = [list(phase) for phase in phases]
+        for command in commands:
+            index = next((i for i, expected in enumerate(remaining[0])
+                          if safe_command_matches(expected, command)), None) if remaining else None
+            if index is not None:
+                remaining[0].pop(index)
+                if not remaining[0]:
+                    remaining.pop(0)
+            elif not local_help_probe(case, command) and not any(
+                    safe_command_matches(read, command) for read in case.get("supplemental_reads", [])):
+                return False
+        return not remaining
     if len(commands) == len(required) and all(safe_command_matches(e, a)
                                              for e, a in zip(required, commands)):
         return True

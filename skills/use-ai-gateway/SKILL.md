@@ -43,7 +43,11 @@ limits explanations, not otherwise-authorized client integration.
 `model-alias list/show`, `model list/show`, `mcp list/show`, and relevant policy
 or exporter reads. Use explicit subscription and gateway selectors; validate
 returned identity/family and default workspace. Inspect installed task-specific
-help only for commands needed now. Use scoped ARM GETs only for fields not
+help only for commands needed now.
+If a gateway-root read is needed, prefer its fully typed
+`Microsoft.ApiManagement/aigateways` ID with `show --ids` where help exposes it;
+do not replace that binding with a name-only read or re-anchor a foreign ID.
+Use scoped ARM GETs only for fields not
 exposed by the CLI or a verified legacy contract, as described in the runtime
 reference. Failed reads and incomplete pagination are unknown, not empty.
 Do not retry under another identity.

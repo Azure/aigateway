@@ -4,28 +4,44 @@ These scenarios check whether an assistant preserves the selected gateway,
 runtime contract, and approval boundaries when discovering, integrating, or
 managing Azure AI Gateway. They also cover read-only APIM feasibility assessment.
 There are **18 baseline scenarios and three separately selected holdouts**.
-The public skills and their boundaries are unchanged. A development-only
+The public skill names and boundaries are retained. A development-only
 planning agent denies all tools; it is not an installed runtime skill.
 
-**Current status:** planning completion is not established. The first corrected
-18-task trial passed 8/18 with recorded deny-all on every task and zero tool
-calls/events/denials. It used 30.9943 AI credits and 156.181 seconds.
-The next trial's console summary reported 12/18 passes, 35.79605 AI credits and
-163.499 seconds, but an assistant shell-preparation error left `--output` empty:
-the shell continued after an unavailable `python` command. No full result was
-saved and post-result policy verification could not run. That aggregate is not
-accepted whole-suite policy or repeatability evidence. Further paid runs stopped;
-one of six additional authorized invocations was used.
+**Current status:** planning completion is not established. The latest complete
+combined trial passed **11/18 original scenarios and 2/3 holdouts**. All 21
+recorded deny-all with zero tool calls/events/denials. It used 41.19985 AI credits
+and 179.355 seconds. Seven of its eight failed tasks had evaluator
+representation or plan-comparison defects; one optional gateway-root read used
+name selectors instead of the supplied typed ID. The consumer skill now makes
+that binding explicit, without making root inspection mandatory.
+
+Offline replay of the unchanged combined outputs passes 20/21 behavior checks
+and 21/21 syntax checks after those evaluator corrections. The recorded fresh
+score remains 13/21. Correct derived URLs, SystemAssigned identity, natural
+approval-action wording and colored JSON retain their meaning; scope, roles,
+composite counters, both post-create verification reads and alias write order
+remain strict. Only enumerated, task-scoped prerequisite/dependency reads are
+accepted. A replay does not test the changed skill or establish repeatability.
 
 The task-context correction supplies selected sections directly from the public
 skill references plus recorded local CLI help. It does not put oracle answers
 in inputs or change installed skill behavior. Offline replay of the first
 corrected result remains 8/18 for behavior; recorded version/help coverage changes
 syntax assessment to 16 pass/two unscored, not a fresh quality score.
-The three holdouts remain unexecuted. Completion requires all original and
+The three holdouts have now executed once; corrections informed by them are
+development evidence, not newly unseen acceptance evidence. Completion requires all original and
 holdout scenarios passing with complete policy evidence across three frozen
 trials. Live CLI/data-plane and matched CLI performance evidence need separate
 authorization; neither is established here.
+
+The first corrected trial passed 8/18 with complete deny-all evidence
+(30.9943 credits, 156.181 seconds). A subsequent console-only trial reported
+12/18 passes (35.79605 credits, 163.499 seconds), but preparation continued
+after an unavailable `python` command and left `--output` empty. Its full
+result and policy records are unavailable, so it cannot count toward
+repeatability. Execution stopped until fail-closed preparation was corrected
+and regression-tested; the combined run above resumed under the remaining
+authorized ceiling. Every completed artifact and prior replay remains unchanged.
 
 ## Historical baseline review
 

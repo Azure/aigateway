@@ -23,6 +23,72 @@ def answer(case):
 
 
 class Planning(unittest.TestCase):
+    def test_equivalent_fact_formats_preserve_runtime_and_counter_boundaries(self):
+        case = next(c for c in cases() if c["id"] == "exact-alias-endpoint-contract")
+        result = answer(case)
+        result["selected"]["endpoint"] = result["observations"]["url"]
+        self.assertEqual(evaluate(case, json.dumps(result))["status"], "pass")
+        for changed in (result["observations"]["url"].replace("gateway.", "provider."),
+                        result["observations"]["url"].replace("/default/", "/other/"),
+                        result["observations"]["url"].replace("/responses", "/chat/completions")):
+            result["selected"]["endpoint"] = changed
+            self.assertEqual(evaluate(case, json.dumps(result))["status"], "fail")
+        case = next(c for c in cases() if c["id"] == "token-request-policy-counters")
+        result = answer(case)
+        result["observations"]["ratePartition"] = "identity/ipAddress"
+        self.assertEqual(evaluate(case, json.dumps(result))["status"], "pass")
+        for changed in ("identity", "ipAddress", "two-independent-counters"):
+            result["observations"]["ratePartition"] = changed
+            self.assertEqual(evaluate(case, json.dumps(result))["status"], "fail")
+
+    def test_pending_approval_language_keeps_role_and_scope_exact(self):
+        case = next(c for c in cases() if c["id"] == "selected-rg-bootstrap")
+        result = answer(case)
+        result["pendingCommands"] = copy.deepcopy(case["pending_commands"])
+        approvals = result["pendingCommands"][0]["approvals"]
+        approvals[0]["action"] = "Enable the gateway system-assigned managed identity"
+        approvals[1]["action"] = "Grant Foundry User to the gateway identity"
+        self.assertEqual(evaluate(case, json.dumps(result))["status"], "pass")
+        for changed in ("Do not grant Foundry User to the gateway identity",
+                        "Grant Owner to the gateway identity",
+                        "Grant Foundry User and Contributor to the gateway identity"):
+            approvals[1]["action"] = changed
+            self.assertEqual(evaluate(case, json.dumps(result))["status"], "fail")
+        approvals[1]["action"] = "Grant Foundry User to the gateway identity at account scope, not deployment-only scope"
+        approvals[1]["scope"] += "/deployments/deployment-chat"
+        self.assertEqual(evaluate(case, json.dumps(result))["status"], "fail")
+
+    def test_independent_verification_order_still_requires_create_and_both_reads(self):
+        case = next(c for c in cases() if c["id"] == "approved-foundry-onboarding-scope")
+        self.assertEqual([command for phase in case["behavior_phases"] for command in phase],
+                         case["required_commands"])
+        create, models, identity = case["required_commands"]
+        self.assertTrue(plan_matches(case, [create, identity, models], case["required_commands"]))
+        for commands in ([identity, models, create], [create, identity], [create, models]):
+            self.assertFalse(plan_matches(case, commands, case["required_commands"]))
+        for read in case["supplemental_reads"]:
+            self.assertFalse(plan_matches(case, [
+                read.replace("sub-eval", "foreign"), create, models, identity],
+                case["required_commands"]))
+
+    def test_colored_json_does_not_accept_table_or_weaken_typed_binding(self):
+        expected = "az aigateway show --subscription sub-eval --ids /subscriptions/sub-eval/resourceGroups/rg-eval/providers/Microsoft.ApiManagement/aigateways/gw-eval -o json"
+        self.assertTrue(command_matches(expected, expected.replace("-o json", "-o jsonc")))
+        self.assertFalse(command_matches(expected, expected.replace("-o json", "-o table")))
+        self.assertFalse(command_matches(expected, "az aigateway show --subscription sub-eval -g rg-eval -n gw-eval -o json"))
+        self.assertFalse(command_matches(expected, expected + " --subscription foreign"))
+
+    def test_dependency_reads_cannot_replace_or_reorder_alias_mutations(self):
+        case = next(c for c in cases() if c["id"] == "alias-routing-sibling-preservation")
+        before, update, after = case["required_commands"]
+        root, sibling = case["supplemental_reads"]
+        self.assertTrue(plan_matches(case, [root, before, update, after, sibling],
+                                     case["required_commands"]))
+        for commands in ([root, update, before, after],
+                         [before, update, after, sibling.replace(" show ", " update ")],
+                         [before, update, after, sibling.replace("billing-arm-alias", "foreign")]):
+            self.assertFalse(plan_matches(case, commands, case["required_commands"]))
+
     def test_combined_selection_keeps_each_independent_input_and_grader(self):
         baseline = documents("quality", "gpt-6.1-sol")
         holdouts = documents("quality", "gpt-6.1-sol", holdouts=True)
