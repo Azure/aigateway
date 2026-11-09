@@ -14,7 +14,8 @@ from grade import ROOT
 
 def verify(path):
     path = Path(path).resolve()
-    if path.parent not in (ROOT / "authorized-quality", ROOT / "authorized-holdouts"):
+    if path.parent not in (ROOT / "authorized-quality", ROOT / "authorized-holdouts",
+                          ROOT / "authorized-combined"):
         raise ValueError("expected generated quality/holdout evaluation under evals/waza")
     spec = yaml.safe_load(path.read_text())
     policy = yaml.safe_load((ROOT / "planning.agent.md").read_text().split("---")[1])
@@ -32,7 +33,8 @@ def verify(path):
             raise ValueError("repository-root agent shadows evaluation policy")
     config = spec["config"]
     expected = documents("quality", config["model"], config["trials_per_task"],
-                         holdouts=path.parent.name == "authorized-holdouts")
+                         holdouts=path.parent.name == "authorized-holdouts",
+                         combined=path.parent.name == "authorized-combined")
     for name, document in expected.items():
         actual = path.parent / name
         content = json.loads(actual.read_text()) if actual.suffix == ".json" else yaml.safe_load(actual.read_text())
@@ -74,7 +76,8 @@ def verify_preflight(report, eval_path):
     spec = yaml.safe_load(Path(eval_path).read_text())
     expected = documents("quality", spec["config"]["model"],
                          spec["config"]["trials_per_task"],
-                         holdouts=Path(eval_path).parent.name == "authorized-holdouts")
+                         holdouts=Path(eval_path).parent.name == "authorized-holdouts",
+                         combined=Path(eval_path).parent.name == "authorized-combined")
     ids = {task["id"] for name, task in expected.items() if name.startswith("tasks/")}
     if (report.get("kind") != "waza.preflight" or report.get("schemaVersion") != "1.0"
             or report.get("complete") is not True or report.get("executor") != "copilot-sdk"

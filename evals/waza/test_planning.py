@@ -23,6 +23,22 @@ def answer(case):
 
 
 class Planning(unittest.TestCase):
+    def test_combined_selection_keeps_each_independent_input_and_grader(self):
+        baseline = documents("quality", "gpt-6.1-sol")
+        holdouts = documents("quality", "gpt-6.1-sol", holdouts=True)
+        combined = documents("quality", "gpt-6.1-sol", combined=True)
+        tasks = {key: value for key, value in combined.items() if key.startswith("tasks/")}
+        self.assertEqual(len(tasks), 21)
+        for source in (baseline, holdouts):
+            for key, value in source.items():
+                if key.startswith("tasks/"):
+                    self.assertEqual(tasks[key], value)
+                    self.assertEqual(len(value["inputs"]["files"]), 1)
+                    self.assertNotIn("required_commands", value["inputs"]["prompt"])
+        self.assertEqual(combined["eval.yaml"]["config"]["trials_per_task"], 1)
+        with self.assertRaises(ValueError):
+            documents("quality", "gpt-6.1-sol", holdouts=True, combined=True)
+
     def test_task_recipes_are_source_context_not_oracle_answers(self):
         docs = documents("quality", "gpt-6.1-sol")
         for case in cases():

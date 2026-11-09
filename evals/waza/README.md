@@ -351,6 +351,15 @@ Select them explicitly with `author.py --quality --authorized --model gpt-6.1-so
 directory separately, and use another new result filename if a three-task run
 is separately authorized. They are not added to the default 18-task cost budget.
 
+For an explicitly authorized original-plus-holdout invocation, add
+`--include-holdouts` instead of `--holdouts`. This writes `authorized-combined/`
+with the unchanged 18 baseline tasks and three unchanged holdout tasks, each
+using its own grader selection. Verify/preflight `authorized-combined/eval.yaml`
+and select a fresh result filename. One trial per task now means **21 trials
+per invocation**, not 18; this selection does not increase the authorized
+invocation ceiling. Once a holdout result informs a correction, distinguish
+that development use from frozen repeatability evidence.
+
 ## Scenario behavior boundaries
 
 | Task | Required boundary |
