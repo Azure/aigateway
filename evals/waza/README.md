@@ -9,7 +9,26 @@ planning agent denies all tools; it is not an installed runtime skill.
 
 **Current status:** planning completion is not established. The latest complete
 combined trial passed **17/18 original scenarios and 3/3 holdouts**, or **20/21**.
-All 21 recorded deny-all with zero tool calls/events/denials. It used 42.65535 AI
+All 21 recorded deny-all with zero tool calls/events/denials; syntax passed 21/21.
+The first newly authorized frozen trial used 42.78910 AI credits and
+181.589 seconds on candidate `3f9c268`. There were no setup failures. Bootstrap
+failed on two comparisons: camel-case `systemAssigned` instead of the required
+identity representation, and an account-wide pending provider import instead
+of the grader's selected-deployment pending model import. Both access changes
+remained pending with the exact gateway/account scopes; nothing was executed.
+The request does not explicitly choose single-deployment versus account-wide
+import. This is a remaining representation and scope-contract problem, not
+evidence of an unauthorized Azure operation.
+
+Execution stopped on repeated bootstrap nonprogress. One of the three newly
+authorized frozen invocations was used; two remain unused. No all-green fresh
+trial or repeatability streak was established. No rubric, skill or generated
+input was changed during or after this trial to relabel its failure. The next
+correction must resolve the requested import scope and normalize identity
+representation while retaining strict operation, role, principal and scope
+checks, before considering another paid trial.
+
+The preceding complete trial also passed 20/21, using 42.65535 AI
 credits and 189.511 seconds. Typed approvals passed both bootstrap and the
 Foundry role-scope holdout. The sole remaining recorded failure was the alias
 grader rejecting a scoped same-name gateway-family inventory read required by
@@ -18,11 +37,12 @@ enumerated; foreign scope/name, omitted name, mutation and alias-order negatives
 remain strict. Offline replay of the unchanged final outputs passes 21/21 behavior
 and syntax checks. The recorded fresh score remains 20/21, not 21/21.
 
-The authorized ceiling is exhausted: the initial trial and all six additional
-invocations have been used. Total assistant-owned usage is 276.39610 AI credits
-and 141 premium requests/turns, including the disclosed console-only invocation.
-There is no all-green fresh trial or repeatability streak. Further model calls
-require new authorization; no automatic rerun is scheduled.
+The original ceiling was exhausted: the initial trial and all six additional
+invocations were used before authorization for up to three frozen trials.
+Total assistant-owned usage is now 319.18520 AI credits and 162 premium
+requests/turns, including the disclosed console-only invocation.
+No automatic rerun is scheduled. Earlier offline 21/21 replays remain
+historical evidence, not the score of this new output.
 
 The preceding trial passed 17/18 originals and 2/3 holdouts, or 19/21, using
 42.0101 credits and 188.135 seconds. Its two failures concerned approval wording:
