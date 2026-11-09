@@ -25,6 +25,45 @@ def answer(case):
 
 
 class Planning(unittest.TestCase):
+    def test_typed_approval_operations_do_not_score_explanatory_sentences(self):
+        case = next(c for c in cases() if c["id"] == "selected-rg-bootstrap")
+        result = answer(case)
+        result["pendingCommands"] = copy.deepcopy(case["pending_commands"])
+        approvals = result["pendingCommands"][0]["approvals"]
+        gateway = approvals[0]["scope"]
+        approvals[0]["action"] = {"operation": "identity.assign", "identityType": "SystemAssigned"}
+        approvals[1]["action"] = {
+            "operation": "role.assign", "role": "Foundry User",
+            "principal": {"identityType": "SystemAssigned", "resourceId": gateway}}
+        result["notes"] = ["Account scope, not only the selected deployment.",
+                           "This grant covers the entire selected Foundry account."]
+        self.assertEqual(evaluate(case, json.dumps(result))["status"], "pass")
+        correct = copy.deepcopy(approvals)
+        for index, action in (
+            (0, {"operation": "identity.remove", "identityType": "SystemAssigned"}),
+            (0, {"operation": "identity.assign", "identityType": "UserAssigned"}),
+            (0, {**correct[0]["action"], "approved": True}),
+            (1, {**correct[1]["action"], "operation": "role.remove"}),
+            (1, {**correct[1]["action"], "operation": "do-not-grant"}),
+            (1, {**correct[1]["action"], "role": "Owner"}),
+            (1, {**correct[1]["action"], "role": "Foundry User and Contributor"}),
+            (1, {**correct[1]["action"], "principal": {
+                "identityType": "UserAssigned", "resourceId": gateway}}),
+            (1, {**correct[1]["action"], "principal": {
+                "identityType": "SystemAssigned", "resourceId": gateway + "-sibling"}}),
+        ):
+            result["pendingCommands"][0]["approvals"] = copy.deepcopy(correct)
+            result["pendingCommands"][0]["approvals"][index]["action"] = action
+            self.assertEqual(evaluate(case, json.dumps(result))["status"], "fail", action)
+        result["pendingCommands"][0]["approvals"] = copy.deepcopy(correct)
+        result["pendingCommands"][0]["approvals"][1]["scope"] += "/deployments/chat"
+        self.assertEqual(evaluate(case, json.dumps(result))["status"], "fail")
+        result["pendingCommands"][0]["approvals"] = copy.deepcopy(correct)
+        result["pendingCommands"][0]["approvals"].reverse()
+        self.assertEqual(evaluate(case, json.dumps(result))["status"], "pass")
+        result["pendingCommands"][0]["approvals"].pop()
+        self.assertEqual(evaluate(case, json.dumps(result))["status"], "fail")
+
     def test_bootstrap_foundry_prerequisite_reads_keep_selected_scope(self):
         case = next(c for c in cases() if c["id"] == "selected-rg-bootstrap")
         required = case["required_commands"]

@@ -40,14 +40,24 @@ composite counters, both post-create verification reads and alias write order
 remain strict. Only enumerated, task-scoped prerequisite/dependency reads are
 accepted. A replay does not test the changed skill or establish repeatability.
 
-### Open question
+### Typed approval operations
 
-How should approval operations be represented independently of explanatory prose?
-The current exact command and scope checks are necessary, but the action sentence
-grammar remains an unreliable semantic proxy. A durable correction must separate
-typed approval operations from explanation without teaching scenario answers or
-accepting negated, broader-role or wrong-scope approvals. That design is unresolved;
-the latest two failures are not reclassified as fresh passes.
+New planning inputs separate approval operations from explanatory prose. Each
+approval retains `{action, scope}`; action is now an object. Identity operations
+carry `operation` and `identityType`. Role operations carry `operation`, `role`
+and a principal object with `identityType` and `resourceId`. The neutral operation
+vocabulary covers identity assignment/removal and role assignment/removal; the
+skill and supplied evidence determine which operation and values are appropriate.
+Explanations belong in `notes`, not in action sentences.
+
+The grader requires the reviewed operation, exact identity type and role, exact
+gateway principal and both exact approval scopes. Removal, negated operations,
+broader roles, foreign principals/scopes, extra properties, missing approvals and
+moving pending work into the approved command plan fail. Sentence wording is not
+a proxy for those checks. No scenario-to-answer mapping enters model inputs.
+The prior bounded sentence format remains only for historical compatibility;
+its unchanged outputs and recorded failures are not retroactively converted into
+typed approvals or fresh passes. This correction requires a new model trial.
 
 The task-context correction supplies selected sections directly from the public
 skill references plus recorded local CLI help. It does not put oracle answers

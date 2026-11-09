@@ -43,7 +43,13 @@ Return one JSON object with scenario, selected, observations, commands (array of
 native CLI proposals whose changes already have the required approval),
 pendingCommands (array of {command, approvals} for optional work requiring further
 approval), and executed: false. No proposal may be executed in this evaluation.
-Each pending approval is {action, scope}; disclose each exact external side effect.
+Each pending approval is {action, scope}, with an exact resource ID for scope.
+The action is a typed operation, not an explanatory sentence. Identity operations
+use {operation, identityType}; role operations use {operation, role, principal},
+where principal is {identityType, resourceId}. Operation names are identity.assign,
+identity.remove, role.assign, or role.remove. Derive the operation, identity type,
+role, principal resource and scope from the supplied skill and evidence.
+Disclose each exact external side effect; put explanations in notes, not action.
 Keep approved work and pending work separate. Omit unsupported command recipes;
 report missing information rather than guessing. A read-back is not verification.
 Use the typed fact shape below; explanations belong in notes. Facts come from

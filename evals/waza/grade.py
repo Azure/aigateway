@@ -241,12 +241,34 @@ def approval_matches(expected, actual):
         "Foundry User": "Foundry User",
         "assign-Foundry-User": "Foundry User",
     }
+    identity_scope = next((row["scope"] for row in expected
+                           if isinstance(row.get("action"), str)
+                           and aliases.get(row["action"]) == "SystemAssigned"), None)
     def identities(rows):
         result = []
         for row in rows:
             if (not isinstance(row, dict) or set(row) != {"action", "scope"}
-                    or not isinstance(row["action"], str) or not isinstance(row["scope"], str)):
+                    or not isinstance(row["scope"], str)):
                 return None
+            if isinstance(row["action"], dict):
+                action = row["action"]
+                if (set(action) == {"operation", "identityType"}
+                        and action["operation"] == "identity.assign"
+                        and action["identityType"] == "SystemAssigned"):
+                    result.append(("SystemAssigned", row["scope"]))
+                elif (set(action) == {"operation", "role", "principal"}
+                        and action["operation"] == "role.assign"
+                        and isinstance(action["role"], str)
+                        and identity_scope is not None
+                        and action["principal"] == {
+                            "identityType": "SystemAssigned", "resourceId": identity_scope}):
+                    result.append((action["role"], row["scope"]))
+                else:
+                    return None
+                continue
+            if not isinstance(row["action"], str):
+                return None
+            # Retain the bounded old format for immutable historical replays.
             action = row["action"].strip().removesuffix(".")
             action = aliases.get(action, action)
             if re.fullmatch(r"(?:enable|attach|assign) (?:the )?gateway system-assigned "
