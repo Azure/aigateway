@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Azure/ai-gateway/migration/native-sync-preview.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "providerKey", "providerName", "destinationId", "accountId", "capturedAt",
+               "cliFingerprint", "catalogDigest", "destinationDigest", "status", "error", "plan"],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "providerKey": {"type": "string", "minLength": 1},
+    "providerName": {"type": "string", "pattern": "^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,79}$"},
+    "destinationId": {"type": "string"},
+    "accountId": {"type": "string"},
+    "capturedAt": {"type": "string", "format": "date-time"},
+    "cliFingerprint": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "catalogDigest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "destinationDigest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "status": {"enum": ["ready", "blocked"]},
+    "error": {"type": ["string", "null"]},
+    "plan": {"oneOf": [{"type": "null"}, {
+      "type": "object", "additionalProperties": false,
+      "required": ["dryRun", "providerName", "providerId", "foundryResourceId", "models", "aliases"],
+      "properties": {
+        "dryRun": {"const": true}, "providerName": {"type": "string"},
+        "providerId": {"type": "string"}, "foundryResourceId": {"type": "string"},
+        "aliases": {"type": "array", "maxItems": 0},
+        "models": {"type": "array", "items": {
+          "type": "object", "additionalProperties": false,
+          "required": ["action", "name", "resourceId", "deploymentResourceId"],
+          "properties": {
+            "action": {"enum": ["create", "unchanged", "delete"]},
+            "name": {"type": "string", "pattern": "^(?!\\.{1,2}$)[A-Za-z0-9_.()-]{1,80}$"},
+            "resourceId": {"type": "string"}, "deploymentResourceId": {"type": "string"}
+          }
+        }}
+      }
+    }]}
+  },
+  "allOf": [
+    {"if": {"properties": {"status": {"const": "ready"}}},
+     "then": {"properties": {"error": {"type": "null"}, "plan": {"type": "object"}}}},
+    {"if": {"properties": {"status": {"const": "blocked"}}},
+     "then": {"properties": {"error": {"type": "string", "minLength": 1}, "plan": {"type": "null"}}}}
+  ]
+}

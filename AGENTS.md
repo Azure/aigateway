@@ -9,8 +9,8 @@ Guidance for coding agents (GitHub Copilot, Claude Code, Codex, Cursor, and othe
 | `labs/` | The Azure AI Gateway hands-on labs: one folder per lab (`NN-slug/README.md`, `infra/`, optional notebook, plus the unnumbered `quickstart/`), the site engine (`site/`, `build.mjs`), tools, shared assets, and the `azure-ai-gateway-labs` agent skill | Yes. Read [`labs/AUTHORING.md`](labs/AUTHORING.md) first |
 | `labs/RELEASE-NOTES.md` | The labs release notes, one section per [product release](https://ai.gateway.azure.com/docs/) | Yes |
 | `docs/` | The generated labs site, ignored by git. On `main`, `.github/workflows/labs-pages.yml` builds it from `labs/` and publishes it to GitHub Pages | Never. `npm run build` writes it |
-| `skills/use-ai-gateway/`, `commands/`, `.claude-plugin/`, `.cursor-plugin/`, `.github/plugin/`, `gemini-extension.json` | The read-only coding-agent plugin that integrates an existing gateway's models and tools into apps | Only when asked |
-| `cli/` | Installers and the command reference for the `az aigateway` CLI extension | Only when asked |
+| `skills/`, `commands/`, `.claude-plugin/`, `.cursor-plugin/`, `.github/plugin/`, `gemini-extension.json` | The coding-agent plugin: developer integration, gateway administration, capability-gated migration, and local feedback packaging | Only when asked |
+| `cli/` | Installation guidance and the command reference for the published `az aigateway` CLI extension | Only when asked |
 | `samples/` | The samples catalog | Only when asked |
 
 ## Labs essentials

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Azure/ai-gateway/migration/context.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "generationId", "sourceId", "destinationId", "phase", "completionStatus", "manifestDigest"],
+  "properties": {
+    "schemaVersion": {"const": "4.0"},
+    "generationId": {"type": "string", "format": "uuid"},
+    "sourceId": {"type": "string", "minLength": 1},
+    "destinationId": {"type": "string", "minLength": 1},
+    "phase": {"enum": ["mapping", "approval", "execution", "verification", "complete", "blocked"]},
+    "completionStatus": {"enum": ["not-started", "in-progress", "blocked", "incomplete", "failed", "cancelled", "complete", "complete-with-accepted-residuals"]},
+    "manifestDigest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Azure/ai-gateway/migration/model-catalog.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "providers"],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "providers": {"type": "array", "items": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "kind", "accountId", "endpoint", "credentialRef", "capturedAt", "provenance", "complete", "error", "models"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+$"},
+        "kind": {"enum": ["Foundry", "Custom"]},
+        "accountId": {"type": ["string", "null"]},
+        "endpoint": {"type": "string", "minLength": 1},
+        "credentialRef": {"type": ["string", "null"]},
+        "credentialHeader": {"type": "string", "pattern": "^[A-Za-z0-9-]+$"},
+        "credentialSource": {
+          "type": "object", "additionalProperties": false,
+          "required": ["sourceId", "resourceId", "field", "scheme"],
+          "properties": {
+            "sourceId": {"type": "string", "minLength": 1},
+            "resourceId": {"type": "string", "minLength": 1},
+            "field": {"enum": ["value", "primaryKey", "secondaryKey"]},
+            "scheme": {"enum": [null, "Bearer", "Basic"]}
+          }
+        },
+        "capturedAt": {"type": "string", "format": "date-time"},
+        "provenance": {"enum": ["foundry-deployments", "custom-models", "operator-manifest"]},
+        "complete": {"type": "boolean"},
+        "error": {"type": ["string", "null"]},
+        "models": {"type": "array", "items": {
+          "type": "object", "additionalProperties": false,
+          "required": ["id", "deploymentId", "family", "version", "apiFormat", "endpoints"],
+          "properties": {
+            "id": {"type": "string", "minLength": 1},
+            "deploymentId": {"type": ["string", "null"]},
+            "family": {"type": ["string", "null"]},
+            "version": {"type": ["string", "null"]},
+            "apiFormat": {"type": ["string", "null"]},
+            "endpoints": {"type": "array", "uniqueItems": true, "items": {"type": "string"}}
+          }
+        }}
+      }
+    }}
+  }
+}

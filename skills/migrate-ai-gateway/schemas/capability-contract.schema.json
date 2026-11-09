@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Azure/ai-gateway/migration/capability-contract.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "producer", "catalogVersion", "catalogDigest", "cli", "capabilities", "unsupported", "contractDigest"],
+  "properties": {
+    "schemaVersion": {"const": "1.0"}, "producer": {"const": "skill-local"},
+    "catalogVersion": {"type": "string"}, "catalogDigest": {"type": "string"},
+    "cli": {"type": "object", "required": ["extension", "commands", "fingerprint"]},
+    "capabilities": {"type": "array", "items": {"type": "object", "required": ["id", "command", "read", "kind", "options", "required", "approvalClass", "behaviorTypes", "limitations", "support"]}},
+    "unsupported": {"type": "array", "items": {"type": "string"}},
+    "contractDigest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

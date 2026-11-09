@@ -1,14 +1,26 @@
 {
-  "name": "ai-gateway",
-  "description": "Discover the models and MCP tool servers registered in an AI Gateway and integrate them into any application — call a model over the OpenAI-compatible passthrough, connect MCP tools, or scaffold a runnable agent. Read-only against the gateway — consumption only.",
-  "version": "2.0.0",
-  "keywords": ["ai-gateway", "agents", "mcp", "models", "azure", "integration"],
+  "name": "aigateway",
+  "description": "Create, configure, manage, and build applications on Azure AI Gateway. Includes read-only developer integration and assisted APIM V2 migration with local validation and explicit approval.",
+  "version": "3.0.0",
   "author": {
     "name": "Microsoft",
     "url": "https://www.microsoft.com"
   },
   "repository": "https://github.com/Azure/aigateway",
   "license": "MIT",
-  "commands": ["./commands/discover.md", "./commands/build.md"],
-  "skills": ["./skills/use-ai-gateway/"]
+  "keywords": ["ai-gateway", "agents", "mcp", "models", "azure", "integration", "management", "migration"],
+  "commands": [
+    "./commands/discover.md",
+    "./commands/build.md",
+    "./commands/create.md",
+    "./commands/manage.md",
+    "./commands/migrate.md",
+    "./commands/feedback.md"
+  ],
+  "skills": [
+    "./skills/use-ai-gateway/",
+    "./skills/manage-ai-gateway/",
+    "./skills/migrate-ai-gateway/",
+    "./skills/feedback-ai-gateway/"
+  ]
 }

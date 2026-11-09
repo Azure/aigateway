@@ -1,18 +1,18 @@
 {
   "name": "azure",
-  "description": "Plugins for building applications on top of the AI Gateway — discover its models and MCP tool servers and integrate them into any app.",
+  "description": "Plugins for creating, configuring, managing, and building applications on Azure AI Gateway.",
   "version": "1.0.0",
   "owner": {
     "name": "Microsoft"
   },
   "plugins": [
     {
-      "name": "ai-gateway",
+      "name": "aigateway",
       "source": "./",
-      "description": "Discover the models and MCP tools registered in an AI Gateway and integrate them into any application — call a model, connect MCP tools, or scaffold a runnable agent. Adds /ai-gateway:discover and /ai-gateway:build.",
-      "version": "2.0.0",
+      "description": "Create, configure, and operate Azure AI Gateway resources, discover and integrate their models and MCP tools, or migrate supported APIM V2 configuration with local validation and explicit approval.",
+      "version": "3.0.0",
       "category": "development",
-      "keywords": ["ai-gateway", "agents", "mcp", "models", "azure", "integration"],
+      "keywords": ["ai-gateway", "agents", "mcp", "models", "azure", "integration", "management", "migration"],
       "author": {
         "name": "Microsoft",
         "url": "https://www.microsoft.com"
