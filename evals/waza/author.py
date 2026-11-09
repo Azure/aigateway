@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 import yaml
@@ -32,8 +33,9 @@ Do not claim live validation, a quality grade, or that plans prove safe executio
 """
 
 PLANNING_CONTRACT = """
-This is a fixed-input planning task. All tools are denied. The selected skill text
-and evidence are supplied below, so do not try to read files or invoke a skill.
+This is a fixed-input planning task. All tools are denied. The selected skill text,
+task references, recorded local CLI help and evidence are supplied below, so do
+not try to read files or invoke a skill.
 The sandbox also receives evidence.json containing exactly the inline synthetic
 evidence. Relative links in the quoted skill are context, not requests to load
 more files; file and skill tools remain denied.
@@ -46,6 +48,15 @@ Keep approved work and pending work separate. Omit unsupported command recipes;
 report missing information rather than guessing. A read-back is not verification.
 Use the typed fact shape below; explanations belong in notes. Facts come from
 evidence. Missing evidence stays unknown/unavailable, not an invented success.
+String facts describe a category or identifier, not a sentence: units name the
+unit, uncertainty uses unknown/unavailable, and residuals identify unsupported
+source behaviors present in evidence. Put counts, explanations and evidence
+gaps in notes rather than merging them into these atomic facts.
+Import lists describe the proposed import, not deployments already imported.
+The commands array contains native CLI proposals only; application code and
+non-native runtime request examples belong in notes, with their selected runtime
+parameters retained in selected. Use the supplied task context to prepare the
+requested plan; optional local help/version proposals do not replace it.
 No decision label, gate identifier or special limitation phrase is required.
 """
 
@@ -57,6 +68,33 @@ def skill_text(case):
         # This suite assesses only; execution/mapping recipes are not in scope.
         text = text.split("## 2. Initialize and map")[0]
     return text
+
+
+def task_context(case):
+    base = ROOT.parents[1] / "skills" / case["skill"]
+    sections = []
+    for reference in case.get("context_sections", []):
+        filename, heading = reference.split("#", 1)
+        path = (base / filename).resolve()
+        if not path.is_relative_to((base / "references").resolve()):
+            raise ValueError("task context must come from the selected skill's references")
+        text = path.read_text()
+        matches = list(re.finditer(r"^(#{1,6}) " + re.escape(heading) + r"$", text, re.M))
+        if len(matches) != 1:
+            raise ValueError("missing or ambiguous task-reference heading: " + reference)
+        match = matches[0]
+        following = re.search(r"^#{1," + str(len(match[1])) + r"} ", text[match.end():], re.M)
+        end = match.end() + following.start() if following else len(text)
+        sections.append(reference + "\n" + text[match.start():end].strip())
+    if case["skill"] == "manage-ai-gateway" or case["id"] == "native-task-scoped-discovery":
+        help_data = json.loads((ROOT / "native-help.json").read_text())
+        sections.append("Recorded local CLI help (not live resource evidence):\n"
+                        + json.dumps({"extensionVersion": help_data["extensionVersion"],
+                                      "semantics": help_data["semantics"],
+                                      "commands": [{"command": row["command"],
+                                                    "options": row["verifiedFixtureOptions"]}
+                                                   for row in help_data["commands"]]}, indent=2))
+    return "\n\n".join(sections)
 
 
 def value_shape(value):
@@ -138,6 +176,7 @@ def documents(mode="smoke", model="offline-mock", trials=1, holdouts=False):
                 f"SCENARIO_ID={case['id']}\n{case['request']}\n{PLANNING_CONTRACT}"
                 + "\nFact shape (types only): " + json.dumps(value_shape(behavior_expected(case)))
                 + "\nSelected skill text:\n" + skill_text(case)
+                + "\nSelected task context:\n" + task_context(case)
                 + "\nSynthetic evidence:\n" + json.dumps(case["evidence"], indent=2))
             # A real evidence resource satisfies Waza's empty-sandbox path guard.
             task["inputs"]["files"] = [

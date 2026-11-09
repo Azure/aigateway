@@ -19,6 +19,8 @@ cases:
 
   - id: holdout-foundry-role-scope-denied
     skill: manage-ai-gateway
+    context_sections:
+      - references/models-and-routing.md#Approved Foundry onboarding
     category: negative
     request: >-
       The administrator selected one existing Foundry deployment, but approved no
@@ -45,6 +47,8 @@ cases:
 
   - id: holdout-sync-changed-scope
     skill: manage-ai-gateway
+    context_sections:
+      - references/models-and-routing.md#Provider reconciliation
     category: negative
     request: >-
       Assess sync after the provider's source deployment changed and discovery was

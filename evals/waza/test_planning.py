@@ -10,8 +10,8 @@ from unittest.mock import patch
 import yaml
 from jsonschema import Draft7Validator
 
-from author import documents
-from grade import ROOT, behavior_expected, cases, evaluate, plan_matches
+from author import documents, task_context
+from grade import ROOT, behavior_expected, cases, evaluate, plan_matches, command_matches
 from verify_planning import verify, verify_result, verify_preflight
 
 
@@ -22,6 +22,59 @@ def answer(case):
 
 
 class Planning(unittest.TestCase):
+    def test_task_recipes_are_source_context_not_oracle_answers(self):
+        docs = documents("quality", "gpt-6.1-sol")
+        for case in cases():
+            prompt = docs["tasks/" + case["id"] + ".yaml"]["inputs"]["prompt"]
+            for reference in case.get("context_sections", []):
+                filename, heading = reference.split("#", 1)
+                self.assertIn(reference, prompt)
+                text = (ROOT.parents[1] / "skills" / case["skill"] / filename).read_text()
+                self.assertIn(" " + heading + "\n", text)
+            self.assertNotIn("required_commands", prompt)
+            self.assertNotIn("behavior_commands", prompt)
+            self.assertNotIn("pending_commands", prompt)
+            if case["id"] == "runtime-only-known-endpoint":
+                self.assertNotIn("Recorded local CLI help", prompt)
+        bad = copy.deepcopy(cases()[0])
+        for reference in ("../../evals/waza/grade.py#Anything",
+                          "references/gateway-lifecycle.md#Missing heading"):
+            bad["context_sections"] = [reference]
+            with self.assertRaises(ValueError):
+                task_context(bad)
+
+    def test_local_probes_never_replace_plans_or_expand_runtime_scope(self):
+        case = next(c for c in cases() if c["id"] == "native-task-scoped-discovery")
+        probes = ["az aigateway version", "az aigateway model-alias list --help"]
+        self.assertTrue(plan_matches(case, probes + case["required_commands"], case["required_commands"]))
+        self.assertFalse(plan_matches(case, probes, case["required_commands"]))
+        self.assertFalse(plan_matches(case, ["az aigateway fake-command --help"] +
+                                      case["required_commands"], case["required_commands"]))
+        runtime = next(c for c in cases() if c["id"] == "runtime-only-known-endpoint")
+        self.assertFalse(plan_matches(runtime, probes, []))
+        scoped = "az aigateway show --subscription sub-eval -g rg-eval -n gw-eval -o json"
+        exact = ("az aigateway show --subscription sub-eval --ids "
+                 "/subscriptions/sub-eval/resourceGroups/rg-eval/providers/"
+                 "Microsoft.ApiManagement/aigateways/gw-eval -o json")
+        self.assertTrue(command_matches(scoped, exact))
+        self.assertFalse(command_matches(exact, scoped))
+        self.assertFalse(command_matches(scoped, exact.replace("/aigateways/", "/service/")))
+        self.assertFalse(command_matches(scoped, exact.replace("/rg-eval/", "/foreign/")))
+
+    def test_lro_bounds_and_readback_not_redundant_initial_read(self):
+        case = next(c for c in cases() if c["id"] == "lro-readiness-not-acceptance")
+        required = case["behavior_commands"]
+        self.assertTrue(plan_matches(case, required, required))
+        shorter = [required[0].replace("--timeout 1800", "--timeout 60").replace(
+            "--interval 20", "--interval 5"), required[1]]
+        self.assertTrue(plan_matches(case, shorter, required))
+        self.assertFalse(plan_matches(case, shorter[:1], required))
+        for changed in (required[0].replace("--timeout 1800", "--timeout 0"),
+                        required[0].replace("--interval 20", "--interval 0"),
+                        required[0].replace("--timeout 1800", "--timeout 3600"),
+                        required[0].replace("aigateways/gw-eval", "service/gw-eval")):
+            self.assertFalse(plan_matches(case, [changed, required[1]], required))
+
     def test_preflight_accepts_only_known_offline_warnings(self):
         docs = documents("quality", "gpt-6.1-sol")
         ids = [task["id"] for name, task in docs.items() if name.startswith("tasks/")]
@@ -211,7 +264,7 @@ class Planning(unittest.TestCase):
                      if 'RESULT="evals/waza/results/quality-planning-' in block).split("```")[0]
         # Substitute inert commands before execution; never launch uv/Waza/model.
         block, run_count = re.subn(
-            r'if TMPDIR=.*?--output "\$RESULT"; then',
+            r'if (?:COPILOT_HOME|TMPDIR)=.*?--output "\$RESULT"; then',
             'if (printf "{}" > "$RESULT"; exit 7); then', block, flags=re.S)
         block, verifier_count = re.subn(
             r'if uv run.*?--result "\$RESULT"; then',

@@ -205,14 +205,46 @@ That supported binding is configured and tested statically. The operator's
 2026-11-09 planning artifact records `deny_all` and zero calls/events/denials for
 one executed task. The other 17 stopped at input setup, without policy evidence;
 whole-suite enforcement remains **unverified**. It does not sandbox
-the process filesystem, credentials or network, nor prevent ambient SDK/CLI
-configuration reads, hooks/server startup, caches or model-provider transport.
-Disabled plugins, uv, `TMPDIR`, `COPILOT_HOME` and a fresh shell do not establish
-those protections. Use only the approved runtime/account/environment, without
-unwanted startup hooks or live credentials; stop if sign-in or installation is
+the process filesystem, credentials or network, nor by itself prevent ambient
+SDK/CLI configuration reads, hooks/server startup, caches or model-provider
+transport. Disabled plugins, uv, `TMPDIR` and a fresh shell do not establish
+those protections. `COPILOT_HOME` is a supported configuration-directory
+override, not an OS sandbox. Use a separate profile and verify that the actual
+embedded runtime reads it before a paid run. Stop if sign-in or installation is
 needed. No global plugin installation is changed. This fixed-input run evaluates
 planning, not plugin discovery, progressive loading, skill routing or CLI-relative
 tool/latency performance.
+
+For the bounded assistant-owned run, the already installed embedded runtime
+**1.0.105** was started through its supported SDK stdio connection without
+creating a session or sending a prompt. Its user-settings API reported the
+isolated profile's `disableAllHooks: true` as an explicitly set value; its
+plugin and user MCP configuration APIs reported zero entries. Device-managed
+settings contained no hook/MCP/plugin keys, and authentication was already
+available. No personal configuration or credential was copied. Waza's pinned
+`internal/execution/sdkclient.go` passes `os.Environ()` to the same runtime,
+so retain this profile override on the benchmark command. This checks the
+specific startup configuration, not whole-process isolation or an assertion
+that account policy can never change.
+
+Create an empty, run-local profile before the benchmark. These settings disable
+ambient hooks, not the selected planning agent's explicit `tools: []` policy:
+
+```bash
+mkdir -p evals/waza/workspaces
+PLANNING_HOME="$(mktemp -d "$PWD/evals/waza/workspaces/planning-home.XXXXXX")"
+printf '{"disableAllHooks":true}\n' > "$PLANNING_HOME/settings.json"
+export COPILOT_HOME="$PLANNING_HOME"
+```
+
+The supported override is documented in the
+[Copilot configuration-directory reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-config-dir-reference).
+The embedded SDK's `types.d.ts` documents propagation through a spawned stdio
+runtime; in-process transport has different environment semantics and is not
+used here. The non-model probe used the actual embedded SDK APIs
+`user.settings.get`, `plugins.list`, `mcp.config.list`, `managedSettings.read`,
+`getStatus` and `getAuthStatus`. The runtime-only executable does not support
+the standalone CLI's `help` or `--version` commands.
 
 The program grader still resolves from the repository root and receives final
 output on stdin. SDK may manage its bundled runtime/cache; verify the approved
@@ -226,7 +258,8 @@ if test -e "$RESULT"; then
   printf 'Refusing to overwrite %s\n' "$RESULT"
   false
 else
-  if TMPDIR="$PWD/evals/waza/workspaces" COPILOT_AUTO_UPDATE=false WAZA_NO_UPDATE_CHECK=1 \
+  if COPILOT_HOME="$PLANNING_HOME" TMPDIR="$PWD/evals/waza/workspaces" \
+    COPILOT_AUTO_UPDATE=false WAZA_NO_UPDATE_CHECK=1 \
     uv run --no-project --with pyyaml --with jsonschema \
     waza run evals/waza/authorized-quality/eval.yaml --no-cache --output "$RESULT"; then
     WAZA_STATUS=0

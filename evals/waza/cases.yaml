@@ -2,6 +2,9 @@ version: 1
 cases:
   - id: selected-rg-bootstrap
     skill: manage-ai-gateway
+    context_sections:
+      - references/gateway-lifecycle.md#Create
+      - references/models-and-routing.md#Approved Foundry onboarding
     category: management
     request: >-
       Prepare a gateway in the selected existing RG with its existing Foundry deployments.
@@ -183,6 +186,8 @@ cases:
 
   - id: token-request-policy-counters
     skill: manage-ai-gateway
+    context_sections:
+      - references/policies.md#Accounting model
     category: management
     request: >-
       Explain these existing policies without changing them. Distinguish tokens
@@ -232,6 +237,8 @@ cases:
 
   - id: lro-readiness-not-acceptance
     skill: manage-ai-gateway
+    context_sections:
+      - references/gateway-lifecycle.md#Create
     category: negative
     request: >-
       The approved create returned Accepted with --no-wait, then wait timed out.
@@ -252,6 +259,11 @@ cases:
     required_commands:
       - az aigateway show --ids /subscriptions/sub-eval/resourceGroups/rg-eval/providers/Microsoft.ApiManagement/aigateways/gw-eval --subscription sub-eval -o json
       - az aigateway wait --ids /subscriptions/sub-eval/resourceGroups/rg-eval/providers/Microsoft.ApiManagement/aigateways/gw-eval --subscription sub-eval --created --timeout 1800 --interval 20
+      - az aigateway show --ids /subscriptions/sub-eval/resourceGroups/rg-eval/providers/Microsoft.ApiManagement/aigateways/gw-eval --subscription sub-eval -o json
+    behavior_commands:
+      - az aigateway wait --ids /subscriptions/sub-eval/resourceGroups/rg-eval/providers/Microsoft.ApiManagement/aigateways/gw-eval --subscription sub-eval --created --timeout 1800 --interval 20
+      - az aigateway show --ids /subscriptions/sub-eval/resourceGroups/rg-eval/providers/Microsoft.ApiManagement/aigateways/gw-eval --subscription sub-eval -o json
+    supplemental_reads:
       - az aigateway show --ids /subscriptions/sub-eval/resourceGroups/rg-eval/providers/Microsoft.ApiManagement/aigateways/gw-eval --subscription sub-eval -o json
     forbidden_commands: ['az aigateway create', 'az aigateway delete', 'az group delete']
 
@@ -342,6 +354,8 @@ cases:
 
   - id: stale-sync-destructive-approval
     skill: manage-ai-gateway
+    context_sections:
+      - references/models-and-routing.md#Provider reconciliation
     category: negative
     request: >-
       Assess native provider sync. A previous dry-run proposed deleting stale-model,
@@ -393,6 +407,8 @@ cases:
 
   - id: approved-foundry-onboarding-scope
     skill: manage-ai-gateway
+    context_sections:
+      - references/models-and-routing.md#Approved Foundry onboarding
     category: management
     request: >-
       Compare single-deployment onboarding with whole-account import on the selected
@@ -447,6 +463,10 @@ cases:
 
   - id: alias-routing-sibling-preservation
     skill: manage-ai-gateway
+    context_sections:
+      - references/models-and-routing.md#Alias routing semantics
+      - references/models-and-routing.md#Native operation paths
+      - references/models-and-routing.md#Alias pool
     category: management
     request: >-
       Prepare the approved routing-only update for arm-alias-17: keep callable

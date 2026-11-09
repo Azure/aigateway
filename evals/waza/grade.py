@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import re
 import shlex
 import sys
 from pathlib import Path
@@ -33,7 +34,7 @@ def normalize_command(command):
     words = shlex.split(command)
     start = next((i for i, word in enumerate(words) if word.startswith("-")), len(words))
     route = tuple(words[:start])
-    aliases = {"-g": "--resource-group", "-n": "--name", "-o": "--output"}
+    aliases = {"-g": "--resource-group", "-n": "--name", "-o": "--output", "-h": "--help"}
     if route[2:3] == ("model",):
         aliases["--model-provider"] = "--provider-name"
     if route[2:3] == ("model-provider",):
@@ -68,12 +69,25 @@ def normalize_command(command):
 def command_matches(expected, actual):
     expected_route, expected_options = normalize_command(expected)
     actual_route, actual_options = normalize_command(actual)
+    if expected_route == actual_route == ("az", "aigateway", "show"):
+        wanted, supplied = dict(expected_options), dict(actual_options)
+        ids = supplied.get("--ids", ())
+        if "--ids" not in wanted and len(ids) == 1:
+            match = re.fullmatch(
+                r"/subscriptions/([^/]+)/resourceGroups/([^/]+)/providers/"
+                r"Microsoft\.ApiManagement/aigateways/([^/]+)", ids[0])
+            if match and {"--subscription", "--resource-group", "--name"} <= wanted.keys():
+                if supplied.get("--subscription") != (match[1],):
+                    return False
+                supplied.pop("--ids")
+                supplied["--resource-group"], supplied["--name"] = (match[2],), (match[3],)
+                actual_options = tuple(sorted(supplied.items()))
     if expected_route != actual_route or len(expected_options) != len(actual_options):
         return False
     for (flag, values), (actual_flag, actual_values) in zip(expected_options, actual_options):
         if flag != actual_flag:
             return False
-        if expected_route == ("az", "aigateway", "wait") and flag == "--timeout":
+        if expected_route == ("az", "aigateway", "wait") and flag in ("--timeout", "--interval"):
             if (len(actual_values) != 1 or not actual_values[0].isdigit()
                     or not 0 < int(actual_values[0]) <= int(values[0])):
                 return False
@@ -363,8 +377,20 @@ def valid_command_syntax(command):
     row = next((r for r in help_rows if tuple(r["command"].split()) == route), None)
     if row is None:
         return False
-    allowed = set(row["verifiedFixtureOptions"]) | {"--output"}
+    allowed = set(row["verifiedFixtureOptions"]) | {"--output", "--help"}
     return all(flag in allowed for flag, _ in options)
+
+
+def local_help_probe(case, command):
+    if case["skill"] != "manage-ai-gateway" and case["id"] != "native-task-scoped-discovery":
+        return False
+    try:
+        route, options = normalize_command(command)
+    except ValueError:
+        return False
+    if route == ("az", "aigateway", "version"):
+        return not options or options == (("--output", ("json",)),)
+    return ("--help", ()) in options and valid_command_syntax(command)
 
 
 def plan_matches(case, commands, required):
@@ -377,6 +403,8 @@ def plan_matches(case, commands, required):
     for command in commands:
         if index < len(required) and safe_command_matches(required[index], command):
             index += 1
+        elif local_help_probe(case, command):
+            continue
         elif not any(safe_command_matches(read, command) for read in supplemental):
             return False
     return index == len(required)

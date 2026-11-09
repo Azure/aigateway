@@ -9,6 +9,7 @@
     "aliasUpdate": "Repeated --backend-model resource-id=<model-id> priority=<0-100> weight=<1-100>; reads ETag, sends supplied properties with If-Match, fails stale writes without retry; lower priority preferred and weights relative within tier"
   },
   "commands": [
+    {"command": "az aigateway version", "verifiedFixtureOptions": ["-o", "--output"], "helpStdoutSha256": "2556844886c1347189f86fc1a013f302ba4bf52d4bc8dced42e1016809a8912d", "collectedOn": "2026-11-09", "semantics": "Reads installed package metadata without signing in or making a resource call. Each recorded command help exposes the global --help/-h exit-only flags."},
     {"command": "az aigateway create", "verifiedFixtureOptions": ["--subscription", "--resource-group", "--name", "--location", "-g", "-n"], "helpStdoutSha256": "3adbbefbd766636f460f50a56f89b8b87056b00bad7aaced4ec76562dba5019a"},
     {"command": "az aigateway model create", "verifiedFixtureOptions": ["--subscription", "-g", "--resource-group", "--gateway-name", "--foundry-resource-id", "--deployment", "--provider-name", "--model-provider", "--name", "-n", "--deployment-config", "--api-format", "--supported-endpoints"], "helpStdoutSha256": "213fd0f7dea7b6da173308951816d7ec800c4edfe24aad64fdcbf2cb6298ff70"},
     {"command": "az aigateway model list", "verifiedFixtureOptions": ["--subscription", "-g", "--resource-group", "--gateway-name", "--provider-name", "--model-provider", "-o", "--output"], "helpStdoutSha256": "f895fccf7f0c5fa58fc58e60b68ae3ff933997c070accd9ae1a3f48855151a6a"},
