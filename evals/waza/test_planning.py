@@ -10,7 +10,7 @@ from jsonschema import Draft7Validator
 
 from author import documents
 from grade import ROOT, behavior_expected, cases, evaluate, plan_matches
-from verify_planning import verify, verify_result
+from verify_planning import verify, verify_result, verify_preflight
 
 
 def answer(case):
@@ -20,6 +20,51 @@ def answer(case):
 
 
 class Planning(unittest.TestCase):
+    def test_preflight_accepts_only_known_offline_warnings(self):
+        docs = documents("quality", "gpt-6.1-sol")
+        ids = [task["id"] for name, task in docs.items() if name.startswith("tasks/")]
+        path = ROOT / "authorized-quality" / "eval.yaml"
+        report = {"kind": "waza.preflight", "schemaVersion": "1.0",
+                  "source": str(path), "executor": "copilot-sdk", "complete": True,
+                  "tasks": [{"id": identifier, "enabled": True} for identifier in ids],
+                  "diagnostics": [{"code": "runtime.availability", "state": "unresolved",
+                                   "severity": "warning"}], "dependencies": []}
+        for identifier in ids:
+            for code in ("boundary.requested_policy", "boundary.post_run",
+                         "grader.subprocess", "grader.subprocess"):
+                report["diagnostics"].append({"code": code, "state": "unresolved",
+                                              "severity": "warning", "task_id": identifier})
+            report["dependencies"].append({
+                "kind": "boundary", "mode": "requested-deny-all", "state": "unresolved",
+                "name": str(ROOT / "planning.agent.md"), "task_id": identifier})
+            for name in ("behavior", "syntax"):
+                report["dependencies"].append({
+                    "kind": "grader", "mode": "subprocess", "state": "unresolved",
+                    "name": name, "task_id": identifier})
+        with patch("verify_planning.Path.read_text", return_value=yaml.safe_dump(docs["eval.yaml"])), \
+                patch("verify_planning.documents", return_value=docs):
+            self.assertFalse(verify_preflight(report, path)["runtimePolicyVerified"])
+            for code, state in (("eval.schema", "invalid"), ("hooks.execution", "unresolved"),
+                                ("runtime.executor", "unsupported"),
+                                ("boundary.requested_policy", "invalid")):
+                bad = copy.deepcopy(report)
+                bad["diagnostics"].append({"code": code, "state": state, "severity": "warning"})
+                with self.assertRaises(ValueError):
+                    verify_preflight(bad, path)
+            for key, value in (("complete", False), ("tasks", []), ("dependencies", []),
+                               ("source", "foreign/eval.yaml")):
+                bad = {**report, key: value}
+                with self.assertRaises(ValueError):
+                    verify_preflight(bad, path)
+            bad = copy.deepcopy(report)
+            bad["dependencies"][0]["mode"] = "requested-allowlist"
+            with self.assertRaises(ValueError):
+                verify_preflight(bad, path)
+            bad = copy.deepcopy(report)
+            bad["diagnostics"].pop()
+            with self.assertRaises(ValueError):
+                verify_preflight(bad, path)
+
     def test_semantics_do_not_require_labels_or_markers(self):
         for case in cases():
             result = answer(case)

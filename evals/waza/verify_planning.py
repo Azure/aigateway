@@ -2,6 +2,8 @@
 
 import argparse
 import json
+import sys
+from collections import Counter
 from pathlib import Path
 
 import yaml
@@ -67,13 +69,77 @@ def verify_result(path):
     return counts
 
 
+def verify_preflight(report, eval_path):
+    """Accept only the reviewed offline limitations, never other prerequisites."""
+    spec = yaml.safe_load(Path(eval_path).read_text())
+    expected = documents("quality", spec["config"]["model"],
+                         spec["config"]["trials_per_task"],
+                         holdouts=Path(eval_path).parent.name == "authorized-holdouts")
+    ids = {task["id"] for name, task in expected.items() if name.startswith("tasks/")}
+    if (report.get("kind") != "waza.preflight" or report.get("schemaVersion") != "1.0"
+            or report.get("complete") is not True or report.get("executor") != "copilot-sdk"
+            or Path(report.get("source", "")).resolve() != Path(eval_path).resolve()):
+        raise ValueError("preflight report identity/inventory is incomplete or mismatched")
+    tasks = report.get("tasks", [])
+    if (len(tasks) != len(ids) or {task.get("id") for task in tasks} != ids
+            or any(task.get("enabled") is not True for task in tasks)):
+        raise ValueError("preflight task inventory differs from the generated suite")
+    allowed = {"boundary.requested_policy", "grader.subprocess",
+               "boundary.post_run", "runtime.availability"}
+    warnings = Counter()
+    scoped = Counter()
+    policy_tasks = set()
+    for diagnostic in report.get("diagnostics", []):
+        state, code = diagnostic.get("state"), diagnostic.get("code")
+        if state == "verified":
+            continue
+        if (state != "unresolved" or code not in allowed
+                or diagnostic.get("severity") != "warning"):
+            raise ValueError("blocked preflight diagnostic: " + str(code))
+        task = diagnostic.get("task_id", "")
+        if (code == "runtime.availability" and task) or (
+                code != "runtime.availability" and task not in ids):
+            raise ValueError("preflight warning has unexpected task scope")
+        warnings[code] += 1
+        scoped[(code, task)] += 1
+        if code == "boundary.requested_policy":
+            policy_tasks.add(task)
+    dependencies = report.get("dependencies", [])
+    bound = set()
+    for dependency in dependencies:
+        if dependency.get("kind") == "boundary":
+            if (dependency.get("mode") != "requested-deny-all"
+                    or dependency.get("state") != "unresolved"
+                    or Path(dependency.get("name", "")).resolve() != ROOT / "planning.agent.md"):
+                raise ValueError("preflight did not resolve the expected deny-all policy")
+            bound.add(dependency.get("task_id"))
+        elif (dependency.get("kind") != "grader" or dependency.get("mode") != "subprocess"
+              or dependency.get("state") != "unresolved"
+              or dependency.get("task_id") not in ids
+              or dependency.get("name") not in ("behavior", "syntax")):
+            raise ValueError("unexpected preflight dependency")
+    if policy_tasks != ids or bound != ids or warnings["runtime.availability"] != 1:
+        raise ValueError("preflight policy/runtime warning inventory is missing")
+    if any(scoped[(code, task)] != count for task in ids for code, count in (
+            ("boundary.requested_policy", 1), ("boundary.post_run", 1),
+            ("grader.subprocess", 2))):
+        raise ValueError("preflight per-task warning inventory is missing or duplicated")
+    return {"offlinePrerequisitesAccepted": True, "unresolvedWarnings": dict(warnings),
+            "runtimePolicyVerified": False}
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("eval", type=Path)
     parser.add_argument("--result", type=Path)
+    parser.add_argument("--preflight", type=Path,
+                        help="Review Waza --format json report; use - for stdin")
     args = parser.parse_args()
     try:
         report = verify(args.eval)
+        if args.preflight:
+            content = sys.stdin.read() if str(args.preflight) == "-" else args.preflight.read_text()
+            report["preflight"] = verify_preflight(json.loads(content), args.eval)
         if args.result:
             report["postRun"] = verify_result(args.result)
         print(json.dumps(report, indent=2))

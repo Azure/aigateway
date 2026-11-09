@@ -13,6 +13,11 @@
     "reviewedOn": "2026-11-09",
     "commit": "e0c251df896bee4e0f9b38a693a6105bf7eadd19",
     "sources": [
+      "https://raw.githubusercontent.com/microsoft/waza/e0c251df896bee4e0f9b38a693a6105bf7eadd19/cmd/waza/cmd_preflight.go",
+      "https://raw.githubusercontent.com/microsoft/waza/e0c251df896bee4e0f9b38a693a6105bf7eadd19/internal/preflight/report.go",
+      "https://raw.githubusercontent.com/microsoft/waza/e0c251df896bee4e0f9b38a693a6105bf7eadd19/internal/preflight/boundary.go",
+      "https://raw.githubusercontent.com/microsoft/waza/e0c251df896bee4e0f9b38a693a6105bf7eadd19/internal/preflight/graders.go",
+      "https://raw.githubusercontent.com/microsoft/waza/e0c251df896bee4e0f9b38a693a6105bf7eadd19/internal/preflight/inspect.go",
       "https://raw.githubusercontent.com/microsoft/waza/e0c251df896bee4e0f9b38a693a6105bf7eadd19/internal/execution/toolpolicy.go",
       "https://raw.githubusercontent.com/microsoft/waza/e0c251df896bee4e0f9b38a693a6105bf7eadd19/internal/execution/copilot.go",
       "https://raw.githubusercontent.com/microsoft/waza/e0c251df896bee4e0f9b38a693a6105bf7eadd19/internal/skill/agent.go",

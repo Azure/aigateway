@@ -150,7 +150,9 @@ uv run --no-project --with pyyaml --with jsonschema \
 waza --version
 # Stop unless this is the approved v0.40.1 binary/runtime.
 uv run --no-project --with pyyaml --with jsonschema \
-  waza preflight evals/waza/authorized-quality/eval.yaml --strict
+  waza preflight evals/waza/authorized-quality/eval.yaml --format json | \
+  uv run --no-project --with pyyaml --with jsonschema \
+  python evals/waza/verify_planning.py evals/waza/authorized-quality/eval.yaml --preflight -
 ```
 
 This **writes configuration only**, under ignored `authorized-quality/`; it
@@ -161,6 +163,22 @@ agent shadowing and changes to the generated policy binding.
 Authentication must already be prepared
 through the operator's approved Copilot account flow. Do not acquire Azure
 credentials or grant permissions.
+
+Do **not** use `--strict` for this planning suite. In pinned Waza v0.40.1,
+default preflight exits 1 for invalid configuration; `--strict` additionally
+fails all unresolved/unsupported diagnostics. Preflight never starts a runtime
+or grader, so `boundary.requested_policy`, `grader.subprocess`,
+`boundary.post_run` and `runtime.availability` remain unresolved by design.
+The operator's strict attempt stopped before running any model.
+
+The JSON checker above allows only those four **unresolved warning** codes.
+It still rejects invalid/unsupported/unknown diagnostics, incomplete or mismatched
+task inventory, unexpected dependencies and anything other than the selected
+requested-deny-all policy. Generated-config verification remains mandatory.
+A success means reviewed offline prerequisites, **not runtime readiness or
+enforcement**. The operator must still decide whether the approved account,
+runtime, environment and cost are acceptable; inspect post-run evidence afterward.
+There is no supported per-warning waiver flag in this version's preflight CLI.
 
 ### Configured boundary and limits
 
@@ -342,6 +360,11 @@ Behavior contracts and schema checks improve reproducibility, not live assurance
   and [runner resolution](https://raw.githubusercontent.com/microsoft/waza/e0c251df896bee4e0f9b38a693a6105bf7eadd19/internal/orchestration/runner.go)
   establish the selected agent's deny-all tri-state policy and enforcement hooks.
   `sources.json` records the reviewed binding and its limits.
+- Pinned [preflight CLI](https://github.com/microsoft/waza/blob/e0c251df896bee4e0f9b38a693a6105bf7eadd19/cmd/waza/cmd_preflight.go),
+  [exit policy](https://github.com/microsoft/waza/blob/e0c251df896bee4e0f9b38a693a6105bf7eadd19/internal/preflight/report.go),
+  [boundary diagnostics](https://github.com/microsoft/waza/blob/e0c251df896bee4e0f9b38a693a6105bf7eadd19/internal/preflight/boundary.go),
+  grader and runtime inspections establish why strict offline preflight cannot
+  satisfy this suite's runtime-only prerequisites.
 
 - Unmodified [Waza eval schema](https://raw.githubusercontent.com/microsoft/waza/v0.40.1/schemas/eval.schema.json)
   and [task schema](https://raw.githubusercontent.com/microsoft/waza/v0.40.1/schemas/task.schema.json);
