@@ -1628,9 +1628,12 @@ Set-Location ~/contoso-calc; claude -p "Say hi in three words"
 
 - **Sign in with Microsoft Entra ID instead of a key.** If the gateway accepts Entra tokens and you have the
   **AI Gateway Models User** role, as in [Authorize callers with Microsoft Entra ID](../11-entra-rbac/README.md), let
-  Claude Code fetch a token itself. Don't set `ANTHROPIC_AUTH_TOKEN`, and add
+  Claude Code fetch a token itself. Add
   `"apiKeyHelper": "az account get-access-token --resource https://azure-api.net/aigateway --query accessToken -o tsv"`
-  to `~/.claude/settings.json`. Claude Code runs the helper again every five minutes by default, so expired tokens
+  to `~/.claude/settings.json`, and run `unset ANTHROPIC_AUTH_TOKEN` (Bash) or
+  `Remove-Item Env:ANTHROPIC_AUTH_TOKEN` (PowerShell). Also keep it out of the `env` block of your settings. If it's
+  still set, Claude Code keeps sending the key as the bearer token instead of the helper's token, and the requests
+  still succeed with the key. Claude Code runs the helper again every five minutes by default, so expired tokens
   don't stop long sessions. See [Settings](https://code.claude.com/docs/en/settings).
 - **Keep the settings in a file.** Put the `ANTHROPIC_*` variables in the `env` block of `~/.claude/settings.json`,
   so every session uses the gateway without exports. Keep the key in your user settings, not in a project's

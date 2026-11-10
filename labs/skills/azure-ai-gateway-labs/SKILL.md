@@ -154,8 +154,9 @@ Before you create, change, or delete Azure resources, confirm the subscription a
   (without `/v1`), the runtime key in `ANTHROPIC_AUTH_TOKEN`, which it sends as a bearer token, and the aliases in
   `ANTHROPIC_DEFAULT_OPUS_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL`, and `ANTHROPIC_DEFAULT_HAIKU_MODEL`. The
   portal's import names them `<foundry-account-name>/<deployment>`. Unset `ANTHROPIC_API_KEY`: Claude Code sends it
-  in `x-api-key`, which answers `401`, and retries a `401` for minutes. Without a key, an `apiKeyHelper` setting can
-  run `az account get-access-token --resource https://azure-api.net/aigateway --query accessToken -o tsv`. Direct
+  in `x-api-key`, which answers `401`, and retries a `401` for minutes. For Entra ID, an `apiKeyHelper` setting can
+  run `az account get-access-token --resource https://azure-api.net/aigateway --query accessToken -o tsv`; unset
+  `ANTHROPIC_AUTH_TOKEN`, which outranks the helper as the bearer token. Direct
   Messages calls need the `anthropic-version` header. Claude Code's requests carry about 13,500 cached tokens, which
   barely count toward token limits. It doesn't retry a `429`, and it reports a budget's `403` as "Failed to
   authenticate": switch with `/model sonnet` or `--model sonnet`, because `--fallback-model` doesn't cover a `403`.
