@@ -7,7 +7,7 @@ availability is separate from authorization to perform a change.
 
 ## Evidence baseline
 
-The reviewed baseline is official CLI `1.0.0b22`, API
+The reviewed baseline is official CLI `1.0.0b26`, API
 `2025-09-01-preview`, and the
 [public command reference](https://github.com/Azure/aigateway/blob/main/cli/command-reference.md)
 at blob `34d488c50748eb5f1b90b300f27d17bf98027f43`.
