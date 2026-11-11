@@ -14,20 +14,17 @@ Apply the [scope, credential, and confirmation rules](../SKILL.md).
 
 ## Inbound: prefer Microsoft Entra ID
 
-Use the application's existing supported OAuth flow. Delegated users request
-`https://ai.gateway.azure.com/Data.All`; workload identities request resource
-`https://ai.gateway.azure.com`, or scope
-`https://ai.gateway.azure.com/.default` with an identity SDK. Send the runtime
-token in the `Authorization: Bearer <token>` header, not an ARM management
-token or a provider token. Use an identity library to refresh tokens; do not
-save access tokens in source files or replay scripts.
+Use the application's existing supported OAuth flow. Follow the
+[developer authentication workflow](../../use-ai-gateway/references/authentication.md)
+for the gateway runtime audience and delegated or workload scopes. Send the
+runtime token in the `Authorization: Bearer <token>` header, not an ARM
+management token or a provider token. Use an identity library to refresh
+tokens; do not save access tokens in source files or replay scripts.
 
 The caller also needs **AI Gateway Models User**, **AI Gateway Tools User**,
 or **AI Gateway User** at the appropriate scope. A management role such as
 Contributor does not imply runtime invocation access. Delegated applications
 also need the gateway data-plane permission and tenant consent. See the
-[developer authentication workflow](../../use-ai-gateway/SKILL.md#establish-runtime-authentication)
-for token acquisition, and the
 [Entra ID and RBAC lab](https://github.com/Azure/aigateway/tree/main/labs/11-entra-rbac)
 for caller-role examples.
 

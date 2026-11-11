@@ -7,8 +7,10 @@ published endpoint with runtime authorization.
 
 ## Choose the depth the user's access allows
 
-Without control-plane access, do not attempt to enumerate model aliases or MCP
-server resources. Use supplied published model names/operation URLs and known
+Try relevant discovery with the current authorized context as described in
+[connection](connection.md) before asking for missing details. If control-plane
+access is absent or denied, stop that lane rather than seeking broader access.
+Use supplied published model names/operation URLs and known
 MCP endpoints. Explain authentication and route shapes, preserve the existing
 caller identity, and use runtime responses as evidence. At a known MCP endpoint,
 authorized `tools/list` can reveal tools without granting gateway-wide server

@@ -6,24 +6,31 @@ argument-hint: [gateway resource id, runtime endpoint, or connection details] [o
 # /aigateway:build
 
 Take the user all the way from discovery to working code that uses an existing
-Azure AI Gateway's models and/or MCP tools — in whatever they're building. This command runs
-the **full** workflow in the bundled skill `skills/use-ai-gateway/SKILL.md` end to end:
+Azure AI Gateway's models and/or MCP tools — in whatever they're building. Follow
+the task-routed workflow in `skills/use-ai-gateway/SKILL.md`; skip discovery when
+the supplied callable contract is already complete:
 
-1. **Identify & select** assets using Part 1 of the skill and `$ARGUMENTS`.
+1. **Identify & select** assets using the skill's **Resolve what is missing before
+   asking** and **Establish the smallest callable contract** steps and `$ARGUMENTS`.
+   Try relevant scoped discovery with the current signed-in identity before asking
+   for missing details; do not require proof of permission before the first read.
    With authorized management reads, discover and explain a relevant shortlist.
    Without control-plane access, use supplied model endpoints/callable names and
    known MCP URLs; do not require an ARM ID or permission elevation. If only a host
-   is known, help with authentication/URL structure and ask for the missing published
+   is known and available discovery cannot resolve assets, help with
+   authentication/URL structure and ask for the missing published
    model/protocol or MCP endpoint, not guessed assets. Explain relevant constraints
    and unknowns, preserve explicit choices, and confirm the finite selection.
 2. **Establish runtime authentication** using Microsoft Entra ID or an existing
    gateway key, following the skill. Prefer Entra for production and scoped access.
    Retrieve a selected existing key only with explicit approval; never create or
-   rotate one. The current gateway contract uses `Authorization: Bearer` for both
-   credential types. Management access does not imply runtime invocation permission.
+   rotate one. Send the selected gateway key or Entra token as
+   `Authorization: Bearer` for model and MCP requests. Management access does
+   not imply runtime invocation permission.
    Runtime-only users use an existing secure binding or approved sign-in; do not
    list keys or retrieve management secrets on that path.
-3. **Integrate** (Part 2 of the skill). Ask what the user is building and pick the path:
+3. **Use the assets** following the relevant model, MCP or standalone-agent reference.
+   Reuse the known project target; ask what the user is building only when unclear:
    - **Call a model** over its advertised protocol: Chat Completions, Responses,
      Anthropic Messages, embeddings, or another documented operation.
    - **Connect MCP tools** from an MCP-capable client/app.
