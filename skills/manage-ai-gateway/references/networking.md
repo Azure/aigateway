@@ -1,115 +1,25 @@
 # Gateway networking and private connections
 
-[Apply the administrator workflow](../SKILL.md). Gateway
-settings and connections only; existing subnets, private endpoints and DNS
-remain externally owned.
+Subnet requirements and private endpoint connection subcommands for `az aigateway network`.
 
-## Choose the traffic path
+## Outbound VNet subnet requirements
 
-| Traffic requirement | Native control and boundary |
-| --- | --- |
-| Reach private backends | `--subnet`: outbound backend routing, not ingress isolation or backend authorization |
-| Isolate client ingress | `--public-network-access` and private-connection commands are exposed, but private ingress and public disablement have the support limitations below |
-| Review an existing private endpoint connection | `approve`/`reject`/`delete`: gateway-side decision, not endpoint/DNS provisioning or public access |
+- Same subscription and region as the gateway.
+- Dedicated subnet `/27` or larger (`/24` recommended), delegated to `Microsoft.App/environments`.
+- Outbound TCP 443 allowed to `Storage` and `AzureKeyVault`; do not place private endpoints inside the delegated subnet.
+- `network show` returns `properties.backend.subnet.id` under `virtualNetworkConfiguration.subnetResourceId`.
+- If `--no-wait` is passed to `network update`, poll with `az aigateway network wait --ids "$GATEWAY_ID" --subscription "$SUB" --updated --timeout 600 --interval 15`.
 
-Check the [service applicability evidence](activities-and-cli-coverage.md#operation-gaps-and-applicability)
-before proposing private ingress or public disablement. CLI flags alone do
-not establish isolation; do not bypass a support gap with legacy resources
-or feature registration.
+## Gateway-side private endpoint connections
 
-## Read and confirm
+Targets `$GATEWAY_ID/privateEndpointConnections/<connection-name>` (not the backing `Microsoft.Network/privateEndpoints` resource):
 
 ```bash
-az aigateway network show --ids "$GATEWAY_ID" \
-  --subscription "$SUBSCRIPTION" -o json
+az aigateway network private-endpoint-connection show --subscription "$SUB" -g "$RG" --gateway-name "$GW" -n "$PEC_NAME" -o json
+az aigateway network private-endpoint-connection approve --subscription "$SUB" -g "$RG" --gateway-name "$GW" -n "$PEC_NAME" --description "$REASON"
+az aigateway network private-endpoint-connection reject --subscription "$SUB" -g "$RG" --gateway-name "$GW" -n "$PEC_NAME" --description "$REASON"
+az aigateway network private-endpoint-connection delete --subscription "$SUB" -g "$RG" --gateway-name "$GW" -n "$PEC_NAME" --yes
+az aigateway network private-endpoint-connection wait --subscription "$SUB" -g "$RG" --gateway-name "$GW" -n "$PEC_NAME" --updated --timeout 600 --interval 15
 ```
 
-Compare public access, subnet and provisioning with the requested traffic
-path. `network show` projects `properties.backend.subnet.id` as
-`virtualNetworkConfiguration.subnetResourceId`, not a legacy wire contract.
-Skip no-ops; identify client/backend impact and specifically confirm the change.
 
-For outbound integration, record exact subnet, backend endpoint, DNS zone/link
-IDs and owners. Require the gateway's subscription/region, a dedicated subnet
-of at least `/27` (`/24` recommended), `Microsoft.App/environments` delegation,
-and the lab's outbound TCP 443 allowances to `Storage` and `AzureKeyVault`.
-Keep private endpoints outside the integration subnet. Check capacity,
-effective NSGs/firewalls, routes/return paths and DNS links/forwarding/resolver
-reachability with the owner; attachment does not establish these.
-
-Keep backend hostnames for HTTPS validation.
-Resolve [backend identity/access](keys-and-identities.md#understand-the-effects)
-separately from reachability. Missing infrastructure goes to its owner.
-
-## Apply the smallest native change
-
-Refresh before writing: network/connection paths send no `If-Match`, so reads
-are not concurrency protection. `network update` sends only supplied settings:
-
-```bash
-az aigateway network update --ids "$GATEWAY_ID" \
-  --subscription "$SUBSCRIPTION" --subnet "$SUBNET_ID"
-```
-
-`$SUBNET_ID` is the existing subnet ARM ID. To detach, substitute
-`--disable-vnet-integration true`; it is mutually exclusive with `--subnet`.
-Either change can interrupt private backends. Public access uses
-`--public-network-access Enabled|Disabled`; never reopen automatically.
-If stronger service evidence enables disablement, first verify private
-client/DNS access and confirm a lockout/recovery plan.
-
-Prefer default operation tracking. With `--no-wait`, bound the parent wait:
-
-```bash
-az aigateway network wait --ids "$GATEWAY_ID" \
-  --subscription "$SUBSCRIPTION" --updated --timeout 600 --interval 15
-az aigateway show --ids "$GATEWAY_ID" --subscription "$SUBSCRIPTION" -o json
-```
-
-`--updated` checks parent provisioning (`Active`/`Succeeded`), not the changed
-subnet or operation result; stale success can precede operation failure.
-After either mode compare `properties.publicNetworkAccess`,
-`properties.backend.subnet.id`, provisioning and preserved siblings. Retain
-operation outcomes; reconcile failures/timeouts before retrying.
-
-## Existing private endpoint connections
-
-```bash
-az aigateway network private-endpoint-connection list \
-  --subscription "$SUBSCRIPTION" -g "$RG" --gateway-name "$GATEWAY" -o json
-az aigateway network private-endpoint-connection show \
-  --ids "$CONNECTION_ID" --subscription "$SUBSCRIPTION" -o json
-```
-
-Select `$CONNECTION_ID` under `$GATEWAY_ID/privateEndpointConnections/`, not
-the backing `privateEndpoint.id`. Match peer ID, owner, clients and current
-state; never bulk-approve or trust display names. For the confirmed `Pending`
-request:
-
-```bash
-az aigateway network private-endpoint-connection approve \
-  --ids "$CONNECTION_ID" --subscription "$SUBSCRIPTION" \
-  --description "$DECISION_REASON"
-```
-
-Use `reject` with the same selectors/reason for a confirmed denial, or
-`delete` with those selectors but no `--description` for a confirmed disconnect.
-Rejection/deletion can cut off clients; neither removes the backing
-`Microsoft.Network/privateEndpoints` resource or DNS.
-
-Repeat `show`: require intended `properties.privateLinkServiceConnectionState.status`
-(`Approved`/`Rejected`) and completed provisioning, or authoritative absence for deletion.
-With `--no-wait`, use connection `wait` with the same selectors,
-`--updated` (or `--deleted`), `--timeout 600 --interval 15`. Here `--updated`
-checks child provisioning (`Active`/`Succeeded`), not approval. Reconcile
-unknown outcomes before retrying.
-
-## Separate configuration from connectivity
-
-Apply the [shared verification boundary](../SKILL.md#operate) using evidence
-from the intended client/gateway path; another VM's DNS is preliminary.
-Any future private-only claim needs private client success and public-path
-rejection, not an authentication, DNS or backend error. Otherwise mark it
-unverified. Use [telemetry troubleshooting](telemetry-and-troubleshooting.md)
-for export failures, not public-access changes. Missing telemetry does not
-authorize network changes.

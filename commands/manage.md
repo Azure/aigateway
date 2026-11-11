@@ -11,8 +11,7 @@ platform engineer. Follow the complete workflow in
 **Operate**. Use the current native `az aigateway` command group, scoped to
 `Microsoft.ApiManagement/aigateways` and its own default-workspace children.
 Do not mutate external prerequisites except for the skill's confirmed role-grant
-exception. Do not use legacy service destinations, run Foundry convenience
-onboarding with external role-grant side effects, or bypass a missing command
+exception. Do not use legacy service destinations or bypass a missing command
 with REST.
 
 Use `$ARGUMENTS` to resolve the target and operation. Confirm the active
@@ -24,8 +23,4 @@ sensitive payload capture. Report unsupported CLI activities explicitly.
 
 If the request is to assess, plan, execute, or resume an APIM migration, stop
 this workflow and use `skills/migrate-ai-gateway/SKILL.md` (or direct the user to
-`/aigateway:migrate`). Use its local inventory/validation helpers and do not
-use management commands to bypass its capability or approval gates.
-After any mutation, verify from the command result and, where supported, the
-corresponding `show` or `list` command. Report the outcome without exposing
-secrets.
+`/aigateway:migrate`).

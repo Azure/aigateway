@@ -1,181 +1,51 @@
 # Telemetry export and diagnosis
 
-A gateway/default-workspace exporter owns signal endpoints, authentication,
-claim attributes, and payload capture.
-Destinations, DCRs, workspaces, registration, retention, and query access remain
-externally owned; grants follow [access planning and execution](keys-and-identities.md#grant-caller-or-destination-access).
-The [capability inventory](activities-and-cli-coverage.md) records native
-applicability; free-form JSON alone does not establish support.
+JSON schemas, updates, and diagnostics for `az aigateway telemetry-exporter` (uses `-g "$RG" --gateway-name "$GW" -n "$EXPORTER"`; no `--ids` or `wait`).
 
-## Choose the task and inspect its exporter
-
-Read the selected exporter and task dependencies. Diagnose missing data below,
-not with a full gateway inventory. Use `list` to discover or check a name;
-use `show` only for an existing exporter.
+## Discover Application Insights OTLP endpoints and DCR
 
 ```bash
-az aigateway telemetry-exporter list --subscription "$SUBSCRIPTION" \
-  -g "$RG" --gateway-name "$GATEWAY" -o json
-az aigateway telemetry-exporter show --subscription "$SUBSCRIPTION" \
-  -g "$RG" --gateway-name "$GATEWAY" -n "$EXPORTER" -o json
+az resource show --ids "$APPINSIGHTS_ID" --api-version 2020-02-02-preview \
+  --query '{dcr:properties.DataCollectionRuleResourceId,metrics:properties.OTLPMetricsEndpoint,logs:properties.OTLPLogsEndpoint,traces:properties.OTLPTracesEndpoint}' -o json
 ```
 
-Select by name and purpose. Inspect kind, component link, signal URLs, auth
-mode/client ID, attributes, capture, and any provisioning state. Exporter
-commands have no `--ids`; apply the main workflow's name-selector guard.
+Grant the gateway's outbound managed identity **Monitoring Metrics Publisher** on `DataCollectionRuleResourceId` ([keys-and-identities.md](keys-and-identities.md)).
 
-Native reads mask secrets, including the whole headers map, and can omit
-write-only fields. Compare `show/list` if needed; masks or omission are neither
-proof of absent credentials nor values safe to replay.
+## `otlp.json` schema (`--open-telemetry @otlp.json`)
 
-Choose an existing **OTLP/HTTP Protobuf** destination. For a custom receiver,
-obtain full signal URLs, supported auth/audience, access, and reachability.
-
-For Application Insights, read `DataCollectionRuleResourceId` and each requested
-signal's endpoint (`OTLPMetricsEndpoint`, `OTLPLogsEndpoint`, or
-`OTLPTracesEndpoint`) from the existing component with authorized core CLI reads.
-The
-[monitoring recipe](../../../labs/13-monitoring/README.md#let-the-gateway-publish)
-requires **Monitoring Metrics Publisher** on that exact DCR. Resolve the
-selected identity and any missing grant through the access procedure above.
-Missing OTLP enablement, resources, or registration remains an owner prerequisite.
-
-## Create an OTLP exporter
-
-Use complete URLs including paths; the gateway does not append `/v1/...`.
-Enable only needed signals: metrics (usage/cost), logs (requests), traces
-(request/policy spans); retain at least one. For full **Monitoring** dashboard
-coverage, link Application Insights and enable all three; a custom OTLP
-receiver uses its own views. Example `otlp.json`:
+Include complete signal URLs with paths (for Azure Monitor OTLP, audience is `"https://monitor.azure.com"`; enable all three signals by default unless the user requests a subset):
 
 ```json
 {
-  "metricsEndpoint": "https://collector.example.com/v1/metrics",
-  "logsEndpoint": "https://collector.example.com/v1/logs",
-  "tracesEndpoint": "https://collector.example.com/v1/traces",
+  "metricsEndpoint": "<OTLPMetricsEndpoint>",
+  "logsEndpoint": "<OTLPLogsEndpoint>",
+  "tracesEndpoint": "<OTLPTracesEndpoint>",
   "credentials": {
-    "managedIdentity": {"resource": "<receiver-token-audience>"}
+    "managedIdentity": {
+      "resource": "https://monitor.azure.com",
+      "clientId": "<optional-uami-client-id>"
+    }
   }
 }
 ```
+- For header-authenticated custom OTLP collectors, use `"credentials": {"headers": {"Authorization": "Bearer <secret>"}}` (**string-to-string** map).
 
-Replace URLs/audience; omit unneeded signals on creation.
-Optional `credentials.managedIdentity.clientId` follows the
-[identity-selection rules](keys-and-identities.md#understand-the-effects).
-Alternatives are
-`credentials.headers`, a **string-to-string** map in a protected file, or
-deliberately unauthenticated export. Do not combine MI with an Authorization
-header.
+## Updates and claim attributes
 
-```bash
-az aigateway telemetry-exporter create --subscription "$SUBSCRIPTION" \
-  -g "$RG" --gateway-name "$GATEWAY" -n "$EXPORTER" \
-  --kind OpenTelemetry --open-telemetry @otlp.json --payload-capture false
-```
+- **Disable one signal**: Set that endpoint to `null` in `--open-telemetry` (at least one signal must remain active).
+- **Switch authentication**: Set the unused credential branch to `null` (`"headers": null` or `"managedIdentity": null`). Never resend redacted header masks.
+- **Export Entra token claims** (`--telemetry` replaces the `attributes` array—merge with existing entries from `show` first):
+  ```bash
+  az aigateway telemetry-exporter update --subscription "$SUB" -g "$RG" --gateway-name "$GW" -n "$EXPORTER" \
+    --telemetry '{"attributes":[{"source":{"kind":"claims","value":"cost_center"},"signals":["logs","traces"]}]}'
+  ```
 
-For Application Insights-linked OTLP, also pass
-`--application-insights @appinsights-link.json`, containing:
+## Troubleshooting
 
-```json
-{"resourceId": "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Insights/components/<component>"}
-```
-
-Use Azure Monitor's actual OTLP endpoints and audience
-(`https://monitor.azure.com` in the sourced recipe). The component link records
-the associated Application Insights resource; it provisions nothing and grants
-no ingestion or query access.
-Legacy `ApplicationInsights`/connection-string and singular `endpoint` help
-examples are not current per-signal OTLP recipes.
-
-No `telemetry-exporter wait`; use bounded `show/list` read-back under the
-[shared execution procedure](../SKILL.md#operate).
-Verify exporter ID, changed/preserved fields and any provisioning state.
-
-## Edit endpoints, auth, claims, or capture
-
-Use `telemetry-exporter update` with fresh state and only changed
-`--open-telemetry`, `--application-insights`, `--telemetry`, or
-`--payload-capture` fields. Native updates forward supplied objects; do not
-reconstruct secret-bearing settings from redacted reads. For a kind change,
-plan confirmed disable/reconfigure rather than assume in-place conversion.
-
-For endpoint-only changes, omit credentials. Endpoint omission leaves a field
-unrequested; explicit `null` requests disabling that signal. Retain at least
-one signal. Attribute `signals` below selects claim attachment, not signal export.
-
-When switching auth, clear the inactive branch: `credentials.headers: null`
-for MI, `credentials.managedIdentity: null` for headers. Send the selected
-branch's configuration. Disabling auth requires confirmation and both cleared;
-never resend masks.
-
-For attributes-only edits, merge desired rows with the existing array in
-`telemetry.json`. This row illustrates shape, not complete membership:
-
-```json
-{
-  "attributes": [
-    {"source": {"kind": "claims", "value": "cost_center"}, "signals": ["logs", "traces"]}
-  ]
-}
-```
-
-```bash
-az aigateway telemetry-exporter update --subscription "$SUBSCRIPTION" \
-  -g "$RG" --gateway-name "$GATEWAY" -n "$EXPORTER" \
-  --telemetry @telemetry.json
-```
-
-`attributes` replaces the array; leave auth/capture flags unrequested.
-An empty array removes mappings. Select validated claims and at least one of
-`logs`, `traces`, `metrics` per row. API-key callers have no Entra claims.
-Review readership, PII, and metric cardinality rather than exporting broad
-identity defaults.
-
-Keep capture off unless authorized. `--payload-capture true` needs informed consent:
-prompts/completions and tool input/output may be exported without built-in PII
-redaction, increasing data volume and potential ingestion/retention costs.
-Review readership/retention, use authorized synthetic traffic, and disable
-capture when the investigation ends. Disabling it does not erase exported data.
-
-No exporter ETag/conditional-write input is exposed. Avoid concurrent edits;
-fresh reads and verification do not prevent races or prove write-only secrets.
-
-## Disable
-
-Confirm loss of this export path before `telemetry-exporter delete`;
-verify authoritative absence. Leave the external component, DCR, workspaces,
-collected data, and shared grants intact.
-
-## Diagnose without speculative remediation
-
-Inspect the exporter fields above, then choose relevant read-only checks:
-
-1. **Establish traffic.** Read the exact gateway; correlate the incident window,
-   route, and supplied request/error evidence. If calls never reached the
-   gateway, follow [networking](networking.md) first. For [routing failures](models-and-routing.md),
-   follow `model-alias show` → selected `model show` → `model-provider show`.
-   Check [MCP sources/auth](mcp.md) for tool failures, [policies](policies.md) for rejections.
-2. **Check destination access.** Use `az aigateway identity show` for the
-   scoped gateway; follow [identity/grant verification](keys-and-identities.md#verify-configuration).
-   Resolve the selected principal, audience and grants. Check header validity
-   through the credential owner, not secret retrieval/rotation.
-3. **Separate ingress from export egress.** Use
-   `az aigateway network show --ids "$GATEWAY_ID" --subscription "$SUBSCRIPTION"`.
-   Read `network private-endpoint-connection list` only if ingress is implicated.
-   Inbound approval does not prove outbound delivery. Have the network/receiver
-   owner verify DNS, TLS, routing, and firewall/private-access rules from the
-   gateway's outbound path.
-4. **Separate queries from ingestion.** Check the intended destination/workspace,
-   operator query permissions and time range before changing export auth.
-   Publisher access does not grant operator query access.
-   Correlate authorized evidence by signal, gateway, and time window, allowing
-   ingestion delay. No native metrics/trace/KQL query or inference/MCP test
-   subgroup is established; queries or synthetic traffic need separate
-   authorization. Without delivery evidence, report ingestion as unverified.
-
-| Symptom | Evidence that narrows the cause |
+| Symptom | Check |
 | --- | --- |
-| One signal missing | Full endpoint/path, receiver support, relevant traffic; another signal arriving does not validate this one |
-| Data not returned by queries | Destination/workspace, query permissions and time range; query failure does not establish ingestion failure |
-| Claims absent | Caller authentication/claim availability, retained mappings, selected signals; mapping is not claim issuance |
-| 401/403 | For ARM/caller/backend failures, follow [access diagnosis](keys-and-identities.md#identify-remaining-runtime-uncertainty); for exporter-destination rejection, check step 2 above |
+| Missing metrics/logs/traces | Verify signal URLs in `telemetry-exporter show`, gateway identity (`identity show`), and `Monitoring Metrics Publisher` role on the DCR. |
+| Missing claim attributes | API-key callers have no Entra JWT claims; verify `attributes` mappings and target `signals`. |
+| 401/403 on model/tool calls | Separate inbound caller auth (`AI Gateway Models/Tools User` or active `api-key`) from outbound backend auth (`Foundry User` or backend credential). |
+
+
