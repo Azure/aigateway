@@ -1,6 +1,6 @@
 # Azure AI Gateway CLI command reference
 
-This is the human-readable reference for the published **1.0.0b22** extension.
+This is the human-readable reference for the published **1.0.0b26** extension.
 Start with [installation and quickstart](README.md). Use this page to find a
 command, understand its purpose, and copy a configuration example. Use the
 installed command's `--help` for all arguments and allowed values; help
@@ -13,8 +13,8 @@ supplements this reference rather than replacing it.
 
 ## Command groups
 
-Prefix every entry below with `az aigateway`. This table lists the public
-commands in the reviewed wheel, not hidden compatibility aliases.
+Prefix every entry below with `az aigateway` (or its `az aig` shorthand). This
+table lists the public commands in the reviewed wheel.
 
 | Group | Commands | Purpose |
 | --- | --- | --- |
@@ -34,6 +34,7 @@ commands in the reviewed wheel, not hidden compatibility aliases.
 
 ```bash
 az aigateway version
+az aig version
 az aigateway model-alias create --help
 az aigateway mcp source add --help
 ```

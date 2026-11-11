@@ -219,7 +219,7 @@ Repository files and ignore rules require approval before being changed.
 
 ## Keeping the references current
 
-The references were reviewed against CLI `1.0.0b22`; the dated/versioned
+The references were reviewed against CLI `1.0.0b26`; the dated/versioned
 evidence belongs in the [capability inventory](references/activities-and-cli-coverage.md),
 not in a new copy of this workflow for each release. This workflow describes
 stable resource relationships, authorization, preservation, and verification.
