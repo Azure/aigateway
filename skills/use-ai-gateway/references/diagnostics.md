@@ -2,24 +2,6 @@
 
 Start with the exact gateway endpoint, model alias or MCP server/tool,
 operation, client version, UTC time, HTTP/protocol error and safe request ID.
-Never collect credentials or unredacted prompts, tool arguments or results for
-diagnosis.
-
-Check, in order:
-
-1. **Destination:** correct gateway HTTPS origin, `/default/` workspace and
-   published model operation or MCP path; no duplicated SDK suffix.
-2. **Callable contract:** exact alias/tool name, request schema and advertised
-   protocol. Do not substitute a backend model or upstream URL.
-3. **Caller access:** selected gateway key or Entra runtime token, audience,
-   tenant and asset-scoped runtime role. Keep ARM, runtime and backend identity
-   separate.
-4. **Outcome:** inspect HTTP status and parsed model/MCP result. HTTP 200 can
-   contain a protocol error, failed stream or tool `isError`.
-5. **Owner-only causes:** if client evidence is insufficient, request the
-   specific missing role, policy, filter or backend-connection confirmation.
-   Do not broaden identity, alter policy or retry a possibly side-effecting
-   tool to make the error disappear.
 
 ## Recognize policy responses
 
@@ -46,13 +28,6 @@ post-invocation denial withholds the result but cannot undo execution. Other
 policy failures may not have a documented stable code. Use the observed
 response and Monitoring/request trace instead of inferring a policy from HTTP
 status.
-
-See the current [policy overview](https://ai.gateway-df.azure.com/docs/policies/overview),
-[rate-limit](https://ai.gateway-df.azure.com/docs/policies/request-rate-limit),
-[IP-filter](https://ai.gateway-df.azure.com/docs/policies/ip-filter),
-[cost-limit](https://ai.gateway-df.azure.com/docs/finops/overview#cost-limits),
-and [tool threat protection](https://ai.gateway-df.azure.com/docs/policies/tool-threat-protection)
-documentation for policy behavior and supported error details.
 
 For other `401`/`403` responses, distinguish authentication, invocation
 permission and backend denial. For `404`, check the published route and SDK URL
