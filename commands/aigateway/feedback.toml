@@ -1,0 +1,16 @@
+description = "Package a selected session into a local feedback ZIP, with mandatory anonymization and review for GitHub issues."
+
+prompt = """
+Follow `skills/feedback-ai-gateway/SKILL.md` and its bundled local Python helper.
+Obtain consent for one selected session export and any optional diagnostic files.
+Use the host's supported export mechanism for Copilot, Claude, Gemini, Cursor,
+or another agent; report missing telemetry and never read unrelated sessions.
+Return a local ZIP without uploading. For private handoff, let the user choose
+whether to anonymize. For GitHub issue sharing, always semantically anonymize all
+selected content, run helper scrubbing, review the final ZIP and issue title/body,
+and obtain explicit publication approval. Never post raw/private bundles.
+The user can attach the reviewed ZIP through GitHub's browser upload;
+do not invent a ZIP attachment option for gh issue create.
+
+Feedback request: {{args}}
+"""

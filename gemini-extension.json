@@ -1,5 +1,19 @@
 {
-  "name": "ai-gateway",
-  "version": "2.0.0",
-  "description": "Discover the models and MCP tool servers registered in an AI Gateway and integrate them into any application — call a model over the OpenAI-compatible passthrough, connect MCP tools, or scaffold a runnable agent. Read-only against the gateway — consumption only."
+  "name": "aigateway",
+  "version": "3.0.0",
+  "description": "Create, configure, manage, and build applications on Azure AI Gateway. Includes read-only developer integration and assisted APIM V2 migration with local validation and explicit approval.",
+  "commands": [
+    "./commands/aigateway/discover.toml",
+    "./commands/aigateway/build.toml",
+    "./commands/aigateway/create.toml",
+    "./commands/aigateway/manage.toml",
+    "./commands/aigateway/migrate.toml",
+    "./commands/aigateway/feedback.toml"
+  ],
+  "skills": [
+    "./skills/use-ai-gateway/",
+    "./skills/manage-ai-gateway/",
+    "./skills/migrate-ai-gateway/",
+    "./skills/feedback-ai-gateway/"
+  ]
 }

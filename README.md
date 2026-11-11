@@ -33,35 +33,35 @@ in a Jupyter notebook.
 ## Azure CLI
 
 Create and manage gateways, model registrations, MCP servers, and policies with
-`az aigateway`. See the **[CLI installation and quickstart](cli/README.md)** for
-one-line Bash and PowerShell installers, or browse the
-[command reference](cli/command-reference.md).
+`az aigateway`. Install the published Azure CLI extension using the
+**[installation guide and quickstart](cli/README.md)** for Bash or PowerShell,
+or browse the [searchable command reference](cli/command-reference.md).
+Use the latest published CLI, including preview releases, rather than a local
+source build or an installer copied from an older release.
 
 ## Coding-agent plugin
 
-This repository hosts the official **plugin** for coding agents. It helps
-developers **build applications on top of an existing Azure AI Gateway**: it discovers the
-models and MCP tool servers registered in a gateway and integrates them into whatever
-you're building — call a model over the OpenAI-compatible passthrough, connect MCP
-tools, or scaffold a runnable agent — all from your coding agent.
+This repository hosts the official **plugin** for coding agents. It supports two
+personas:
 
-The plugin follows the [Claude Code plugin spec](https://code.claude.com/docs/en/plugins),
-the [GitHub Copilot / awesome-copilot plugin convention](https://github.com/github/awesome-copilot/blob/main/CONTRIBUTING.md#adding-plugins),
-the [Cursor plugin format](https://cursor.com/docs/plugins), and the
-[Gemini CLI extension format](https://geminicli.com/docs/extensions/), so it installs
-in any of those coding agents (and other agents that support the plugin standard).
-
-> **Consumption only.** The plugin is read-only against the gateway — it never
-> provisions, updates, or deletes resources. Creating gateways, models, or tools
-> is an administrator task done in the [AI Gateway Portal](https://ai.gateway.azure.com).
+- **Administrators and platform engineers** can create and operate gateways
+  and configure their assets with the current `az aigateway` CLI.
+- **Developers** can discover the models and MCP tool servers in an existing
+  gateway and integrate them into an application.
 
 ### What's inside
 
 | Component | Invoked as | Purpose |
 | --------- | ---------- | ------- |
-| Skill `use-ai-gateway` | `/ai-gateway:use-ai-gateway` | Full discover → select → credential → integrate workflow (call a model, connect MCP tools, or scaffold an agent). |
-| Command `discover` | `/ai-gateway:discover` | Read-only: list a gateway's models and MCP tool servers and pick the ones that fit your use case. |
-| Command `build` | `/ai-gateway:build` | End-to-end: discover, retrieve a credential, and integrate the models/tools into your app. |
+| Command `discover` | `/aigateway:discover` | Read-only: list a gateway's models and MCP tool servers and pick the ones that fit your use case. |
+| Command `build` | `/aigateway:build` | End-to-end: discover, retrieve a credential, and integrate the models/tools into your app. |
+| Command `create` | `/aigateway:create` | Create a gateway and verify that it is ready for configuration. |
+| Command `manage` | `/aigateway:manage` | Configure and operate a gateway and its assets. |
+| Command `migrate` | `/aigateway:migrate` | Run the assisted, capability-gated APIM V2 migration workflow or resume its verified state. |
+| Command `feedback` | `/aigateway:feedback` | Package one selected agent session into a local ZIP for user-controlled sharing; anonymization and review are mandatory for GitHub issues. |
+| Skill `use-ai-gateway` | `/aigateway:use-ai-gateway` | Use AI assets from Azure AI Gateway to build intelligent applications. |
+| Skill `manage-ai-gateway` | `/aigateway:manage-ai-gateway` | Full administrator workflow for creating, configuring, and operating a gateway. |
+| Skill `migrate-ai-gateway` | `/aigateway:migrate-ai-gateway` | Inventory, assess, validate, and reconcile supported APIM V2 configuration to move the workload to Azure AI Gateway. |
 
 ### Install
 
@@ -72,13 +72,13 @@ directly from Git — no manual file downloads. Pick the tab for your agent:
 
 ```
 /plugin marketplace add Azure/aigateway
-/plugin install ai-gateway@azure
+/plugin install aigateway@azure
 ```
 
 **Cursor** — add this repository as a team marketplace from **Dashboard → Plugins →
 Add Marketplace → Import from Repo** (`https://github.com/Azure/aigateway`), then
-install **ai-gateway** from **Customize**. For local testing, symlink the repo into
-`~/.cursor/plugins/local/ai-gateway` and reload the window.
+install **aigateway** from **Customize**. For local testing, symlink the repo into
+`~/.cursor/plugins/local/aigateway` and reload the window.
 
 **Gemini CLI**:
 
@@ -92,29 +92,57 @@ Point the plugin at your gateway's **ARM resource id** (required to list its mod
 tools) and describe what you want to build:
 
 ```
-/ai-gateway:build /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.ApiManagement/aigateways/<gateway> a service that summarizes support tickets
+/aigateway:build /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.ApiManagement/aigateways/<gateway> a service that summarizes support tickets
 ```
 
 Or explore first, then integrate:
 
 ```
-/ai-gateway:discover /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.ApiManagement/aigateways/<gateway>
+/aigateway:discover /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.ApiManagement/aigateways/<gateway>
 ```
 
-### Security
+#### Manage
 
-The generated code authenticates the model passthrough and the MCP tool servers
-with a gateway **API key**, read from an environment variable
-(`AI_GATEWAY_API_KEY`) and never hardcoded. Scaffolded projects keep `.env` out of
-source control. If a key is ever exposed, rotate it in the [AI Gateway Portal](https://ai.gateway.azure.com).
+Administrators can create a gateway or manage an existing one:
 
-Standalone agent scaffolds use least-privilege tool configuration: only explicitly
-selected MCP tools are made available, and permission-requiring operations require
-an explicit user decision. Generated applications do not automatically approve
-tool requests. Review each requested operation and grant the application and its
-gateway credentials only the permissions it needs.
+```
+/aigateway:create my-gateway my-resource-group eastus2
+/aigateway:manage my-gateway my-resource-group add a Foundry model provider
+```
 
-To report a security issue, see [SECURITY.md](SECURITY.md).
+The [administrator skill](skills/manage-ai-gateway/SKILL.md) provides native CLI
+runbooks for gateway lifecycle, models and aliases, MCP sources, policies, keys,
+identities, networking, and telemetry. It manages only
+`Microsoft.ApiManagement/aigateways` and its own children; external resources and
+role grants must already be prepared. Routine create/update intent authorizes the
+requested work; destructive, access-sensitive, and secret-related operations have
+specific confirmation gates. [Portal activity coverage and CLI gaps](skills/manage-ai-gateway/references/activities-and-cli-coverage.md)
+are explicit rather than bypassed with REST or legacy resource types.
+
+#### Migrate workloads to Azure AI Gateway
+
+Administrators can assess and migrate supported APIM V2 configuration to Azure AI Gateway:
+
+```
+/aigateway:migrate /subscriptions/.../Microsoft.ApiManagement/aigateways/<source-apim>
+```
+
+The assessment inventories AI assets first, then assesses
+migrating all discovered AI APIs or a feasible subset.
+
+#### Share feedback
+
+Send a coding-agent session for feedback to the product team:
+
+```
+/aigateway:feedback
+```
+
+The [feedback skill](skills/feedback-ai-gateway/SKILL.md) packages your selected
+session and approved diagnostics into a **local ZIP**. Nothing is uploaded
+automatically; you choose how to share it. Anonymization is optional for private
+sharing. Sharing through a [GitHub issue](https://github.com/Azure/aigateway/issues/new)
+requires anonymization, review of the ZIP and issue text, and your explicit approval.
 
 ## Samples
 

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Azure/ai-gateway/migration/plan-validation.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "producer", "status", "planDigest", "sourceInventoryDigest", "capabilityContractDigest", "errors", "warnings", "resultDigest"],
+  "properties": {
+    "schemaVersion": {"const": "2.0"}, "producer": {"const": "skill-local"},
+    "status": {"enum": ["not-run", "valid", "invalid", "stale", "failed"]},
+    "planDigest": {"type": ["string", "null"]},
+    "sourceInventoryDigest": {"type": ["string", "null"]},
+    "capabilityContractDigest": {"type": ["string", "null"]},
+    "errors": {"type": "array", "items": {"$ref": "#/$defs/issue"}},
+    "warnings": {"type": "array", "items": {"$ref": "#/$defs/issue"}},
+    "resultDigest": {"type": ["string", "null"]}
+  },
+  "$defs": {
+    "issue": {"type": "object", "additionalProperties": false, "required": ["code", "path", "message"],
+      "properties": {"code": {"type": "string"}, "path": {"type": "string"}, "message": {"type": "string"}}}
+  }
+}
