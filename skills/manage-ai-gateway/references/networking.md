@@ -12,11 +12,10 @@ remain externally owned.
 | Isolate client ingress | `--public-network-access` and private-connection commands are exposed, but private ingress and public disablement have the support limitations below |
 | Review an existing private endpoint connection | `approve`/`reject`/`delete`: gateway-side decision, not endpoint/DNS provisioning or public access |
 
-[Service evidence](activities-and-cli-coverage.md#operation-gaps-and-applicability)
-and [Lab 18](../../../labs/18-private-networking/README.md#how-it-works) record
-unavailable typed-gateway private ingress and ineffective public disablement.
-CLI flag availability does not supersede service evidence: do not offer `Disabled`
-as isolation or bypass the gap with legacy resources/feature registration.
+Check the [service applicability evidence](activities-and-cli-coverage.md#operation-gaps-and-applicability)
+before proposing private ingress or public disablement. CLI flags alone do
+not establish isolation; do not bypass a support gap with legacy resources
+or feature registration.
 
 ## Read and confirm
 
@@ -38,9 +37,9 @@ Keep private endpoints outside the integration subnet. Check capacity,
 effective NSGs/firewalls, routes/return paths and DNS links/forwarding/resolver
 reachability with the owner; attachment does not establish these.
 
-Keep backend hostnames for HTTPS validation. Subnet updates neither enable an
-identity nor grant [backend access](keys-and-identities.md); authentication
-and reachability are independent. Missing infrastructure goes to its owner.
+Keep backend hostnames for HTTPS validation.
+Resolve [backend identity/access](keys-and-identities.md#understand-the-effects)
+separately from reachability. Missing infrastructure goes to its owner.
 
 ## Apply the smallest native change
 
@@ -107,9 +106,8 @@ unknown outcomes before retrying.
 
 ## Separate configuration from connectivity
 
-Report persisted fields/operation outcomes separately from runtime evidence.
-Native reads do not test DNS, NSGs or traffic. Obtain separately authorized
-evidence from the intended client/gateway path; another VM's DNS is preliminary.
+Apply the [shared verification boundary](../SKILL.md#operate) using evidence
+from the intended client/gateway path; another VM's DNS is preliminary.
 Any future private-only claim needs private client success and public-path
 rejection, not an authentication, DNS or backend error. Otherwise mark it
 unverified. Use [telemetry troubleshooting](telemetry-and-troubleshooting.md)

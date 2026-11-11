@@ -14,7 +14,7 @@ Scope, confirmations, grants and protected inputs follow the
 | Add/remove a backend | [Source add/remove](#add-or-remove-one-source); preserves siblings, implicitly reads secrets |
 | Change metadata/versions | [Update supplied fields](#edit-a-server-or-existing-backend), not endpoints |
 | Edit backend settings/authentication | [Replace endpoints](#edit-a-server-or-existing-backend); complete membership, implicit secret read |
-| Configure governance | [Replace policies](#attach-or-configure-policies), not endpoints |
+| Configure governance | Follow [policy selection and authoring](policies.md#choose-compatible-controls); leave endpoints unchanged |
 | Connect shared OAuth | [Inspect OAuth](#diagnose-backend-oauth-without-initiating-it), then authorize initiation |
 | Restrict tools, suspend access or use caller delegation | Check [native limits](#product-controls-and-native-limits) first |
 | Delete a registration | [Confirm and delete](#delete-a-toolserver); upstream services remain |
@@ -53,8 +53,8 @@ read-back and therefore unverifiable through this surface.
 ### Product controls and native limits
 
 These product controls and OAuth client credentials have no established
-[native authoring path](activities-and-cli-coverage.md); free-form JSON
-does not establish one.
+native authoring path in the [reviewed baseline](activities-and-cli-coverage.md#evidence-baseline);
+free-form JSON does not establish one.
 
 | Product control | Effect |
 | --- | --- |
@@ -116,20 +116,18 @@ The document's location is not the API's callable base URL.
 
 #### Select outbound authentication
 
-Caller-to-gateway authentication is configured separately under
-[keys and identities](keys-and-identities.md). Backend `none` does not make the
-gateway anonymous, and a caller's gateway key does not authenticate a backend.
+Resolve [caller versus outbound access](keys-and-identities.md#understand-the-effects)
+separately. Backend `none` does not make the gateway anonymous.
 
 | `credentials.type` | Configuration and prerequisites |
 | --- | --- |
 | `none` | `{"type":"none"}` for intentionally unauthenticated backend access |
 | `header` | `{"type":"header","headers":{"X-Api-Key":["<secret>"]}}`; header values are **string arrays**, unlike OTLP exporter headers |
-| `managedIdentity` | `{"type":"managedIdentity","managedIdentity":{"resource":"<token-audience>"}}`; optional `managedIdentity.clientId` is the UUID of an existing attached UAMI; omission selects system identity |
+| `managedIdentity` | `{"type":"managedIdentity","managedIdentity":{"resource":"<token-audience>"}}`; optional `managedIdentity.clientId` selects the outbound identity using the [shared identity rules](keys-and-identities.md#understand-the-effects) |
 | `oauth2` | Shared authorization-code connection: `oauth2` object with `grantType: "authorizationCode"`, `authorizationUrl`, `tokenUrl`, `clientId`, requested `scopes`, and optional `clientSecret` |
 
-An attached identity still needs backend access; plan any required grant using
-the shared role-assignment workflow. Entra application registration and
-provider/connector consent administration remain owner prerequisites.
+Plan missing backend grants with [identity and access](keys-and-identities.md#grant-caller-or-destination-access).
+Entra application registration and provider/connector consent remain owner prerequisites.
 
 ### Create a ToolServer
 
@@ -162,7 +160,6 @@ az aigateway mcp create --subscription "$SUBSCRIPTION" \
 ```
 
 Choose authentication and `required` values for the actual backends.
-Protect secret-bearing input; JSON files do not expand environment variables.
 
 Supply `--display-name`, `--description` or `--versions` when needed. Choose
 versions from the supported client/backend contract, not a guessed default.
@@ -247,22 +244,11 @@ Remove/add is not a credential-preservation workaround.
 
 ### Attach or configure policies
 
-Compatible policies attach to the ToolServer's `properties.policies`, not a
-backend source or individual tool. Applicable workspace defaults also matter.
-Use [policy configuration](policies.md) for `requestRateLimit`, `ipFilter`,
-`toolThreatProtection`, and `agentHooks`, including resource scope, caller
-partitions and external evaluation prerequisites.
-
-Merge the requested configuration into the **complete intended policy array**,
-preserving other instances and their IDs:
-
-```bash
-az aigateway mcp update --ids "$MCP_ID" --subscription "$SUBSCRIPTION" \
-  --policies @tool-server-policies.json
-```
-
-This replaces policies, not endpoints; do not include `--endpoints` for a
-policy-only change.
+Follow [policy configuration](policies.md#choose-compatible-controls) in order:
+select compatible controls, resolve attachment/accounting and prerequisites,
+then use the [native host write](policies.md#native-configuration-paths).
+Leave `--endpoints` out of a policy-only change; it would trigger the
+[credential-preservation read](#credential-preservation-and-implicit-secret-reads).
 
 ### Diagnose backend OAuth without initiating it
 
@@ -311,12 +297,10 @@ removed; upstream services, external connections, consent and grants remain.
 ## Verify configuration
 
 After create/update/source/policy changes, repeat `mcp show` on the exact
-`$MCP_ID`. Compare intended fields and preserved source membership/IDs,
-namespaces, `required` flags, versions, nonsecret authentication settings and
-policy IDs/configuration. Check existing `allowList`, `blocked` and
+`$MCP_ID`. Compare source membership/IDs, namespaces, `required` flags,
+versions and nonsecret authentication settings. Check existing `allowList`, `blocked` and
 `accessState` when returned.
-For policy changes, also inspect applicable workspace defaults. A mismatch or
-failed read-back is an explicit verification gap, not permission to retry a write.
+For policy changes, follow [policy verification](policies.md#mutation-and-verification).
 
 ## Identify remaining runtime uncertainty
 
@@ -331,7 +315,6 @@ Use native reads to narrow a diagnosis without treating them as runtime tests:
 | OAuth link was issued or backend was saved | Use the OAuth diagnostic above. Initiation and saved credentials do not establish completed consent or backend access. |
 
 The native surface has no established runtime `tools/list`, discovery refresh
-or tool-execution command. Report verified configuration separately from
-unverified tool exposure, OAuth completion, OpenAPI behavior and policy
-enforcement. If runtime evidence is needed, use a separately authorized MCP
-client check; do not invoke a tool without authorization.
+or tool-execution command. A separately authorized MCP client check is needed
+to establish tool exposure, OAuth completion or OpenAPI behavior; tool invocation
+requires authorization. Verify enforcement through the [policy procedure](policies.md#mutation-and-verification).

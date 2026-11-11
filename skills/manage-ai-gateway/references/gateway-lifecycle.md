@@ -9,6 +9,7 @@ Choose provisioning, tags/SKU, or gateway deletion. For identity/network changes
 [identity and access](keys-and-identities.md) or [networking](networking.md).
 Provisioning publishes no callable assets; separately configure requested
 [model aliases](models-and-routing.md) or [MCP ToolServers](mcp.md).
+List scoped inventory; use `show` only for an existing target:
 
 ```bash
 az aigateway list --subscription "$SUBSCRIPTION" --resource-group "$RG" -o json
@@ -37,7 +38,7 @@ Add only requested optional inputs to the create command:
 | --- | --- |
 | `--tags @tags.json` | Complete intended tag object, no secrets |
 | `--system-assigned true` | Confirm identity enablement; backend grants remain separate |
-| `--subnet <existing-subnet-id>` | Networking confirmation and existing delegated subnet prerequisites in [networking](networking.md) |
+| `--subnet <existing-subnet-id>` | Resolve [outbound subnet prerequisites and confirmation](networking.md#read-and-confirm) before creation |
 
 Attach existing user-assigned identities after creation; the native adapter
 rejects create-time `--user-assigned` despite help visibility.
@@ -54,8 +55,8 @@ az aigateway show --ids "$GATEWAY_ID" --subscription "$SUBSCRIPTION" -o json
 
 Verify the returned ID/type, location, SKU, tags, identity, and subnet.
 The typed wait accepts `properties.provisioningState` of `Active` or
-`Succeeded`. Reconcile timeout or a lost response by reading this exact root,
-not by recreating or deleting it.
+`Succeeded`. Reconcile timeout or a lost response through the
+[shared execution procedure](../SKILL.md#operate).
 
 ## Update tags or SKU
 
@@ -97,13 +98,4 @@ purge/recover operation; do not promise immediate name reuse. Leave external
 RGs, deployments, Connector Namespace/connections, private endpoints/DNS,
 user-assigned identities, telemetry stores, and role assignments untouched.
 
-## Retain replay and unresolved effects
-
-Retain an approved-location, secret-free Bash replay with `set -euo pipefail`,
-explicit scope/inputs, actual changes, prerequisites, and verification.
-Preserve confirmation stops and reconcile existing state before replaying
-creates; the script is not transactional.
-
-Report provisioning separately from runtime readiness. Leave inference,
-tool availability, policy enforcement, connectivity, and telemetry delivery
-unverified without authorized runtime evidence.
+Retain provisioning commands using the [shared replay and reporting requirements](../SKILL.md#operate).

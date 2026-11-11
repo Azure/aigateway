@@ -21,6 +21,7 @@ variables, not a script to run wholesale.
 | Change shared endpoint/authentication | Update the provider after checking all its models and their alias consumers |
 | Change exposed operations | Update the selected model's protocol/endpoint metadata only after checking every consuming alias's required operations; metadata does not add backend capabilities |
 | Reconcile an entire Foundry provider | Preview `model-provider sync`; it can remove stale registrations, unlike selected low-level creates |
+| Change governance without changing routing | Use [policy selection and authoring](policies.md#choose-compatible-controls); leave deployment and pool settings unrequested |
 
 ## Resource model
 
@@ -65,9 +66,8 @@ az aigateway model-alias list --subscription "$SUBSCRIPTION" \
   -g "$RG" --gateway-name "$GATEWAY" -o json
 ```
 
-Follow `--max-items` / `--next-token` pagination before claiming absence or
-complete dependencies. Retain returned IDs for commands exposing `--ids`;
-do not manufacture IDs from foreign responses.
+Follow `--max-items` / `--next-token` pagination and retain returned IDs under
+the [shared target-resolution rules](../SKILL.md#prerequisites-and-target-resolution).
 
 ### Provider configuration
 
@@ -76,13 +76,10 @@ do not manufacture IDs from foreign responses.
 Use authorized backend inventory or an operator manifest for the endpoint,
 account/deployment IDs, metadata, and supported operations.
 
-1. Select the gateway system identity or an existing attached UAMI.
-   Identity attachment is a separately confirmed
-   [identity operation](keys-and-identities.md).
-2. Verify principal access. Record principal, least-privileged role, and
-   narrowest scope for a missing grant; check assignment authority, confirm
-   that exact [grant](../SKILL.md#operating-boundary), then create and verify
-   it, or give the owner the plan. Identity selection grants nothing.
+1. Establish [outbound identity and destination access](keys-and-identities.md#understand-the-effects),
+   including any separately confirmed attachment or [grant](keys-and-identities.md#grant-caller-or-destination-access).
+2. For a private backend, resolve [outbound networking prerequisites](networking.md#read-and-confirm)
+   before dependent registrations; reuse a suitable existing path.
 3. Reuse a provider only if its endpoint, account IDs, and authentication
    suit this deployment; otherwise create a separate registration.
 
@@ -100,9 +97,9 @@ account/deployment IDs, metadata, and supported operations.
 ```
 
 `resourceIds` contains account IDs, not deployment IDs.
-`managedIdentity.resource` is the backend's token audience; use its observed
-value. Add `managedIdentity.clientId` only to select an attached UAMI;
-omitting it selects the gateway system identity.
+`managedIdentity.resource` and optional `managedIdentity.clientId` follow the
+[audience and identity-selection rules](keys-and-identities.md#understand-the-effects);
+use the backend's observed audience.
 
 ```bash
 az aigateway model-provider create --subscription "$SUBSCRIPTION" \
@@ -136,8 +133,8 @@ scope**. Prefer low-level registration plus the separately approved grant.
 Use the same provider create command with `--kind Custom --custom @custom.json`.
 The value is the complete backend header value, including any required
 prefix, not the gateway caller key. Use [protected credential
-inputs](../SKILL.md#authorization-and-preservation); JSON files do not expand
-variables. Reviewed Custom authentication is `ApiKey` only; arbitrary header
+inputs](../SKILL.md#authorization-and-preservation).
+Reviewed Custom authentication is `ApiKey` only; arbitrary header
 maps and Custom managed identity are not established native support.
 
 ### Model registration
@@ -202,7 +199,8 @@ Model update patches supplied properties. **Create uses `--deployment-config`;
 update uses `--deployment @deployment.json`**, not a deployment-name string.
 Retain unrequested fields in the complete deployment object; do not assume
 nested merging. `--supported-endpoints` and `--policies` replace collections.
-Prefer [policy-specific paths](policies.md) for governance changes.
+For governance-only changes, follow [policy authoring](policies.md#native-configuration-paths)
+without resending deployment or endpoint collections.
 General provider/model updates lack the alias update's conditional-write
 path; fresh reads do not eliminate concurrent-write risk.
 
@@ -234,6 +232,8 @@ az aigateway model-alias show --subscription "$SUBSCRIPTION" \
 including onboarding/sync aliases. Keep the callable name stable when
 retargeting. Alias create's GET-before-PUT check is not atomic; exclude
 concurrent creation. There is no `create --overwrite`; use explicit update.
+`model-alias set` deliberately creates or updates; choose it only when both
+outcomes are intended.
 
 #### Promote a model and retain rollback
 
@@ -245,8 +245,8 @@ A pool has **one to 30 unique model IDs** in this gateway's default workspace,
 possibly across providers. Require common support for the client's operations,
 not merely matching `apiFormat` labels; inspect alias `supportedEndpoints` /
 `gatewayEndpoints` when returned, without writing these derived fields.
-Check [workspace, alias, and model policies](policies.md): retargeting changes
-backend-local controls; an alias allowance is not duplicated per target.
+Evaluate [effective policies](policies.md#attachment-and-effective-configuration)
+before retargeting, because selecting a different model changes the controls on that call.
 
 | Intent | Targets | Effect |
 | --- | --- | --- |
@@ -339,8 +339,7 @@ separately rather than silently removing shared access.
 
 ## Verify configuration
 
-Read back each changed object by its returned ID and compare the intended
-difference and preserved siblings:
+Apply the [shared read-back procedure](../SKILL.md#operate) to these fields:
 
 - Provider: kind, endpoint, account IDs, nonsecret auth metadata.
 - Model: deployment, protocol, operations, retained policies.
@@ -349,7 +348,6 @@ difference and preserved siblings:
 
 ## Identify remaining runtime uncertainty
 
-Redacted output cannot prove a credential. Report separately what remains
-unverified: propagation, backend access, protocol behavior, traffic share, and
-failover/retry sequence need authorized runtime evidence. A saved alias is
-configured, not a successful inference.
+Backend access, protocol behavior, traffic share and failover/retry sequence
+need authorized runtime evidence under the [shared verification boundary](../SKILL.md#operate).
+A saved alias is not a successful inference.

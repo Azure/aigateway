@@ -10,9 +10,10 @@ platform engineer. Follow the complete workflow in
 `skills/manage-ai-gateway/SKILL.md`, especially **Configure gateway assets** and
 **Operate**. Use the current native `az aigateway` command group, scoped to
 `Microsoft.ApiManagement/aigateways` and its own default-workspace children.
-Do not mutate external prerequisites, use legacy service destinations, run
-Foundry convenience onboarding with external role-grant side effects, or
-bypass a missing command with REST.
+Do not mutate external prerequisites except for the skill's confirmed role-grant
+exception. Do not use legacy service destinations, run Foundry convenience
+onboarding with external role-grant side effects, or bypass a missing command
+with REST.
 
 Use `$ARGUMENTS` to resolve the target and operation. Confirm the active
 subscription and inspect current state before proposing commands. Prefer read-only

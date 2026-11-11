@@ -1,8 +1,8 @@
 # Native capability inventory
 
-Choose a task below, then use its reference for effects, the smallest native
-change, configuration verification, and remaining runtime uncertainty.
-This index records support boundaries for
+Choose a task below, then use its reference for applicability, semantics,
+the smallest native change and verification. This index records the surface
+and reviewed evidence for
 `Microsoft.ApiManagement/aigateways` and the implicit `default` workspace.
 For selectors, authorization, and execution, use the
 [administrator workflow](../SKILL.md); for complete syntax, use the
@@ -12,35 +12,33 @@ For selectors, authorization, and execution, use the
 
 All command families below are prefixed with `az aigateway`.
 
-| Administrator task | Native entry point | Decision or boundary | Task reference |
-| --- | --- | --- | --- |
-| Provision, retag, set SKU, or delete a gateway | Top-level `list/show/create/update/delete/wait` | Existing RG; only `Standard` exposed; attach UAMIs after creation; tags replace the set | [Lifecycle](gateway-lifecycle.md) |
-| Register a backend deployment | `model-provider`, then `model`, then `model-alias` | Foundry/Custom connection and deployment metadata, not backend provisioning; alias publishes the callable name | [Models and routing](models-and-routing.md) |
-| Reconcile Foundry registrations | `model-provider sync --dry-run` | Preview additions, stale removals, alias dependencies, and optional default aliases; apply is sequential, not transactional | [Models and routing](models-and-routing.md) |
-| Split traffic or add fallback targets | `model-alias create/update/set` | One to 30 unique same-gateway targets with priority/weight; `set` intentionally creates or updates | [Models and routing](models-and-routing.md) |
-| Set quotas, accounting, or access controls | `policy`, `model policy`; compatible asset `update --policies @file` | Default-workspace versus asset attachment matters; inline arrays replace the collection and same-type setters may consolidate entries | [Policies](policies.md) |
-| Publish or edit a multi-source ToolServer | `mcp`, `mcp source add/list/remove`, `mcp authorize` | Remote MCP/OpenAPI sources; native JSON for headers, gateway MI, or authorization-code OAuth; endpoint arrays replace membership; OAuth initiation is not completion | [MCP](mcp.md) |
-| Manage caller access or rotate keys | `api-key`; confirmed role grants via core CLI | Keys are gateway-wide; metadata reads differ from authorized `list-secrets`; rotate primary/secondary separately; existing-key rename is service-rejected | [Keys and identities](keys-and-identities.md) |
-| Enable outbound managed identity | `identity assign/show/remove/wait` | System identity or existing user-assigned identities; attachment does not grant backend access | [Keys and identities](keys-and-identities.md) |
-| Inspect networking or configure outbound subnet integration | `network show/update/wait` | Existing subnet prerequisites; public-access flags do not establish ingress enforcement (see gap below) | [Networking](networking.md) |
-| Inspect the private-connection command surface | `network private-endpoint-connection` | Gateway-side syntax, not proof of available private ingress or backing endpoint/DNS provisioning (see gap below) | [Networking](networking.md) |
-| Configure export or investigate missing telemetry | `telemetry-exporter` | Signal endpoints/auth, attributes and capture; destination ingestion and query access are separate | [Telemetry and troubleshooting](telemetry-and-troubleshooting.md) |
+| Administrator task | Native entry point | Task reference |
+| --- | --- | --- |
+| Provision, retag, set SKU, or delete a gateway | Top-level `list/show/create/update/delete/wait` | [Lifecycle](gateway-lifecycle.md) |
+| Publish a backend deployment or change routing | `model-provider`, `model`, `model-alias` | [Models and routing](models-and-routing.md) |
+| Reconcile Foundry registrations | `model-provider sync --dry-run` | [Provider reconciliation](models-and-routing.md#provider-reconciliation) |
+| Set quotas, accounting, or policy access controls | `policy`, `model policy`; asset `update --policies @file` | [Policies](policies.md) |
+| Publish or edit a ToolServer | `mcp`, `mcp source add/list/remove`, `mcp authorize` | [MCP](mcp.md) |
+| Manage caller access or keys | `api-key`; confirmed role grants via core CLI | [Keys and identities](keys-and-identities.md) |
+| Manage outbound identity | `identity assign/show/remove/wait` | [Identity operations](keys-and-identities.md#enable-attach-or-remove-outbound-identity) |
+| Configure outbound networking or review private connections | `network show/update/wait`, `network private-endpoint-connection` | [Networking](networking.md) |
+| Configure export or diagnose missing telemetry | `telemetry-exporter` | [Telemetry and troubleshooting](telemetry-and-troubleshooting.md) |
 
 ## Operation gaps and applicability
 
-These limits apply to the reviewed native CLI and target resource type.
-Requalify support before lifting a limit.
+Requalify support before lifting a limit. Domain-specific authoring contracts
+and gaps stay with their recipes rather than being copied into this index:
+[model protocols, authentication and routing](models-and-routing.md),
+[policy hosts and payloads](policies.md),
+[MCP sources and tool controls](mcp.md#product-controls-and-native-limits), and
+[telemetry operations](telemetry-and-troubleshooting.md).
+The following service-level exclusions have separate applicability evidence:
 
 | Requirement | Limitation and next reference |
 | --- | --- |
-| Content safety | Reviewed native setters remain legacy `Microsoft.ApiManagement/service` only; do not retarget the resource. See [policies](policies.md). |
-| Private ingress or disabling public access | [Lab 18](../../../labs/18-private-networking/README.md) records unavailable inbound private endpoints and ineffective `publicNetworkAccess: Disabled` on typed gateways (2026-10-19, `d5209ad9`). No live retest here. See [networking](networking.md) before promising isolation. |
-| Routing beyond priority/weight, or Custom provider sync | Reviewed alias target authoring covers model ID/priority/weight only; additional routing-field writes and Custom provider sync are not established. See [models](models-and-routing.md). |
-| Other model protocols/authentication | Reviewed API formats: `OpenAIChatCompletions`, `ResponsesApi`, `AnthropicMessages`; Custom authentication: `ApiKey`, not arbitrary-header variants. See [models](models-and-routing.md). |
-| Arbitrary policy payloads or cost variants | No provider policy host or arbitrary workspace-array write is established. Resource-host cost JSON supports ordered API-key/claim overrides with Identity-only accounting; the convenience `--cost-overrides` item schema remains empty in b26. See [policies](policies.md). |
-| Other MCP source/auth/tool controls | An `http` enum is not a verified authoring contract. No confirmed client-credentials/OBO/token-exchange authoring, tool-selector/pattern authoring, runtime tool listing, refresh, or execution command. See [MCP](mcp.md). |
-| MCP failure behavior | Use per-source `required` for discovery behavior. Top-level `--failure-mode` is create-only, absent on read-back, and unavailable for update; its enforcement remains unverified. See [MCP](mcp.md). |
-| Waits and diagnostics | No `telemetry-exporter wait` or `policy show`; use bounded exporter read-back and `policy list`. No established inference/MCP test or metrics/trace/KQL query subgroup. See [troubleshooting](telemetry-and-troubleshooting.md). |
+| Content safety | Reviewed native setters remain legacy `Microsoft.ApiManagement/service` only; do not retarget the resource. |
+| Private ingress or disabling public access | [Lab 18](../../../labs/18-private-networking/README.md) records unavailable inbound private endpoints and ineffective `publicNetworkAccess: Disabled` on typed gateways (2026-10-19, `d5209ad9`). No live retest here. |
+| Runtime diagnostics | No established inference/MCP test or metrics/trace/KQL query subgroup; use [authorized diagnostic evidence](telemetry-and-troubleshooting.md#diagnose-without-speculative-remediation). |
 | Legacy/historical product areas | A2A agents, triggers, source connector administration, and APIM API/backend/XML flows are outside the confirmed typed-gateway surface. |
 
 ## Compatibility details
@@ -50,34 +48,23 @@ Requalify support before lifting a limit.
   family binding. A carried-forward b26 observation (2026-11-10) recorded
   name-based commands ignoring `--subscription` in favor of the CLI default;
   `--ids` reads were unaffected. Not re-tested here. Keep explicit
-  subscriptions and use the workflow's consented temporary default-switch
-  procedure when needed; help exposing a selector does not prove dispatch.
-- **Concurrency.** Workspace writes may lack ETags; general model, provider,
-  network, key, and exporter mutations are not uniformly conditional.
-  Alias/MCP handling is operation-specific. MCP create sends
+  subscriptions and follow [target resolution](../SKILL.md#prerequisites-and-target-resolution)
+  when the mismatch occurs.
+- **Concurrency.** Follow the affected task reference's operation-specific
+  conditions. MCP create sends
   `If-None-Match: *`, but native help disclaims atomic enforcement;
   a request header alone does not establish create-if-absent protection.
 - **Gateway creation and waits.** The b26 adapter rejects create-time
-  `--user-assigned` despite help visibility; attach an existing UAMI after
-  creation. Typed waits accept `Active` or `Succeeded`; a parent wait does not
-  verify the changed identity, subnet or child approval. See [lifecycle](gateway-lifecycle.md)
-  and the affected task reference.
+  `--user-assigned` despite help visibility; wait states were checked at the
+  source locations below. Apply these findings through [lifecycle](gateway-lifecycle.md)
+  and the affected task's verification procedure.
 - **MCP endpoint writes.** b26 `azext_aigateway/_rp.py`, `write_mcp()` lines
   981–988: supplying endpoints
-  invokes `AIGatewayToolServer_ListSecrets`. Thus `mcp update --endpoints`
-  and `mcp source add/remove` can implicitly retrieve secrets;
-  `--display-name`, `--description`, `--versions`, `--type`, or `--policies`
-  alone do not trigger that path. See [MCP](mcp.md).
-- **External dependencies.** Supporting infrastructure, Entra app/consent,
-  connector ACLs, and provider/feature registration remain owner prerequisites.
-  Explicit, confirmed least-privileged role grants are permitted when the user
-  can assign at that scope. Foundry `--foundry-resource-id` convenience paths
-  bundle identity enablement and RBAC; prefer low-level registration plus the
-  explicit grant. See the [operating boundary](../SKILL.md#operating-boundary).
-- **Telemetry.** Native exporter updates forward supplied objects without
-  a conditional header; reads mask the whole headers map. Legacy
-  connection-string/singular-endpoint examples are not current per-signal
-  OTLP recipes. See [telemetry](telemetry-and-troubleshooting.md).
+  invokes `AIGatewayToolServer_ListSecrets`. The operational contract is in
+  [credential preservation](mcp.md#credential-preservation-and-implicit-secret-reads).
+- **Telemetry.** Exporter writes and masking were checked at the source
+  locations below; use the [export contract](telemetry-and-troubleshooting.md)
+  rather than legacy help examples.
 
 ## Evidence baseline
 
@@ -109,8 +96,5 @@ Requalify support before lifting a limit.
 `network private-endpoint-connection --help`
 (all entries after the first also use the `az aigateway` prefix).
 
-These reconfirmed the missing exporter wait, policy show, and alias
-`create --overwrite`; use alias `update` or intentional `set` instead.
-Content-safety visibility and generic cost-override JSON did not lift the
-recorded applicability/schema limits. A gap requires an explicit unsupported
-outcome or owner prerequisite, not legacy retargeting or a REST bypass.
+These checks inform the linked authoring recipes; they did not lift the
+recorded content-safety applicability or cost-override schema limits.

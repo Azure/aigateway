@@ -3,14 +3,15 @@
 A gateway/default-workspace exporter owns signal endpoints, authentication,
 claim attributes, and payload capture.
 Destinations, DCRs, workspaces, registration, retention, and query access remain
-externally owned; grants follow the [confirmed role workflow](../SKILL.md#operating-boundary).
+externally owned; grants follow [access planning and execution](keys-and-identities.md#grant-caller-or-destination-access).
 The [capability inventory](activities-and-cli-coverage.md) records native
 applicability; free-form JSON alone does not establish support.
 
 ## Choose the task and inspect its exporter
 
 Read the selected exporter and task dependencies. Diagnose missing data below,
-not with a full gateway inventory.
+not with a full gateway inventory. Use `list` to discover or check a name;
+use `show` only for an existing exporter.
 
 ```bash
 az aigateway telemetry-exporter list --subscription "$SUBSCRIPTION" \
@@ -30,15 +31,14 @@ proof of absent credentials nor values safe to replay.
 Choose an existing **OTLP/HTTP Protobuf** destination. For a custom receiver,
 obtain full signal URLs, supported auth/audience, access, and reachability.
 
-For Application Insights, read `OTLPMetricsEndpoint`, `OTLPLogsEndpoint`,
-`OTLPTracesEndpoint`, and `DataCollectionRuleResourceId` from the existing
-component with authorized core CLI reads. The
+For Application Insights, read `DataCollectionRuleResourceId` and each requested
+signal's endpoint (`OTLPMetricsEndpoint`, `OTLPLogsEndpoint`, or
+`OTLPTracesEndpoint`) from the existing component with authorized core CLI reads.
+The
 [monitoring recipe](../../../labs/13-monitoring/README.md#let-the-gateway-publish)
-uses **Monitoring Metrics Publisher** on that exact DCR for the selected
-gateway identity's **principal object ID**. Check grants and assignment authority;
-confirm that exact assignment before `az role assignment create` and verification,
-or hand it to the owner. Missing OTLP enablement, resources, or registration
-remains an owner prerequisite.
+requires **Monitoring Metrics Publisher** on that exact DCR. Resolve the
+selected identity and any missing grant through the access procedure above.
+Missing OTLP enablement, resources, or registration remains an owner prerequisite.
 
 ## Create an OTLP exporter
 
@@ -58,11 +58,12 @@ Enable only needed signals: metrics (usage/cost), logs (requests), traces
 ```
 
 Replace URLs/audience; omit unneeded signals on creation.
-`credentials.managedIdentity.clientId` selects an attached UAMI; omission
-selects the enabled system identity. Alternatives are
+Optional `credentials.managedIdentity.clientId` follows the
+[identity-selection rules](keys-and-identities.md#understand-the-effects).
+Alternatives are
 `credentials.headers`, a **string-to-string** map in a protected file, or
 deliberately unauthenticated export. Do not combine MI with an Authorization
-header. [Identity selection](keys-and-identities.md) grants no ingestion access.
+header.
 
 ```bash
 az aigateway telemetry-exporter create --subscription "$SUBSCRIPTION" \
@@ -84,9 +85,9 @@ no ingestion or query access.
 Legacy `ApplicationInsights`/connection-string and singular `endpoint` help
 examples are not current per-signal OTLP recipes.
 
-Use bounded `show/list` read-back before retrying uncertain writes.
-Verify exporter ID, changed/preserved fields, and any provisioning state. No
-`telemetry-exporter wait`; saved configuration does not prove ingestion.
+No `telemetry-exporter wait`; use bounded `show/list` read-back under the
+[shared execution procedure](../SKILL.md#operate).
+Verify exporter ID, changed/preserved fields and any provisioning state.
 
 ## Edit endpoints, auth, claims, or capture
 
@@ -153,9 +154,8 @@ Inspect the exporter fields above, then choose relevant read-only checks:
    follow `model-alias show` → selected `model show` → `model-provider show`.
    Check [MCP sources/auth](mcp.md) for tool failures, [policies](policies.md) for rejections.
 2. **Check destination access.** Use `az aigateway identity show` for the
-   scoped gateway; resolve the selected principal, audience, and grants.
-   Recreated identities can leave stale grants. An unassigned identity can
-   produce not-found even when the gateway exists. Check header validity
+   scoped gateway; follow [identity/grant verification](keys-and-identities.md#verify-configuration).
+   Resolve the selected principal, audience and grants. Check header validity
    through the credential owner, not secret retrieval/rotation.
 3. **Separate ingress from export egress.** Use
    `az aigateway network show --ids "$GATEWAY_ID" --subscription "$SUBSCRIPTION"`.
@@ -176,4 +176,4 @@ Inspect the exporter fields above, then choose relevant read-only checks:
 | One signal missing | Full endpoint/path, receiver support, relevant traffic; another signal arriving does not validate this one |
 | Data not returned by queries | Destination/workspace, query permissions and time range; query failure does not establish ingestion failure |
 | Claims absent | Caller authentication/claim availability, retained mappings, selected signals; mapping is not claim issuance |
-| 401/403 | Locate the boundary: ARM management, gateway caller, backend, or exporter destination; each uses different credentials/grants |
+| 401/403 | For ARM/caller/backend failures, follow [access diagnosis](keys-and-identities.md#identify-remaining-runtime-uncertainty); for exporter-destination rejection, check step 2 above |

@@ -24,12 +24,6 @@ a gateway using the native `az aigateway` CLI.
 | Caller authentication / gateway identity | Prefer inbound Entra tokens with caller roles; optional API keys grant gateway-wide access. Gateway managed identities separately authenticate outbound access | [Authentication and identities](references/keys-and-identities.md) |
 | Telemetry exporter | Signal endpoints, export authentication, attributes, and payload capture; the destination and its access grants remain external | [Telemetry](references/telemetry-and-troubleshooting.md) |
 
-These relationships matter when composing changes. Publishing a model and
-giving it a callable alias are different operations. Selecting an identity
-does not grant backend access. Saving an exporter does not prove ingestion.
-Shared configuration, resource-local configuration, and external dependencies
-are separate parts of the system.
-
 ## Operating boundary
 
 Manage **`Microsoft.ApiManagement/aigateways` and its own children** in the
@@ -52,21 +46,13 @@ Azure CLI reads and authentication may establish prerequisites. Their
 creation, provider/feature registration, source administration, and Entra
 application changes remain outside this skill's mutation scope.
 
-Role assignments that the requested outcome depends on, such as the gateway
-identity on a backend or telemetry destination, or callers on the gateway,
-belong in the plan: without them the configured gateway does not deliver
-the result. Identify each at planning time as principal, least-privileged
-role, and narrowest scope. When the user can assign roles at that scope
-(check rather than assume) and confirms that exact assignment, make it with
-`az role assignment create` and verify it; otherwise give the same details
-and command to the owner. Confirmation matters because the grant changes
-security on a resource the gateway does not own and outlives the gateway.
-
-`model-provider create --foundry-resource-id` and
-`model create --foundry-resource-id` bundle identity enablement and a
-Foundry User grant into one call. Prefer the low-level registration workflow
-in [models and routing](references/models-and-routing.md) plus an explicit,
-confirmed grant, so each access change is seen and approved.
+Role assignments needed for the outcome belong in the plan even on external
+destinations. They are the exception to the mutation boundary: follow
+[access planning and grant execution](references/keys-and-identities.md#grant-caller-or-destination-access),
+including authority checks and confirmation of each exact assignment.
+Confirmation matters because a grant changes security outside the gateway's
+ownership and outlives it. Prefer separately approved access changes over
+the bundled onboarding described in [provider configuration](references/models-and-routing.md#foundry-provider).
 
 APIM migration belongs to
 [`migrate-ai-gateway`](../migrate-ai-gateway/SKILL.md) or
@@ -74,6 +60,10 @@ APIM migration belongs to
 Developer application integration and scaffolding are outside this skill.
 
 ## Prerequisites and target resolution
+
+Match preparation to intent: answer conceptual questions from the relevant
+references; use the steps below for diagnostics or changes on a gateway.
+Check time-sensitive support when the question requires it.
 
 1. Reuse supplied identifiers and relevant context. Resolve the cloud, tenant,
    subscription, resource group, and gateway needed now. Select resources
@@ -119,44 +109,46 @@ GATEWAY="<gateway-name>"
 GATEWAY_ID="/subscriptions/$SUBSCRIPTION/resourceGroups/$RG/providers/Microsoft.ApiManagement/aigateways/$GATEWAY"
 
 az aigateway version
+```
+
+For an existing target, read its root:
+
+```bash
 az aigateway show --ids "$GATEWAY_ID" --subscription "$SUBSCRIPTION" -o json
 ```
 
-For creation, inspect scoped inventory first; absence of the new root is
-expected, not permission to overwrite an existing same-name resource.
+For creation, inspect scoped inventory first and read the new root after
+creation; its prior absence is expected, not permission to overwrite an
+existing same-name resource.
 
 ## Derive the configuration
-
-Match the depth of reasoning to the task. Questions need explanation,
-diagnostics need evidence, and mutations need a desired-state difference.
 
 1. Establish the result that matters: affected resources/traffic, intended
    behavior, and relevant constraints such as accounting, access, routing,
    cost, or availability. Resolve only missing choices that change the result.
-2. Read current configuration and relevant dependencies. Distinguish a missing
-   setting from missing evidence of its effect.
+2. For diagnostics or changes, read current configuration and relevant
+   dependencies. Distinguish a missing setting from missing evidence of its
+   effect.
 3. Compose the supported mechanisms that satisfy the constraints. One outcome
    may need several objects or policy instances; an existing configuration
-   may already satisfy it. Use each reference's applicability and semantics
+   may already satisfy it. Start with the task reference, then follow its
+   links for shared controls; use the [platform model](#platform-model)
    rather than inferring a feature from a similar command or label.
-4. Compare desired and current state. Propose the smallest changes, the
-   configuration that remains untouched, prerequisites, and dependencies.
+4. For changes, compare desired and current state. Propose the smallest
+   changes, the configuration that remains untouched, prerequisites, and dependencies.
+   Order changes by those dependencies, reusing satisfied prerequisites;
+   resource-list order is not execution order.
    When alternatives differ in behavior, ownership, disruption, or cost,
    recommend the simplest suitable option and obtain the necessary decision.
 5. Choose verification appropriate to the claim: persisted fields, completed
    provisioning, or separately authorized runtime evidence. State any part
    the native CLI cannot establish.
 
-For policies, this means selecting compatible controls and then defining
-their attachments, counter partitions, and effective constraints. For
-access, it means separating caller credentials, gateway identities, and
-the role assignments each needs.
-
 ## Authorization and preservation
 
 Explicit intent authorizes routine creates and updates within the specified
 scope; ordinary metadata edits do not need repeated approval. Explain planned
-changes and dependencies before execution.
+changes, dependencies, and required confirmations before execution.
 
 Obtain immediate, specific confirmation for deletion, stale-sync removal,
 overwrite/complete-collection replacement, policy removal or weakening,
@@ -192,15 +184,10 @@ reproducible provisioning commands.
 
 ## Configure gateway assets
 
-Load the references for the objects involved in the proposed change; the
-platform model provides their entry points. Cross-resource dependencies
-inform ordering and prerequisites, not permission to configure additional
-resources.
-
-The [capability inventory](references/activities-and-cli-coverage.md) records
-the finite native surface and its limitations. The domain references provide
-field semantics and operation recipes. Unsupported requirements remain
-explicit gaps or design decisions, not silently approximated features.
+Load only the task and shared-control references needed for the outcome,
+using the platform model above. Cross-resource dependencies inform ordering
+and prerequisites, not permission to configure additional resources.
+Unsupported requirements remain explicit gaps, not approximated features.
 
 ## Operate
 
@@ -222,16 +209,20 @@ explicit gaps or design decisions, not silently approximated features.
 
 Provisioning output includes an approved-location replay script with explicit
 scope, necessary inputs, preserved-state decisions, and verification commands.
-Keep secret values out and retain confirmation stops for destructive replay.
+Use `set -euo pipefail`, keep secret values out, retain confirmation stops for
+destructive replay, and reconcile existing state before replaying creates.
 Repository files and ignore rules require approval before being changed.
 
 ## Keeping the references current
 
-Use the [capability inventory](references/activities-and-cli-coverage.md) for
-the reviewed CLI baseline, dated help observations, and unresolved support
-gaps. Keep versioned evidence there, not in a new copy of this workflow for
-each release. This workflow describes stable resource relationships,
-authorization, preservation, and verification.
+Maintain each contract or procedure in one home. The platform model links
+to the domain owners: notably, policies owns compatibility, attachment,
+accounting and policy writes for every host; keys and identities owns access
+planning and grant execution. This workflow owns common safeguards, replay
+and reporting. The [capability inventory](references/activities-and-cli-coverage.md)
+owns the native surface index, reviewed baseline and dated support evidence.
+Link to the owner at the task step that needs it, keeping only the local
+integration detail so readers do not maintain competing copies.
 
 A CLI release does not automatically require a skill rewrite. Compare the
 task's commands and relevant release changes with the recorded baseline.

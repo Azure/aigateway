@@ -16,10 +16,8 @@ smallest preserving native change. Authorization follows the
 | `toolThreatProtection` | Evaluate tool threats through Agent 365: `preInvocation`, `postInvocation` | Not supported | ToolServers |
 | `agentHooks` | Ask a decision service for allow/deny: stable `id`, resource `scope`, lifecycle `hooks`, HTTPS endpoint, authorization, failure mode/headers | Not supported | ToolServers |
 
-**Content safety remains legacy `Microsoft.ApiManagement/service` only**
-in reviewed native applicability. Native setters and free-form JSON do not
-lift that limit; stop typed-gateway requests rather than retargeting.
-See the [capability inventory](activities-and-cli-coverage.md#operation-gaps-and-applicability).
+Check the [content-safety applicability limit](activities-and-cli-coverage.md#operation-gaps-and-applicability)
+before proposing that control; native setter visibility does not lift it.
 
 Combine allowances for independent token, call, and cost constraints.
 MCP request limits do not provide model token/cost budgets.
@@ -29,15 +27,15 @@ MCP request limits do not provide model token/cost budgets.
 Each policy instance is stored in its host's `properties.policies` array.
 It is not a separate ARM child resource.
 
-| Host | Path under the selected gateway | Configuration boundary |
-| --- | --- | --- |
-| Default workspace | `workspaces/default` | Shared configuration inherited by applicable assets |
-| Alias | `workspaces/default/aliases/<alias>` | Traffic using the callable alias and its selected backend pool |
-| Registered model | `workspaces/default/modelProviders/<provider>/models/<model>` | Traffic for that registration across aliases targeting it |
-| ToolServer | `workspaces/default/toolServers/<server>` | Applicable traffic through that MCP server |
+| Host | Configuration boundary |
+| --- | --- |
+| Default workspace (`workspaces/default`) | Shared configuration inherited by applicable assets |
+| [Alias](models-and-routing.md#resource-model) | Traffic using the callable alias and its selected backend pool |
+| [Registered model](models-and-routing.md#resource-model) | Traffic for that registration across aliases targeting it |
+| [ToolServer](mcp.md#understand-the-effects) | Applicable traffic through that MCP server |
 
 Providers, individual tools, backend sources, and named asset groups are not
-policy hosts. Tool policies belong on the ToolServer; see [MCP](mcp.md).
+policy hosts. For non-policy server changes, use [MCP](mcp.md).
 
 For alias-routed traffic, compatible workspace, alias, and selected model
 rules can all govern one call. A looser asset-local allowance does not replace
@@ -117,8 +115,8 @@ policy neither issues claims nor creates a caller dimension.
 
 An alias budget is a traffic boundary, not caller authorization: anyone
 allowed to use it consumes its pool, and traffic using another alias is
-outside it. A shared team key can share an Identity counter, but keys grant
-gateway-wide access; do not propose key sharing as team access isolation.
+outside it. Evaluate [key access and caller identity](keys-and-identities.md#understand-the-effects)
+before choosing shared credentials; counter pooling is not team access isolation.
 
 ## Native configuration paths
 
@@ -164,6 +162,22 @@ by its ID where present, otherwise its full configuration, not an array position
 - If workspace scope, duplicates, or fields cannot survive the setter, stop:
   no native per-instance or complete-array workspace editing path is established.
   Do not substitute REST or delete an imagined policy child.
+
+### Update a ToolServer's policies
+
+Set `MCP_ID` from the [selected registration](mcp.md#inspect-a-server),
+merge changes into the complete intended array, preserving other instances
+and IDs. Obtain specific confirmation for replacing the whole array before
+applying:
+
+```bash
+az aigateway mcp update --ids "$MCP_ID" --subscription "$SUBSCRIPTION" \
+  --policies @tool-server-policies.json
+```
+
+Leave endpoints unrequested in policy-only writes; their
+[secret-preservation path](mcp.md#credential-preservation-and-implicit-secret-reads)
+is unrelated to governance.
 
 ## Configuration examples
 
@@ -251,8 +265,7 @@ A resource-local pooled request policy:
 {"type": "requestRateLimit", "scope": "resource", "callsPerPeriod": 60, "periodSeconds": 60, "counterKey": []}
 ```
 
-Merge into a compatible host array. A ToolServer limit covers applicable
-server traffic, not a separately scoped source or tool.
+Merge into a compatible host array using the [attachment boundary](#attachment-and-effective-configuration).
 
 ### IP filter
 
@@ -322,9 +335,8 @@ URLs must be HTTPS without credentials, query, or fragment. Authentication:
 - `apiKey`: verified header and protected key input. Omit an unchanged
   write-only value to preserve it; never send a redaction marker.
 - `managedIdentity`: `managedIdentity.resource` is the callback audience;
-  optional `clientId` selects a gateway-enabled user-assigned identity,
-  otherwise use its enabled system identity. Callback access remains a
-  separate prerequisite; follow [identity/grant handling](keys-and-identities.md).
+  optional `clientId` follows the [identity-selection rules](keys-and-identities.md#understand-the-effects).
+  Resolve callback access through the [grant procedure](keys-and-identities.md#grant-caller-or-destination-access).
 - `anonymous`: only for a deliberately public callback.
 
 `failClosed` (default) blocks callback failure/invalid responses; `failOpen`
@@ -333,8 +345,7 @@ mode changes a valid `allow`/`deny` verdict. Hook settings override shared
 endpoint/mode/auth (authorization replaces the object); literal non-secret
 headers merge case-insensitively. Preserve unedited shared settings.
 An empty hook header map does not clear inherited headers.
-Merge into the ToolServer array and apply only `mcp update --policies`;
-supplying `--endpoints` triggers an implicit secret read (see [MCP](mcp.md)).
+Apply through the [ToolServer policy path](#native-configuration-paths).
 
 Use the [Agent Hooks contract](https://ai.gateway.azure.com/docs/policies/agent-hooks)
 and [callback verification procedure](https://ai.gateway.azure.com/docs/policies/guides/create-pre-tool-call-hook).
