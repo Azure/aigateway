@@ -44,15 +44,15 @@ az aigateway delete --ids "$GATEWAY_ID" --subscription "$SUB" --yes
 ```
 
 - `--sku` defaults to `Standard`. `--user-assigned` is rejected on `create`; attach UAMIs afterwards with `az aigateway identity assign`.
-- `--subnet` requires a same-region subnet delegated to `Microsoft.App/environments`.
 - Runtime URL: `properties.gatewayUrl` (or `properties.frontend.defaultHostname`).
-- `--tags` replaces all tags—merge existing tags from `show` first. `delete` leaves a soft-delete record ([references/gateway-lifecycle.md](references/gateway-lifecycle.md)).
+- `--tags` replaces all tags—merge existing tags from `show` first. `delete` leaves a soft-delete record (`az apim deletedservice purge --service-name "$GW" --location "$LOCATION"` only if permanent purge is requested).
+- See [references/gateway-lifecycle.md](references/gateway-lifecycle.md) for `--no-wait` polling.
 
 ## Configure gateway assets
 
 ### 1. Models, providers, and aliases (`model-provider`, `model`, `model-alias`)
 
-Clients call **model aliases** (`properties.aliasName`, set via `--routing-name`), never provider or model registration names. Every `--backend-model` target must be a gateway model registration ARM ID (`$GATEWAY_ID/workspaces/default/modelProviders/$PROVIDER/models/$MODEL`), never a Foundry deployment ID.
+Clients call **model aliases** (`properties.aliasName`, set via `--routing-name`), never provider or model registration names.
 
 ```bash
 # Onboard one Foundry deployment (enables system MI, grants Foundry User on account, creates/reuses provider + model)
@@ -67,7 +67,7 @@ az aigateway model-provider create --subscription "$SUB" -g "$RG" --gateway-name
 az aigateway model-provider sync --subscription "$SUB" -g "$RG" --gateway-name "$GW" \
   -n "$PROVIDER" --create-default-aliases --dry-run
 
-# Custom or low-level provider + model (see JSON schemas in references/models-and-routing.md)
+# Custom or low-level provider + model
 az aigateway model-provider create --subscription "$SUB" -g "$RG" --gateway-name "$GW" -n "$PROVIDER" --kind Custom --custom @custom.json
 az aigateway model create --subscription "$SUB" -g "$RG" --gateway-name "$GW" --provider-name "$PROVIDER" -n "$MODEL" \
   --deployment-config '{"modelName":"<backend-model>"}' --api-format OpenAIChatCompletions --supported-endpoints /v1/chat/completions
@@ -76,16 +76,14 @@ az aigateway model create --subscription "$SUB" -g "$RG" --gateway-name "$GW" --
 az aigateway model list --subscription "$SUB" -g "$RG" --gateway-name "$GW" --provider-name "$PROVIDER" -o json \
   | az aigateway model-alias create
 
-# Create or update an alias with weighted split (same priority) and fallback (higher priority number)
+# Create or update an alias (`set` upserts; `create` fails if the alias exists)
 az aigateway model-alias set --subscription "$SUB" -g "$RG" --gateway-name "$GW" -n "$ALIAS" --routing-name "$ROUTING_NAME" \
   --backend-model resource-id="$MODEL_A_ID" priority=0 weight=80 \
   --backend-model resource-id="$MODEL_B_ID" priority=0 weight=20 \
   --backend-model resource-id="$FALLBACK_MODEL_ID" priority=1 weight=100
 ```
 
-- `--api-format`: `OpenAIChatCompletions`, `ResponsesApi`, `AnthropicMessages`. `model create` uses `--deployment-config`; `model update` uses `--deployment`.
-- `model-alias set` creates or updates; `create` fails if the alias exists.
-- Routing: `priority` (`0–100`, **lower serves first**: `0` primary, `1` fallback); `weight` (`1–100`, relative share within the same priority). `--backend-model` **replaces the entire pool** (1–30 models)—read `model-alias show` first to keep existing targets ([references/models-and-routing.md#alias-pool](references/models-and-routing.md#alias-pool)).
+See [references/models-and-routing.md](references/models-and-routing.md) for low-level Foundry/Custom JSON schemas, `--api-format` and update flags, [alias pool routing rules](references/models-and-routing.md#alias-pool), and safe deletion order.
 
 ### 2. MCP ToolServers (`mcp`, `mcp source`)
 
@@ -102,8 +100,7 @@ az aigateway mcp source add --subscription "$SUB" -g "$RG" --gateway-name "$GW" 
 az aigateway mcp source remove --subscription "$SUB" -g "$RG" --gateway-name "$GW" --tool-server-name "$MCP_NAME" --namespace "$NS"
 ```
 
-- No `mcp source update`: read `mcp show` and pass the full array to `mcp update --endpoints @endpoints.json` (keep `namespace` values and omit unchanged `credentials` to preserve stored secrets).
-- `header` credential values are **string arrays** (`{"type":"header","headers":{"X-Api-Key":["<secret>"]}}`). See [references/mcp.md](references/mcp.md) for OpenAPI (`url` / `inline` base64), `managedIdentity`, `oauth2`, and `mcp authorize`.
+See [references/mcp.md](references/mcp.md) for OpenAPI/credential JSON schemas, editing existing sources (`mcp update --endpoints`), OAuth (`mcp authorize`), and tool filtering (`allowList`, `blocked`).
 
 ### 3. Governance policies (`policy`, `model policy`, `--policies`)
 
@@ -123,7 +120,8 @@ az aigateway policy remove --subscription "$SUB" -g "$RG" --gateway-name "$GW" -
 ```
 
 - **Content safety (`set-content-safety`) is unsupported on `Microsoft.ApiManagement/aigateways`** (legacy `service` only).
-- `--policies @file` on `model`, `model-alias`, or `mcp update` **replaces the entire `properties.policies` array**—read existing policies first and preserve other entries and `id` values ([references/policies.md](references/policies.md)).
+- Workspace/model setters merge supplied fields into the first entry of that type (there is no `policy show`; use `policy list`). `--policies @file` on `model`, `model-alias`, or `mcp update` **replaces the entire `properties.policies` array**—read existing policies first and preserve other entries and `id` values.
+- See [references/policies.md](references/policies.md) for `counterKey` / `scope` values and JSON schemas (`costLimit` overrides, `toolThreatProtection`, `agentHooks`).
 
 ### 4. Identities, RBAC, and caller API keys (`identity`, `api-key`)
 
@@ -136,11 +134,9 @@ az aigateway identity remove --subscription "$SUB" -g "$RG" -n "$GW" --user-assi
 az aigateway api-key list --subscription "$SUB" -g "$RG" --gateway-name "$GW" -o json
 az aigateway api-key create --subscription "$SUB" -g "$RG" --gateway-name "$GW" -n "$KEY_NAME"
 az aigateway api-key update --subscription "$SUB" -g "$RG" --gateway-name "$GW" -n "$KEY_NAME" --state suspended
-az aigateway api-key regenerate --subscription "$SUB" -g "$RG" --gateway-name "$GW" -n "$KEY_NAME" --key-type secondary
 ```
 
-- `identity show` exits with not-found if no identity is assigned yet. In asset JSON configs, `managedIdentity.clientId` takes the UAMI's **clientId** (omit for system-assigned); RBAC uses `principalId`.
-- **RBAC**: Inbound Entra roles are `AI Gateway Models User` (alias/workspace), `AI Gateway Tools User` (ToolServer/workspace), and `AI Gateway User` (both). Outbound gateway MI uses `Foundry User` (`53ca6127-db72-4b80-b1b0-d745d6d5456d`) on Foundry accounts or `Monitoring Metrics Publisher` on App Insights DCRs ([references/keys-and-identities.md](references/keys-and-identities.md)).
+`identity show` exits with not-found if no identity is assigned yet. See [references/keys-and-identities.md](references/keys-and-identities.md) for UAMI identifier mapping (`id` vs `clientId` vs `principalId`), inbound/outbound RBAC role IDs and `az role assignment` commands, secret retrieval (`list-secrets`), and staged key rotation (`regenerate`).
 
 ### 5. Networking and private endpoint connections (`network`)
 
@@ -148,11 +144,10 @@ az aigateway api-key regenerate --subscription "$SUB" -g "$RG" --gateway-name "$
 az aigateway network show --subscription "$SUB" -g "$RG" -n "$GW" -o json
 az aigateway network update --subscription "$SUB" -g "$RG" -n "$GW" --subnet "$SUBNET_ID"
 az aigateway network update --subscription "$SUB" -g "$RG" -n "$GW" --disable-vnet-integration true
-
 az aigateway network private-endpoint-connection list --subscription "$SUB" -g "$RG" --gateway-name "$GW" -o json
-az aigateway network private-endpoint-connection approve --subscription "$SUB" -g "$RG" --gateway-name "$GW" -n "$PEC_NAME" --description "Approved"
 ```
-`--subnet` and `--disable-vnet-integration` are mutually exclusive. Inbound private endpoints and `--public-network-access Disabled` are not effective on typed `aigateways` in the current preview ([references/networking.md](references/networking.md)).
+
+`--subnet` and `--disable-vnet-integration` are mutually exclusive. See [references/networking.md](references/networking.md) for delegated subnet requirements and private endpoint connection commands (`show`, `approve`, `reject`, `delete`, `wait`).
 
 ### 6. Telemetry export (`telemetry-exporter`)
 
@@ -162,7 +157,8 @@ az aigateway telemetry-exporter create --subscription "$SUB" -g "$RG" --gateway-
   -n "$EXPORTER" --kind OpenTelemetry --open-telemetry @otlp.json \
   [--application-insights "{\"resourceId\":\"$APPINSIGHTS_ID\"}"] --payload-capture false
 ```
-For Application Insights, discover OTLP endpoints and `DataCollectionRuleResourceId` from the App Insights resource and grant the gateway identity `Monitoring Metrics Publisher` on that DCR. In `otlp.json`, `credentials.headers` is a **string-to-string** map ([references/telemetry-and-troubleshooting.md](references/telemetry-and-troubleshooting.md)).
+
+See [references/telemetry-and-troubleshooting.md](references/telemetry-and-troubleshooting.md) for Application Insights OTLP/DCR discovery, `otlp.json` schemas, claim attribute mappings, and troubleshooting (there is no `telemetry-exporter wait`; verify with `telemetry-exporter show`).
 
 ## Operate
 
@@ -172,5 +168,5 @@ For Application Insights, discover OTLP endpoints and `DataCollectionRuleResourc
    - Running standalone `az role assignment create` commands.
    - Rotating/suspending/deleting API keys, reading secrets (`api-key list-secrets`, `mcp authorize`), changing network/private-endpoint access, or enabling `--payload-capture true`.
 2. **Protect secrets**: Never print raw keys, backend secrets, or OAuth links. Pass secrets via environment variables or temporary `0600` JSON files outside source control (`@file.json` does not expand `$ENV_VAR`). Never send redacted markers in updates.
-3. **Verify**: Check command output and run `show`/`list` (or `wait --created/--updated/--deleted` after `--no-wait`) to confirm target fields and preserved sibling settings ([references/activities-and-cli-coverage.md](references/activities-and-cli-coverage.md)).
+3. **Verify**: Check command output and run `show`/`list` to confirm target fields and preserved sibling settings. The CLI has no subcommands for model inference, MCP `tools/list` / `tools/call`, or KQL log queries; verify runtime traffic separately with an authorized HTTP/MCP client or `az monitor` query.
 

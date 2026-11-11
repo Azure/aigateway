@@ -12,13 +12,13 @@ RBAC role assignments, managed identity identifier rules, and API key rotation/s
 
 ## Grant caller or destination access
 
-| Direction | Role name / ID | Scope |
-| --- | --- | --- |
-| Inbound caller → models | `AI Gateway Models User` | Model alias ID or gateway/workspace ID |
-| Inbound caller → tools | `AI Gateway Tools User` | MCP ToolServer ID or gateway/workspace ID |
-| Inbound caller → models + tools | `AI Gateway User` | Gateway or workspace ID |
-| Outbound gateway MI → Foundry | `Foundry User` (`53ca6127-db72-4b80-b1b0-d745d6d5456d`) | Foundry account ARM ID |
-| Outbound gateway MI → App Insights OTLP | `Monitoring Metrics Publisher` | Data Collection Rule (DCR) ARM ID |
+| Direction | Role name | Role ID | Scope |
+| --- | --- | --- | --- |
+| Inbound caller → models | `AI Gateway Models User` | `a6b68e3d-a1f0-4c60-8678-237c050cf4ea` | Model alias ID or gateway/workspace ID |
+| Inbound caller → tools | `AI Gateway Tools User` | `dce03f8d-857f-4e40-a90d-67770fa6ecd2` | MCP ToolServer ID or gateway/workspace ID |
+| Inbound caller → models + tools | `AI Gateway User` | `caad7a21-134e-43f4-a550-c5ffc17e051c` | Gateway or workspace ID |
+| Outbound gateway MI → Foundry | `Foundry User` | `53ca6127-db72-4b80-b1b0-d745d6d5456d` | Foundry account ARM ID |
+| Outbound gateway MI → App Insights OTLP | `Monitoring Metrics Publisher` | `3913510d-42f4-4e42-8a64-420c390055eb` | Data Collection Rule (DCR) ARM ID |
 
 Check existing assignments first, then confirm `PRINCIPAL_ID`, `ROLE`, and `SCOPE` with the user before creating the grant:
 

@@ -43,8 +43,8 @@ For display-name, version, or `--policies` updates, omit `--endpoints` so `listS
     --tool-server-name "$MCP_NAME" --endpoint-id "$ENDPOINT_ID" -o json
   ```
 
-## Unexposed portal properties
+## Filter and block tools
 
-`allowList`, `blocked`, `accessState`, and Entra OBO / token-exchange credentials have no dedicated CLI flags; preserve them if present on an existing ToolServer.
+Use property `allowList` to control which tools are available through the federation. If endpoints have a namespace, tools should be `<namespace>_<tool_name>`. Only tools in `allowList` are returned in `tools/list`.
 
-
+Use property `blocked` to temporarily block tool execution. Tools are returned in `tools/list`.

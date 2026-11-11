@@ -117,7 +117,7 @@ identities, networking, and telemetry. It manages only
 must already exist, and role assignments the setup depends on are granted only
 after specific confirmation. Routine create/update intent authorizes the
 requested work; destructive, access-sensitive, and secret-related operations have
-specific confirmation gates. [Portal activity coverage and CLI gaps](skills/manage-ai-gateway/references/activities-and-cli-coverage.md)
+specific confirmation gates. Portal activity coverage and CLI gaps
 are explicit rather than bypassed with REST or legacy resource types.
 
 #### Migrate workloads to Azure AI Gateway

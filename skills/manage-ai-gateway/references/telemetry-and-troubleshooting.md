@@ -1,6 +1,6 @@
 # Telemetry export and diagnosis
 
-JSON schemas, updates, and diagnostics for `az aigateway telemetry-exporter` (uses `-g "$RG" --gateway-name "$GW" -n "$EXPORTER"`; no `--ids` or `wait`).
+JSON schemas, updates, and diagnostics for `az aigateway telemetry-exporter`.
 
 ## Discover Application Insights OTLP endpoints and DCR
 

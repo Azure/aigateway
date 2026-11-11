@@ -12,7 +12,6 @@ Counter dimensions and JSON payload schemas for `properties.policies` on workspa
 | Pooled across callers | `[]` | `@empty-array.json` (`[]`) | Single shared budget across all callers hitting the policy |
 
 - Workspace setters write `"scope": "workspace"`. Asset-level policies in `--policies @file` use `"scope": "resource"`.
-- Workspace/model counting setters merge supplied fields into the first entry of that type (removing duplicate entries of that type). `--policies @file` on `model`, `model-alias`, or `mcp update` **replaces the entire policy array**—merge into the current array from `show`/`policy list`.
 
 ## Policy JSON schemas (for `--policies @file`)
 

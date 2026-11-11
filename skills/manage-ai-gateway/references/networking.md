@@ -12,6 +12,8 @@ Subnet requirements and private endpoint connection subcommands for `az aigatewa
 
 ## Gateway-side private endpoint connections
 
+Private endpoints is in preview and it requires to request access to this feature. To request access, see [Request access to private endpoints](https://aka.ms/aigateway/privateEndpoints).
+
 Targets `$GATEWAY_ID/privateEndpointConnections/<connection-name>` (not the backing `Microsoft.Network/privateEndpoints` resource):
 
 ```bash
