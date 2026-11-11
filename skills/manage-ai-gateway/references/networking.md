@@ -6,16 +6,16 @@ remain externally owned.
 
 ## Choose the traffic path
 
-| Task / portal control | Native control and boundary |
+| Traffic requirement | Native control and boundary |
 | --- | --- |
-| Private backends: **Networking > Outbound**, VNet integration | `--subnet`: outbound backend routing, not ingress isolation or backend authorization |
-| Private-only clients: **Networking > Inbound** | `--public-network-access`, approved gateway endpoint and client DNS/reachability; unsupported isolation below |
-| Connection: **Inbound** row | `approve`/`reject`/`delete`: gateway-side decision, not endpoint/DNS provisioning or public access |
+| Reach private backends | `--subnet`: outbound backend routing, not ingress isolation or backend authorization |
+| Isolate client ingress | `--public-network-access` and private-connection commands are exposed, but private ingress and public disablement have the support limitations below |
+| Review an existing private endpoint connection | `approve`/`reject`/`delete`: gateway-side decision, not endpoint/DNS provisioning or public access |
 
 [Service evidence](activities-and-cli-coverage.md#operation-gaps-and-applicability)
 and [Lab 18](../../../labs/18-private-networking/README.md#how-it-works) record
 unavailable typed-gateway private ingress and ineffective public disablement.
-Portal gates/help do not supersede service evidence: do not offer `Disabled`
+CLI flag availability does not supersede service evidence: do not offer `Disabled`
 as isolation or bypass the gap with legacy resources/feature registration.
 
 ## Read and confirm

@@ -17,8 +17,8 @@ smallest preserving native change. Authorization follows the
 | `agentHooks` | Ask a decision service for allow/deny: stable `id`, resource `scope`, lifecycle `hooks`, HTTPS endpoint, authorization, failure mode/headers | Not supported | ToolServers |
 
 **Content safety remains legacy `Microsoft.ApiManagement/service` only**
-in reviewed native applicability. Portal support, visible setters, and JSON
-do not lift that limit; stop typed-gateway requests rather than retargeting.
+in reviewed native applicability. Native setters and free-form JSON do not
+lift that limit; stop typed-gateway requests rather than retargeting.
 See the [capability inventory](activities-and-cli-coverage.md#operation-gaps-and-applicability).
 
 Combine allowances for independent token, call, and cost constraints.
@@ -41,7 +41,7 @@ policy hosts. Tool policies belong on the ToolServer; see [MCP](mcp.md).
 
 For alias-routed traffic, compatible workspace, alias, and selected model
 rules can all govern one call. A looser asset-local allowance does not replace
-an inherited guardrail. Portal display order is not evidence of runtime
+an inherited guardrail. Policy-array order is not evidence of runtime
 execution order.
 
 ## Accounting model
@@ -148,7 +148,7 @@ az aigateway model policy list --subscription "$SUBSCRIPTION" \
 
 These return arrays. Alias and ToolServer reads expose `properties.policies`.
 Read both workspace and affected asset rules; identify the target instance
-by its ID where present, otherwise its full configuration, not a UI index.
+by its ID where present, otherwise its full configuration, not an array position.
 
 - Counting setters merge supplied fields into the first same-type entry,
   preserving omitted fields, but delete later duplicates. IP setters rebuild
@@ -290,9 +290,9 @@ evaluation code, not just status.
 
 Agent hooks delegate MCP tool decisions to an existing trusted HTTPS callback.
 `preToolCall` can prevent execution; `postToolCall` can withhold results but
-cannot undo execution. The portal permits one policy and one intervention
-point per ToolServer. The contract describes both phases, but that and native
-free-form JSON do not establish verified dual-phase authoring.
+cannot undo execution. The hook contract describes both phases; verify native
+support for the intended combination before writing. Free-form JSON alone
+does not establish dual-phase authoring support.
 
 For an existing Azure Function callback:
 

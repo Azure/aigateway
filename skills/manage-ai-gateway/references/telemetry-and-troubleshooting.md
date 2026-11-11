@@ -4,8 +4,8 @@ A gateway/default-workspace exporter owns signal endpoints, authentication,
 claim attributes, and payload capture.
 Destinations, DCRs, workspaces, registration, retention, and query access remain
 externally owned; grants follow the [confirmed role workflow](../SKILL.md#operating-boundary).
-The [capability inventory](activities-and-cli-coverage.md), not portal controls
-or free-form JSON, records native applicability.
+The [capability inventory](activities-and-cli-coverage.md) records native
+applicability; free-form JSON alone does not establish support.
 
 ## Choose the task and inspect its exporter
 
@@ -19,10 +19,9 @@ az aigateway telemetry-exporter show --subscription "$SUBSCRIPTION" \
   -g "$RG" --gateway-name "$GATEWAY" -n "$EXPORTER" -o json
 ```
 
-Select by name and purpose; the portal selects one destination. Inspect kind,
-component link, signal URLs, auth mode/client ID, attributes, capture, and any
-provisioning state. Exporter commands have no `--ids`; apply the main
-workflow's name-selector guard.
+Select by name and purpose. Inspect kind, component link, signal URLs, auth
+mode/client ID, attributes, capture, and any provisioning state. Exporter
+commands have no `--ids`; apply the main workflow's name-selector guard.
 
 Native reads mask secrets, including the whole headers map, and can omit
 write-only fields. Compare `show/list` if needed; masks or omission are neither
@@ -79,10 +78,11 @@ For Application Insights-linked OTLP, also pass
 ```
 
 Use Azure Monitor's actual OTLP endpoints and audience
-(`https://monitor.azure.com` in the sourced recipe). The component link selects
-the portal's query destination; it provisions nothing and grants no access.
+(`https://monitor.azure.com` in the sourced recipe). The component link records
+the associated Application Insights resource; it provisions nothing and grants
+no ingestion or query access.
 Legacy `ApplicationInsights`/connection-string and singular `endpoint` help
-examples are not current per-signal OTLP/dashboard recipes.
+examples are not current per-signal OTLP recipes.
 
 Use bounded `show/list` read-back before retrying uncertain writes.
 Verify exporter ID, changed/preserved fields, and any provisioning state. No
@@ -97,9 +97,8 @@ reconstruct secret-bearing settings from redacted reads. For a kind change,
 plan confirmed disable/reconfigure rather than assume in-place conversion.
 
 For endpoint-only changes, omit credentials. Endpoint omission leaves a field
-unrequested; explicit `null` requests disabling that signal. Retain one signal,
-or all three for portal dashboard eligibility. Attribute `signals` below
-selects claim attachment, not signal export.
+unrequested; explicit `null` requests disabling that signal. Retain at least
+one signal. Attribute `signals` below selects claim attachment, not signal export.
 
 When switching auth, clear the inactive branch: `credentials.headers: null`
 for MI, `credentials.managedIdentity: null` for headers. Send the selected
@@ -140,7 +139,7 @@ fresh reads and verification do not prevent races or prove write-only secrets.
 
 ## Disable
 
-Confirm telemetry/dashboard loss before `telemetry-exporter delete`;
+Confirm loss of this export path before `telemetry-exporter delete`;
 verify authoritative absence. Leave the external component, DCR, workspaces,
 collected data, and shared grants intact.
 
@@ -164,11 +163,9 @@ Inspect the exporter fields above, then choose relevant read-only checks:
    Inbound approval does not prove outbound delivery. Have the network/receiver
    owner verify DNS, TLS, routing, and firewall/private-access rules from the
    gateway's outbound path.
-4. **Separate queries from ingestion.** Portal metrics query the linked Azure
-   Monitor workspace's Prometheus endpoint with query credentials; logs/traces
-   use Application Insights/Log Analytics queries. Check component/workspace
-   linkage and operator query permissions or expired query credentials before
-   changing export auth. Publisher access does not grant operator query access.
+4. **Separate queries from ingestion.** Check the intended destination/workspace,
+   operator query permissions and time range before changing export auth.
+   Publisher access does not grant operator query access.
    Correlate authorized evidence by signal, gateway, and time window, allowing
    ingestion delay. No native metrics/trace/KQL query or inference/MCP test
    subgroup is established; queries or synthetic traffic need separate
@@ -177,6 +174,6 @@ Inspect the exporter fields above, then choose relevant read-only checks:
 | Symptom | Evidence that narrows the cause |
 | --- | --- |
 | One signal missing | Full endpoint/path, receiver support, relevant traffic; another signal arriving does not validate this one |
-| Dashboard unavailable | Requires linked OTLP and all signal endpoints; custom/legacy destinations are ineligible |
+| Data not returned by queries | Destination/workspace, query permissions and time range; query failure does not establish ingestion failure |
 | Claims absent | Caller authentication/claim availability, retained mappings, selected signals; mapping is not claim issuance |
 | 401/403 | Locate the boundary: ARM management, gateway caller, backend, or exporter destination; each uses different credentials/grants |

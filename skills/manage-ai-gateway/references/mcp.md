@@ -53,8 +53,8 @@ read-back and therefore unverifiable through this surface.
 ### Product controls and native limits
 
 These product controls and OAuth client credentials have no established
-[native authoring path](activities-and-cli-coverage.md); portal controls and
-free-form JSON do not establish one.
+[native authoring path](activities-and-cli-coverage.md); free-form JSON
+does not establish one.
 
 | Product control | Effect |
 | --- | --- |
@@ -62,7 +62,6 @@ free-form JSON do not establish one.
 | `blocked` | Allowed tools remain discoverable but matching invocations are rejected; blocking wins over an allow match. |
 | `accessState` | `blocked` suspends discovery and invocation without deleting configuration. |
 | OAuth token exchange / Entra OBO | Uses the caller's delegated user permissions; gateway keys and app-only tokens cannot substitute. |
-| Foundry Toolbox import | Disabled in the portal; no verified native source contract. |
 
 Preserve configuration authored elsewhere; do not substitute deletion,
 changed credentials or different policy semantics for these controls.
@@ -104,15 +103,13 @@ Choose each source's contract, `required` state and prepared authentication:
 Base64 is not encryption: protect sensitive inline documents like credentials.
 An existing Connector Namespace MCP endpoint can be a remote source when its
 actual contract and access are supplied. Connector connection/configuration
-and ACL administration remain external; portal connector-MI grant side effects
-are not native ToolServer configuration.
+and ACL administration remain external prerequisites.
 
 #### Prepare an OpenAPI document
 
 Use an OpenAPI document, not an HTML documentation page. For URL sources,
 supply gateway-readable JSON; convert YAML to JSON for inline input, then
-base64-encode its UTF-8 bytes. The portal's YAML-URL conversion is not a native
-CLI preparation step. Before inlining, resolve relative `servers[].url`
+base64-encode its UTF-8 bytes. Before inlining, resolve relative `servers[].url`
 against the document URL so backend URLs remain absolute HTTP(S). For a
 document without `servers`, establish the intended backend URL explicitly.
 The document's location is not the API's callable base URL.
@@ -336,5 +333,5 @@ Use native reads to narrow a diagnosis without treating them as runtime tests:
 The native surface has no established runtime `tools/list`, discovery refresh
 or tool-execution command. Report verified configuration separately from
 unverified tool exposure, OAuth completion, OpenAPI behavior and policy
-enforcement. If runtime evidence is needed, identify the separately authorized
-portal/client venue; do not invoke a tool without authorization.
+enforcement. If runtime evidence is needed, use a separately authorized MCP
+client check; do not invoke a tool without authorization.

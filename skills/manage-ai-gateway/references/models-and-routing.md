@@ -137,9 +137,8 @@ Use the same provider create command with `--kind Custom --custom @custom.json`.
 The value is the complete backend header value, including any required
 prefix, not the gateway caller key. Use [protected credential
 inputs](../SKILL.md#authorization-and-preservation); JSON files do not expand
-variables. Reviewed Custom authentication is `ApiKey` only; portal `Header`
-configuration, arbitrary header maps, and Custom managed identity are not
-established native support.
+variables. Reviewed Custom authentication is `ApiKey` only; arbitrary header
+maps and Custom managed identity are not established native support.
 
 ### Model registration
 
@@ -282,13 +281,12 @@ pool change. If the old model must receive **no traffic**, keep its registration
 and saved former pool for rollback but exclude it from the active pool:
 a lower-priority target is still eligible fallback, not disabled.
 
-The portal also authors backend conditions, automatic model-selection
-objectives/override grants, selection order, session preference, and failure
-rules/retry caps. These can change eligibility, preference, and failover;
-priority alone does not explain an existing alias's behavior. Native authoring
-is reviewed for ID/priority/weight, not these controls or per-target timeouts.
-Preserve them on unrelated edits; report an unsupported change rather than
-inventing JSON or silently reducing the alias to weighted routing.
+Native target authoring is reviewed for ID/priority/weight only. Existing alias
+configuration may include additional selection, eligibility or failure settings;
+priority alone does not establish effective runtime behavior. Preserve these
+settings on unrelated edits. If the native schema cannot round-trip them,
+report an unsupported change rather than inventing JSON or silently reducing
+the alias to weighted routing.
 
 ### Provider reconciliation
 
@@ -318,8 +316,8 @@ after partial failure before retrying.
 
 Sync preserves matching registrations/policies rather than refreshing metadata;
 it changes no backend deployments, provider settings, identity, or roles.
-Portal Custom discovery is not native sync support: use explicit registrations
-from an authorized finite catalogue.
+Custom provider sync is not established; use explicit registrations from an
+authorized finite catalogue.
 
 ### Removal and verification
 

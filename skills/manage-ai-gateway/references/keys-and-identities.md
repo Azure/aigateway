@@ -22,8 +22,8 @@ Default-workspace/gateway grants include future assets. Inspect direct,
 inherited and relevant group-derived grants and role DataActions before adding.
 
 Entra tokens target the gateway runtime, not ARM/backend. Check tenant/audience
-and delegated permission/consent separately from caller roles; portal token
-requests do not prove acceptance. Use the
+and delegated permission/consent separately from caller roles; token issuance
+does not prove gateway acceptance. Use the
 [Entra/RBAC lab](../../../labs/11-entra-rbac/README.md) for flow examples, verifying
 the intended audience. Keys do not repair missing caller roles.
 
@@ -178,9 +178,10 @@ az role assignment create --subscription "$GRANT_SUBSCRIPTION" \
   --role "$ROLE_ID" --scope "$GRANT_SCOPE" -o json
 ```
 
-The role-grant exception permits no portal APIs, Entra app writes or general Azure
-mutations. No native caller-access/app-consent or connector-ACL family is
-established; these are owner prerequisites, not native JSON features.
+The role-grant exception permits only confirmed `az role assignment` changes,
+not Entra app writes or general Azure mutations. No native caller-access/app-consent
+or connector-ACL family is established; these are owner prerequisites, not native
+JSON features.
 
 ## Verify configuration
 

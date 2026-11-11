@@ -24,18 +24,18 @@ All command families below are prefixed with `az aigateway`.
 | Enable outbound managed identity | `identity assign/show/remove/wait` | System identity or existing user-assigned identities; attachment does not grant backend access | [Keys and identities](keys-and-identities.md) |
 | Inspect networking or configure outbound subnet integration | `network show/update/wait` | Existing subnet prerequisites; public-access flags do not establish ingress enforcement (see gap below) | [Networking](networking.md) |
 | Inspect the private-connection command surface | `network private-endpoint-connection` | Gateway-side syntax, not proof of available private ingress or backing endpoint/DNS provisioning (see gap below) | [Networking](networking.md) |
-| Configure export or investigate missing telemetry | `telemetry-exporter` | Signal endpoints/auth, attributes and capture; destination ingestion and portal query access are separate | [Telemetry and troubleshooting](telemetry-and-troubleshooting.md) |
+| Configure export or investigate missing telemetry | `telemetry-exporter` | Signal endpoints/auth, attributes and capture; destination ingestion and query access are separate | [Telemetry and troubleshooting](telemetry-and-troubleshooting.md) |
 
 ## Operation gaps and applicability
 
-These are reviewed native limits, not claims that the portal or product lacks
-the corresponding feature. Requalify support before lifting a limit.
+These limits apply to the reviewed native CLI and target resource type.
+Requalify support before lifting a limit.
 
 | Requirement | Limitation and next reference |
 | --- | --- |
-| Content safety | Reviewed native setters remain legacy `Microsoft.ApiManagement/service` only. Portal authoring does not qualify the typed native path; do not retarget the resource. See [policies](policies.md). |
-| Private ingress or disabling public access | [Lab 18](../../../labs/18-private-networking/README.md) records unavailable inbound private endpoints and ineffective `publicNetworkAccess: Disabled` on typed gateways (2026-10-19, `d5209ad9`). Current portal guidance describes gated private ingress; it does not requalify target enforcement. No live retest here. See [networking](networking.md) before promising isolation. |
-| Advanced routing or Custom discovery | No confirmed auto-selection objectives, override grants, selection order, session preference, CEL backend conditions, or Custom provider sync. Reviewed alias targets expose ID/priority/weight. See [models](models-and-routing.md). |
+| Content safety | Reviewed native setters remain legacy `Microsoft.ApiManagement/service` only; do not retarget the resource. See [policies](policies.md). |
+| Private ingress or disabling public access | [Lab 18](../../../labs/18-private-networking/README.md) records unavailable inbound private endpoints and ineffective `publicNetworkAccess: Disabled` on typed gateways (2026-10-19, `d5209ad9`). No live retest here. See [networking](networking.md) before promising isolation. |
+| Routing beyond priority/weight, or Custom provider sync | Reviewed alias target authoring covers model ID/priority/weight only; additional routing-field writes and Custom provider sync are not established. See [models](models-and-routing.md). |
 | Other model protocols/authentication | Reviewed API formats: `OpenAIChatCompletions`, `ResponsesApi`, `AnthropicMessages`; Custom authentication: `ApiKey`, not arbitrary-header variants. See [models](models-and-routing.md). |
 | Arbitrary policy payloads or cost variants | No provider policy host or arbitrary workspace-array write is established. Resource-host cost JSON supports ordered API-key/claim overrides with Identity-only accounting; the convenience `--cost-overrides` item schema remains empty in b26. See [policies](policies.md). |
 | Other MCP source/auth/tool controls | An `http` enum is not a verified authoring contract. No confirmed client-credentials/OBO/token-exchange authoring, tool-selector/pattern authoring, runtime tool listing, refresh, or execution command. See [MCP](mcp.md). |
@@ -67,8 +67,7 @@ the corresponding feature. Requalify support before lifting a limit.
   invokes `AIGatewayToolServer_ListSecrets`. Thus `mcp update --endpoints`
   and `mcp source add/remove` can implicitly retrieve secrets;
   `--display-name`, `--description`, `--versions`, `--type`, or `--policies`
-  alone do not trigger that path. Portal nonsecret/OBO edit optimizations do
-  not change the native path. See [MCP](mcp.md).
+  alone do not trigger that path. See [MCP](mcp.md).
 - **External dependencies.** Supporting infrastructure, Entra app/consent,
   connector ACLs, and provider/feature registration remain owner prerequisites.
   Explicit, confirmed least-privileged role grants are permitted when the user
@@ -78,7 +77,7 @@ the corresponding feature. Requalify support before lifting a limit.
 - **Telemetry.** Native exporter updates forward supplied objects without
   a conditional header; reads mask the whole headers map. Legacy
   connection-string/singular-endpoint examples are not current per-signal
-  OTLP/dashboard recipes. See [telemetry](telemetry-and-troubleshooting.md).
+  OTLP recipes. See [telemetry](telemetry-and-troubleshooting.md).
 
 ## Evidence baseline
 
@@ -87,18 +86,14 @@ the corresponding feature. Requalify support before lifting a limit.
   `b53b4cb38719506c14e197f37bb36bc8fbbba6d0`.
 - **Historical applicability review:** CLI `1.0.0b22`; typed dispatch and
   argument schemas were inspected against command-reference blob
-  `34d488c50748eb5f1b90b300f27d17bf98027f43`. Its portal comparison used
-  `64376af870a6203c6b2f5fe7a94bf3d508a43e99`.
+  `34d488c50748eb5f1b90b300f27d17bf98027f43`.
 - **Refresh on 2026-11-11:** installed CLI `1.0.0b26`, API
-  `2025-09-01-preview`; portal revision `5d97436b`. Reviewed domain APIs,
-  editors and helpers against relevant native help, argument schemas and
+  `2025-09-01-preview`. Reviewed relevant native help, argument schemas and
   adapter code, not every native operation. This is not b26 applicability
   certification.
 - **Specific source checks:** native `azext_aigateway/_rp.py` lines 936
   (MCP create), 1652–1655 (UAMI create rejection), 1885–1888 (wait states),
   1178–1202 (exporter writes); `_helpers.py` lines 7–18,44–59 (masking).
-  Portal `src/content/docs/networking/private-endpoints.md` lines 14–22
-  describes the gated ingress flow.
 - **Boundary:** no Azure resource reads, writes or runtime tests in this
   refresh. Source/help establishes inputs and client behavior, not service
   acceptance, enforcement or delivery. Retain reviewed limits unless stronger
