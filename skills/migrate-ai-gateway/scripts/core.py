@@ -1,4 +1,4 @@
-"""Shared contracts and protected local state for the migration adapter."""
+"""Shared JSON, redaction and protected evidence utilities for read-only collection."""
 
 from __future__ import annotations
 
@@ -9,10 +9,8 @@ from pathlib import Path
 import re
 import stat
 import subprocess
-from contextlib import contextmanager
 from datetime import datetime, timezone
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
-import uuid
 
 from jsonschema import Draft202012Validator, FormatChecker
 from referencing import Registry, Resource
@@ -20,12 +18,6 @@ import rfc8785
 
 
 ROOT = Path(__file__).resolve().parents[1]
-TOOL_VERSION = "1.0.0"
-FILES = (
-    "source-inventory.json", "model-catalog.json", "destination-inventory.json", "capability-contract.json",
-    "mapping.json", "todos.json", "plan-validation.json", "migration-plan.md",
-    "migration-report.md",
-)
 SECRET = re.compile(
     r"secret|password|credential|connectionstring|authorization|privatekey|primarykey|"
     r"secondarykey|accesskey|apikey|certificatebody|^token$|accesstoken|refreshtoken|"
@@ -86,13 +78,13 @@ def unique_keys(pairs):
 def safe_path(path):
     path = Path(path).absolute()
     if ".." in path.parts:
-        raise MigrationError("Parent traversal is not allowed in state or evidence paths.")
+        raise MigrationError("Parent traversal is not allowed in evidence or document paths.")
     for part in (path, *path.parents):
         if part.is_symlink():
-            raise MigrationError("Symlinked state or evidence paths are not allowed.")
+            raise MigrationError("Symlinked evidence or document paths are not allowed.")
         if part.exists() and getattr(part.lstat(), "st_file_attributes", 0) & getattr(
                 stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0):
-            raise MigrationError("Reparse-point state or evidence paths are not allowed.")
+            raise MigrationError("Reparse-point evidence or document paths are not allowed.")
     return path
 
 
@@ -145,15 +137,6 @@ def clean(value, key=""):
     return value
 
 
-def semantic(value):
-    if isinstance(value, dict):
-        return {k: semantic(v) for k, v in value.items()
-                if k.lower() not in ("etag", "systemdata", "capturedat", "timestamp")}
-    if isinstance(value, list):
-        return [semantic(v) for v in value]
-    return value
-
-
 def subset(expected, actual):
     if isinstance(expected, dict):
         return isinstance(actual, dict) and all(
@@ -183,8 +166,9 @@ def cli_failure_code(stderr):
     if re.search(r"\b(Forbidden|Unauthorized|AuthorizationFailed|AuthenticationFailed|InvalidAuthenticationToken|401|403)\b",
                  stderr, re.I):
         return None
-    if re.search(r"^ERROR:\s*(?:\([A-Za-z]+\)\s*)?A stale model is still targeted by an alias\.", stderr, re.M):
-        return "SyncAliasBoundStale"
+    if re.search(r"^ERROR:\s*No AI Gateway exists at the specified scope and name\.\s*$",
+                 stderr, re.M):
+        return "ResourceNotFound"
     if re.search(r"^ERROR:\s*\(" + code + r"\)", stderr, re.M):
         return code
     start = stderr.find("{")
@@ -201,7 +185,7 @@ def cli_failure_code(stderr):
 
 def run_az(args):
     if not args or args[0] != "az":
-        raise MigrationError("Only Azure CLI argv templates are executable.")
+        raise MigrationError("Only Azure CLI argument arrays are supported.")
     try:
         result = subprocess.run(args, capture_output=True, text=True, timeout=180,
                                 check=False)
@@ -232,93 +216,3 @@ def write_new(path, value):
         output.write(text)
         output.flush()
         os.fsync(output.fileno())
-
-
-def artifact_digest(name, value):
-    if name.endswith(".md"):
-        content = value.replace("\r\n", "\n").replace("\r", "\n").encode("utf-8")
-        return "sha256:" + hashlib.sha256(content).hexdigest()
-    return digest(value)
-
-
-def sync_directory(path):
-    if os.name == "posix":
-        fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
-        try:
-            os.fsync(fd)
-        finally:
-            os.close(fd)
-
-
-class State:
-    """Immutable generations with an atomically replaced regular-file pointer."""
-
-    def __init__(self, path):
-        self.path = safe_path(path)
-
-    @contextmanager
-    def locked(self, create=False):
-        if create:
-            self.path.mkdir(parents=True, exist_ok=False, mode=0o700)
-            (self.path / "generations").mkdir(mode=0o700)
-        if not self.path.is_dir():
-            raise MigrationError("Migration workspace does not exist.")
-        lock = safe_path(self.path / "LOCK")
-        try:
-            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-        except FileExistsError as exc:
-            raise MigrationError("Workspace is locked; inspect the owning process before recovery.") from exc
-        try:
-            with os.fdopen(fd, "w") as output:
-                output.write(str(os.getpid()))
-            yield
-        finally:
-            lock.unlink()
-
-    def load(self):
-        pointer = safe_path(self.path / "CURRENT")
-        if not pointer.is_file():
-            raise MigrationError("No committed generation; legacy state is read-only.")
-        generation = pointer.read_text(encoding="utf-8").strip()
-        try:
-            if str(uuid.UUID(generation)) != generation:
-                raise ValueError
-        except ValueError as exc:
-            raise MigrationError("Invalid generation pointer.") from exc
-        directory = safe_path(self.path / "generations" / generation)
-        context = read_json(directory / "context.json")
-        if context.get("schemaVersion") != "4.0":
-            raise MigrationError("Legacy checkpoint is read-only; initialize a fresh version-4 workspace from current evidence.")
-        validate_schema(context, "context")
-        bundle = {name: (read_json(directory / name) if name.endswith(".json")
-                         else safe_path(directory / name).read_text(encoding="utf-8")) for name in FILES}
-        manifest = digest({"generationId": generation, "artifacts": {
-            name: artifact_digest(name, value) for name, value in bundle.items()}})
-        if context["generationId"] != generation or context["manifestDigest"] != manifest:
-            raise MigrationError("Incomplete or modified checkpoint; preserve it for recovery.")
-        bundle["context.json"] = context
-        for name in ("mapping", "todos", "source-inventory", "model-catalog", "destination-inventory", "capability-contract",
-                     "plan-validation"):
-            validate_schema(bundle[name + ".json"], name)
-        return bundle
-
-    def save(self, bundle):
-        generation = str(uuid.uuid4())
-        context = bundle["context.json"]
-        context["generationId"] = generation
-        context["manifestDigest"] = digest({"generationId": generation, "artifacts": {
-            name: artifact_digest(name, bundle[name]) for name in FILES}})
-        for name in ("context", "mapping", "todos", "source-inventory", "model-catalog", "destination-inventory",
-                     "capability-contract", "plan-validation"):
-            validate_schema(bundle[f"{name}.json"], name)
-        directory = safe_path(self.path / "generations" / generation)
-        directory.mkdir(mode=0o700)
-        for name in FILES:
-            write_new(directory / name, bundle[name])
-        write_new(directory / "context.json", context)
-        sync_directory(directory)
-        sync_directory(self.path / "generations")
-        candidate = self.path / f"CURRENT.{generation}"
-        write_new(candidate, generation + "\n")
-        os.replace(candidate, self.path / "CURRENT")
-        sync_directory(self.path)

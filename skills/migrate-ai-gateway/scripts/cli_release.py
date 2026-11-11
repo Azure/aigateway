@@ -105,7 +105,7 @@ def require_current_cli(version, release):
     if version != release["version"]:
         raise MigrationError(
             f"Installed CLI is not the latest official release ({release['version']}). "
-            "Obtain approval to install its verified published wheel, then recollect capabilities.")
+            "Obtain approval to install its verified published wheel, then inspect the selected commands.")
 
 
 def verify_installed_release(package, release):

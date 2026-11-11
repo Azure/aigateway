@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Azure/ai-gateway/migration/migration-results.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "inventoryDigest", "confirmation", "assets"],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "inventoryDigest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "confirmation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["confirmedAt", "evidence"],
+      "properties": {
+        "confirmedAt": {"type": "string", "format": "date-time"},
+        "evidence": {"type": "string", "minLength": 1}
+      }
+    },
+    "assets": {
+      "type": "array", "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["assetId", "provisioning", "checks", "notes"],
+        "properties": {
+          "assetId": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
+          "provisioning": {"enum": ["pending", "in-progress", "succeeded", "blocked", "failed", "unknown"]},
+          "checks": {
+            "type": "array", "items": {
+              "type": "object", "additionalProperties": false,
+              "required": ["id", "status", "evidence"],
+              "properties": {
+                "id": {"type": "string", "minLength": 1},
+                "status": {"enum": ["passed", "failed", "blocked", "skipped"]},
+                "evidence": {"type": "string", "minLength": 1}
+              }
+            }
+          },
+          "notes": {"type": "string"}
+        }
+      }
+    }
+  }
+}

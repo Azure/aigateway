@@ -1,4 +1,4 @@
-"""Destination capability inspection and discovery, independent of APIM inventory."""
+"""Read-only inspection of selected CLI commands and destination configuration."""
 
 from __future__ import annotations
 
@@ -8,38 +8,51 @@ import re
 import subprocess
 
 from core import (
-    ROOT, TOOL_VERSION, MigrationError, child_resource_id, clean, digest, now,
-    read_json, resource_id, run_az, safe_path,
+    MigrationError, child_resource_id, clean, now,
+    resource_id, run_az, safe_path,
 )
 from cli_release import latest_release, require_current_cli, verify_installed_release
 
 
-def catalog():
-    return read_json(ROOT / "capabilities.json")
+def inspect_cli(commands):
+    """Verify release provenance once and inspect only the selected native commands."""
+    if not commands or len(set(commands)) != len(commands) or any(
+            not isinstance(command, str) or not re.fullmatch(r"[a-z]+(?:[ -][a-z]+)*", command)
+            for command in commands):
+        raise MigrationError("Name unique selected aigateway commands to inspect.")
+    version = run_az(["az", "aigateway", "version", "--output", "json"])
+    if not isinstance(version, dict) or version.get("extensionName") != "aigateway":
+        raise MigrationError("Unexpected CLI extension producer.")
+    release = latest_release()
+    require_current_cli(version.get("extensionVersion"), release)
+    installation = run_az(["az", "extension", "show", "--name", "aigateway",
+                           "--query", "path", "-o", "json"])
+    if not isinstance(installation, str):
+        raise MigrationError("CLI extension installation path is unavailable.")
+    package = safe_path(Path(installation) / "azext_aigateway")
+    released_digest = verify_installed_release(package, release)
+    routed = set(gateway_commands(package))
+    shapes = {}
+    for command in commands:
+        if command not in routed:
+            raise MigrationError("A selected command has no established aigateways dispatch; review its current official implementation.")
+        try:
+            result = subprocess.run(["az", "aigateway", *command.split(), "--help"],
+                                    capture_output=True, text=True, timeout=30, check=False)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise MigrationError("Unable to inspect selected CLI help.") from exc
+        if result.returncode:
+            raise MigrationError("Selected CLI help failed; do not infer command support.")
+        shapes[command] = exposed_options(result.stdout)
+    return {"schemaVersion": "1.0", "extension": version, "release": release,
+            "releasedWheelSha256": released_digest, "commands": shapes,
+            "resourceCommands": {"aigateways": sorted(set(commands))}, "capturedAt": now()}
 
 
 def exposed_options(text):
     return sorted({option for line in text.splitlines()
                    if re.match(r"^    --", line)
                    for option in re.findall(r"--[a-z][a-z-]+", line.split(":")[0])})
-
-
-def command_selectors(command):
-    common = {"--subscription", "--resource-group"}
-    if command[0] == "policy":
-        return common | {"--gateway-name"}
-    if command[:2] == ["network", "private-endpoint-connection"]:
-        return common | {"--gateway-name", "--name"}
-    if command[0] in ("create", "show", "identity", "network"):
-        return common | {"--name"}
-    return common | {"--gateway-name", "--name"} | (
-        {"--provider-name"} if command[0] == "model" else set())
-
-
-def resource_kind(command):
-    if command[:2] == ["network", "private-endpoint-connection"]:
-        return "private-endpoint-connection"
-    return "gateway" if command[0] in ("create", "show") else command[0]
 
 
 def gateway_commands(package):
@@ -72,118 +85,39 @@ def gateway_commands(package):
     except (OSError, UnicodeError, SyntaxError, ValueError, TypeError, KeyError) as exc:
         raise MigrationError(
             "Cannot establish the installed CLI's aigateways routing contract; "
-            "review its adapter before destination execution."
+            "review the selected command's official implementation before destination execution."
         ) from exc
 
 
-def inspect_cli():
-    version = run_az(["az", "aigateway", "version", "--output", "json"])
-    if not isinstance(version, dict) or version.get("extensionName") != "aigateway":
-        raise MigrationError("Unexpected CLI extension producer.")
-    release = latest_release()
-    require_current_cli(version.get("extensionVersion"), release)
-    evidence = catalog()["cliEvidence"]
-    if (release["version"] != evidence["documentedVersion"]
-            or release["wheelSha256"] != evidence["wheelSha256"]):
-        raise MigrationError("The latest CLI needs a reviewed capability profile before destination operations; do not fall back to an older CLI.")
-    installation = run_az(["az", "extension", "show", "--name", "aigateway",
-                           "--query", "path", "-o", "json"])
-    if not isinstance(installation, str):
-        raise MigrationError("CLI extension installation path is unavailable.")
-    package = safe_path(Path(installation) / "azext_aigateway")
-    released_digest = verify_installed_release(package, release)
-    files = sorted(package.rglob("*.py"))
-    if not files:
-        raise MigrationError("Cannot fingerprint installed CLI code; adapter compatibility is unknown.")
-    code_digest = digest({file.relative_to(package).as_posix(): digest(
-        safe_path(file).read_bytes().hex()) for file in files})
-    helper_digest = digest({
-        file.relative_to(ROOT).as_posix(): digest(file.read_bytes().hex())
-        for folder in ("scripts", "schemas") for file in sorted((ROOT / folder).glob("*"))
-        if file.is_file() and file.suffix in (".py", ".json")
-    })
-    commands = {tuple(cap["command"]) for cap in catalog()["capabilities"]}
-    commands |= {tuple(cap["read"]) for cap in catalog()["capabilities"]}
-    commands |= {(group, "list") for group in (
-        "model", "model-provider", "model-alias", "mcp", "api-key", "policy", "telemetry-exporter")}
-    commands.add(("network", "private-endpoint-connection", "list"))
-    commands |= {("list",), ("model-provider", "sync")}
-    shapes = {}
-    for command in sorted(commands):
-        try:
-            result = subprocess.run(["az", "aigateway", *command, "--help"],
-                                    capture_output=True, text=True, timeout=30, check=False)
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            raise MigrationError("Unable to inspect local CLI help.") from exc
-        options = exposed_options(result.stdout)
-        shapes[" ".join(command)] = options if result.returncode == 0 else None
-    identity = {"extension": version, "commands": shapes,
-                "release": release, "releasedWheelSha256": released_digest,
-                "resourceCommands": {"aigateways": gateway_commands(package)},
-                "extensionCodeDigest": code_digest,
-                "helperDigest": helper_digest}
-    return {"schemaVersion": "1.0", "producer": "skill-local", "toolVersion": TOOL_VERSION,
-            **identity, "fingerprint": digest(identity)}
-
-
-def capabilities(cli):
-    cat = catalog()
-    entries = []
-    routed = cli.get("resourceCommands", {}).get("aigateways", [])
-    for cap in cat["capabilities"]:
-        options = cli["commands"].get(" ".join(cap["command"]))
-        reads = cli["commands"].get(" ".join(cap["read"]))
-        selectors = command_selectors(cap["command"])
-        required_options = {"--" + name for name in cap["options"]} | selectors
-        available = (options is not None and reads is not None
-                     and required_options.issubset(options)
-                     and command_selectors(cap["read"]).issubset(reads)
-                     and " ".join(cap["command"]) in routed and " ".join(cap["read"]) in routed
-                     and cli["commands"].get("list") is not None
-                     and cli["extension"].get("apiVersion") == cat["apiVersion"])
-        entries.append({**cap, "support": "conditional" if available else "unavailable"})
-    result = {"schemaVersion": "1.0", "producer": "skill-local",
-              "catalogVersion": cat["catalogVersion"], "catalogDigest": digest(cat),
-              "cli": cli, "capabilities": entries, "unsupported": cat["unsupported"]}
-    result["contractDigest"] = digest(result)
-    return result
-
-
-def destination_inventory(destination_id, runner=run_az):
+def destination_inventory(destination_id, runner=run_az, groups=None):
     target = resource_id(destination_id, "aigateways")
     selectors = ["--subscription", target["subscription"],
                  "--resource-group", target["resourceGroup"]]
     result = {"schemaVersion": "1.0", "destinationId": destination_id,
               "capturedAt": now(), "collections": {}, "errors": []}
-    gateways = runner(["az", "aigateway", "list", *selectors, "-o", "json"])
-    if isinstance(gateways, dict):
-        if incomplete_page(gateways):
-            raise MigrationError("Incomplete destination enumeration cannot establish absence.")
-        gateways = gateways.get("value")
-    if not isinstance(gateways, list):
-        raise MigrationError("Unexpected destination list shape.")
-    for item in gateways:
-        if not isinstance(item, dict) or not isinstance(item.get("id"), str):
-            raise MigrationError("Malformed gateway enumeration cannot establish absence.")
-        observed = resource_id(item["id"], None)
-        if any(observed[key].lower() != target[key].lower()
-               for key in ("subscription", "resourceGroup")):
-            raise MigrationError("Gateway enumeration escaped its selected scope.")
-    matches = [item for item in gateways
-               if str(item.get("id", "")).lower() == destination_id.lower()]
-    if len(matches) > 1:
-        raise MigrationError("Duplicate gateway identities make destination evidence ambiguous.")
-    result["exists"] = bool(matches)
-    if not matches:
+    try:
+        gateway = runner(["az", "aigateway", "show", *selectors,
+                          "--name", target["gateway"], "-o", "json"])
+    except MigrationError as exc:
+        if exc.code != "ResourceNotFound":
+            raise
+        group_id = (f"/subscriptions/{target['subscription']}/resourceGroups/"
+                    f"{target['resourceGroup']}")
+        group = runner(["az", "group", "show", "--subscription", target["subscription"],
+                        "--name", target["resourceGroup"], "-o", "json"])
+        if not isinstance(group, dict) or str(group.get("id", "")).lower() != group_id.lower():
+            raise MigrationError("Destination resource-group identity could not be established.")
+        result["exists"] = False
         result["collections"]["gateway"] = []
         return result
-    gateway = runner(["az", "aigateway", "show", *selectors, "--name", target["gateway"],
-                      "-o", "json"])
+    result["exists"] = True
     if not isinstance(gateway, dict) or str(gateway.get("id", "")).lower() != destination_id.lower():
         raise MigrationError("Destination identity mismatch.")
     result["collections"]["gateway"] = [clean(gateway)]
     for group in ("model-provider", "model", "model-alias", "mcp", "api-key",
                   "telemetry-exporter", "private-endpoint-connection"):
+        if groups is not None and group not in groups:
+            continue
         try:
             command = ["network", group, "list"] if group == "private-endpoint-connection" else [group, "list"]
             values = runner(["az", "aigateway", *command, *selectors,
@@ -219,18 +153,25 @@ def destination_inventory(destination_id, runner=run_az):
         result["errors"].append({"domain": "identity", "code": "malformed"})
     else:
         result["collections"]["identity"] = clean(identity or {})
-    try:
-        network = runner(["az", "aigateway", "network", "show", *selectors,
-                          "--name", target["gateway"], "-o", "json"])
-        if not isinstance(network, dict):
-            raise MigrationError("Malformed network snapshot.")
-        result["collections"]["network"] = clean(network)
-    except MigrationError:
-        result["errors"].append({"domain": "network", "code": "inconclusive"})
+    if groups is None or "network" in groups:
+        try:
+            network = runner(["az", "aigateway", "network", "show", *selectors,
+                              "--name", target["gateway"], "-o", "json"])
+            if not isinstance(network, dict):
+                raise MigrationError("Malformed network snapshot.")
+            result["collections"]["network"] = clean(network)
+        except MigrationError:
+            result["errors"].append({"domain": "network", "code": "inconclusive"})
+    if groups is None or "policy" in groups:
+        return _collect_policies(result, target, selectors, runner)
+    return result
+
+
+def _collect_policies(result, target, selectors, runner):
     try:
         policies = runner(["az", "aigateway", "policy", "list", *selectors,
                            "--gateway-name", target["gateway"], "-o", "json"])
-        result["collections"]["policy"] = policy_resource(policies, destination_id)
+        result["collections"]["policy"] = policy_resource(policies, result["destinationId"])
     except MigrationError:
         result["errors"].append({"domain": "policy", "code": "inconclusive"})
     return result

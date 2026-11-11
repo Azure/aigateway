@@ -1,0 +1,107 @@
+{
+  "schemaVersion": "1.0",
+  "revision": 1,
+  "sourceId": "/subscriptions/example-sub/resourceGroups/source-rg/providers/Microsoft.ApiManagement/service/example-apim",
+  "destinationId": "/subscriptions/example-sub/resourceGroups/target-rg/providers/Microsoft.ApiManagement/aigateways/example-gateway",
+  "evidence": [
+    {
+      "path": "source-inventory.json",
+      "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "capturedAt": "2026-01-01T00:00:00Z",
+      "scope": "Example only: substitute the complete authorized source and destination evidence."
+    }
+  ],
+  "decisions": [
+    "LABELLED EXAMPLE ONLY: replace identifiers, region and evidence before review.",
+    "Create a separate gateway and principal; do not copy source principal IDs or permissions.",
+    "This example covers foundation only, not model/MCP migration."
+  ],
+  "exclusions": [
+    {
+      "sourceIds": ["/subscriptions/example-sub/resourceGroups/source-rg/providers/Microsoft.ApiManagement/service/example-apim"],
+      "reason": "Model, MCP, access and monitoring assets are not included in this foundation example.",
+      "impact": "No callable application route or migration completion is established.",
+      "followUp": "Inventory the required assets before requesting approval for an actual migration."
+    }
+  ],
+  "blockers": ["This is an illustrative template, not an execution-ready migration."],
+  "inputs": [],
+  "assets": [
+    {
+      "id": "gateway",
+      "kind": "gateway",
+      "action": "create",
+      "targetId": "/subscriptions/example-sub/resourceGroups/target-rg/providers/Microsoft.ApiManagement/aigateways/example-gateway",
+      "sourceIds": ["/subscriptions/example-sub/resourceGroups/source-rg/providers/Microsoft.ApiManagement/service/example-apim"],
+      "dependsOn": [],
+      "configuration": {"location": "eastus2", "sku": {"name": "Standard"}},
+      "preconditions": ["Target resource group exists; exact gateway is authoritatively absent; no concurrent writer."],
+      "commands": [
+        {
+          "argv": ["az", "aigateway", "create", "--subscription", "example-sub", "--resource-group", "target-rg", "--name", "example-gateway", "--location", "eastus2", "--sku", "Standard", "--output", "none"],
+          "purpose": "Create the reviewed empty gateway."
+        }
+      ],
+      "outputs": [],
+      "readBack": [
+        {
+          "command": {
+            "argv": ["az", "aigateway", "show", "--subscription", "example-sub", "--resource-group", "target-rg", "--name", "example-gateway", "--output", "json"],
+            "purpose": "Read exact gateway identity and requested configuration."
+          },
+          "assertions": {
+            "id": "/subscriptions/example-sub/resourceGroups/target-rg/providers/Microsoft.ApiManagement/aigateways/example-gateway",
+            "type": "Microsoft.ApiManagement/aigateways",
+            "location": "eastus2",
+            "sku": {"name": "Standard"},
+            "properties": {"provisioningState": "Succeeded"}
+          }
+        }
+      ],
+      "smokeTests": [],
+      "verificationLimits": "Provisioning read-back only; there are no callable assets to test.",
+      "sideEffects": "Creates a billable Azure resource; no client or APIM changes.",
+      "rollback": "Deletion is not authorized by this example and would need explicit approval."
+    },
+    {
+      "id": "gateway-identity",
+      "kind": "identity",
+      "action": "update",
+      "targetId": "/subscriptions/example-sub/resourceGroups/target-rg/providers/Microsoft.ApiManagement/aigateways/example-gateway",
+      "sourceIds": ["/subscriptions/example-sub/resourceGroups/source-rg/providers/Microsoft.ApiManagement/service/example-apim"],
+      "dependsOn": ["gateway"],
+      "configuration": {"identity": {"type": "SystemAssigned"}},
+      "preconditions": ["Gateway is verified and has no conflicting identity configuration."],
+      "commands": [
+        {
+          "argv": ["az", "aigateway", "identity", "assign", "--subscription", "example-sub", "--resource-group", "target-rg", "--name", "example-gateway", "--system-assigned", "true", "--output", "none"],
+          "purpose": "Create the distinct gateway principal; do not grant any role."
+        }
+      ],
+      "outputs": [
+        {
+          "name": "principal-id",
+          "query": "identity.principalId",
+          "expectedType": "string",
+          "constraint": "Nonempty UUID from this exact gateway's successful read-back."
+        }
+      ],
+      "readBack": [
+        {
+          "command": {
+            "argv": ["az", "aigateway", "show", "--subscription", "example-sub", "--resource-group", "target-rg", "--name", "example-gateway", "--output", "json"],
+            "purpose": "Verify identity type and extract the gateway principal."
+          },
+          "assertions": {
+            "id": "/subscriptions/example-sub/resourceGroups/target-rg/providers/Microsoft.ApiManagement/aigateways/example-gateway",
+            "identity": {"type": "SystemAssigned"}
+          }
+        }
+      ],
+      "smokeTests": [],
+      "verificationLimits": "A principal exists, but backend authorization and inference are not proven.",
+      "sideEffects": "Creates a distinct managed principal; no RBAC grant.",
+      "rollback": "Removing the identity is a separate change and can break consumers."
+    }
+  ]
+}

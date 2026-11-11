@@ -57,11 +57,11 @@ personas:
 | Command `build` | `/aigateway:build` | End-to-end: discover, retrieve a credential, and integrate the models/tools into your app. |
 | Command `create` | `/aigateway:create` | Create a gateway and verify that it is ready for configuration. |
 | Command `manage` | `/aigateway:manage` | Configure and operate a gateway and its assets. |
-| Command `migrate` | `/aigateway:migrate` | Run the assisted, capability-gated APIM V2 migration workflow or resume its verified state. |
+| Command `migrate` | `/aigateway:migrate` | Review an APIM migration asset inventory, confirm it once, then execute direct Azure CLI commands with native asset TODOs and smoke tests. |
 | Command `feedback` | `/aigateway:feedback` | Package one selected agent session into a local ZIP for user-controlled sharing; anonymization and review are mandatory for GitHub issues. |
 | Skill `use-ai-gateway` | `/aigateway:use-ai-gateway` | Use AI assets from Azure AI Gateway to build intelligent applications. |
 | Skill `manage-ai-gateway` | `/aigateway:manage-ai-gateway` | Full administrator workflow for creating, configuring, and operating a gateway. |
-| Skill `migrate-ai-gateway` | `/aigateway:migrate-ai-gateway` | Inventory, assess, validate, and reconcile supported APIM V2 configuration to move the workload to Azure AI Gateway. |
+| Skill `migrate-ai-gateway` | `/aigateway:migrate-ai-gateway` | Discover APIM AI traffic from any tier, agree on the asset design, and migrate the approved scope using native CLI commands. |
 
 ### Install
 
@@ -121,7 +121,7 @@ are explicit rather than bypassed with REST or legacy resource types.
 
 #### Migrate workloads to Azure AI Gateway
 
-Administrators can assess and migrate supported APIM V2 configuration to Azure AI Gateway:
+Administrators can assess and migrate APIM configuration from any service tier to Azure AI Gateway:
 
 ```
 /aigateway:migrate /subscriptions/.../Microsoft.ApiManagement/aigateways/<source-apim>

@@ -8,7 +8,7 @@
     "collectorVersion": {"type": "string", "minLength": 1},
     "producer": {"const": "skill-local"},
     "sourceId": {"type": "string", "minLength": 1},
-    "sku": {"enum": ["BasicV2", "StandardV2", "PremiumV2"]},
+    "sku": {"type": "string", "minLength": 1},
     "service": {
       "type": "object", "required": ["id", "sku", "properties"],
       "properties": {

@@ -4,6 +4,7 @@ import hashlib
 from pathlib import Path
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 import zipfile
@@ -70,14 +71,14 @@ class PublishedCliTests(unittest.TestCase):
                 require_current_cli(version, current)
         with patch("gateway.run_az", return_value={"extensionName": "aigateway", "extensionVersion": "1.0.0b14"}) as run, \
                 patch("gateway.latest_release", return_value=current), self.assertRaises(MigrationError):
-            inspect_cli()
+            inspect_cli(["create"])
         self.assertEqual(run.call_count, 1)
 
     def test_unavailable_release_metadata_does_not_use_cached_or_local_source(self):
         with patch("gateway.run_az", return_value={"extensionName": "aigateway", "extensionVersion": "1.0.0b15"}), \
                 patch("gateway.latest_release", side_effect=MigrationError("Unavailable.")), \
                 self.assertRaises(MigrationError):
-            inspect_cli()
+            inspect_cli(["create"])
 
     def test_installed_python_files_must_match_the_official_verified_wheel(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -103,11 +104,47 @@ class PublishedCliTests(unittest.TestCase):
             with self.assertRaises(MigrationError):
                 verify_installed_release(package, published)
 
-    def test_reissued_unreviewed_wheel_is_not_accepted_by_version_alone(self):
+    def test_unverified_installed_wheel_is_not_accepted_by_version_alone(self):
         current = latest_release(lambda page: [release("1.0.0b15")])
-        with patch("gateway.run_az", return_value={"extensionName": "aigateway", "extensionVersion": "1.0.0b15"}), \
-                patch("gateway.latest_release", return_value=current), self.assertRaises(MigrationError):
-            inspect_cli()
+        with tempfile.TemporaryDirectory() as temporary, \
+                patch("gateway.run_az", side_effect=[
+                    {"extensionName": "aigateway", "extensionVersion": "1.0.0b15"}, temporary]), \
+                patch("gateway.latest_release", return_value=current), \
+                patch("gateway.verify_installed_release", side_effect=MigrationError("Wheel mismatch.")) as verify, \
+                patch("gateway.subprocess.run") as help_run, self.assertRaises(MigrationError):
+            inspect_cli(["create"])
+        verify.assert_called_once()
+        help_run.assert_not_called()
+
+    def test_inspection_checks_only_selected_dispatch_and_help_once(self):
+        current = latest_release(lambda page: [release("1.0.0b15")])
+        with tempfile.TemporaryDirectory() as temporary:
+            package = Path(temporary) / "azext_aigateway"
+            package.mkdir()
+            (package / "_rp.py").write_text(
+                "SUPPORTED_NEW_COMMANDS = {'aigateway create', 'aigateway show'}\n"
+                "CHILD_WRITES = {'aigateway model create'}\n"
+                "SUPPORTED_NEW_COMMANDS.update(CHILD_WRITES)\n")
+            for commands in (["create", "model create"], ["model-provider sync"]):
+                with patch("gateway.run_az", side_effect=[
+                        {"extensionName": "aigateway", "extensionVersion": "1.0.0b15"}, temporary]), \
+                        patch("gateway.latest_release", return_value=current) as latest, \
+                        patch("gateway.verify_installed_release", return_value="verified") as verify, \
+                        patch("gateway.subprocess.run", return_value=SimpleNamespace(
+                            returncode=0, stdout="    --name -n : Selected name.\n    --sku : SKU.\n")) as help_run:
+                    if commands == ["model-provider sync"]:
+                        with self.assertRaises(MigrationError):
+                            inspect_cli(commands)
+                        help_run.assert_not_called()
+                    else:
+                        evidence = inspect_cli(commands)
+                        self.assertEqual(evidence["commands"], {
+                            "create": ["--name", "--sku"], "model create": ["--name", "--sku"]})
+                        self.assertEqual([call.args[0] for call in help_run.call_args_list], [
+                            ["az", "aigateway", "create", "--help"],
+                            ["az", "aigateway", "model", "create", "--help"]])
+                    verify.assert_called_once_with(package, current)
+                    latest.assert_called_once()
 
 
 if __name__ == "__main__":

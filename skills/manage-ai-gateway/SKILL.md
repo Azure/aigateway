@@ -231,6 +231,6 @@ resource dispatch, or behavior change; update this workflow only when those
 changes alter the operating model or safeguards. Do not treat newer help as
 proof that a previously unsupported mutation is safe.
 
-The migration helper has a separate, stricter reviewed capability profile.
-A new CLI version must pass that profile's review and fresh plan approvals
-before migration writes; this management guidance does not bypass that gate.
+The migration skill uses a reviewed asset inventory and one scoped confirmation.
+Check the selected commands against the current official CLI before review;
+management guidance does not authorize changes outside that approved inventory.

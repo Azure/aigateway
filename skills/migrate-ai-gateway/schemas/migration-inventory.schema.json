@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Azure/ai-gateway/migration/migration-inventory.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "revision", "sourceId", "destinationId", "evidence", "decisions", "exclusions", "blockers", "inputs", "assets"],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "revision": {"type": "integer", "minimum": 1},
+    "sourceId": {"type": "string", "pattern": "^/subscriptions/[^/]+/resourceGroups/[^/]+/providers/Microsoft\\.ApiManagement/service/[^/]+$"},
+    "destinationId": {"type": "string", "pattern": "^/subscriptions/[^/]+/resourceGroups/[^/]+/providers/Microsoft\\.ApiManagement/aigateways/[^/]+$"},
+    "evidence": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/evidence"}},
+    "decisions": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "exclusions": {"type": "array", "items": {"$ref": "#/$defs/exclusion"}},
+    "blockers": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "inputs": {"type": "array", "items": {"$ref": "#/$defs/input"}},
+    "assets": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/asset"}}
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "evidence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "digest", "capturedAt", "scope"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "digest": {"$ref": "#/$defs/digest"},
+        "capturedAt": {"type": "string", "format": "date-time"},
+        "scope": {"type": "string", "minLength": 1}
+      }
+    },
+    "exclusion": {
+      "type": "object", "additionalProperties": false,
+      "required": ["sourceIds", "reason", "impact", "followUp"],
+      "properties": {
+        "sourceIds": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "reason": {"type": "string", "minLength": 1},
+        "impact": {"type": "string", "minLength": 1},
+        "followUp": {"type": "string", "minLength": 1}
+      }
+    },
+    "input": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "kind", "purpose"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "kind": {"enum": ["json-file", "secret"]},
+        "purpose": {"type": "string", "minLength": 1},
+        "path": {"type": "string", "minLength": 1},
+        "digest": {"$ref": "#/$defs/digest"},
+        "source": {"type": "string", "minLength": 1},
+        "allowedDestination": {"type": "string", "minLength": 1},
+        "handling": {"type": "string", "minLength": 1}
+      },
+      "allOf": [
+        {"if": {"properties": {"kind": {"const": "json-file"}}}, "then": {"required": ["path", "digest"]}},
+        {"if": {"properties": {"kind": {"const": "secret"}}}, "then": {
+          "required": ["source", "allowedDestination", "handling"],
+          "not": {"anyOf": [{"required": ["path"]}, {"required": ["digest"]}]}
+        }}
+      ]
+    },
+    "argument": {
+      "oneOf": [
+        {"type": "string"},
+        {"type": "object", "additionalProperties": false, "required": ["inputId"],
+          "properties": {"inputId": {"$ref": "#/$defs/id"}}},
+        {"type": "object", "additionalProperties": false, "required": ["assetId", "output"],
+          "properties": {"assetId": {"$ref": "#/$defs/id"}, "output": {"$ref": "#/$defs/id"}}}
+      ]
+    },
+    "command": {
+      "type": "object", "additionalProperties": false,
+      "required": ["argv", "purpose"],
+      "properties": {
+        "argv": {
+          "type": "array", "minItems": 2,
+          "prefixItems": [{"const": "az"}],
+          "items": {"$ref": "#/$defs/argument"}
+        },
+        "purpose": {"type": "string", "minLength": 1}
+      }
+    },
+    "smokeTest": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "required", "purpose", "request", "credentialInputs", "bounds", "expected", "skipWhen"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "required": {"type": "boolean"},
+        "purpose": {"type": "string", "minLength": 1},
+        "request": {"type": "object", "minProperties": 1},
+        "credentialInputs": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+        "bounds": {
+          "type": "object", "additionalProperties": false,
+          "required": ["maxRequests"],
+          "dependentRequired": {"maxCost": ["currency"], "currency": ["maxCost"]},
+          "properties": {
+            "maxRequests": {"type": "integer", "minimum": 1},
+            "maxTokens": {"type": "integer", "minimum": 1},
+            "maxCost": {"type": "number", "minimum": 0},
+            "currency": {"type": "string", "minLength": 1}
+          }
+        },
+        "expected": {"type": "string", "minLength": 1},
+        "skipWhen": {"type": "string", "minLength": 1}
+      }
+    },
+    "asset": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "kind", "action", "targetId", "sourceIds", "dependsOn", "configuration", "preconditions", "commands", "outputs", "readBack", "smokeTests", "verificationLimits", "sideEffects", "rollback"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "kind": {"enum": ["gateway", "identity", "provider", "model", "alias", "mcp", "policy", "access", "network", "private-connection", "telemetry", "external"]},
+        "action": {"enum": ["create", "update", "reuse", "manual"]},
+        "targetId": {"type": "string", "minLength": 1},
+        "sourceIds": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}},
+        "dependsOn": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+        "configuration": {"type": "object", "minProperties": 1},
+        "preconditions": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "commands": {"type": "array", "items": {"$ref": "#/$defs/command"}},
+        "outputs": {
+          "type": "array", "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["name", "query", "expectedType", "constraint"],
+            "properties": {
+              "name": {"$ref": "#/$defs/id"},
+              "query": {"type": "string", "minLength": 1},
+              "expectedType": {"enum": ["string", "object", "array", "boolean", "number"]},
+              "constraint": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        "readBack": {
+          "type": "array", "minItems": 1, "items": {
+            "type": "object", "additionalProperties": false, "required": ["command", "assertions"],
+            "properties": {
+              "command": {"$ref": "#/$defs/command"},
+              "assertions": {"type": "object", "minProperties": 1}
+            }
+          }
+        },
+        "smokeTests": {"type": "array", "items": {"$ref": "#/$defs/smokeTest"}},
+        "verificationLimits": {"type": "string", "minLength": 1},
+        "sideEffects": {"type": "string", "minLength": 1},
+        "rollback": {"type": "string", "minLength": 1}
+      },
+      "allOf": [
+        {"if": {"properties": {"action": {"enum": ["create", "update"]}}}, "then": {"properties": {"commands": {"minItems": 1}}}},
+        {"if": {"properties": {"action": {"enum": ["reuse", "manual"]}}}, "then": {"properties": {"commands": {"maxItems": 0}}}}
+      ]
+    }
+  }
+}
