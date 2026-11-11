@@ -44,7 +44,9 @@ Missing OTLP enablement, resources, or registration remains an owner prerequisit
 
 Use complete URLs including paths; the gateway does not append `/v1/...`.
 Enable only needed signals: metrics (usage/cost), logs (requests), traces
-(request/policy spans); retain at least one. Example `otlp.json`:
+(request/policy spans); retain at least one. For full **Monitoring** dashboard
+coverage, link Application Insights and enable all three; a custom OTLP
+receiver uses its own views. Example `otlp.json`:
 
 ```json
 {

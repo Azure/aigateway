@@ -129,15 +129,16 @@ existing same-name resource.
 2. For diagnostics or changes, read current configuration and relevant
    dependencies. Distinguish a missing setting from missing evidence of its
    effect.
-3. Compose the supported mechanisms that satisfy the constraints. One outcome
-   may need several objects or policy instances; an existing configuration
-   may already satisfy it. Start with the task reference, then follow its
-   links for shared controls; use the [platform model](#platform-model)
-   rather than inferring a feature from a similar command or label.
+3. Compose supported mechanisms for the outcome; it may need several objects
+   or policy instances, or existing configuration may suffice. Start with the
+   task reference and follow links for shared controls; use the
+   [platform model](#platform-model) rather than inferring support from similar
+   commands or labels. Describe objects, policies and settings in gateway
+   product terms, mapped to CLI/API names. Include portal behavior only when
+   it affects the outcome or a capability boundary.
 4. For changes, compare desired and current state. Propose the smallest
-   changes, the configuration that remains untouched, prerequisites, and dependencies.
-   Order changes by those dependencies, reusing satisfied prerequisites;
-   resource-list order is not execution order.
+   changes, unchanged configuration, and prerequisites; order changes by
+   dependency, reusing satisfied prerequisites rather than resource-list order.
    When alternatives differ in behavior, ownership, disruption, or cost,
    recommend the simplest suitable option and obtain the necessary decision.
 5. Choose verification appropriate to the claim: persisted fields, completed
@@ -215,14 +216,13 @@ Repository files and ignore rules require approval before being changed.
 
 ## Keeping the references current
 
-Maintain each contract or procedure in one home. The platform model links
-to the domain owners: notably, policies owns compatibility, attachment,
-accounting and policy writes for every host; keys and identities owns access
-planning and grant execution. This workflow owns common safeguards, replay
-and reporting. The [capability inventory](references/activities-and-cli-coverage.md)
+Maintain each contract or procedure in one home. The platform model links to
+the owners: policies covers compatibility, attachment, accounting and writes;
+keys and identities covers access planning and grants. This workflow owns
+common safeguards, replay and reporting; the [capability inventory](references/activities-and-cli-coverage.md)
 owns the native surface index, reviewed baseline and dated support evidence.
-Link to the owner at the task step that needs it, keeping only the local
-integration detail so readers do not maintain competing copies.
+Link to the owner at the task step that needs it; keep only local integration
+detail to avoid competing copies.
 
 A CLI release does not automatically require a skill rewrite. Compare the
 task's commands and relevant release changes with the recorded baseline.

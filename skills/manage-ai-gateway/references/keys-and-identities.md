@@ -21,9 +21,9 @@ Prefer **AI Gateway Models User** on selected aliases,
 Default-workspace/gateway grants include future assets. Inspect direct,
 inherited and relevant group-derived grants and role DataActions before adding.
 
-Entra tokens target the gateway runtime, not ARM/backend. Check tenant/audience
-and delegated permission/consent separately from caller roles; token issuance
-does not prove gateway acceptance. Use the
+Entra tokens target the gateway runtime, not ARM/backend. For delegated calls,
+check the `Data.All` permission and consent separately from caller roles. Check
+tenant/audience; token issuance does not prove gateway acceptance. Use the
 [Entra/RBAC lab](../../../labs/11-entra-rbac/README.md) for flow examples, verifying
 the intended audience. Keys do not repair missing caller roles.
 

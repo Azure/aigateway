@@ -47,8 +47,9 @@ permits omitted namespaces, but native `source add` requires one.
 `required` controls federation tool discovery: failure to retrieve a required
 backend's tools fails the listing; an unavailable optional backend is skipped.
 It does not provide tool-call failover or prove later calls will succeed.
-Set it per backend: top-level `--failure-mode` is create-only, absent on native
-read-back and therefore unverifiable through this surface.
+Set it per backend. Top-level `--failure-mode` accepts `failClosed` or `failOpen`
+at creation but is absent on native read-back and cannot be verified or updated
+through this surface.
 
 ### Product controls and native limits
 

@@ -281,12 +281,13 @@ pool change. If the old model must receive **no traffic**, keep its registration
 and saved former pool for rollback but exclude it from the active pool:
 a lower-priority target is still eligible fallback, not disabled.
 
-Native target authoring is reviewed for ID/priority/weight only. Existing alias
-configuration may include additional selection, eligibility or failure settings;
-priority alone does not establish effective runtime behavior. Preserve these
-settings on unrelated edits. If the native schema cannot round-trip them,
-report an unsupported change rather than inventing JSON or silently reducing
-the alias to weighted routing.
+Native target authoring is reviewed for ID/priority/weight only. Backend
+conditions, auto-selection objectives, override grants, selection order, and
+CEL session preference need separate support evidence. Priority alone does not
+establish effective runtime behavior. Preserve existing selection, eligibility
+and failure settings on unrelated edits. If the native schema cannot round-trip
+them, report an unsupported change rather than inventing JSON or silently
+reducing the alias to weighted routing.
 
 ### Provider reconciliation
 

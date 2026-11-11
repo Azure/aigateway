@@ -1,26 +1,30 @@
 # Governance policy reference
 
-Choose a control, its traffic boundary and caller partitions, then the
+Choose a policy, its traffic boundary and counter dimensions, then the
 smallest preserving native change. Authorization follows the
 [administrator workflow](../SKILL.md); support gaps are in the
 [capability inventory](activities-and-cli-coverage.md).
 
 ## Choose compatible controls
 
-| Policy | Mechanism and principal configuration | Workspace defaults | Compatible asset hosts |
+The gateway policy catalogue maps product names to policy types:
+
+| Policy | Mechanism | Workspace defaults | Compatible asset hosts |
 | --- | --- | --- | --- |
-| `tokenLimit` | Bound token consumption: `count`, `period`, `counterKey`, accounting `scope` | Model traffic | Models, aliases |
-| `costLimit` | Control estimated USD consumption: stable `id`, `amount`, `period`, `counterKey`, `scope`, ordered `overrides` | Model traffic | Models, aliases |
-| `requestRateLimit` | Bound call volume: `callsPerPeriod`, `periodSeconds`, `counterKey`, `scope` | Applicable model/tool traffic | Models, aliases, ToolServers |
-| `ipFilter` | Admit/exclude caller networks: `action` (`Allow`/`Deny`), `cidrRanges` | Applicable model/tool traffic | Models, aliases, ToolServers |
-| `toolThreatProtection` | Evaluate tool threats through Agent 365: `preInvocation`, `postInvocation` | Not supported | ToolServers |
-| `agentHooks` | Ask a decision service for allow/deny: stable `id`, resource `scope`, lifecycle `hooks`, HTTPS endpoint, authorization, failure mode/headers | Not supported | ToolServers |
+| [**Token rate limit**](#token-rate-limit) (`tokenLimit`) | Token-volume allowance | Model traffic | Models, aliases |
+| [**Cost limit**](#cost-limit) (`costLimit`) | Estimated USD allowance | Model traffic | Models, aliases |
+| [**Request rate limit**](#request-rate-limit) (`requestRateLimit`) | Request-volume allowance | Applicable model/tool traffic | Models, aliases, ToolServers |
+| [**IP filter**](#ip-filter) (`ipFilter`) | Caller IP admission | Applicable model/tool traffic | Models, aliases, ToolServers |
+| [**Agent 365 tool threat protection**](#agent-365-tool-threat-protection) (`toolThreatProtection`) | Microsoft Defender and Microsoft Purview evaluation of tool calls and results | Not supported | ToolServers |
+| [**Agent hooks**](#agent-hooks) (`agentHooks`) | Governance callbacks for MCP tool actions | Not supported | ToolServers |
 
-Check the [content-safety applicability limit](activities-and-cli-coverage.md#operation-gaps-and-applicability)
-before proposing that control; native setter visibility does not lift it.
+Check the [Content safety applicability limit](activities-and-cli-coverage.md#operation-gaps-and-applicability)
+before proposing that policy; native setter visibility does not lift it.
 
-Combine allowances for independent token, call, and cost constraints.
-MCP request limits do not provide model token/cost budgets.
+The three allowance policies measure different quantities: token consumption,
+request volume, and estimated cost. A request ceiling does not bound tokens;
+a token ceiling is not a cost budget. MCP request limits do not provide model
+token/cost budgets, and multiple policies can apply independently.
 
 ## Attachment and effective configuration
 
@@ -44,7 +48,7 @@ execution order.
 
 ## Accounting model
 
-Separate the host, accounting scope, caller partitions, quantity, and period.
+Separate the host, accounting scope, counter dimensions, quantity, and period.
 
 **Host versus accounting scope.** The host determines where a policy applies.
 The documented accounting contract lets an inherited counting policy share
@@ -59,27 +63,28 @@ An alias instance covers traffic through its backend pool. A model instance
 covers that registration across aliases targeting it. Identical policies
 on several assets remain separate instances, not one shared budget.
 
-**Caller partition.** `counterKey` divides traffic within that boundary:
+**Counter dimensions (`counterKey`).** The selected dimensions partition
+traffic within the accounting boundary:
 
-| Dimension selection | Wire representation | Counter partition |
+| Counter dimensions | `counterKey` | Counter partition |
 | --- | --- | --- |
-| Identity | `["identity"]` | One counter per API key or authenticated Entra identity |
-| IP address | `["ipAddress"]` | One counter per observed caller IP |
-| Identity and IP | `["identity", "ipAddress"]` | One counter per identity/IP combination |
-| No dimensions | `[]` | One pooled counter for all applicable traffic to the policy instance |
+| **Caller identity** | `["identity"]` | One counter per API key or authenticated Entra identity |
+| **Caller IP address** | `["ipAddress"]` | One counter per observed caller IP |
+| Both | `["identity", "ipAddress"]` | One counter per identity/IP combination |
+| Neither | `[]` | One pooled counter for all applicable traffic to the policy instance |
 
-Callers reusing an API key share its Identity partition; clients behind the
-same observed IP share an IP partition. Composite dimensions form a
-combination, not two independent allowances. An omitted CLI option preserves
-or defaults a value; native new-policy defaults select Identity, not `[]`.
+Callers reusing an API key share its identity counter; clients behind the
+same observed IP share an IP counter. Composite dimensions form a
+combination, not two independent allowances. Workspace CLI flags are
+`--token-counter-key`, `--rate-counter-key`, and `--cost-counter-key`; for
+example, `--token-counter-key Identity IPAddress` selects both dimensions.
+An omitted CLI option preserves or defaults a value; native new-policy
+defaults select `Identity`, not `[]`.
 
-**Quantity and period.** Token limits use positive integer counts and periods
-`minute`, `hour`, or `day`. Request limits use positive request counts and
-positive intervals in seconds. Cost limits use nonnegative estimated USD
-amounts and UTC calendar periods `hour`, `day`, `week`, `month`, or `year`,
-not rolling windows (weeks start Monday). MCP transport activity, tool
-executions, model calls, and tokens are different measurements; establish
-the request unit from runtime evidence.
+**Quantity and period.** Use the [policy-specific settings](#configuration-examples)
+to select the measured quantity and window. MCP transport activity, tool
+executions, model calls, and tokens are different measurements; establish the
+request unit from runtime evidence.
 
 **Policy identity.** Preserve host-local IDs. A cost policy's stable `id`
 identifies its spend counter; changing it starts a new counter. Moving
@@ -93,12 +98,13 @@ spending cap. Token/request limits add consumption controls, not price accuracy.
 
 ### Cost override semantics
 
-Overrides select an allowance within an Identity-partitioned cost policy.
-They require Identity as the only dimension; empty, IP, and composite
-partitions are incompatible. Entries are ordered and the first match wins.
-Each entry uses either a full gateway key `apiKeyResourceId` or validated
-token `claims`; all claim pairs must match. Use `tid` plus `oid` for a specific
-Entra identity, and place specific selectors before broader matching claims.
+**Overrides** (`overrides`) select an allowance within a cost policy. They
+require **Caller identity** as the only counter dimension; empty, IP, and
+composite partitions are incompatible. Entries are ordered and the first
+match wins. Each entry uses either a full gateway key `apiKeyResourceId` or
+validated token `claims`; all claim pairs must match. Use `tid` plus `oid` for
+a specific Entra identity, and place specific selectors before broader
+matching claims.
 
 An override changes each identity's allowance, not its partition. Matching
 several identities to a department claim does not pool their spend. The
@@ -181,10 +187,14 @@ is unrelated to governance.
 
 ## Configuration examples
 
-Merge example entries into the **complete intended host array**, never as
-standalone replacement payloads.
+Setting flags below refer to workspace `policy set`; check host-specific help
+for model setters. Merge example entries into the **complete intended host array**,
+never as standalone replacement payloads.
 
-### Token limit
+### Token rate limit
+
+**Allowed tokens** is `count` (`--token-limit`), a positive integer;
+**Time period** is `period` (`--token-period`): `minute`, `hour`, or `day`.
 
 Workspace token configuration:
 
@@ -217,6 +227,11 @@ For models use provider/model selectors with `model update`, or compatible
 partial `model policy set` / `set-token-limit` updates.
 
 ### Cost limit
+
+**Budget amount** is `amount` (`--cost-limit`), a nonnegative estimated USD
+amount; **Renewal period** is `period` (`--cost-period`): `hour`, `day`,
+`week`, `month`, or `year`. Cost periods are fixed UTC calendar windows, not
+rolling windows (weeks start Monday).
 
 For pooled workspace accounting, `no-dimensions.json` contains:
 
@@ -251,6 +266,9 @@ not an assumed arbitrary workspace override path.
 
 ### Request rate limit
 
+**Calls** is `callsPerPeriod` (`--calls-per-period`) and **Renewal period** is
+`periodSeconds` (`--period-seconds`); both are positive.
+
 Workspace request configuration:
 
 ```bash
@@ -280,7 +298,10 @@ az aigateway policy set --subscription "$SUBSCRIPTION" \
 A resource-hosted `ipFilter` uses `action: "Allow"` or `"Deny"` and
 `cidrRanges`, without a counter. An allow list can exclude existing clients.
 
-### Tool threat protection
+### Agent 365 tool threat protection
+
+**Before tool invocation** (`preInvocation`) evaluates the request;
+**After tool invocation** (`postInvocation`) evaluates the tool output.
 
 ```json
 {"type": "toolThreatProtection", "preInvocation": true, "postInvocation": false}
@@ -302,10 +323,11 @@ evaluation code, not just status.
 ### Agent hooks
 
 Agent hooks delegate MCP tool decisions to an existing trusted HTTPS callback.
-`preToolCall` can prevent execution; `postToolCall` can withhold results but
-cannot undo execution. The hook contract describes both phases; verify native
-support for the intended combination before writing. Free-form JSON alone
-does not establish dual-phase authoring support.
+A before-tool hook (`preToolCall`) can prevent execution; an after-tool hook
+(`postToolCall`) can withhold results but cannot undo execution. The hook
+contract describes both phases; verify native support for the intended
+combination before writing. Free-form JSON alone does not establish dual-phase
+authoring support.
 
 For an existing Azure Function callback:
 
