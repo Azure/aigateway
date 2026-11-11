@@ -39,8 +39,8 @@ class HandshakeClient(mcp.Client):
 # Agent Framework creates its MCP clients from mcp.Client, so this applies to the toolbox connection.
 mcp.Client = HandshakeClient
 
-# The audience of AI Gateway's runtime endpoints
-AI_GATEWAY_SCOPE = "https://azure-api.net/aigateway/.default"
+# The token scope for AI Gateway's runtime endpoints
+AI_GATEWAY_SCOPE = "https://ai.gateway.azure.com/.default"
 
 INSTRUCTIONS = """
 You answer questions about Microsoft and Azure technologies.

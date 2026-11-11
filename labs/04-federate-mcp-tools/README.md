@@ -124,13 +124,19 @@ publishes all their tools at one Streamable HTTP endpoint:
 |---|---|---|
 | **MCP server** (remote) | A URL that speaks SSE or Streamable HTTP | The server's tools |
 | **OpenAPI spec** | A JSON or YAML OpenAPI document (upload, URL, or inline) | Selected operations as tools. The operation summary or description becomes the tool description. |
-| **Built-in connector** | A managed connection to a SaaS app, such as Microsoft 365, SharePoint, GitHub, or Salesforce | The connector's operations as tools |
 | **Foundry Toolbox** | A Microsoft Foundry Toolbox source | The toolbox's tools |
+| **From Azure** | An existing MCP server in Azure, such as one in a Connector Namespace that wraps SaaS connectors like Microsoft 365, SharePoint, GitHub, or Salesforce | The source server's tools |
+
+Connector tools come from an Azure Connector Namespace. Create the MCP server there and authorize its connections in
+Azure, then choose **Import from Azure** on **MCP servers** and select it, as in the product's
+[Connector Namespace walkthrough](https://ai.gateway.azure.com/docs/mcp-access#mcp-connectors). The gateway
+references the source without owning it, so removing the backend or the gateway leaves the namespace and its
+connections in place.
 
 Each backend can have a **namespace**. The gateway prefixes that backend's tools with it, as in
 `learn_microsoft_docs_search`, so two backends can expose tools with the same name without conflict.
 
-The gateway authenticates **clients**. In this lab they send a runtime key in the `api-key` header.
+The gateway authenticates **clients**. In this lab they send a runtime key as `Authorization: Bearer <key>`.
 It authenticates to each **backend** separately, with **None**, **API key** (a header name and value),
 **OAuth 2.0**, or **Managed identity**. Backend credentials are stored securely, are never exposed to clients,
 and appear under **Connections**.
@@ -787,10 +793,10 @@ list. Ask for an older version. The gateway answers with the version it will use
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# Send an initialize request that asks for 2025-03-26, with your runtime key in api-key
+# Send an initialize request that asks for 2025-03-26, with your runtime key as a bearer token
 echo "🔌 initialize response from learn:"
 curl -sS "${AI_GATEWAY_URL%/}/default/toolservers/learn/mcp" \
-  -H "api-key: $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26",
        "capabilities":{},"clientInfo":{"name":"curl","version":"1.0"}}}'
@@ -800,9 +806,9 @@ curl -sS "${AI_GATEWAY_URL%/}/default/toolservers/learn/mcp" \
 <details><summary>PowerShell</summary> <!-- gh -->
 
 ```powershell title="PowerShell"
-# Build an initialize request that asks for 2025-03-26, with your runtime key in api-key
+# Build an initialize request that asks for 2025-03-26, with your runtime key as a bearer token
 $mcp     = "$($env:AI_GATEWAY_URL.TrimEnd('/'))/default/toolservers/learn/mcp"
-$headers = @{ 'api-key' = $env:AI_GATEWAY_API_KEY; Accept = 'application/json, text/event-stream' }
+$headers = @{ Authorization = "Bearer $env:AI_GATEWAY_API_KEY"; Accept = 'application/json, text/event-stream' }
 $body    = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26",
              "capabilities":{},"clientInfo":{"name":"pwsh","version":"1.0"}}}'
 
@@ -820,7 +826,7 @@ The result includes `"protocolVersion":"2025-06-18"`. Now send a request that na
 # Send tools/list with MCP version 2026-07-28, which isn't in the list
 echo "🚦 Expect 400 Bad Request for MCP version 2026-07-28:"
 curl -sS -w "\n🚦 HTTP %{http_code}\n" "${AI_GATEWAY_URL%/}/default/toolservers/learn/mcp" \
-  -H "api-key: $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" -H "MCP-Protocol-Version: 2026-07-28" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
@@ -885,7 +891,7 @@ name. The `inputs` entry makes VS Code prompt for the key instead of storing it 
       "type": "http",
       "url": "<gateway-url>/default/toolservers/learn/mcp",
       "headers": {
-        "api-key": "${input:aigw-key}"
+        "Authorization": "Bearer ${input:aigw-key}"
       }
     }
   }
@@ -901,8 +907,8 @@ Copilot Chat agent mode, the gateway's namespaced tools are now available, for e
 
 ### Call the tools from Python
 
-This client uses the official [MCP Python SDK](https://pypi.org/project/mcp/) and sends the runtime key in the
-`api-key` header.
+This client uses the official [MCP Python SDK](https://pypi.org/project/mcp/) and sends the runtime key as a
+bearer token.
 
 <!-- include: infra/list_tools.py -->
 <!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
@@ -955,8 +961,8 @@ async def main() -> None:
     url = endpoint(server)
     print(f"MCP endpoint: {url}")
 
-    # The gateway authenticates the client with the runtime key in the api-key header.
-    async with httpx.AsyncClient(headers={"api-key": api_key}, timeout=60) as http_client:
+    # The gateway authenticates the client with the runtime key, sent as a bearer token.
+    async with httpx.AsyncClient(headers={"Authorization": f"Bearer {api_key}"}, timeout=60) as http_client:
         async with streamable_http_client(url, http_client=http_client) as (read, write, _):
             async with ClientSession(read, write) as session:
                 init = await session.initialize()
@@ -1107,10 +1113,10 @@ The docs show the smallest possible request: a single JSON-RPC `tools/list` call
 should also accept both JSON and SSE responses.
 
 ```bash
-# Send a single tools/list request, with your runtime key in api-key
+# Send a single tools/list request, with your runtime key as a bearer token
 echo "🔧 tools/list response from learn:"
 curl -sS "${AI_GATEWAY_URL%/}/default/toolservers/learn/mcp" \
-  -H "api-key: $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
@@ -1123,7 +1129,7 @@ The answer is JSON or an SSE `data:` line with a `result.tools` array. If the se
 Send the same request without the key:
 
 ```bash
-# Send the same request without the api-key header
+# Send the same request without the Authorization header
 echo "🚦 Expect 401 Unauthorized without a key:"
 curl -sS -o /dev/null -w "🚦 HTTP %{http_code}\n" "${AI_GATEWAY_URL%/}/default/toolservers/learn/mcp" \
   -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \

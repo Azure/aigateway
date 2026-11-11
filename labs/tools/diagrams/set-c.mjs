@@ -45,7 +45,7 @@ export const enterpriseReference = () => svgDoc('enterprise-reference', {
 
 export const githubCopilotByok = () => svgDoc('github-copilot-byok', {
   title: 'GitHub Copilot with models and tools from Azure AI Gateway',
-  desc: 'The GitHub Copilot app, Copilot CLI, Copilot SDK, and Copilot in VS Code each add the gateway as a bring-your-own-key model provider and the gateway learn MCP server as a tool server. They call the gpt-6.1-sol alias on the gateway OpenAI v1 endpoint with the Responses API, and the learn MCP endpoint, both with the github-copilot API key: as a bearer token for models and in the api-key header for MCP. The gateway applies a per-caller token limit, records usage for Monitoring, calls the gpt-6.1-sol deployment in Microsoft Foundry with its managed identity, and calls the public Microsoft Learn MCP server.',
+  desc: 'The GitHub Copilot app, Copilot CLI, Copilot SDK, and Copilot in VS Code each add the gateway as a bring-your-own-key model provider and the gateway learn MCP server as a tool server. They call the gpt-6.1-sol alias on the gateway OpenAI v1 endpoint with the Responses API, and the learn MCP endpoint, both with the github-copilot API key as a bearer token. The gateway applies a per-caller token limit, records usage for Monitoring, calls the gpt-6.1-sol deployment in Microsoft Foundry with its managed identity, and calls the public Microsoft Learn MCP server.',
   h: 486,
   body: () => {
     let o = zone(16, 20, 276, 372, 'GitHub Copilot', { ic: 'sparkle', tone: 'azure' });
@@ -81,7 +81,7 @@ export const githubCopilotByok = () => svgDoc('github-copilot-byok', {
     o += arrow('M646 92 H708', { tone: 'violet' });
     o += arrow('M646 186 C678 186 678 292 708 292', { tone: 'green' });
     o += text(16, 424, 'Models', 'dg-s') + text(84, 424, 'https://<gateway-host>/default/models/openai/v1', 'dg-m') + text(500, 424, 'Key as', 'dg-s') + text(552, 424, 'Authorization: Bearer', 'dg-m');
-    o += text(16, 446, 'Tools', 'dg-s') + text(84, 446, 'https://<gateway-host>/default/toolservers/learn/mcp', 'dg-m') + text(500, 446, 'Key as', 'dg-s') + text(552, 446, 'api-key header', 'dg-m');
+    o += text(16, 446, 'Tools', 'dg-s') + text(84, 446, 'https://<gateway-host>/default/toolservers/learn/mcp', 'dg-m') + text(500, 446, 'Key as', 'dg-s') + text(552, 446, 'Authorization: Bearer', 'dg-m');
     o += text(16, 468, 'Model', 'dg-s') + text(84, 468, 'gpt-6.1-sol', 'dg-m') + text(190, 468, 'Wire API', 'dg-s') + text(250, 468, 'responses', 'dg-m') + text(340, 468, 'Key', 'dg-s') + text(372, 468, 'github-copilot', 'dg-m');
     return o;
   },
@@ -137,7 +137,7 @@ export const claudeCode = () => svgDoc('claude-code', {
     o += arrow('M934 244 V450', { tone: 'cyan', dashed: true });
     o += text(16, 548, 'Base URL', 'dg-s') + text(96, 548, 'https://<gateway-host>/default/models/anthropic', 'dg-m') + text(520, 548, 'Key as', 'dg-s') + text(572, 548, 'Authorization: Bearer  (ANTHROPIC_AUTH_TOKEN)', 'dg-m');
     o += text(16, 570, 'Models', 'dg-s') + text(96, 570, '<foundry-account>/claude-opus-5-5 · claude-sonnet-5-5 · claude-haiku-5-5', 'dg-m');
-    o += text(16, 592, 'Tools', 'dg-s') + text(96, 592, 'https://<gateway-host>/default/toolservers/learn/mcp', 'dg-m') + text(520, 592, 'Key as', 'dg-s') + text(572, 592, 'api-key header', 'dg-m');
+    o += text(16, 592, 'Tools', 'dg-s') + text(96, 592, 'https://<gateway-host>/default/toolservers/learn/mcp', 'dg-m') + text(520, 592, 'Key as', 'dg-s') + text(572, 592, 'Authorization: Bearer', 'dg-m');
     return o;
   },
 });

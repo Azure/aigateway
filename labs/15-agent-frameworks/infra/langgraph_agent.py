@@ -2,7 +2,7 @@
 
 ChatOpenAI points at the gateway's OpenAI-compatible endpoint, and langchain-mcp-adapters loads tools from the
 gateway's MCP endpoint over streamable HTTP. The model takes the runtime key as its API key, and the MCP client
-sends it in the api-key header. LangGraph keeps orchestration and state; the gateway applies policies and records
+sends it as a bearer token. LangGraph keeps orchestration and state; the gateway applies policies and records
 telemetry for every call that leaves the agent.
 
 Usage:
@@ -52,7 +52,7 @@ async def main() -> None:
             "gateway-tools": {
                 "transport": "streamable_http",
                 "url": f"{gateway_url}/default/toolservers/{server}/mcp",
-                "headers": {"api-key": api_key},
+                "headers": {"Authorization": f"Bearer {api_key}"},
             }
         }
     )

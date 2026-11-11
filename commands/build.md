@@ -17,7 +17,7 @@ the **full** workflow in the bundled skill `skills/use-ai-gateway/SKILL.md` end 
    confirm the selected assets before continuing.
 2. **Retrieve a credential** — list the gateway API keys and read the secret of the
    chosen key. The **same** gateway key authenticates both the model passthrough and the
-   MCP tool servers, passed in the `Api-Key` header.
+   MCP tool servers, passed as `Authorization: Bearer <key>`.
 3. **Integrate** (Part 2 of the skill). Ask what the user is building and pick the path:
    - **Call a model** over the gateway's OpenAI-compatible passthrough (any language or
      raw HTTP).
@@ -47,6 +47,6 @@ the **full** workflow in the bundled skill `skills/use-ai-gateway/SKILL.md` end 
   `unknown_model`). Runtime calls use the gateway's `properties.gatewayUrl` host and the
   `/default/` workspace segment: `<host>/default/models/openai/v1/...` and
   `<host>/default/toolservers/<name>/mcp` (omitting `/default/` returns `404`).
-- Authenticate models and MCP tool servers with the `Api-Key` header — not
-  `Authorization: Bearer` (bearer-only auth is rejected, typically with a `401` or a
-  misleading `unknown_model`).
+- Authenticate models and MCP tool servers with the gateway key as
+  `Authorization: Bearer <key>`, in one header only (adding an `Api-Key` header as well
+  returns `400`).

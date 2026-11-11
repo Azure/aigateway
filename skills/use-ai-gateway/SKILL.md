@@ -95,9 +95,9 @@ KEY=$(curl -s -X POST "${AUTH[@]}" -H "Content-Length: 0" \
   "$B/apiKeys/$KEYNAME/listSecrets?api-version=$VER" \
   | jq -r '.primaryKey // .properties.primaryKey // .primaryValue // .properties.primaryValue // .value')
 
-# Smoke-test a model over the passthrough — note the /default/ workspace segment and the Api-Key header
+# Smoke-test a model over the passthrough — note the /default/ workspace segment and the bearer key
 curl -s "$HOST/default/models/openai/v1/chat/completions" \
-  -H "Api-Key: $KEY" -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
   -d '{"model":"<modelName>","messages":[{"role":"user","content":"ping"}],"max_tokens":5}'
 ```
 
@@ -141,7 +141,7 @@ GET https://management.azure.com{gatewayResourceId}/workspaces/default/toolServe
 
 Each item's `name` is the tool server name. Build its MCP endpoint URL as `https://{gateway-host}/default/toolservers/{toolServerName}/mcp` (note the `/default/` workspace segment — without it the gateway returns `404`). **`properties.mcpEndpointUrl` is frequently empty** in the ARM response, so do not rely on it — construct the URL from the host and tool server name, and only use `properties.mcpEndpointUrl` if it is non-empty. Filter to the tools relevant to the user's request (examine names and descriptions for keywords — e.g. for shipping, look for a "calculator" tool). Then **stop and ask the user**: "I found these tools for your use case. Which would you like to use?" List them clearly with brief descriptions and endpoints, and allow selecting all, some, or none.
 
-> **Verify the tool server actually exposes tools before wiring it in.** A tool server can be registered but expose **zero** tools (e.g. a federated OpenAPI/MCP source that failed to sync). Confirm with an MCP handshake against the constructed URL, using the `Api-Key` header and `Accept: application/json, text/event-stream` on every request: `POST` an `initialize` request, capture the **`Mcp-Session-Id`** response header, `POST` a `notifications/initialized` message with that session id, then `POST` a `tools/list` request (also carrying the session id). If `tools/list` returns an empty array, tell the user that server has no usable tools right now (a gateway-side configuration issue, not a client bug) and let them pick a different one rather than scaffolding an agent that can't call anything.
+> **Verify the tool server actually exposes tools before wiring it in.** A tool server can be registered but expose **zero** tools (e.g. a federated OpenAPI/MCP source that failed to sync). Confirm with an MCP handshake against the constructed URL, using the `Authorization: Bearer <gateway key>` header and `Accept: application/json, text/event-stream` on every request: `POST` an `initialize` request, capture the **`Mcp-Session-Id`** response header, `POST` a `notifications/initialized` message with that session id, then `POST` a `tools/list` request (also carrying the session id). If `tools/list` returns an empty array, tell the user that server has no usable tools right now (a gateway-side configuration issue, not a client bug) and let them pick a different one rather than scaffolding an agent that can't call anything.
 
 ### 3. Retrieve a credential
 
@@ -162,7 +162,7 @@ The model passthrough and MCP tool servers are called with a gateway **API key**
    ```
    Backend versions have returned a few response shapes, so read the first non-empty value from, in order: `primaryKey`, `properties.primaryKey`, `primaryValue`, `properties.primaryValue`, then `value` (when `target == "Primary"`), falling back to the equivalent `secondary*` fields. If none is present, the caller likely isn't authorized to `listSecrets` — stop and direct them to an administrator rather than creating or rotating a key.
 
-The credential is passed in the **`Api-Key`** header for both the model passthrough and the MCP tool servers.
+The credential is passed as **`Authorization: Bearer <gateway key>`** for both the model passthrough and the MCP tool servers. It's still a gateway key, not an Entra token.
 
 > **Discovery-only path:** If the user only wants to explore and select assets (models/tools) and does **not** want to integrate them yet, you can stop here. Present the discovered assets and selected credential, and skip Part 2. Code generation is optional.
 
@@ -183,8 +183,8 @@ Whichever path you take, integrate into the user's **existing** project when the
 **Shared rules (all paths):**
 
 - Read every credential from environment variables (e.g. `AI_GATEWAY_API_KEY`) — never hardcode secrets. See _Shared: credentials & project hygiene_ below.
-- The gateway authenticates **both** models and MCP tool servers with the same key, passed in the **`Api-Key`** request header.
-- **Client key vs. backend managed identity are different things.** A model provider or tool server may use the gateway's managed identity to authenticate to *its* upstream (that's gateway-to-backend auth, transparent to your app). Don't try to fetch or supply that upstream credential, and don't replace your `Api-Key` header with a managed-identity/bearer token — your app always authenticates to the gateway runtime with the gateway `Api-Key`.
+- The gateway authenticates **both** models and MCP tool servers with the same key, passed as **`Authorization: Bearer <gateway key>`**. Send it in one header only: a request that also carries an `Api-Key` header gets `400` ("Specify either an API key or an Authorization header, not both").
+- **Client key vs. backend managed identity are different things.** A model provider or tool server may use the gateway's managed identity to authenticate to *its* upstream (that's gateway-to-backend auth, transparent to your app). Don't try to fetch or supply that upstream credential, and don't replace the gateway key with a provider key or the provider's own auth header (such as Anthropic's `x-api-key`) — your app authenticates to the gateway runtime with the gateway key as a bearer token.
 
 ---
 
@@ -201,7 +201,7 @@ Most AI Gateway models expose an **OpenAI-compatible** endpoint, so the examples
 Common case — OpenAI-compatible. Point any OpenAI-style client (or plain HTTP) at it:
 
 - **Base URL:** `<ai-gateway-host>/default/models/openai/v1` — e.g. `https://my-gateway.westus2-01.ai.gateway-current.azure.com/default/models/openai/v1`. This is the same endpoint the [AI Gateway Portal](https://ai.gateway.azure.com) advertises to consumers; clients append `/chat/completions` (or `/responses` for a Responses model). The `/default/` segment (the workspace) is required — dropping it returns `404`.
-- **Auth header:** `Api-Key: <gateway key>`. **Do not** rely on `Authorization: Bearer` — the gateway model passthrough rejects bearer-only auth, typically with a `401` ("missing subscription key") or a misleading **`unknown_model`** error. If your client insists on an `api_key` field (many do), still set the `Api-Key` header explicitly.
+- **Auth header:** `Authorization: Bearer <gateway key>`. OpenAI-compatible SDKs send their `api_key` this way, so pass the gateway key as the SDK's `api_key` and don't add another auth header.
 - **Model identifier:** use the selected model's **`properties.deployment.modelName`** (e.g. `gpt-5.4-nano`) exactly — same dots, casing, and punctuation. Prefer it over the ARM resource `name` (e.g. `gpt-5-4-nano`) or `displayName`, which may be rejected with `unknown_model` on some gateways.
 
 #### curl
@@ -209,7 +209,7 @@ Common case — OpenAI-compatible. Point any OpenAI-style client (or plain HTTP)
 ```bash
 curl "$AI_GATEWAY_HOST/default/models/openai/v1/chat/completions" \
   -H "Content-Type: application/json" \
-  -H "Api-Key: $AI_GATEWAY_API_KEY" \
+  -H "Authorization: Bearer $AI_GATEWAY_API_KEY" \
   -d '{
     "model": "<properties.deployment.modelName>",
     "messages": [{ "role": "user", "content": "Hello!" }]
@@ -224,9 +224,8 @@ from openai import OpenAI
 
 client = OpenAI(
     base_url=f"{os.environ['AI_GATEWAY_HOST']}/default/models/openai/v1",
+    # The SDK sends api_key as Authorization: Bearer, which is how the gateway reads its key.
     api_key=os.environ["AI_GATEWAY_API_KEY"],
-    # The gateway authenticates via the Api-Key header, not Authorization: Bearer.
-    default_headers={"Api-Key": os.environ["AI_GATEWAY_API_KEY"]},
 )
 
 resp = client.chat.completions.create(
@@ -243,9 +242,8 @@ import OpenAI from "openai";
 
 const client = new OpenAI({
   baseURL: `${process.env.AI_GATEWAY_HOST}/default/models/openai/v1`,
+  // The SDK sends apiKey as Authorization: Bearer, which is how the gateway reads its key.
   apiKey: process.env.AI_GATEWAY_API_KEY!,
-  // The gateway authenticates via the Api-Key header, not Authorization: Bearer.
-  defaultHeaders: { "Api-Key": process.env.AI_GATEWAY_API_KEY! },
 });
 
 const resp = await client.chat.completions.create({
@@ -255,36 +253,36 @@ const resp = await client.chat.completions.create({
 console.log(resp.choices[0].message.content);
 ```
 
-> The passthrough is OpenAI-compatible, so streaming, tools/function-calling, and other OpenAI request fields work as usual — just keep the `Api-Key` header and the exact `modelName`.
+> The passthrough is OpenAI-compatible, so streaming, tools/function-calling, and other OpenAI request fields work as usual — just keep the gateway key as the SDK's API key and the exact `modelName`.
 
 #### Other protocols (only when the model's `supportedEndpoints` says so)
 
-If the selected model exposes `/responses` or `/anthropic/v1/messages` instead of `/chat/completions`, use that protocol's request shape (same `Api-Key` header, same exact `modelName`, same `/default/models` prefix):
+If the selected model exposes `/responses` or `/anthropic/v1/messages` instead of `/chat/completions`, use that protocol's request shape (same bearer key, same exact `modelName`, same `/default/models` prefix):
 
 ```bash
 # OpenAI Responses model (supportedEndpoints contains /openai/v1/responses)
 curl "$AI_GATEWAY_HOST/default/models/openai/v1/responses" \
-  -H "Content-Type: application/json" -H "Api-Key: $AI_GATEWAY_API_KEY" \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $AI_GATEWAY_API_KEY" \
   -d '{"model":"<properties.deployment.modelName>","input":"Hello!"}'
 
 # Anthropic Messages model (supportedEndpoints contains /anthropic/v1/messages)
 curl "$AI_GATEWAY_HOST/default/models/anthropic/v1/messages" \
-  -H "Content-Type: application/json" -H "Api-Key: $AI_GATEWAY_API_KEY" \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $AI_GATEWAY_API_KEY" \
   -H "anthropic-version: 2023-06-01" \
   -d '{"model":"<properties.deployment.modelName>","max_tokens":16,"messages":[{"role":"user","content":"Hello!"}]}'
 ```
 
-For SDKs, set the base URL per the derivation table above and keep the `Api-Key` header: the OpenAI SDK's `responses.create(...)` targets a Responses model, and the Anthropic SDK with `base_url = <messages endpoint minus /v1/messages>` plus `default_headers={"Api-Key": ...}` targets a Messages model. Don't point an OpenAI Chat Completions client at a `/responses`- or `/messages`-only model (and vice versa) — the protocol must match the endpoint.
+For SDKs, set the base URL per the derivation table above and pass the gateway key as a bearer token: the OpenAI SDK's `responses.create(...)` (key in `api_key`) targets a Responses model, and the Anthropic SDK with `base_url = <messages endpoint minus /v1/messages>` plus `auth_token=<gateway key>` (`authToken` in TypeScript) targets a Messages model. Don't pass the gateway key as the Anthropic SDK's `api_key`: that sends `x-api-key`, which the gateway rejects with `401`. Don't point an OpenAI Chat Completions client at a `/responses`- or `/messages`-only model (and vice versa) — the protocol must match the endpoint.
 
 ---
 
 ### Path B — Connect to MCP tool servers
 
-Each registered MCP tool server is reachable at its own MCP endpoint (captured during discovery), authenticated with the same gateway key via the **`Api-Key`** header. Use it from any MCP client:
+Each registered MCP tool server is reachable at its own MCP endpoint (captured during discovery), authenticated with the same gateway key as **`Authorization: Bearer <gateway key>`**. Use it from any MCP client:
 
 - **Endpoint:** the tool server's MCP URL from discovery (e.g. `<ai-gateway-host>/default/toolservers/<name>/mcp`).
 - **Transport:** streamable HTTP (`type: "http"`).
-- **Auth header:** `Api-Key: <gateway key>`.
+- **Auth header:** `Authorization: Bearer <gateway key>`.
 
 To sanity-check a tool server manually, run the full MCP handshake — `initialize`, then `notifications/initialized`, then `tools/list` — carrying the `Mcp-Session-Id` returned by `initialize` on the follow-up calls:
 
@@ -292,24 +290,24 @@ To sanity-check a tool server manually, run the full MCP handshake — `initiali
 # 1. initialize — capture the Mcp-Session-Id response header
 SID=$(curl -s -D - -o /dev/null "$TOOL_ENDPOINT" \
   -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
-  -H "Api-Key: $AI_GATEWAY_API_KEY" \
+  -H "Authorization: Bearer $AI_GATEWAY_API_KEY" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"probe","version":"1.0"}}}' \
   | awk -F': ' 'tolower($1)=="mcp-session-id"{print $2}' | tr -d '\r')
 
 # 2. notifications/initialized
 curl -s "$TOOL_ENDPOINT" -H "Content-Type: application/json" \
-  -H "Accept: application/json, text/event-stream" -H "Api-Key: $AI_GATEWAY_API_KEY" \
+  -H "Accept: application/json, text/event-stream" -H "Authorization: Bearer $AI_GATEWAY_API_KEY" \
   ${SID:+-H "Mcp-Session-Id: $SID"} \
   -d '{"jsonrpc":"2.0","method":"notifications/initialized"}' >/dev/null
 
 # 3. tools/list — an empty "tools" array means the server exposes no usable tools
 curl -s "$TOOL_ENDPOINT" -H "Content-Type: application/json" \
-  -H "Accept: application/json, text/event-stream" -H "Api-Key: $AI_GATEWAY_API_KEY" \
+  -H "Accept: application/json, text/event-stream" -H "Authorization: Bearer $AI_GATEWAY_API_KEY" \
   ${SID:+-H "Mcp-Session-Id: $SID"} \
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
 ```
 
-To wire it into an application, configure your MCP client with the endpoint URL, `http` transport, and the `Api-Key` header — for example, in a client that reads an `mcp.json`/`mcpServers` map:
+To wire it into an application, configure your MCP client with the endpoint URL, `http` transport, and the `Authorization` header — for example, in a client that reads an `mcp.json`/`mcpServers` map:
 
 ```json
 {
@@ -317,23 +315,23 @@ To wire it into an application, configure your MCP client with the endpoint URL,
     "<tool-name>": {
       "type": "http",
       "url": "<tool-endpoint>",
-      "headers": { "Api-Key": "${AI_GATEWAY_API_KEY}" }
+      "headers": { "Authorization": "Bearer ${AI_GATEWAY_API_KEY}" }
     }
   }
 }
 ```
 
-Adapt the exact shape to whatever MCP client/library the user's app uses (the essentials are always: endpoint URL, HTTP transport, and the `Api-Key` header). Native config locations for common coding agents:
+Adapt the exact shape to whatever MCP client/library the user's app uses (the essentials are always: endpoint URL, HTTP transport, and the `Authorization: Bearer` header). Native config locations for common coding agents:
 
 - **Claude Code** — the `mcpServers` JSON above is exactly the shape of a project-scoped `.mcp.json`. Claude Code expands `${AI_GATEWAY_API_KEY}` from the environment in HTTP `headers`. Run `claude mcp list` (or `/mcp`) and approve the project server when prompted.
 - **OpenAI Codex** — add to `~/.codex/config.toml` (or a trusted project `.codex/config.toml`), passing the key by env-var reference so the secret isn't written into config:
   ```toml
   [mcp_servers.<tool-server-name>]
   url = "<ai-gateway-host>/default/toolservers/<tool-server-name>/mcp"
-  env_http_headers = { "Api-Key" = "AI_GATEWAY_API_KEY" }
+  bearer_token_env_var = "AI_GATEWAY_API_KEY"
   ```
   Verify with `codex mcp list` or `/mcp`.
-- **Other MCP-capable agents** — consult the agent's current CLI help or config schema for its remote/HTTP MCP entry rather than guessing field names; the essentials are the same three: endpoint URL, HTTP transport, `Api-Key` header.
+- **Other MCP-capable agents** — consult the agent's current CLI help or config schema for its remote/HTTP MCP entry rather than guessing field names; the essentials are the same three: endpoint URL, HTTP transport, `Authorization: Bearer` header.
 
 If the user is building an agent that needs these tools, prefer **Path C**, which wires models and MCP tools together.
 
@@ -354,15 +352,15 @@ Ask the user which language they prefer. **Default to Python** if not specified.
 
 Generate the agent code using the **GitHub Copilot SDK** (code, docs, examples: https://github.com/github/copilot-sdk).
 
-> **Required SDK version: `github-copilot-sdk >= 1.0.0`.** The agent authenticates the BYOK model and the MCP tool servers by passing the gateway key in custom request headers (`Api-Key`). SDK versions older than 1.0.0 silently drop provider/custom headers, so the gateway rejects the call with a misleading `unknown_model` error. Always pin `>= 1.0.0` in `requirements.txt` / `package.json` and in any install command.
+> **Required SDK version: `github-copilot-sdk >= 1.0.0`.** The agent authenticates the BYOK model with the provider's `api_key`, which the SDK sends as `Authorization: Bearer`, and the MCP tool servers with a custom `Authorization` header. SDK versions older than 1.0.0 silently drop custom headers. Always pin `>= 1.0.0` in `requirements.txt` / `package.json` and in any install command.
 
 The generated code must:
 
-- Use the GitHub Copilot SDK correctly for the chosen language (default to Python, unless the user specifies otherwise). Require **`github-copilot-sdk >= 1.0.0`** — older versions drop the custom headers used to authenticate the gateway model and tools
+- Use the GitHub Copilot SDK correctly for the chosen language (default to Python, unless the user specifies otherwise). Require **`github-copilot-sdk >= 1.0.0`** — older versions drop the custom headers used to authenticate the gateway tools
 - Configure MCP tool connections to the selected AI Gateway tool servers via `mcp_servers` in the session config, using `type: "http"` with the tool server's MCP endpoint URL
-- Authenticate tool servers with the gateway API key passed in the **`Api-Key`** header via the `headers` config
+- Authenticate tool servers with the gateway API key passed as **`Authorization: Bearer <key>`** via the `headers` config
 - Configure model access through a BYOK `provider` in the session config
-- Authenticate models with the **same** gateway API key passed in the **`Api-Key`** header via the provider's `headers` config — **not** the `api_key` field alone. The SDK sends `api_key` as an `Authorization: Bearer` header, which the AI Gateway model passthrough rejects with a misleading **`unknown_model`** error. Set the `Api-Key` header explicitly (keep `api_key` too, since the SDK requires a non-empty value)
+- Authenticate models with the **same** gateway API key in the provider's `api_key` field. The SDK sends it as `Authorization: Bearer`, which is how the gateway reads its key. Don't add an `Api-Key` header to the provider as well: a request with both headers gets `400`
 - Use model provider `type: "openai"` (the AI Gateway exposes an OpenAI-compatible passthrough, where the model is selected by name in the request body)
 - Construct the model `base_url` as the AI Gateway's unified model passthrough: `<ai-gateway-host>/default/models/openai/v1` — for example `https://my-gateway.westus2-01.ai.gateway-current.azure.com/default/models/openai/v1`. This is the same endpoint the [AI Gateway Portal](https://ai.gateway.azure.com) advertises to consumers (the SDK appends `/chat/completions`). The `/default/` workspace segment is required — dropping it returns `404`
 - Precisely specify the model parameter and match it exactly to the selected model's **`properties.deployment.modelName`** (e.g. `gpt-5.4-nano`) — same dots, same casing, same punctuation. Prefer it over the ARM resource `name` (e.g. `gpt-5-4-nano`) or `displayName`, which may be rejected with `unknown_model` on some gateways
@@ -426,17 +424,12 @@ async def main():
             on_permission_request=confirm_permission,
             model="<selected-model>",  # e.g. "gpt-4o"
             # BYOK provider — points to the AI Gateway unified model passthrough.
-            # The gateway authenticates the model passthrough via the `Api-Key`
-            # header, so pass the key in `headers`. The `api_key` field alone is
-            # sent as `Authorization: Bearer`, which the gateway rejects with
-            # `unknown_model`.
+            # The SDK sends api_key as Authorization: Bearer, which is how the
+            # gateway reads its key.
             provider={
                 "type": "openai",
                 "base_url": "<ai-gateway-host>/default/models/openai/v1",
                 "api_key": os.environ["AI_GATEWAY_API_KEY"],
-                "headers": {
-                    "Api-Key": os.environ["AI_GATEWAY_API_KEY"],
-                },
             },
             # MCP tool servers from AI Gateway
             mcp_servers={
@@ -444,7 +437,7 @@ async def main():
                     "type": "http",
                     "url": "<tool-endpoint>",
                     "headers": {
-                        "Api-Key": os.environ["AI_GATEWAY_API_KEY"],
+                        "Authorization": f"Bearer {os.environ['AI_GATEWAY_API_KEY']}",
                     },
                     "tools": ["<selected-tool-name>"],
                 },
@@ -514,10 +507,10 @@ After generating the agent code, create a complete, self-contained project the u
 
 After generating the code, provide:
 
-- Required package installation commands: `pip install "github-copilot-sdk>=1.0.0" python-dotenv` (the `>= 1.0.0` pin is mandatory — older SDKs drop the custom `Api-Key` headers and the gateway returns `unknown_model`)
+- Required package installation commands: `pip install "github-copilot-sdk>=1.0.0" python-dotenv` (the `>= 1.0.0` pin is mandatory — older SDKs drop the custom `Authorization` header that the MCP tool servers need)
 - Copilot CLI must be installed separately (the SDK communicates with it via JSON-RPC)
 - Environment variable setup:
-  - `AI_GATEWAY_API_KEY` — the gateway API key from discovery (passed via the `Api-Key` header for tool servers and via the BYOK provider `api_key` for the model)
+  - `AI_GATEWAY_API_KEY` — the gateway API key from discovery (passed as `Authorization: Bearer` in the `headers` of each tool server, and as the BYOK provider `api_key` for the model)
 - How to run the agent
 
 #### C.5 Run and verify
@@ -530,9 +523,10 @@ Don't stop at "here's the code." Run the agent once and confirm the wiring actua
   - `429 ... exceeded rate limit` or quota errors from the model
   - empty/slow responses caused by the upstream model, not the client
 - **Treat these as real bugs to fix before handing off:**
-  - `unknown_model` → wrong model identifier (used ARM `name`/`displayName` instead of `properties.deployment.modelName`), a protocol mismatch (e.g. a Chat Completions client pointed at a `/responses`- or `/messages`-only model), **or** an SDK older than `1.0.0` dropping the `Api-Key` header
+  - `unknown_model` → wrong model identifier (used ARM `name`/`displayName` instead of `properties.deployment.modelName`), a protocol mismatch (e.g. a Chat Completions client pointed at a `/responses`- or `/messages`-only model)
   - `KeyError: 'AI_GATEWAY_API_KEY'` → `.env` not loaded, usually a BOM (see the `.env` note below)
-  - `401`/`403` → wrong or missing `Api-Key` header
+  - `401`/`403` → wrong or missing `Authorization: Bearer <gateway key>` header
+  - `400` "Specify either an API key or an Authorization header, not both" → remove the extra `Api-Key` header
 - If you can't get a clean model response because of a backend `429`/quota, say so explicitly and note that everything up to the model was validated, rather than implying the full round-trip succeeded.
 
 ---

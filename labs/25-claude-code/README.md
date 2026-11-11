@@ -788,9 +788,9 @@ Expected output (your text differs):
 📊 Tokens: 23 in, 66 out
 ```
 
-The gateway also accepts the key in an `api-key` header, but not in `x-api-key`: that header gets `401`. Leave out
-`anthropic-version`, and the call fails with `anthropic-version: header is required`. Claude Code sends that header
-for you.
+The gateway reads the key from the `Authorization: Bearer` header. In an `x-api-key` header, it gets `401`. Leave
+out `anthropic-version`, and the call fails with `anthropic-version: header is required`. Claude Code sends that
+header for you.
 
 > [!NOTE]
 > A new alias, policy, or key can take a minute to apply. If the call returns `401` or `404`, wait a minute and try
@@ -967,7 +967,7 @@ Claude Code then has two connections to the gateway:
 | | Models | MCP server |
 |---|---|---|
 | URL | `https://<gateway-host>/default/models/anthropic` | `https://<gateway-host>/default/toolservers/learn/mcp` |
-| How the key is sent | `Authorization: Bearer <key>`, from `ANTHROPIC_AUTH_TOKEN` | An `api-key: <key>` header. The MCP endpoint accepts the key only in this header. |
+| How the key is sent | `Authorization: Bearer <key>`, from `ANTHROPIC_AUTH_TOKEN` | The same `Authorization: Bearer <key>` header, which you set yourself |
 | Key | `claude-code` | The same `claude-code` key. It needs no extra setup. |
 
 > [!TIP]
@@ -1094,8 +1094,8 @@ az deployment group create -g $RG -n learn-mcp -f ../04-federate-mcp-tools/infra
 
 ### Test the MCP endpoint
 
-Save the endpoint, then list its tools the way Claude Code does: a JSON-RPC `tools/list` request with the key in the
-`api-key` header.
+Save the endpoint, then list its tools the way Claude Code does: a JSON-RPC `tools/list` request with the key as a
+bearer token.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -1104,10 +1104,10 @@ Save the endpoint, then list its tools the way Claude Code does: a JSON-RPC `too
 export AI_GATEWAY_MCP_URL="${AI_GATEWAY_URL%/}/default/toolservers/learn/mcp"
 echo "🔌 MCP endpoint: $AI_GATEWAY_MCP_URL"
 
-# List the server's tools: a JSON-RPC tools/list request, with the key in the api-key header
+# List the server's tools: a JSON-RPC tools/list request, with the key as a bearer token
 echo "🔧 Tools on the learn MCP server:"
 curl -sS "$AI_GATEWAY_MCP_URL" \
-  -H "api-key: $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | jq -r '.result.tools[].name'
 ```
@@ -1120,10 +1120,10 @@ curl -sS "$AI_GATEWAY_MCP_URL" \
 $env:AI_GATEWAY_MCP_URL = "$($env:AI_GATEWAY_URL.TrimEnd('/'))/default/toolservers/learn/mcp"
 Write-Host "🔌 MCP endpoint: $env:AI_GATEWAY_MCP_URL"
 
-# List the server's tools: a JSON-RPC tools/list request, with the key in the api-key header
+# List the server's tools: a JSON-RPC tools/list request, with the key as a bearer token
 Write-Host "🔧 Tools on the learn MCP server:"
 $reply = Invoke-RestMethod -Method Post -Uri $env:AI_GATEWAY_MCP_URL `
-  -Headers @{ "api-key" = $env:AI_GATEWAY_API_KEY; Accept = "application/json, text/event-stream" } `
+  -Headers @{ Authorization = "Bearer $env:AI_GATEWAY_API_KEY"; Accept = "application/json, text/event-stream" } `
   -ContentType "application/json" -Body '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 $reply.result.tools.name
 ```
@@ -1162,7 +1162,7 @@ the name and the URL: it takes one or more values, so Claude Code would read any
 ```bash title="Bash"
 # Add the gateway's learn MCP server to Claude Code for your user, with a header that reads the key from the environment
 claude mcp add --transport http --scope user ai-gateway-learn "$AI_GATEWAY_MCP_URL" \
-  --header 'api-key: ${AI_GATEWAY_API_KEY}' &&
+  --header 'Authorization: Bearer ${AI_GATEWAY_API_KEY}' &&
   echo "🔌 MCP server ai-gateway-learn is ready in Claude Code"
 
 # Check that Claude Code connects to it
@@ -1176,7 +1176,7 @@ claude mcp list
 ```powershell title="PowerShell"
 # Add the gateway's learn MCP server to Claude Code for your user, with a header that reads the key from the environment
 claude mcp add --transport http --scope user ai-gateway-learn $env:AI_GATEWAY_MCP_URL `
-  --header 'api-key: ${AI_GATEWAY_API_KEY}'
+  --header 'Authorization: Bearer ${AI_GATEWAY_API_KEY}'
 if ($?) { Write-Host "🔌 MCP server ai-gateway-learn is ready in Claude Code" }
 
 # Check that Claude Code connects to it
@@ -1190,7 +1190,7 @@ Expected output:
 ```text
 Added HTTP MCP server ai-gateway-learn with URL: https://<gateway-host>/default/toolservers/learn/mcp to user config
 Headers: {
-  "api-key": "[REDACTED]"
+  "Authorization": "[REDACTED]"
 }
 File modified: <home>/.claude.json
 🔌 MCP server ai-gateway-learn is ready in Claude Code
@@ -1628,12 +1628,17 @@ Set-Location ~/contoso-calc; claude -p "Say hi in three words"
 
 - **Sign in with Microsoft Entra ID instead of a key.** If the gateway accepts Entra tokens and you have the
   **AI Gateway Models User** role, as in [Authorize callers with Microsoft Entra ID](../11-entra-rbac/README.md), let
-  Claude Code fetch a token itself. Add
-  `"apiKeyHelper": "az account get-access-token --resource https://azure-api.net/aigateway --query accessToken -o tsv"`
-  to `~/.claude/settings.json`, and run `unset ANTHROPIC_AUTH_TOKEN` (Bash) or
-  `Remove-Item Env:ANTHROPIC_AUTH_TOKEN` (PowerShell). Also keep it out of the `env` block of your settings. If it's
-  still set, Claude Code keeps sending the key as the bearer token instead of the helper's token, and the requests
-  still succeed with the key. Claude Code runs the helper again every five minutes by default, so expired tokens
+  Claude Code fetch a token itself. Add this setting to `~/.claude/settings.json`:
+
+  ```json title="~/.claude/settings.json"
+  {
+    "apiKeyHelper": "az account get-access-token --scope https://ai.gateway.azure.com/Data.All --query accessToken -o tsv"
+  }
+  ```
+
+  Then run `unset ANTHROPIC_AUTH_TOKEN` (Bash) or `Remove-Item Env:ANTHROPIC_AUTH_TOKEN` (PowerShell), and keep it
+  out of the `env` block of your settings. If it's still set, Claude Code keeps sending the key as the bearer token
+  instead of the helper's token, and the requests still succeed with the key. Claude Code runs the helper again every five minutes by default, so expired tokens
   don't stop long sessions. See [Settings](https://code.claude.com/docs/en/settings).
 - **Keep the settings in a file.** Put the `ANTHROPIC_*` variables in the `env` block of `~/.claude/settings.json`,
   so every session uses the gateway without exports. Keep the key in your user settings, not in a project's

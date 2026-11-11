@@ -1,7 +1,7 @@
 """A Microsoft Agent Framework agent whose model and MCP tool calls both go through AI Gateway.
 
 An OpenAIChatClient (Responses API) points at the gateway's OpenAI-compatible endpoint and sends the runtime key as
-its API key. Tools come from the gateway's MCP endpoint for one MCP server, with the key in the api-key header.
+its API key. Tools come from the gateway's MCP endpoint for one MCP server, with the same key as a bearer token.
 
 Usage:
     cp .env.example .env      # then fill in the values
@@ -37,7 +37,7 @@ async def main() -> None:
     gateway_url, model, api_key, server = settings()
     question = " ".join(sys.argv[1:]) or QUESTION
 
-    # The model endpoint accepts the key as the SDK's bearer token. Adding an api-key header as well gets a 400.
+    # The SDK sends the key as a bearer token. Adding an api-key header as well gets a 400.
     client = OpenAIChatClient(
         model=model,
         base_url=f"{gateway_url}/default/models/openai/v1/",
@@ -47,7 +47,7 @@ async def main() -> None:
     mcp_tool = MCPStreamableHTTPTool(
         name="gateway-tools",
         url=f"{gateway_url}/default/toolservers/{server}/mcp",
-        static_headers={"api-key": api_key},
+        static_headers={"Authorization": f"Bearer {api_key}"},
         approval_mode="never_require",
         request_timeout=60,
     )

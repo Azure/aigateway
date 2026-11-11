@@ -42,8 +42,8 @@ async def main() -> None:
     url = endpoint(server)
     print(f"MCP endpoint: {url}")
 
-    # The gateway authenticates the client with the runtime key in the api-key header.
-    async with httpx.AsyncClient(headers={"api-key": api_key}, timeout=60) as http_client:
+    # The gateway authenticates the client with the runtime key, sent as a bearer token.
+    async with httpx.AsyncClient(headers={"Authorization": f"Bearer {api_key}"}, timeout=60) as http_client:
         async with streamable_http_client(url, http_client=http_client) as (read, write, _):
             async with ClientSession(read, write) as session:
                 init = await session.initialize()

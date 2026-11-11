@@ -1306,7 +1306,7 @@ The output ends with `/modelProviders/foundry-private/models/gpt-5-mini`.
 > # Call the model through the new gateway, and print only the HTTP status code
 > echo "🔒 Model call through the gateway, which reaches Foundry over the private endpoint:"
 > curl -sS -o /dev/null -w 'HTTP %{http_code}\n' "${AI_GATEWAY_URL%/}/default/models/openai/v1/chat/completions" \
->   -H "api-key: $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
+>   -H "Authorization: Bearer $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
 >   -d "{\"model\":\"$AI_GATEWAY_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply with exactly one word: ok\"}],\"max_completion_tokens\":128}"
 > ```
 >
@@ -1318,7 +1318,7 @@ The output ends with `/modelProviders/foundry-private/models/gpt-5-mini`.
 > # Call the model through the new gateway; -SkipHttpErrorCheck returns error responses instead of throwing
 > Write-Host "🔒 Model call through the gateway, which reaches Foundry over the private endpoint:"
 > $r = Invoke-WebRequest -Method Post -Uri "$env:AI_GATEWAY_URL/default/models/openai/v1/chat/completions" `
->   -Headers @{ "api-key" = $env:AI_GATEWAY_API_KEY } -ContentType "application/json" -Body $body -SkipHttpErrorCheck
+>   -Headers @{ Authorization = "Bearer $env:AI_GATEWAY_API_KEY" } -ContentType "application/json" -Body $body -SkipHttpErrorCheck
 > "HTTP $($r.StatusCode)"
 > ```
 >
@@ -1412,7 +1412,7 @@ virtual network's DNS, including the gateway.
 # Call the model through the gateway, and print only the HTTP status code
 echo "🔒 Model call through the gateway, with Foundry's public access off:"
 curl -sS -o /dev/null -w 'HTTP %{http_code}\n' "${AI_GATEWAY_URL%/}/default/models/openai/v1/chat/completions" \
-  -H "api-key: $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
   -d "{\"model\":\"$AI_GATEWAY_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply with exactly one word: ok\"}],\"max_completion_tokens\":128}"
 ```
 </details> <!-- gh -->
@@ -1427,7 +1427,7 @@ $body = @{ model = $env:AI_GATEWAY_MODEL; max_completion_tokens = 128
 # Call the model through the gateway; -SkipHttpErrorCheck returns error responses instead of throwing
 Write-Host "🔒 Model call through the gateway, with Foundry's public access off:"
 $r = Invoke-WebRequest -Method Post -Uri "$env:AI_GATEWAY_URL/default/models/openai/v1/chat/completions" `
-  -Headers @{ "api-key" = $env:AI_GATEWAY_API_KEY } -ContentType "application/json" -Body $body -SkipHttpErrorCheck
+  -Headers @{ Authorization = "Bearer $env:AI_GATEWAY_API_KEY" } -ContentType "application/json" -Body $body -SkipHttpErrorCheck
 "HTTP $($r.StatusCode)"
 ```
 </details> <!-- gh -->
@@ -1500,8 +1500,7 @@ anymore, but the gateway can.
 On the portal and Azure CLI tracks, re-enable Foundry's public access first, because the gateway from the earlier
 labs and other callers reach it over the internet. Then remove the new gateway's role assignment on Foundry and
 delete the lab's resource group, which holds the gateway, the private endpoint, the private DNS zones, the virtual
-network, and the NSG. A gateway that you created in the portal also has a connector gateway there, which the
-group delete removes too.
+network, and the NSG.
 
 <!-- track: portal | Portal -->
 <details open><summary><b>🖥️ Portal</b></summary> <!-- gh -->
@@ -1512,8 +1511,8 @@ In the Azure portal, re-enable public network access on the Foundry resource, re
 **Foundry User** role assignment in its **Access control (IAM)**, and delete `rg-ai-gateway-private`.
 
 If you put the lab's resources in a resource group you want to keep, delete them in this order instead: the
-gateway, with **More actions** (**⋮**) › **Delete** on its row in **All gateways** of the AI Gateway portal, which
-also deletes its connector gateway, then the private endpoint, the private DNS zone links and zones, the virtual
+gateway, with **More actions** (**⋮**) › **Delete** on its row in **All gateways** of the AI Gateway portal, then
+the private endpoint, the private DNS zone links and zones, the virtual
 network, and the NSG.
 
 </details> <!-- gh -->

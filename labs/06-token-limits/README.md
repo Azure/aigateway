@@ -718,7 +718,7 @@ Look at the full headers and body of a single throttled call:
 # Send one raw chat completion while you're throttled, and show its status line, headers, and body
 echo "🚦 Expect HTTP 429 with a Retry-After header:"
 curl -i "${AI_GATEWAY_URL%/}/default/models/openai/v1/chat/completions" \
-  -H "api-key: $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
   -d "{\"model\":\"$AI_GATEWAY_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}]}"
 ```
 

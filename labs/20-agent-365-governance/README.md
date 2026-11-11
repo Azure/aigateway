@@ -217,7 +217,7 @@ command -v jq >/dev/null || { echo "This script needs jq." >&2; exit 1; }
 printf '%s' "$ARGS" | jq -e 'type == "object"' >/dev/null || { echo "arguments-json must be a JSON object." >&2; exit 1; }
 ENDPOINT="${AI_GATEWAY_URL%/}/default/toolservers/${SERVER}/mcp"
 
-HEADERS=(-H "api-key: $AI_GATEWAY_API_KEY" -H "Content-Type: application/json"
+HEADERS=(-H "Authorization: Bearer $AI_GATEWAY_API_KEY" -H "Content-Type: application/json"
   -H "Accept: application/json, text/event-stream")
 STATUS="" BODY="" SESSION_ID="" CORRELATION_ID=""
 

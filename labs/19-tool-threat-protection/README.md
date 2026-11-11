@@ -506,7 +506,7 @@ az role assignment list --assignee (az ad signed-in-user show --query id -o tsv)
 
 ### Call a tool with your user token
 
-The script below gets a token for `https://azure-api.net/aigateway` from the Azure CLI, checks that it's a
+The script below gets a token for `https://ai.gateway.azure.com/Data.All` from the Azure CLI, checks that it's a
 delegated user token, runs the MCP handshake, and calls the server's search tool with a harmless question.
 
 <!-- include: infra/call-protected-tool.sh -->
@@ -527,7 +527,7 @@ delegated user token, runs the MCP handshake, and calls the server's search tool
 #   ./call-protected-tool.sh key   [server-name] [query]   # runtime key in AI_GATEWAY_API_KEY (no bearer token)
 #
 # token mode uses AI_GATEWAY_TOKEN when set, otherwise it runs
-#   az account get-access-token --resource https://azure-api.net/aigateway
+#   az account get-access-token --scope https://ai.gateway.azure.com/Data.All
 # The script calls the Learn docs search tool (or the first tool whose name contains "search") unless you set
 # TOOL_NAME, and sends the query as {"query": "..."}. Use a benign query. Requires curl and jq.
 set -euo pipefail
@@ -541,7 +541,7 @@ ENDPOINT="${AI_GATEWAY_URL%/}/default/toolservers/${SERVER}/mcp"
 
 case "$AUTH" in
   token)
-    TOKEN="${AI_GATEWAY_TOKEN:-$(az account get-access-token --resource https://azure-api.net/aigateway --query accessToken -o tsv)}"
+    TOKEN="${AI_GATEWAY_TOKEN:-$(az account get-access-token --scope https://ai.gateway.azure.com/Data.All --query accessToken -o tsv)}"
     # Delegated (user) tokens carry an scp claim. App-only tokens carry roles instead and can't be used for evaluation.
     payload="$(printf '%s' "$TOKEN" | cut -d. -f2 | tr '_-' '/+')"
     while [ $(( ${#payload} % 4 )) -ne 0 ]; do payload="${payload}="; done
@@ -554,7 +554,7 @@ case "$AUTH" in
     HEADERS=(-H "Authorization: Bearer $TOKEN") ;;
   key)
     : "${AI_GATEWAY_API_KEY:?Set AI_GATEWAY_API_KEY to a runtime key from Access > Keys}"
-    HEADERS=(-H "api-key: $AI_GATEWAY_API_KEY") ;;
+    HEADERS=(-H "Authorization: Bearer $AI_GATEWAY_API_KEY") ;;
   *)
     echo "The first argument must be token or key." >&2; exit 1 ;;
 esac
@@ -919,7 +919,7 @@ steps. Find your calls by time and compare the allowed call with the key-only ca
   pages, tickets, or documents. For read-only tools that only return trusted content, weigh the extra round trip.
 - **Move your agents to delegated tokens.** Agents that call tools with runtime keys or app-only tokens, such as a
   managed identity, can't use protected servers. Plan an on-behalf-of flow with the scope
-  `https://azure-api.net/aigateway/Data.All` before you protect a server they depend on.
+  `https://ai.gateway.azure.com/Data.All` before you protect a server they depend on.
 - **Roll out in Audit mode first.** Ask your security team to start Defender in **Audit**, review what it flags,
   and then switch to **Block**. Defender's
   [runtime protection guidance](https://learn.microsoft.com/defender-endpoint/configure-ai-agent-runtime-protection#enable-runtime-protection)

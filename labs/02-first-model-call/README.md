@@ -151,7 +151,7 @@ unchanged to Foundry. The response comes back as is, and the gateway records tok
 
 | Step | What happens | Where you set it |
 |---|---|---|
-| Inbound authentication | An active runtime key in the `api-key` header, or as `Authorization: Bearer <key>` (what the OpenAI SDKs send), or the call fails with `401` | **Access** › **API keys** |
+| Inbound authentication | An active runtime key as `Authorization: Bearer <key>`, which is what the OpenAI SDKs send, or the call fails with `401` | **Access** › **API keys** |
 | Routing | `/default/models/openai/v1/chat/completions` or `/responses`, and `model` must equal an alias | Model details and its **Aliases** tab |
 | Policies | Token limits, cost limits, and content safety run before the backend call | **Policies** (labs 06–09) |
 | Backend authentication | The gateway's managed identity, with the **Foundry User** role on the account | Model provider |
@@ -1005,9 +1005,9 @@ Use the same alias and key everywhere. The gateway exposes the OpenAI-compatible
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# Call Chat Completions through the gateway: the alias in model, and the runtime key in the api-key header
+# Call Chat Completions through the gateway: the alias in model, and the runtime key as a bearer token
 curl -sS "${AI_GATEWAY_URL%/}/default/models/openai/v1/chat/completions" \
-  -H "api-key: $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
   -d "{\"model\":\"$AI_GATEWAY_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"Write a one-sentence status update.\"}]}" \
   | jq -r 'if .choices then "🤖 \(.choices[0].message.content)" else "🚨 \(.error.message // .)" end'
 ```
@@ -1022,10 +1022,10 @@ $body = @{
   messages = @(@{ role = "user"; content = "Write a one-sentence status update." })
 } | ConvertTo-Json -Depth 5
 
-# Call Chat Completions through the gateway, with the runtime key in the api-key header
+# Call Chat Completions through the gateway, with the runtime key as a bearer token
 $reply = Invoke-RestMethod -Method Post `
   -Uri "$($env:AI_GATEWAY_URL.TrimEnd('/'))/default/models/openai/v1/chat/completions" `
-  -Headers @{ "api-key" = $env:AI_GATEWAY_API_KEY } -ContentType "application/json" -Body $body
+  -Headers @{ Authorization = "Bearer $env:AI_GATEWAY_API_KEY" } -ContentType "application/json" -Body $body
 if ($?) { Write-Host "🤖 $($reply.choices[0].message.content)" }
 ```
 </details> <!-- gh -->
@@ -1037,7 +1037,7 @@ if ($?) { Write-Host "🤖 $($reply.choices[0].message.content)" }
 ```bash title="Bash"
 # Call the Responses API through the gateway, with the same alias and key, and print the reply's text
 curl -sS "${AI_GATEWAY_URL%/}/default/models/openai/v1/responses" \
-  -H "api-key: $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
   -d "{\"model\":\"$AI_GATEWAY_MODEL\",\"input\":\"Summarize what an AI gateway does in one sentence.\"}" \
   | jq -r 'if .output then "🤖 \([.output[] | select(.type == "message") | .content[] | select(.type == "output_text") | .text] | join(""))" else "🚨 \(.error.message // .)" end'
 ```
@@ -1053,7 +1053,7 @@ $body = @{ model = $env:AI_GATEWAY_MODEL; input = "Summarize what an AI gateway 
 # Call the Responses API through the gateway, and print the text of the reply's message
 $reply = Invoke-RestMethod -Method Post `
   -Uri "$($env:AI_GATEWAY_URL.TrimEnd('/'))/default/models/openai/v1/responses" `
-  -Headers @{ "api-key" = $env:AI_GATEWAY_API_KEY } -ContentType "application/json" -Body $body
+  -Headers @{ Authorization = "Bearer $env:AI_GATEWAY_API_KEY" } -ContentType "application/json" -Body $body
 if ($?) { Write-Host "🤖 $(($reply.output | Where-Object type -eq "message").content.text -join '')" }
 ```
 </details> <!-- gh -->
@@ -1091,7 +1091,7 @@ BASE="${AI_GATEWAY_URL%/}/default/models/openai/v1"
 call() {
   local label="$1" path="$2" body="$3" filter="$4" out status reply
   out=$(curl -sS -w '\n%{http_code}' "$BASE$path" \
-    -H "api-key: $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" -d "$body")
+    -H "Authorization: Bearer $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" -d "$body")
   status="${out##*$'\n'}"
   reply="${out%$'\n'*}"
   if [[ "$status" == 2* ]]; then
@@ -1174,10 +1174,8 @@ echo "📦 The .NET sample is restored"
 
 ### Call the model from code
 
-The OpenAI SDKs send their API key as `Authorization: Bearer <key>`, which the model endpoint accepts, so the
-runtime key goes straight into the SDK. Don't also add an `api-key` default header: the gateway rejects a request
-that has both with `400`. The .NET sample uses `HttpClient`, like the .NET samples in the AI Gateway docs, so it
-sends the `api-key` header explicitly.
+The OpenAI SDKs send their API key as `Authorization: Bearer <key>`, which is where the gateway reads the runtime
+key, so the key goes straight into the SDK. The .NET sample uses `HttpClient`, so it sets the same header itself.
 
 <details open><summary>Python</summary> <!-- gh -->
 
@@ -1232,6 +1230,7 @@ console.log(`Chat Completions: ${completion.choices[0].message.content}`);
 <details><summary>C#</summary> <!-- gh -->
 
 ```csharp title="C#"
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 
@@ -1239,7 +1238,8 @@ var gatewayUrl = Environment.GetEnvironmentVariable("AI_GATEWAY_URL")!.TrimEnd('
 var model = Environment.GetEnvironmentVariable("AI_GATEWAY_MODEL")!;
 
 using var http = new HttpClient { BaseAddress = new Uri($"{gatewayUrl}/default/models/openai/v1/") };
-http.DefaultRequestHeaders.Add("api-key", Environment.GetEnvironmentVariable("AI_GATEWAY_API_KEY"));
+http.DefaultRequestHeaders.Authorization =
+    new AuthenticationHeaderValue("Bearer", Environment.GetEnvironmentVariable("AI_GATEWAY_API_KEY"));
 
 using var reply = await http.PostAsJsonAsync("chat/completions", new
 {
@@ -1332,7 +1332,7 @@ The list includes your deployment. In the portal, **Catalog** lists the model to
 ```bash title="Bash"
 # Call Chat Completions with the key, and print only the HTTP status
 STATUS="$(curl -sS -o /dev/null -w "%{http_code}" "${AI_GATEWAY_URL%/}/default/models/openai/v1/chat/completions" \
-  -H "api-key: $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
   -d "{\"model\":\"$AI_GATEWAY_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}]}")" &&
   echo "🔑 With the key: HTTP $STATUS"
 ```
@@ -1346,7 +1346,7 @@ $body = @{ model = $env:AI_GATEWAY_MODEL; messages = @(@{ role = "user"; content
 
 # Call Chat Completions with the key, and print only the HTTP status
 $status = (Invoke-WebRequest -Method Post -Uri "$($env:AI_GATEWAY_URL.TrimEnd('/'))/default/models/openai/v1/chat/completions" `
-  -Headers @{ "api-key" = $env:AI_GATEWAY_API_KEY } -ContentType "application/json" -Body $body -SkipHttpErrorCheck).StatusCode
+  -Headers @{ Authorization = "Bearer $env:AI_GATEWAY_API_KEY" } -ContentType "application/json" -Body $body -SkipHttpErrorCheck).StatusCode
 if ($?) { Write-Host "🔑 With the key: HTTP $status" }
 ```
 </details> <!-- gh -->
@@ -1355,13 +1355,13 @@ Expect `🔑 With the key: HTTP 200`.
 
 ### Get a 401 without the key
 
-Send the same request without the `api-key` header. The gateway rejects it before any policy runs or the
+Send the same request without the `Authorization` header. The gateway rejects it before any policy runs or the
 backend is called.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# Send the same request without the api-key header, and print only the HTTP status
+# Send the same request without the Authorization header, and print only the HTTP status
 STATUS="$(curl -sS -o /dev/null -w "%{http_code}" "${AI_GATEWAY_URL%/}/default/models/openai/v1/chat/completions" \
   -H "Content-Type: application/json" \
   -d "{\"model\":\"$AI_GATEWAY_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}]}")" &&
@@ -1372,7 +1372,7 @@ STATUS="$(curl -sS -o /dev/null -w "%{http_code}" "${AI_GATEWAY_URL%/}/default/m
 <details><summary>PowerShell</summary> <!-- gh -->
 
 ```powershell title="PowerShell"
-# Send the same request without the api-key header, and print only the HTTP status
+# Send the same request without the Authorization header, and print only the HTTP status
 $status = (Invoke-WebRequest -Method Post -Uri "$($env:AI_GATEWAY_URL.TrimEnd('/'))/default/models/openai/v1/chat/completions" `
   -ContentType "application/json" -Body $body -SkipHttpErrorCheck).StatusCode
 if ($?) { Write-Host "🚦 Without a key: HTTP $status" }

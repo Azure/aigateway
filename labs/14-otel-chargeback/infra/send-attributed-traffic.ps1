@@ -19,7 +19,7 @@ if (-not $env:AI_GATEWAY_API_KEY) { throw 'Set $env:AI_GATEWAY_API_KEY to a runt
 
 $uri = "$($env:AI_GATEWAY_URL.TrimEnd('/'))/default/models/openai/v1/chat/completions"
 $runId = "lab14-$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())"
-$token = az account get-access-token --resource https://azure-api.net/aigateway --query accessToken -o tsv
+$token = az account get-access-token --scope https://ai.gateway.azure.com/Data.All --query accessToken -o tsv
 if (-not $token) { throw 'Could not get a Microsoft Entra token. Run az login first.' }
 $body = @{
   model    = $Model
@@ -34,8 +34,8 @@ function Send-Chat([string]$Caller, [hashtable]$AuthHeader, [string]$Correlation
 }
 
 $results = foreach ($i in 1..$Requests) {
-  Send-Chat 'api-key' @{ 'api-key' = $env:AI_GATEWAY_API_KEY } "$runId-key-$i"
-  Send-Chat 'entra' @{ 'Authorization' = "Bearer $token" } "$runId-entra-$i"
+  Send-Chat 'key' @{ Authorization = "Bearer $env:AI_GATEWAY_API_KEY" } "$runId-key-$i"
+  Send-Chat 'entra' @{ Authorization = "Bearer $token" } "$runId-entra-$i"
   Start-Sleep -Seconds 1
 }
 $results | Format-Table -AutoSize

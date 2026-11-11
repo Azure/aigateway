@@ -89,12 +89,12 @@ The agent lives in [`infra/`](infra/), a complete azd project:
 The agent has two outbound paths. Both end at AI Gateway, and neither uses a key:
 
 - **Model.** An `OpenAIChatClient` points at the gateway's model endpoint, `/default/models/openai/v1/`, and sends
-  your lab 02 alias as `model`. Instead of a key, it sends a Microsoft Entra token for the gateway's audience,
-  `https://azure-api.net/aigateway/.default`, as `Authorization: Bearer`. In Foundry, the token belongs to the
+  your lab 02 alias as `model`. Instead of a key, it sends a Microsoft Entra token for the gateway's scope,
+  `https://ai.gateway.azure.com/.default`, as `Authorization: Bearer`. In Foundry, the token belongs to the
   agent's own identity. Locally, it belongs to you.
 - **Tools.** `FoundryToolbox` calls the `gateway-tools` toolbox in Foundry. The toolbox reaches the gateway's
   `/default/toolservers/learn/mcp` endpoint through the `gateway-mcp` connection, which signs in with the Foundry
-  project's managed identity for the audience `https://azure-api.net/aigateway`. The agent never holds a credential
+  project's managed identity for the audience `https://ai.gateway.azure.com`. The agent never holds a credential
   for the MCP server.
 
 Three identities call the gateway, and each one needs the **AI Gateway User** role, which lets it invoke models and
@@ -248,7 +248,7 @@ gateway's audience, and the agent gets the model endpoint and the toolbox's endp
     host: azure.ai.connection
     category: RemoteTool
     authType: ProjectManagedIdentity
-    audience: https://azure-api.net/aigateway
+    audience: https://ai.gateway.azure.com
     target: ${AI_GATEWAY_URL}/default/toolservers/${AI_GATEWAY_MCP_SERVER}/mcp
 
   gateway-agent:
@@ -494,8 +494,8 @@ class HandshakeClient(mcp.Client):
 # Agent Framework creates its MCP clients from mcp.Client, so this applies to the toolbox connection.
 mcp.Client = HandshakeClient
 
-# The audience of AI Gateway's runtime endpoints
-AI_GATEWAY_SCOPE = "https://azure-api.net/aigateway/.default"
+# The token scope for AI Gateway's runtime endpoints
+AI_GATEWAY_SCOPE = "https://ai.gateway.azure.com/.default"
 
 INSTRUCTIONS = """
 You answer questions about Microsoft and Azure technologies.
@@ -963,10 +963,9 @@ it had. When the alias has no policies left, the update prints no policies, only
   both. [Go keyless with Microsoft Entra ID and RBAC](../11-entra-rbac/README.md) scopes roles further, to one alias
   or MCP server.
 - **Use an API key where Entra isn't an option.** Create a key in **Access** › **API keys**, and send it as the
-  SDK's API key to the model endpoint, which accepts a key as `Authorization: Bearer` or in an `api-key` header. The
-  MCP endpoint accepts keys only in the `api-key` header. Send a key in one header only: the gateway rejects a
-  request that has both `api-key` and `Authorization` with `400` and "Specify either an API key or an Authorization
-  header, not both".
+  SDK's API key, which the SDK sends as `Authorization: Bearer <key>`. MCP clients send the same header. Don't add an
+  `api-key` header as well: the gateway rejects a request that has both with `400` and "Specify either an API key or
+  an Authorization header, not both".
 - **Lock down egress.** Foundry can restrict where a hosted agent may connect. Allow only your gateway's host name,
   so the gateway is the agent's only way out. See the
   [egress control sample](https://github.com/microsoft-foundry/foundry-samples/tree/main/samples/python/hosted-agents/agent-framework/responses/18-egress-control).

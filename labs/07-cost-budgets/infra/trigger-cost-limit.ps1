@@ -26,7 +26,7 @@ $body = @{
 
 1..$Requests | ForEach-Object {
   $r = Invoke-WebRequest -Method Post -Uri $uri -Body $body -ContentType 'application/json' `
-    -Headers @{ 'api-key' = $env:AI_GATEWAY_API_KEY } -SkipHttpErrorCheck
+    -Headers @{ Authorization = "Bearer $env:AI_GATEWAY_API_KEY" } -SkipHttpErrorCheck
   $used = '-'
   $code = '-'
   if ($r.StatusCode -eq 200) {

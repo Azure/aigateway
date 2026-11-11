@@ -105,9 +105,10 @@ Before you create, change, or delete Azure resources, confirm the subscription a
   `model create --foundry-resource-id --deployment`: it crashes in 1.0.0b22. The track keeps `az rest` for what the
   extension can't do yet: MCP tool rules (`allowList`, `blocked`, `accessState`) and writing a whole policy array
   from a file. Tool servers have no top-level `failureMode`: the service drops it, and only an endpoint's
-  `required` setting persists. Only connector-based MCP tools use a `Microsoft.Web/connectorGateways` resource: the
-  portal creates one with the gateway's name when it creates the gateway, and deletes it with the gateway. The CLI
-  and Bicep tracks don't create it.
+  `required` setting persists. Connector tools come from an existing Azure Connector Namespace
+  (`Microsoft.Web/connectorGateways`): create its MCP server and authorize its connections in Azure, then import it
+  with **MCP servers** › **Import from Azure** and a gateway managed identity (audience `https://apihub.azure.com`).
+  Creating or deleting a gateway never creates or deletes a namespace.
   Tracks that call `az rest` set `GATEWAY_ID` (from `az aigateway show`),
   `WS` (`https://management.azure.com$GATEWAY_ID/workspaces/default`), and `API`
   (`api-version=2025-09-01-preview`) once. A `PATCH` replaces whole arrays such as `properties.policies`, so read,
@@ -127,11 +128,12 @@ Before you create, change, or delete Azure resources, confirm the subscription a
   think by default, so read the `text` blocks in `content` and leave headroom in `max_tokens`.
 - MCP tools: `<runtime URL>/default/toolservers/<name>/mcp`. Federated tools are named `<namespace>_<tool>`, for
   example `learn_microsoft_docs_search`.
-- Runtime auth for models: a runtime API key in the `api-key` header, or `Authorization: Bearer` with the key or a
-  Microsoft Entra token. Never send both, or the gateway answers `400`. With an OpenAI SDK, pass the key as the
-  client's API key. MCP endpoints read keys only from `api-key`.
-- Entra tokens use the audience `https://azure-api.net/aigateway`. The data-plane roles are **AI Gateway User**
-  (models and tools), **AI Gateway Models User**, and **AI Gateway Tools User**.
+- Runtime auth for models and MCP tools: `Authorization: Bearer` with a runtime API key or a Microsoft Entra token.
+  Never add an `api-key` header as well, or the gateway answers `400`. With an OpenAI SDK, pass the key as the
+  client's API key; with an Anthropic SDK, pass it as the auth token, because `x-api-key` answers `401`.
+- Entra tokens use the scope `https://ai.gateway.azure.com/Data.All` (`https://ai.gateway.azure.com/.default` from
+  an SDK credential), and their `aud` is the app ID `18550318-e177-4205-a743-6816d6fcdc3f`. The data-plane roles
+  are **AI Gateway User** (models and tools), **AI Gateway Models User**, and **AI Gateway Tools User**.
 - Policy changes take 20 to 60 seconds to apply. A token or request rate limit answers `429` with `Retry-After`, a
   cost budget answers `403` `LlmCostQuotaExceeded`, and content safety blocks with `400`.
 - Streaming (`"stream": true`) returns `text/event-stream` chunks and ends with `data: [DONE]`. Chat Completions
@@ -144,25 +146,24 @@ Before you create, change, or delete Azure resources, confirm the subscription a
   as the model ID. The gateway doesn't serve `GET /models` (it answers `400`), so add models by hand. Name the alias
   after a well-known model, such as `gpt-6.1-sol`, so Copilot applies that model's prompts and token sizes. Agent
   requests carry 14,000 to 38,000 input tokens each, so give Copilot keys a generous token limit.
-- The same Copilot clients can use a gateway MCP server, such as `learn`, at `<runtime URL>/default/toolservers/<name>/mcp`
-  with the same runtime key in the `api-key` header (a bearer token answers `401`). Add it with
-  `copilot mcp add --transport http --header 'api-key: ${AI_GATEWAY_API_KEY}' <name> <url>` (the CLI and the GitHub
-  Copilot app share `~/.copilot/mcp-config.json`), a `.vscode/mcp.json` `http` server with a password input, or
-  `mcpServers` in an SDK session. Tool results add tokens: a Learn search returns 26 to 52 KB, so one question with
-  a search can send about 50,000 input tokens. Suspending the key returns `401` for both models and tools.
+- The same Copilot clients can use a gateway MCP server, such as `learn`, at
+  `<runtime URL>/default/toolservers/<name>/mcp` with the same runtime key as a bearer token. Add it with
+  `copilot mcp add --transport http --header 'Authorization: Bearer ${AI_GATEWAY_API_KEY}' <name> <url>` (the CLI
+  and the GitHub Copilot app share `~/.copilot/mcp-config.json`), a `.vscode/mcp.json` `http` server with a password
+  input, or `mcpServers` in an SDK session. Tool results add tokens: a Learn search returns 26 to 52 KB, so one
+  question with a search can send about 50,000 input tokens. Suspending the key returns `401` for both models and tools.
 - Claude Code can use the gateway's Claude models: `ANTHROPIC_BASE_URL=<runtime URL>/default/models/anthropic`
   (without `/v1`), the runtime key in `ANTHROPIC_AUTH_TOKEN`, which it sends as a bearer token, and the aliases in
   `ANTHROPIC_DEFAULT_OPUS_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL`, and `ANTHROPIC_DEFAULT_HAIKU_MODEL`. The
   portal's import names them `<foundry-account-name>/<deployment>`. Unset `ANTHROPIC_API_KEY`: Claude Code sends it
   in `x-api-key`, which answers `401`, and retries a `401` for minutes. For Entra ID, an `apiKeyHelper` setting can
-  run `az account get-access-token --resource https://azure-api.net/aigateway --query accessToken -o tsv`; unset
-  `ANTHROPIC_AUTH_TOKEN`, which outranks the helper as the bearer token. Direct
-  Messages calls need the `anthropic-version` header. Claude Code's requests carry about 13,500 cached tokens, which
+  run `az account get-access-token --scope https://ai.gateway.azure.com/Data.All --query accessToken -o tsv`; unset
+  `ANTHROPIC_AUTH_TOKEN`, which outranks the helper as the bearer token. Direct Messages calls need the
+  `anthropic-version` header. Claude Code's requests carry about 13,500 cached tokens, which
   barely count toward token limits. It doesn't retry a `429`, and it reports a budget's `403` as "Failed to
   authenticate": switch with `/model sonnet` or `--model sonnet`, because `--fallback-model` doesn't cover a `403`.
-  Add a gateway MCP server with
-  `claude mcp add --transport http --scope user <name> <url> --header 'api-key: ${AI_GATEWAY_API_KEY}'`, with
-  `--header` last, and allow its tools in `claude -p` with `--allowedTools "mcp__<name>"`.
+  Add a gateway MCP server with `claude mcp add --transport http --scope user <name> <url> --header
+  'Authorization: Bearer ${AI_GATEWAY_API_KEY}'`, with `--header` last, and allow its tools in `claude -p` with `--allowedTools "mcp__<name>"`.
 
 ## Lab catalog
 

@@ -23,7 +23,7 @@ services:
       - ai-project
     category: RemoteTool
     authType: ProjectManagedIdentity
-    audience: https://azure-api.net/aigateway
+    audience: https://ai.gateway.azure.com
     target: ${AI_GATEWAY_URL}/default/toolservers/${AI_GATEWAY_MCP_SERVER}/mcp
     metadata:
       type: custom_MCP

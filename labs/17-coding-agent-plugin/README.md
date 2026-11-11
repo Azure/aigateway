@@ -167,7 +167,7 @@ What the generated code relies on:
 |---|---|
 | Model base URL (OpenAI-compatible) | `<gateway URL>/default/models/openai/v1` |
 | MCP endpoint | `<gateway URL>/default/toolservers/<server-name>/mcp` |
-| Auth header | `api-key: <runtime key>`. The plugin writes it as `Api-Key`; header names aren't case-sensitive. |
+| Auth header | `Authorization: Bearer <runtime key>`, for both models and MCP tools |
 | Key source | The `AI_GATEWAY_API_KEY` environment variable, loaded from a git-ignored `.env` file |
 | Model name | The model's deployment name as the gateway publishes it, for example `gpt-5-mini` |
 | Agent scaffold | GitHub Copilot SDK, `github-copilot-sdk>=1.0.0`, Python unless you ask for TypeScript |
@@ -337,7 +337,7 @@ Read the code before you run it again or commit it. Check that:
 - The `model` value is a name your gateway accepts. To retarget models later without a code change, ask the agent
   to use your alias, as explained in
   [Publish models from any provider behind stable aliases](../03-multi-provider-aliases/README.md).
-- The key comes from `AI_GATEWAY_API_KEY` and goes in the `api-key` header. No key value appears in code,
+- The key comes from `AI_GATEWAY_API_KEY` and goes in the `Authorization: Bearer` header. No key value appears in code,
   `README.md`, or config files, and `.env.example` holds only a placeholder.
 - If the plugin wrote a `.env` file, `.gitignore` lists it.
 - The app calls only the gateway's runtime URL, never `management.azure.com`.
@@ -398,7 +398,7 @@ If the app fails, this call tells you whether the problem is in the gateway setu
 # Call the model through the gateway with your key and alias, and print only the HTTP status code
 echo "🤖 HTTP status of a model call through the gateway:"
 curl -sS -o /dev/null -w "HTTP %{http_code}\n" "${AI_GATEWAY_URL%/}/default/models/openai/v1/chat/completions" \
-  -H "api-key: $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
   -d "{\"model\":\"$AI_GATEWAY_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}]}"
 ```
 </details> <!-- gh -->
@@ -410,7 +410,7 @@ curl -sS -o /dev/null -w "HTTP %{http_code}\n" "${AI_GATEWAY_URL%/}/default/mode
 Write-Host "🤖 HTTP status of a model call through the gateway:"
 $body = @{ model = $env:AI_GATEWAY_MODEL; messages = @(@{ role = "user"; content = "ping" }) } | ConvertTo-Json -Depth 5
 (Invoke-WebRequest -Method Post -Uri "$($env:AI_GATEWAY_URL.TrimEnd('/'))/default/models/openai/v1/chat/completions" `
-  -Headers @{ "api-key" = $env:AI_GATEWAY_API_KEY } -ContentType "application/json" -Body $body -SkipHttpErrorCheck).StatusCode
+  -Headers @{ Authorization = "Bearer $env:AI_GATEWAY_API_KEY" } -ContentType "application/json" -Body $body -SkipHttpErrorCheck).StatusCode
 ```
 </details> <!-- gh -->
 
@@ -492,7 +492,7 @@ exact MCP URL, run
       "type": "http",
       "url": "<gateway-url>/default/toolservers/learn/mcp",
       "headers": {
-        "api-key": "${input:aigw-key}"
+        "Authorization": "Bearer ${input:aigw-key}"
       }
     }
   }
@@ -507,8 +507,8 @@ entry keeps the key out of the file.
 
 ### Go keyless
 
-The plugin generates code that uses a runtime key. For production apps, switch to Microsoft Entra ID tokens with
-the audience `https://azure-api.net/aigateway`, as shown in
+The plugin generates code that uses a runtime key. For production apps, switch to Microsoft Entra ID tokens for
+the scope `https://ai.gateway.azure.com/.default`, as shown in
 [Go keyless with Microsoft Entra ID and RBAC](../11-entra-rbac/README.md).
 
 ## Clean up

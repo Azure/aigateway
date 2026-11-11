@@ -17,9 +17,10 @@ async def main() -> None:
     model = os.environ.get("AI_GATEWAY_MODEL", "gpt-6.1-sol")
     mcp_url = os.environ.get("AI_GATEWAY_MCP_URL")
 
-    # MCP endpoints read the key from the api-key header. Model calls send it as a bearer token.
+    # The MCP server gets the key as a bearer token, like the model calls.
+    headers = {"Authorization": f"Bearer {api_key}"}
     mcp_servers = (
-        {"ai-gateway-learn": {"type": "http", "url": mcp_url, "headers": {"api-key": api_key}, "tools": ["*"]}}
+        {"ai-gateway-learn": {"type": "http", "url": mcp_url, "headers": headers, "tools": ["*"]}}
         if mcp_url
         else {}
     )
