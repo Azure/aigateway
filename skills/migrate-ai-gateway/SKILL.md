@@ -30,6 +30,10 @@ read-only collection and local evidence/document utilities.
 - Stay on the migration. Before confirmation, do not inspect backend resources
   or other subscriptions, probe runtimes or assess cost. Runtime behavior is for
   the approved smoke tests; only missing source configuration blocks an asset.
+- Research only facts that would change an inventory entry. Start with the
+  bundled CLI and management references, use one authoritative source per fact
+  and stop once it is settled; record remaining runtime unknowns as test items,
+  because extra cross-checks delay the review without changing the plan.
 - Confirm the complete reviewed inventory once. It includes exact writes,
   external permissions, credential boundaries and bounded tests. Ask again for
   changed intent, not ordinary progress. Host permission controls still apply.
@@ -93,7 +97,9 @@ For each selected component compare:
   [model discovery and routing](references/model-workflow.md) when relevant.
 - **MCP:** endpoints/versions, tools/schemas, routing/rewrites, auth, policies
   and access. Compare native MCP and OpenAPI sources (which need a REST contract)
-  directly or through APIM; prefer direct when evidence supports it. Check
+  directly or through APIM; prefer direct when evidence supports it. For tools
+  exported from REST operations, the collector's `restSources` gives the backing
+  API, upstream and operation policies, and `publishedEndpoint` the APIM URL. Check
   operations and credentials; tool names and schemas may differ. Do not guess
   endpoint names, require an upstream ID without need, append templates to
   guessed URLs or equate an APIM 404 with lack of support.
@@ -107,17 +113,16 @@ For each selected component compare:
 - **Networking and monitoring:** mirror the source topology, diagnostics
   destinations and payload logging; where the source has none, plan none.
 
-Use these outcomes: **Inference only**, **Migratable**, **Migratable with changes**,
-**Not supported by the current workflow**, or **Undetermined**. Explain the
-destination mapping, semantic changes, what stays on APIM and the next technical
-resolution. Separate automation gaps from platform limitations.
+Give each source asset one status: **Migrate**, **Migrate (with <limitation>)**
+or **Keep in APIM**. Explain the destination mapping, semantic changes and, for
+retained behavior, whether the cause is the platform, this workflow or missing
+evidence, plus the next technical resolution.
 
 Before destination design, establish distinct complete source/destination ARM
 IDs, explicit subscriptions, destination resource group/name and region if new.
-Do not silently change Azure CLI defaults. Check selected commands against the
-current official CLI release, relevant docs, help and actual `aigateways` dispatch.
-The [capability reference](capabilities.json) records reviewed knowledge, not a
-compiler allowlist or proof for future releases.
+Do not silently change Azure CLI defaults. Check only the selected commands'
+help and `aigateways` dispatch; [capabilities](capabilities.json) is reviewed
+knowledge, not proof for future releases.
 
 The read-only inspector verifies the installed official wheel and inspects only
 the requested command surface:
@@ -132,14 +137,15 @@ the requested command surface:
 
 Use the latest official published CLI, including previews. Installation requires
 approval; do not downgrade, patch the extension or substitute destination REST
-writes to work around missing support. Review relevant release changes once
-during planning; do not rescan all help or download releases for each asset.
-Do not upgrade during the approved execution sequence. External commands such
-as `az role assignment create` need their own selected-command/scope review.
+writes to work around missing support. Do not upgrade during the approved
+execution sequence. External commands such as `az role assignment create` need
+their own selected-command/scope review.
 
-Source control-plane reads need no separate approval. A pre-confirmation
-upstream call, secret read or inference is rarely needed; if the design truly
-depends on one, name it in the scoping question.
+Source control-plane reads need no separate approval. Listing a Custom
+provider's models with its APIM-held credential is covered by the scoping
+credential-reuse answer. Any other pre-confirmation upstream call, secret read or
+inference is rarely needed; if the design truly depends on one, name it in the
+scoping question.
 
 ## 3. Produce the reviewable asset inventory
 
@@ -184,11 +190,17 @@ support, readiness or user consent.
 
 ## 4. Confirm the migration
 
-Present the full readable review, exact commands and input files. Explain changed
-authentication, paths, policy semantics, external writes, possible charges,
-excluded behavior, test limits and rollback constraints. Resolve required
-blockers before asking for confirmation; do not hide them by declaring a tiny
-foundation phase a completed migration.
+The user must be able to decide from the chat, not only from linked files.
+Before asking, show a table with one row per source asset: source asset,
+inventory result, status (Migrate / Migrate (with <limitation>) / Keep in APIM)
+and proposed disposition. Follow it with brief notes on changed authentication,
+paths and policy semantics, external writes, possible charges, test limits and
+rollback constraints. Resolve required blockers first; do not hide them by
+declaring a tiny foundation phase a completed migration.
+
+Then offer three choices: review the detailed plan (open the readable review with
+exact commands and inputs, then return to the same choice), approve and run, or
+cancel.
 
 Get one explicit confirmation bound to the reviewed revision and document digest,
 including referenced input-file digests. `document-digest --path <file>` computes

@@ -38,6 +38,7 @@ def parser():
     models.add_argument("--credential-field", choices=("value", "primaryKey", "secondaryKey"), default="value")
     models.add_argument("--credential-scheme", choices=("Bearer", "Basic"))
     models.add_argument("--credential-header", default="Authorization")
+    models.add_argument("--catalog-format", choices=("openai", "anthropic"), default="openai")
     models.add_argument("--approved-read", action="store_true")
     models.add_argument("--approved-credential-read", action="store_true")
     models.add_argument("--output-file", required=True)
@@ -98,7 +99,8 @@ def main(argv=None):
         result = collect_models(
             args.provider_id, args.kind, args.endpoint, args.account_id,
             args.credential_env, args.credential_header, args.approved_read,
-            credential_source=credential_source, credential_read_approved=args.approved_credential_read)
+            credential_source=credential_source, credential_read_approved=args.approved_credential_read,
+            catalog_format=args.catalog_format)
         write_new(args.output_file, result)
         return 0 if all(p["error"] is None for p in result["providers"]) else 1
     elif args.command == "import-models":

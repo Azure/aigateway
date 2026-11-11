@@ -6,7 +6,7 @@ import json
 import os
 import re
 from urllib.error import HTTPError, URLError
-from urllib.parse import parse_qs, urljoin, urlsplit
+from urllib.parse import parse_qs, urlencode, urljoin, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from core import (
@@ -16,6 +16,7 @@ from core import (
 
 
 FOUNDRY_VERSION = "2025-04-01-preview"
+ANTHROPIC_VERSION = "2023-06-01"
 APIM_VERSION = "2024-05-01"
 MAX_MODELS = 10000
 ACCOUNT = re.compile(
@@ -194,7 +195,7 @@ def http_json(url, headers):
 
 def collect_models(provider_id, kind, endpoint, account_id=None, credential_ref=None,
                    credential_header="Authorization", approved=False, runner=run_az, fetch=http_json,
-                   *, credential_source=None, credential_read_approved=False):
+                   *, credential_source=None, credential_read_approved=False, catalog_format="openai"):
     if not approved:
         raise MigrationError("Explicit approval of provider model reads and credential use is required.")
     if kind == "Foundry" and (credential_ref is not None or credential_source is not None):
@@ -203,6 +204,8 @@ def collect_models(provider_id, kind, endpoint, account_id=None, credential_ref=
         raise MigrationError("Separately approve the exact APIM secret read and its use at the selected catalog endpoint.")
     if credential_read_approved and credential_source is None:
         raise MigrationError("Secret-read approval requires an explicit APIM credential resource.")
+    if catalog_format not in ("openai", "anthropic") or (catalog_format == "anthropic" and kind != "Custom"):
+        raise MigrationError("The Anthropic catalog format applies only to Custom providers.")
     checked_url(endpoint)
     provider = {
         "id": provider_id, "kind": kind, "accountId": account_id, "endpoint": endpoint,
@@ -238,6 +241,9 @@ def collect_models(provider_id, kind, endpoint, account_id=None, credential_ref=
             raise MigrationError("The selected Azure cloud has no usable ARM endpoint.")
         checked_url(origin.rstrip("/"))
         original = origin.rstrip("/") + account_id + "/deployments?api-version=" + FOUNDRY_VERSION
+    elif catalog_format == "anthropic":
+        headers["anthropic-version"] = ANTHROPIC_VERSION
+        original = endpoint.rstrip("/") + "/models?limit=1000"
     else:
         original = endpoint.rstrip("/") + "/models"
     first = urlsplit(original)
@@ -316,6 +322,12 @@ def collect_models(provider_id, kind, endpoint, account_id=None, credential_ref=
                 model_ids.add(row["id"])
                 provider["models"].append(row)
             next_link = page.get("nextLink") if kind == "Foundry" else page.get("next")
+            if catalog_format == "anthropic":
+                next_link = None
+                if page.get("has_more") is True:
+                    if not explicit_id(page.get("last_id")):
+                        raise MigrationError("Anthropic catalog pagination requires an explicit last_id.")
+                    next_link = "?" + urlencode({"limit": 1000, "after_id": page["last_id"]})
             for key, value in page.items():
                 marker = key.replace("_", "").replace("@", "").replace(".", "").lower()
                 if value and marker in ("nextlink", "nexttoken", "continuationtoken", "odatanextlink"):

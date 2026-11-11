@@ -16,7 +16,9 @@ destination-bound planning or execution, and a region only for creation.
 
 Mirror the APIM configuration by default, asking only about scope, credential
 reuse and unrepresentable behavior, then produce
-`migration-inventory.json` and a matching readable review. Confirm the full
+`migration-inventory.json` and a matching readable review. Show a per-asset
+summary table in chat (result, Migrate / Migrate (with limitation) / Keep in
+APIM, disposition), then offer review, approve and run, or cancel. Confirm the full
 revision once, including exact commands, external prerequisites/permissions,
 credential boundaries and bounded smoke tests. Create one native TODO per asset
 or independently managed configuration, then run its direct Azure CLI commands.

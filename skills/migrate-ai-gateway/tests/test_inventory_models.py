@@ -106,6 +106,37 @@ class AIInventoryTests(unittest.TestCase):
         self.assertTrue(next(item for item in source["coverage"]
                              if item["scope"] == api and item["domain"] == "api-tools")["establishesCompleteness"])
 
+    def test_rest_exported_mcp_links_backing_api_backend_policies_and_published_endpoint(self):
+        azure, mcp_api = fixture([], {"type": "mcp", "path": "echo-mcp"})
+        azure.source["properties"]["gatewayUrl"] = "https://apim.example"
+        rest_api = SOURCE + "/apis/echo"
+        operation = rest_api + "/operations/get"
+        backend = SOURCE + "/backends/echo-backend"
+        azure.collections[SOURCE + "/apis"]["value"].append({"id": rest_api, "properties": {
+            "type": "http", "path": "echo", "serviceUrl": "https://echo.example/api",
+            "backendId": "echo-backend"}})
+        azure.collections[rest_api + "/operations"] = {"value": [
+            {"id": operation, "properties": {"method": "GET", "urlTemplate": "/resource"}}]}
+        azure.collections[SOURCE + "/backends"] = {"value": [{"id": backend}]}
+        azure.collections[backend] = {"id": backend, "properties": {
+            "url": "https://echo.example/api", "credentials": {"header": {"x-key": "SECRET"}}}}
+        add_policy(azure, operation, "<policies><inbound><cache-lookup/></inbound></policies>")
+        azure.collections[mcp_api + "/tools"] = {"value": [{"id": mcp_api + "/tools/get",
+            "properties": {"displayName": "getResource", "operationId": operation}}]}
+
+        source = source_inventory(SOURCE, azure)
+        config = record(source, mcp_api)["facts"]["mcpConfiguration"]
+        self.assertIsNone(config["backend"])
+        self.assertEqual(len(config["restSources"]), 1)
+        rest = config["restSources"][0]
+        self.assertEqual((rest["apiId"], rest["serviceUrl"], rest["operationIds"]),
+                         (rest_api, "https://echo.example/api", [operation]))
+        self.assertEqual((rest["backend"]["id"], rest["backend"]["headerNames"]), (backend, ["x-key"]))
+        self.assertIn(operation + "/policies/policy", config["policySourceIds"])
+        self.assertEqual(config["publishedEndpoint"]["url"], "https://apim.example/echo-mcp/mcp")
+        self.assertNotIn("SECRET", json.dumps(source))
+        validate_schema(source, "source-inventory")
+
     def test_tool_associations_are_discovered_on_non_mcp_api_types(self):
         azure, api = fixture([], {"type": "http"})
         azure.collections[api + "/tools"] = {"value": [{"id": api + "/tools/search",

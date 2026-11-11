@@ -93,6 +93,27 @@ class ModelInventoryTests(unittest.TestCase):
                          ["Owner/ModelCase", "owner/modelcase"])
         self.assertNotIn("TEST_ONLY", json.dumps(result))
 
+    def test_anthropic_catalog_sends_version_and_follows_after_id(self):
+        urls = []
+
+        def fetch(url, headers):
+            urls.append(url)
+            self.assertEqual(headers["x-api-key"], "TEST_ONLY")
+            self.assertEqual(headers["anthropic-version"], "2023-06-01")
+            if len(urls) == 1:
+                return {"data": [{"id": "claude-a"}], "has_more": True, "last_id": "claude-a"}
+            return {"data": [{"id": "claude-b"}], "has_more": False, "last_id": "claude-b"}
+
+        with patch.dict(os.environ, {"ANTHROPIC_KEY": "TEST_ONLY"}):
+            result = collect_models("anthropic", "Custom", "https://api.anthropic.example/v1",
+                credential_ref="ANTHROPIC_KEY", credential_header="x-api-key", approved=True,
+                fetch=fetch, catalog_format="anthropic",
+                runner=lambda _: self.fail("ARM CLI must not authenticate custom requests"))
+        self.assertEqual(urls, ["https://api.anthropic.example/v1/models?limit=1000",
+                                "https://api.anthropic.example/v1/models?limit=1000&after_id=claude-a"])
+        self.assertEqual([m["id"] for m in result["providers"][0]["models"]], ["claude-a", "claude-b"])
+        self.assertTrue(result["providers"][0]["complete"])
+
     def test_control_plane_named_value_credentials_stay_inside_catalog_process(self):
         secret = "offline-upstream-credential"
         source = apim_credential_source(scheme="Bearer")

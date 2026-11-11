@@ -238,6 +238,25 @@ def classify_apis(inventory):
                    if identifier.startswith("/") and item["id"].lower().endswith(identifier.lower())]
         return matches[0] if len(matches) == 1 else None
 
+    def backend_summary(item, backend_id):
+        backend = scoped_reference(item, "backends", backend_id) if isinstance(backend_id, str) else None
+        if not backend:
+            return {"reference": backend_id, "resolved": False} if backend_id is not None else None
+        facts = backend.get("facts", {})
+        return {
+            "id": backend["id"],
+            "url": backend["resource"].get("properties", {}).get("url"),
+            "credentialFields": facts.get("credentialFields", []),
+            "headerNames": facts.get("headerNames", []),
+            "queryParameterNames": facts.get("queryParameterNames", []),
+            "certificateReferences": facts.get("certificateReferences"),
+            "certificateReferenceIds": facts.get("certificateReferenceIds", []),
+            "certificateReferenceCount": facts.get("certificateReferenceCount"),
+            "authorizationScheme": facts.get("authorizationScheme"),
+            "authorizationParameterPresent": facts.get("authorizationParameterPresent"),
+            "credentialExpressions": facts.get("credentialExpressions"),
+        }
+
     for api in (item for item in items if item["domain"] == "apis"):
         api_id = api["id"].lower()
         operations = children.get((api_id, "api-operations"), [])
@@ -330,34 +349,39 @@ def classify_apis(inventory):
                     "operationResolution": ("resolved" if operation else
                                             "unresolved" if operation_id else "not-bound"),
                 })
-            backend_id = properties.get("backendId")
-            backend = scoped_reference(api, "backends", backend_id) if isinstance(backend_id, str) else None
-            backend_properties = backend["resource"].get("properties", {}) if backend else {}
-            mcp["backend"] = ({
-                "id": backend["id"],
-                "url": backend_properties.get("url"),
-                "credentialFields": backend.get("facts", {}).get("credentialFields", []),
-                "headerNames": backend.get("facts", {}).get("headerNames", []),
-                "queryParameterNames": backend.get("facts", {}).get("queryParameterNames", []),
-                "certificateReferences": backend.get("facts", {}).get("certificateReferences"),
-                "certificateReferenceIds": backend.get("facts", {}).get("certificateReferenceIds", []),
-                "certificateReferenceCount": backend.get("facts", {}).get("certificateReferenceCount"),
-                "authorizationScheme": backend.get("facts", {}).get("authorizationScheme"),
-                "authorizationParameterPresent": backend.get("facts", {}).get(
-                    "authorizationParameterPresent"),
-                "credentialExpressions": backend.get("facts", {}).get("credentialExpressions"),
-            } if backend else ({
-                "reference": backend_id, "resolved": False
-            } if backend_id is not None else None))
+            mcp["backend"] = backend_summary(api, properties.get("backendId"))
             mcp["serviceUrl"] = properties.get("serviceUrl")
             mcp["tools"] = sorted(tool_bindings, key=lambda tool: tool["toolId"].lower())
+            # Tools exported from REST operations run through those operations' APIs.
+            bound = [operation for operation in (resolve_operation(tool["resolvedOperationId"])
+                                                 for tool in tool_bindings) if operation]
+            rest_apis = {}
+            for operation in bound:
+                rest_api = by_id.get(operation["scope"].lower())
+                if rest_api and rest_api["id"].lower() != api_id:
+                    rest_apis.setdefault(rest_api["id"].lower(), (rest_api, []))[1].append(operation)
+            mcp["restSources"] = []
+            for rest_api, rest_operations in (rest_apis[key] for key in sorted(rest_apis)):
+                rest_properties = rest_api["resource"].get("properties", {})
+                mcp["restSources"].append({
+                    "apiId": rest_api["id"],
+                    "serviceUrl": rest_properties.get("serviceUrl"),
+                    "backend": backend_summary(rest_api, rest_properties.get("backendId")),
+                    "operationIds": sorted({operation["id"] for operation in rest_operations}, key=str.lower),
+                })
+            gateway_url = (inventory.get("service") or {}).get("properties", {}).get("gatewayUrl")
+            if rest_apis and not mcp["endpoints"] and isinstance(gateway_url, str) \
+                    and isinstance(properties.get("path"), str):
+                mcp["publishedEndpoint"] = {
+                    "url": gateway_url.rstrip("/") + "/" + properties["path"].strip("/") + "/mcp",
+                    "derivation": "apim-rest-export-convention"}
+            scopes = {inventory["sourceId"].lower(), api_id, *products,
+                      *(operation["id"].lower() for operation in [*operations, *bound]),
+                      *rest_apis}
             mcp["policySourceIds"] = sorted({
                 policy["id"] for policy in items
                 if policy["domain"] in ("policies", "product-policies", "api-policies", "operation-policies")
-                and (policy["scope"].lower() == inventory["sourceId"].lower()
-                     or policy["scope"].lower() == api_id
-                     or policy["scope"].lower() in products
-                     or policy["scope"].lower() in {operation["id"].lower() for operation in operations})
+                and policy["scope"].lower() in scopes
             }, key=str.lower)
             policy_records = [by_id[identifier.lower()] for identifier in mcp["policySourceIds"]]
             policy_backends, visited_fragments = {}, set()

@@ -6,35 +6,41 @@ and direct CLI execution; this reference does not add a deployment engine.
 
 ## Discover the actual model surface
 
-Start from the models APIM configuration routes: operations, policies, backend
-paths and deployments on referenced accounts. Read an upstream catalog only when
-APIM routes model names dynamically; name that read in the scoping question.
-Resolve exact runtime model IDs, provider/credential boundaries and supported
-operations from that evidence. A public path can differ from its upstream
-protocol. Follow scoped backend routing, policy fragments and pools; keep opaque
-expressions unresolved rather than evaluating them.
+The gateway has two model-provider kinds, and each backend APIM routes to maps
+to one of them:
 
-For a model catalog:
+| Provider | Typical backend | How to list its models |
+| --- | --- | --- |
+| Foundry | Azure AI Foundry / Azure OpenAI account | ARM deployments of the account (`--kind Foundry`) |
+| Custom, OpenAI-compatible | Third-party or self-hosted `/v1` API | `GET <base>/v1/models`, `data[].id` (`--kind Custom`) |
+| Custom, Anthropic | Anthropic Messages API | `GET <base>/v1/models` with `x-api-key` and `anthropic-version`, `has_more`/`after_id` paging (`--catalog-format anthropic`) |
 
-1. Build the exact route from observed API path, operation, backend and effective
-   rewriting. The Custom collector appends `/models` to the provider base URL;
-   include the observed version prefix, not a guessed endpoint.
-2. Prefer an APIM route when APIM injects upstream authentication. Its client
-   credential belongs only at that APIM origin. A direct upstream route needs
-   explicit authorization for that upstream credential boundary.
-3. Approve the exact endpoint and credential source before use. Verify subscription
-   scope actually covers the selected API; a suggestive name is not scope proof.
-   Never send an APIM key or ARM token to the upstream model host.
-4. Record success, connectivity/authentication error, malformed response, unsupported
-   operation or not attempted. An unauthenticated request to a protected route is
-   not an authorized catalog attempt. A 401/404 is not proof of absent models.
+When APIM operations or policies pin a fixed set of model names, that set is
+the scope and the catalog only confirms the names exist. When APIM forwards
+model names through, the catalog defines the candidates the user selects from.
+Follow scoped backend routing, policy fragments and pools to find each backend;
+keep opaque expressions unresolved rather than evaluating them. A public path
+can differ from its upstream protocol.
+
+For a Custom catalog:
+
+1. Use the backend base URL and observed version prefix from APIM; the collector
+   appends `/models`. Do not guess another endpoint.
+2. Use the credential APIM already sends to that backend (named value or backend
+   header). The user's credential-reuse answer in scoping covers this read, as it
+   is the same secret, upstream and read-only purpose. If reuse was declined, ask
+   for a catalog credential or an operator manifest. Never send an APIM
+   subscription key or ARM token to the upstream model host.
+3. Record success, connectivity/authentication error, malformed response or not
+   attempted. A 401/404 is not proof of absent models.
 
 GET model catalogs and approved minimal MCP initialize/tools/list are discovery,
-not business-tool execution or inference authorization. Do not invoke inference
-just to discover capabilities without approval naming operation, payload,
-credential boundary and cost. A model list does not prove protocol support.
-Use model-specific catalog fields, official provider documentation or prior
-approved runtime evidence; otherwise leave operations unresolved.
+not business-tool execution or inference authorization. A model list does not
+prove protocol support. Register the protocols the APIM API exposes for that
+backend, narrowed by model-specific catalog fields or one official provider page
+per model family when it changes which operations to register. Leave the rest to
+the smoke tests; do not invoke inference to discover capabilities before
+confirmation.
 
 ## Collect source model facts
 
@@ -51,35 +57,27 @@ the main skill. Foundry discovery reads one existing account's deployments:
 This keeps deployment ID, runtime deployment name, family and version separate.
 It creates no provider, identity, model, role or alias.
 
-Custom discovery uses a complete header value from a securely established
-environment variable, never ARM authentication:
+Custom discovery normally reads the APIM named value that already authenticates
+the backend and sends it only to that backend. The native POST only reads the
+secret; nothing changes on APIM:
 
 ```bash
 "$PYTHON" "$HELPER" collect-models --provider-id custom-a --kind Custom \
-  --endpoint <approved-https-provider-base> \
-  --credential-env UPSTREAM_AUTHORIZATION --credential-header Authorization \
-  --approved-read --output-file custom.catalog.json
-```
-
-The alternative is a separately approved, exact APIM named-value or subscription
-read. These native POST operations only read a secret; nothing changes on APIM:
-
-```bash
-"$PYTHON" "$HELPER" collect-models --provider-id apim-a --kind Custom \
-  --endpoint <observed-apim-gateway-url>/<api-suffix> \
+  --endpoint <observed-backend-base-with-version> \
   --source-id <source-service-id> \
-  --credential-resource-id <source-service-id>/subscriptions/<subscription-id> \
-  --credential-field primaryKey --credential-header Ocp-Apim-Subscription-Key \
-  --approved-read --approved-credential-read --output-file apim.catalog.json
+  --credential-resource-id <source-service-id>/namedValues/<id> \
+  --credential-field value --credential-header <observed-header> \
+  --approved-read --approved-credential-read --output-file custom.catalog.json
 ```
 
-For a named value, use its exact `/namedValues/<id>`, field `value`, observed
-upstream header and explicitly approved upstream URL. `--credential-scheme`
-prefixes Bearer/Basic only when that is the observed mechanism; omit it if the
-value already contains the scheme. Key Vault references are not permission to
-read another secret. Never request pasted credentials. Discovery approval does
-not authorize destination reuse; inventory that separately under the
-[asset contract](asset-inventory.md).
+Add `--catalog-format anthropic` for an Anthropic backend (header usually
+`x-api-key`). `--credential-scheme` prefixes Bearer/Basic only when that is the
+observed mechanism; omit it if the value already contains the scheme. When the
+user supplies a separate catalog credential, pass it with `--credential-env`
+instead of `--credential-resource-id`. An APIM subscription key
+(`/subscriptions/<id>`, field `primaryKey`, header `Ocp-Apim-Subscription-Key`)
+may only be sent to the APIM gateway URL, never upstream. Key Vault references
+are not permission to read another secret. Never request pasted credentials.
 
 Approval flags record approval already obtained. Values remain in collector
 memory only, not output, argument strings, files or catalogs. Catalogs retain
