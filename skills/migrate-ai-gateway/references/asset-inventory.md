@@ -13,7 +13,7 @@ Keep evidence and migration artifacts in protected local storage:
 - `migration-review.md`: readable projection of that inventory revision.
 - Non-secret JSON argument files referenced by the inventory, each with a digest.
 - `migration-results.json`: confirmation and per-asset receipts, not an execution engine.
-- Optional `commands.txt`: secret-free direct CLI sequence for reproduction.
+- When requested, a secret-free direct CLI script for executed provisioning, not an execution engine.
 
 The [labelled example](../examples/migration-inventory.json) creates a gateway and
 its identity. It is not a deployable recommendation: replace example IDs and
@@ -32,7 +32,7 @@ evidence with authorized observations. Use the same asset IDs in native TODOs.
 | `preconditions`, `dependsOn` | Exact target state and asset prerequisites, not list-order assumptions |
 | `commands`, `readBack` | Ordered `az` argument arrays and configuration assertions; no shell expressions or custom executors |
 | `outputs` | Non-secret values extracted from successful read-back with type/scope constraints |
-| `smokeTests` | Exact bounded request, credential references, expected outcome and permitted skip conditions |
+| `smokeTests` | One approved minimum test per alias/MCP asset, fixed test mode, authentication, bounds, expected outcome and permitted skip conditions |
 | `verificationLimits` | What read-back or these tests cannot establish |
 | `sideEffects`, `rollback` | Charges, access/replacement impacts and rollback limits; no implicit cleanup |
 
@@ -41,6 +41,13 @@ An argument object `{"assetId":"gateway-identity","output":"principal-id"}` refe
 to a declared output of a dependency. These are review notation, not strings to
 send to Azure CLI. The agent resolves them only within the approved constraints.
 JSON inputs contain actual advertised CLI shapes; files do not interpolate values.
+
+When evidence shows a configured field is not returned on read-back, record it
+as unverified with any effect on dependents instead of asserting an unavailable
+value. Verify all observable required fields; if the missing value is a material
+prerequisite, keep dependents blocked until it is established or an explicitly
+approved redesign removes that dependency. Amend and reconfirm any approved
+assertion or dependency that must change.
 
 For an external role assignment, inventory the exact account scope and role ID,
 bind `--assignee-object-id` to the new identity's read-back principal, and state
@@ -54,20 +61,49 @@ credential may be reused for the same upstream when the review explicitly
 includes its exact source, destination asset, upstream URL, header and handling.
 Record the secret source and permitted destination in a `secret` input, not its
 value or digest. The user's reuse choice plus migration confirmation authorize
-reading it during execution; do not read it earlier.
+reading it during execution. A pre-confirmation read requires explicit consent
+identifying its source, purpose and scope.
 
-Use the narrowest source read: an APIM backend GET can return all of that
-backend's credential fields, even when CLI `--query` filters its output. Include
-that read and its scope in the review. An explicitly identified named value has
-a read-only `listValue` POST. Resolve references from non-secret evidence and do
-not evaluate policy expressions. Key Vault access is a separate scope, not
-implied by an APIM reference. A denied read, redaction, unresolved expression or
-incompatible credential input blocks the affected asset. Explain that sharing a
-key increases its holders and couples rotation or revocation across services.
+Resource GETs normally mask secret values: a present name with a null or
+redacted value means "not returned here", not "absent". APIM reveals secrets
+through dedicated read-only POST actions on the holding resource (for example
+`listSecrets` or `listValue`), which may exist only in newer API versions. Find
+the action and version the platform actually exposes, as the portal does, rather
+than concluding a value is missing. A value may also be a named-value reference
+or Key Vault reference that leads elsewhere; resolve references from non-secret
+evidence and do not evaluate policy expressions. Key Vault access is a separate
+scope, not implied by an APIM reference. Include the exact read and its scope in
+the review. Explain that sharing a key increases its holders and couples
+rotation or revocation across services.
+
+Plan the read from the response's structure, not an assumed path. Prefer
+non-secret schema or metadata. If a live reveal is needed to design an exact
+input, obtain consent for that scoped read before review and inspect only its
+shape without printing values. If consent is withheld or the read is unsafe,
+block the affected asset rather than guess. If the review does not require the
+live response shape, defer the secret read until approved execution. A denied
+read, unresolved expression or incompatible credential input, after checking
+the available reveal actions, blocks the asset.
 
 APIM client subscription keys are not gateway admission keys. If explicitly
 approved as an outbound credential for an APIM bridge, send one only to the
 selected APIM origin, never to an unrelated upstream.
+
+The standard post-confirmation smoke runner accepts exactly one required test
+per migrated alias or MCP server. For an alias, name the exact advertised
+operation in `request: {"mode":"minimal-inference","api":"v1/chat/completions"}`,
+set `credentialInputs: []` and `bounds.maxRequests: 1`; text output is limited
+to one token. The runner does not test image-generation or unknown output routes.
+For MCP, name the selected supported protocol in
+`request: {"mode":"mcp-initialize-tools-list","protocolVersion":"2025-06-18"}`,
+`credentialInputs: []`, and `bounds.maxRequests: 3` for an MCP server. The
+runner uses an in-memory Entra token for the gateway audience, never retrieves
+or falls back to gateway keys, and uses the resource's advertised runtime
+endpoint. It sends one inference request or the MCP initialize/initialized/
+tools-list exchange; it does not call listed tools or paginate results. State
+the possible charges and required caller runtime role in the review. If the
+selected Entra identity is not authorized, record the failure rather than
+silently switching authentication.
 
 ### Protected native input
 
@@ -83,31 +119,21 @@ if the host cannot protect the credential sufficiently. Never put the secret
 in arguments or display raw output. Without a safe native input mechanism,
 block rather than invent a Python/shell credential executor.
 
-For example, after confirmation, an MCP source with one literal backend header
-can be projected by the Azure CLI into its native endpoint array. Replace every
-non-secret example value with the reviewed source and destination values:
-
-```bash
-umask 077
-set -o noclobber
-az rest --method get --subscription "$SOURCE_SUBSCRIPTION" \
-  --url "$APIM_BACKEND_URL?api-version=2024-05-01" \
-  --query '[{kind:`"mcp"`,namespace:`"example"`,required:`true`,
-    mcp:{url:`"https://upstream.example/mcp"`,transport:`"streamableHttp"`},
-    credentials:{type:`"header"`,headers:{"X-Backend-Key":properties.credentials.header."X-Backend-Key"}}}]' \
-  --only-show-errors --output json > "$MCP_ENDPOINTS_FILE" 2> "$MCP_ERROR_FILE"
-```
+For example, an MCP source whose backend holds a literal header can use the Azure
+CLI's own `--query` to reshape the reveal action's response into the native
+endpoint array, written to a protected file. Derive the projection from the
+response shape established from non-secret evidence or an authorized earlier
+read and the destination command's input contract, and record both in the review.
 
 Check the command's status, then validate the protected file without printing
 it: the exact reviewed URL and endpoint shape must match, and the selected
-header must contain the expected nonempty literal value, not a redaction marker,
-expression or control characters. On failure, report it without exposing
-sensitive output, remove both files and block the asset. On success, use the
-file as `--endpoints @<file>` with the approved `az aigateway mcp create`
-command, then remove both files. A named-value `listValue` read or a provider
-input needs its own reviewed projection and JSON shape. The reviewed
-`az rest --output-file` saves the raw response, not the `--query` projection;
-recheck CLI behavior rather than using it to capture filtered secrets.
+credential must be a nonempty literal of the type the destination expects, not
+a redaction marker, reference, expression or control characters. On failure,
+report it without exposing sensitive output, remove both files and block the
+asset. On success, pass the file to the approved destination command, then
+remove both files. The reviewed `az rest --output-file` saves the raw response,
+not the `--query` projection; recheck CLI behavior rather than using it to
+capture filtered secrets.
 
 ## Review checklist
 
@@ -164,9 +190,11 @@ display asset progress from receipts without inventing a tool.
 Keep the approved JSON and argument files unchanged. Results separately record
 per-asset provisioning and check outcomes. Persist non-secret receipts before
 advancing dependents; do not make reporting recollect the entire source.
-Mark a native TODO done only after read-back and all required tests pass.
-Optional tests can be skipped with the approved reason; explicitly report the
-remaining unverified behavior. A skipped required test leaves verification blocked.
+Mark a provisioning TODO done after the planned write or reuse and read-back
+are complete and required test outcomes are recorded, even if a test failed.
+Report failed, blocked and skipped checks separately; optional tests need an
+approved skip reason, and failed, blocked, skipped or unrun required tests
+leave verification incomplete.
 
 On resume, compare the approved revision and receipts with native TODOs, read the
 exact interrupted target and reconcile unknown outcomes before retry. Matching

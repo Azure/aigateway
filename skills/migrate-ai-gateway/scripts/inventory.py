@@ -248,6 +248,7 @@ def classify_apis(inventory):
             "url": backend["resource"].get("properties", {}).get("url"),
             "credentialFields": facts.get("credentialFields", []),
             "headerNames": facts.get("headerNames", []),
+            "credentialValuesMasked": facts.get("credentialValuesMasked"),
             "queryParameterNames": facts.get("queryParameterNames", []),
             "certificateReferences": facts.get("certificateReferences"),
             "certificateReferenceIds": facts.get("certificateReferenceIds", []),
@@ -402,6 +403,8 @@ def classify_apis(inventory):
                                 "url": backend_properties.get("url"),
                                 "credentialFields": target.get("facts", {}).get("credentialFields", []),
                                 "headerNames": target.get("facts", {}).get("headerNames", []),
+                                "credentialValuesMasked": target.get("facts", {}).get(
+                                    "credentialValuesMasked"),
                                 "queryParameterNames": target.get("facts", {}).get("queryParameterNames", []),
                                 "certificateReferences": target.get("facts", {}).get("certificateReferences"),
                                 "certificateReferenceIds": target.get("facts", {}).get(
@@ -520,6 +523,10 @@ def inventory_item(raw, scope, domain, authority="authoritative", evidence="live
                 "authorizationScheme": authorization.get("scheme"),
                 "authorizationParameterPresent": authorization.get("parameter") is not None,
                 "credentialExpressions": "@(" in json.dumps(credentials) or "@{" in json.dumps(credentials),
+                # GET masks secret values; references must then be resolved via a reveal action.
+                "credentialValuesMasked": any(
+                    value is None or value == [] or value == [None]
+                    for field in ("header", "query") for value in (credentials.get(field) or {}).values()),
                 "namedValueReferences": sorted(set(re.findall(
                     r"\{\{([A-Za-z0-9_.-]+)\}\}", json.dumps(credentials)))),
         }

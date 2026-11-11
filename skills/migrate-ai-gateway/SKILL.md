@@ -17,14 +17,14 @@ APIM replacement. The source `Microsoft.ApiManagement/service` stays read-only.
 native asset TODOs -> direct Azure CLI -> smoke tests.**
 
 The inventory is the contract. The agent executes it with host tools, not a
-custom deployment script or reconciliation engine. Bundled Python is only for
-read-only collection and local evidence/document utilities.
+custom deployment script or reconciliation engine. Bundled Python supports
+read-only collection, local evidence utilities and the bounded smoke helper.
 
 - Assessment is not execution. A source-only feasibility request does not need
   a destination, deployment inventory, credentials for future writes or approvals.
 - The APIM control plane defines what to recreate: endpoints, backends and their
-  credentials, policies, identities, networking and diagnostics. The invocation
-  authorizes reading all of it; mirror it by default instead of asking.
+  credential metadata, policies, identities, networking and diagnostics. The
+  invocation authorizes reading its configuration; mirror it by default.
 - Ask only about scope, destination, reuse of APIM-held backend credentials and
   source behavior the destination cannot represent; batch these into one round.
 - Stay on the migration. Before confirmation, do not inspect backend resources
@@ -38,22 +38,25 @@ read-only collection and local evidence/document utilities.
   external permissions, credential boundaries and bounded tests. Ask again for
   changed intent, not ordinary progress. Host permission controls still apply.
 - Keep secrets out of persistent artifacts, logs and history. Read reused
-  credentials only during approved execution; APIM subscriptions are not gateway keys.
-- Provisioning, reachability and semantic equivalence are different claims.
-  Report failed, blocked, skipped and unverified behavior explicitly.
+  credentials during approved execution unless the user explicitly authorizes
+  an earlier scoped read; APIM subscriptions are not gateway keys.
+- Distinguish provisioning, reachability and semantic equivalence.
 
 ## 1. Start read-only inventory
 
-Locate this skill and protect the working evidence directory. Ask before
-installing dependencies in an isolated Python environment outside the source tree:
+Locate this skill and protect the working evidence directory. Reuse an existing
+Python environment with the required dependencies when available. If they are
+missing, ask before installing them in an isolated environment outside the source tree:
 
 ```bash
 python3 -m venv <protected-local-venv>
 <protected-local-venv>/bin/python -m pip install -r skills/migrate-ai-gateway/requirements.txt
 ```
 
-Below, `PYTHON` is that interpreter and `HELPER` is this skill's
-`scripts/migration.py`. Output paths must be new; preserve prior evidence.
+Below, `PYTHON` is the selected interpreter and `HELPER` is this skill's
+`scripts/migration.py`. Use that interpreter for every bundled helper, including
+the smoke runner; repeat its full path when shell calls do not share state.
+Output paths must be new; preserve prior evidence.
 
 ```bash
 "$PYTHON" "$HELPER" collect-source \
@@ -92,17 +95,20 @@ and earlier answers. For assessment-only requests, deliver the verdict and stop.
 For each selected component compare:
 
 - **Models:** exact deployment/runtime IDs, protocols, finite operations, backend
-  accounts and credential boundaries. A model list or OpenAI-shaped endpoint
-  does not prove operation support. Follow
+  accounts, input/output modalities and credential boundaries. A catalog ID,
+  shared API route or accepted registration does not prove that the destination
+  supports that model's operation or output modality. Verify destination support
+  before including a model; keep unsupported models in APIM and leave unknown
+  support undetermined rather than probing it with a smoke test. Follow
   [model discovery and routing](references/model-workflow.md) when relevant.
 - **MCP:** endpoints/versions, tools/schemas, routing/rewrites, auth, policies
   and access. Compare native MCP and OpenAPI sources (which need a REST contract)
   directly or through APIM; prefer direct when evidence supports it. For tools
   exported from REST operations, the collector's `restSources` gives the backing
   API, upstream and operation policies, and `publishedEndpoint` the APIM URL. Check
-  operations and credentials; tool names and schemas may differ. Do not guess
-  endpoint names, require an upstream ID without need, append templates to
-  guessed URLs or equate an APIM 404 with lack of support.
+  operations and credentials; tool names and schemas may differ. Derive endpoints
+  from evidence, require only necessary upstream identifiers and treat failed
+  probes as inconclusive rather than proof of unsupported behavior.
 - **Access and identity:** client admission separately from backend identity.
   Gateway-wide keys do not preserve per-API/product or anonymous admission.
   Shared backend credentials do not establish per-caller token propagation.
@@ -120,9 +126,12 @@ evidence, plus the next technical resolution.
 
 Before destination design, establish distinct complete source/destination ARM
 IDs, explicit subscriptions, destination resource group/name and region if new.
-Do not silently change Azure CLI defaults. Check only the selected commands'
-help and `aigateways` dispatch; [capabilities](capabilities.json) is reviewed
-knowledge, not proof for future releases.
+For name-based gateway calls, verify that the CLI's effective subscription and
+tenant match the selected target as well as passing explicit target arguments.
+If they differ, use a protected isolated CLI context set to the target; do not
+change the shared default. Protect and clean that context like other credentials.
+Check only the selected commands' help and `aigateways` dispatch;
+[capabilities](capabilities.json) is reviewed knowledge, not proof for future releases.
 
 The read-only inspector verifies the installed official wheel and inspects only
 the requested command surface:
@@ -141,11 +150,11 @@ writes to work around missing support. Do not upgrade during the approved
 execution sequence. External commands such as `az role assignment create` need
 their own selected-command/scope review.
 
-Source control-plane reads need no separate approval. Listing a Custom
-provider's models with its APIM-held credential is covered by the scoping
-credential-reuse answer. Any other pre-confirmation upstream call, secret read or
-inference is rarely needed; if the design truly depends on one, name it in the
-scoping question.
+Source control-plane configuration reads need no separate approval. A scoping
+answer can authorize listing a Custom provider's models with its APIM-held
+credential if it identifies the secret source, upstream and read-only catalog
+purpose. Any other pre-confirmation upstream call, secret read or inference is
+rarely needed; if the design truly depends on one, name it in the scoping question.
 
 ## 3. Produce the reviewable asset inventory
 
@@ -229,14 +238,20 @@ IDs if several migrations share a session. Preserve their relation to asset IDs.
 
 Use host command tools to run the approved `az aigateway` commands and expressly
 approved external `az` commands in dependency order. Do not invoke a custom apply,
-deployment, reconciliation or shell runner. Read-only helpers do not execute the
-inventory. Keep an optional secret-free direct command record for reproduction.
+deployment, reconciliation or provisioning runner. The dedicated smoke helper
+below is the only permitted runtime test runner. Read-only helpers do not execute
+the inventory. If requested, keep a secret-free script recording successful direct
+provisioning commands and protected-input references, never values, as work proceeds.
+It is a reproducibility record, not authority to replay against existing resources.
 
 At run start, check the approved revision/files, selected tenant/subscription,
 CLI version and prerequisite availability. Reuse the collected evidence; refresh
 only facts made stale or contradicted for the affected operation. Do not recollect
 the entire source, models, release catalog or unrelated destination collections
 before every asset or to render a report.
+
+Answer status questions from existing TODOs and receipts before continuing. An
+explicit pause suspends migration work until the user resumes it.
 
 For each asset:
 
@@ -260,31 +275,82 @@ Do not print keys, enable debug/shell tracing, persist secret-bearing CLI output
 or put values in command arguments. Protected temporary JSON is allowed when
 needed, but no custom credential executor. Block when safe input is unavailable.
 MCP endpoint replacement can trigger native secret reads and must be inventoried
-as such. Monitoring payload capture is opt-in. Destination key retrieval for an
-approved smoke test requires an explicit secret source/use boundary.
+as such. Monitoring payload capture is opt-in.
 
 ## 7. Smoke-test, resume and report
 
-Each asset requires configuration read-back. Run only the inventoried tests:
+Each asset requires configuration read-back. If the approved inventory has no
+non-manual aliases or MCP servers, report those runtime checks as inapplicable.
+Otherwise, after confirmation, run the dedicated minimum smoke helper:
+
+```bash
+"$PYTHON" "$HELPER" validate-document --schema migration-inventory --path <inventory.json>
+"$PYTHON" skills/migrate-ai-gateway/scripts/smoke.py \
+  --inventory-file <inventory.json> \
+  --confirmation-file <approved-results.json> \
+  --approved-digest <confirmed-sha256-digest> \
+  --output-file <new-protected-results.json>
+```
+
+The helper verifies the confirmation receipt against the inventory digest and
+performs no Azure writes. It reads gateway, alias and tool-server
+properties, verifies their IDs and uses the advertised runtime endpoint URLs;
+it never constructs or guesses a hostname. It rejects missing, multiple or
+over-budget smoke tests before traffic; each migrated alias or MCP server has
+one approved test bounded as in the table. It does not retry, follow redirects,
+execute tools or paginate. The inventory names the exact inference API and MCP
+protocol version;
+the helper verifies each is advertised by the resource before sending traffic.
+Image-generation and unknown routes are rejected; an advertised route is not
+proof that the destination supports the model's output modality.
+
+Inbound calls use an Entra token for `https://ai.gateway.azure.com`, acquired
+in memory from the explicitly selected Azure CLI subscription. The review states
+the caller's required runtime role and possible inference charges. The helper does
+not retrieve or fall back to gateway keys, so identity-based policies are
+honored; missing runtime role/consent or a policy denial is reported as a
+failed check. MCP versions must be supported session-based versions; when the
+resource omits versions, the documented legacy compatibility set applies. The
+report contains status, HTTP result, route or tool names/count, and
+timing only; response content and credentials are not persisted.
+It writes schema-valid migration results after each asset, with a durable
+placeholder before sending a request. If interrupted, inspect that receipt and
+do not replay an existing smoke check. To continue unchecked assets, use the
+updated results as the confirmation receipt; the helper skips prior checks and
+preserves their outcomes.
+
+Run only the inventoried checks:
 
 | Asset | Applicable bounded check |
 | --- | --- |
-| Model/alias | Minimal request on the exact approved operation/model, payload and budget |
-| MCP | Initialize and tools/list; compare tools/schemas. No business-tool calls unless separately specified in the approved inventory |
+| Model/alias | One request and one output token on the exact approved text-inference API |
+| MCP | At most three requests: initialize, initialized notification and one tools/list; report tool names/count |
 | Identity/RBAC | Read back principal and exact role/scope; this does not prove inference |
 | Monitoring | Exporter read-back; ingestion check only with the approved access/test |
 | Policy/network | Relevant enforcement/connectivity check when feasible; a successful request is not policy equivalence |
 
 Record passed, failed, blocked or skipped tests and non-secret evidence. Optional
-tests may be skipped only with a reason; skipped required tests block verified
-completion. Mark native TODOs done only after read-back and required checks pass.
-Do not fabricate administrator attestation or call mere reachability equivalence.
+tests may be skipped only with a reason; failed or unrun required tests leave
+verification incomplete. Mark a provisioning TODO done when its planned write or
+reuse and read-back are complete and required test outcomes are recorded. A
+failed test remains failed; it does not undo successful provisioning. Leave
+unfinished provisioning pending or blocked. Do not fabricate administrator
+attestation or call mere reachability equivalence.
 
 On resume, use the approved inventory plus result receipts and native TODOs.
 Reconcile interrupted assets by targeted reads; preserve completed assets.
 Old engine checkpoints/approvals are historical evidence, not runnable authority.
 
-Report provisioning separately from runtime verification, list residuals and
-manual follow-up, and link the inventory/results/direct command record. Do not
-call partial or unverified work a completed migration. Reporting itself does
-not trigger a fresh global inventory or another approval round.
+In chat, use the inventory and latest applicable receipts to show a table
+covering every selected asset and explicitly retained or excluded source asset,
+with columns for asset, migration outcome/state and verification/test state.
+Name each asset; group only those with the same outcome and state. Identify
+passed, failed, blocked, skipped, unrun and inapplicable tests, with reasons
+for failures and skips.
+
+State whether provisioning is complete from the planned writes, read-backs and
+approved exclusions. A failed smoke test leaves runtime verification incomplete,
+not provisioning incomplete; do not call failed or unfinished provisioning
+complete. List residuals and manual follow-up, and link the inventory, results
+and any requested command record. Reporting itself does not trigger a fresh global
+inventory or another approval round.

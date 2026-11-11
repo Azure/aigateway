@@ -53,7 +53,7 @@ class AIInventoryTests(unittest.TestCase):
         azure.collections[SOURCE + "/backends"] = {"value": [{"id": backend}]}
         azure.collections[backend] = {"id": backend, "properties": {
             "url": "https://tools.example", "credentials": {
-                "header": {"x-functions-key": "SECRET"},
+                "header": {"x-functions-key": None},
                 "authorization": {"scheme": "Bearer", "parameter": "AUTH_SECRET"},
                 "certificateIds": ["client-cert"], "certificate": ["thumbprint"]}}
         }
@@ -74,6 +74,7 @@ class AIInventoryTests(unittest.TestCase):
             "name": "custom-endpoint", "uriTemplate": "/toolservers/demo/mcp?code=%5Bredacted%5D"}])
         self.assertEqual(config["backend"]["id"], backend)
         self.assertEqual(config["backend"]["headerNames"], ["x-functions-key"])
+        self.assertTrue(config["backend"]["credentialValuesMasked"])
         self.assertEqual(config["backend"]["authorizationScheme"], "Bearer")
         self.assertTrue(config["backend"]["authorizationParameterPresent"])
         self.assertEqual(config["backend"]["certificateReferenceIds"], ["client-cert"])

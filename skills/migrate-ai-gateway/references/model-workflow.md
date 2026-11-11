@@ -27,10 +27,10 @@ For a Custom catalog:
 1. Use the backend base URL and observed version prefix from APIM; the collector
    appends `/models`. Do not guess another endpoint.
 2. Use the credential APIM already sends to that backend (named value or backend
-   header). The user's credential-reuse answer in scoping covers this read, as it
-   is the same secret, upstream and read-only purpose. If reuse was declined, ask
-   for a catalog credential or an operator manifest. Never send an APIM
-   subscription key or ARM token to the upstream model host.
+   header). Scoping consent covers the pre-confirmation read when it identifies
+   the credential source, upstream and read-only catalog purpose. If reuse was
+   declined, ask for a catalog credential or an operator manifest. Never send an
+   APIM subscription key or ARM token to the upstream model host.
 3. Record success, connectivity/authentication error, malformed response or not
    attempted. A 401/404 is not proof of absent models.
 
@@ -39,8 +39,23 @@ not business-tool execution or inference authorization. A model list does not
 prove protocol support. Register the protocols the APIM API exposes for that
 backend, narrowed by model-specific catalog fields or one official provider page
 per model family when it changes which operations to register. Leave the rest to
-the smoke tests; do not invoke inference to discover capabilities before
-confirmation.
+the smoke tests only after destination support is established; do not invoke
+inference to discover capabilities before confirmation.
+
+Destination support is a separate check from source discovery. A catalog entry,
+an OpenAI-compatible endpoint, a route in the gateway operation catalog or an
+accepted model registration does not prove the destination supports that
+model's operation or output modality. Verify the specific model capability
+against current destination documentation or contract before planning its
+destination assets. Keep a known unsupported model or operation in APIM; when
+evidence is insufficient, mark it undetermined and do not use runtime smoke
+tests to discover support.
+
+Current product limitation (reported 2026-11-11): image-generation model
+outputs are unsupported. Keep those models and their image-generation smoke
+tests on APIM. This does not imply that models accepting image input are
+unsupported. Recheck the current official AI Gateway model documentation before
+revising this limitation because preview capabilities can change.
 
 ## Collect source model facts
 

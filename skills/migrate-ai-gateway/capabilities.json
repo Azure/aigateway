@@ -8,8 +8,7 @@
       "/openai/v1/chat/completions",
       "/openai/v1/responses",
       "/openai/v1/completions",
-      "/openai/v1/embeddings",
-      "/openai/v1/images/generations"
+      "/openai/v1/embeddings"
     ],
     "ResponsesApi": [
       "/openai/v1/responses"
