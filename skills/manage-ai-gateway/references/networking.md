@@ -1,109 +1,117 @@
 # Gateway networking and private connections
 
-Apply [typed target resolution and confirmation](../SKILL.md). Manage gateway
-network properties and existing gateway-side connections only, not the VNet,
-subnet, backing endpoint, DNS, role grants, or feature registration.
+[Apply the administrator workflow](../SKILL.md). Gateway
+settings and connections only; existing subnets, private endpoints and DNS
+remain externally owned.
 
-## Inspect prerequisites and current state
+## Choose the traffic path
+
+| Task / portal control | Native control and boundary |
+| --- | --- |
+| Private backends: **Networking > Outbound**, VNet integration | `--subnet`: outbound backend routing, not ingress isolation or backend authorization |
+| Private-only clients: **Networking > Inbound** | `--public-network-access`, approved gateway endpoint and client DNS/reachability; unsupported isolation below |
+| Connection: **Inbound** row | `approve`/`reject`/`delete`: gateway-side decision, not endpoint/DNS provisioning or public access |
+
+[Service evidence](activities-and-cli-coverage.md#operation-gaps-and-applicability)
+and [Lab 18](../../../labs/18-private-networking/README.md#how-it-works) record
+unavailable typed-gateway private ingress and ineffective public disablement.
+Portal gates/help do not supersede service evidence: do not offer `Disabled`
+as isolation or bypass the gap with legacy resources/feature registration.
+
+## Read and confirm
 
 ```bash
 az aigateway network show --ids "$GATEWAY_ID" \
   --subscription "$SUBSCRIPTION" -o json
-az aigateway network private-endpoint-connection list \
-  --subscription "$SUBSCRIPTION" -g "$RG" --gateway-name "$GATEWAY" -o json
 ```
 
-Inspect public access, outbound subnet, provisioning, exact private endpoint
-peer IDs, and connection/provisioning states. A failed connection read is not
-an empty inventory. Public ingress and outbound integration are separate
-controls. CLI network output can project the typed `backend.subnet` contract
-into a networking view; do not infer legacy wire properties from that view.
+Compare public access, subnet and provisioning with the requested traffic
+path. `network show` projects `properties.backend.subnet.id` as
+`virtualNetworkConfiguration.subnetResourceId`, not a legacy wire contract.
+Skip no-ops; identify client/backend impact and specifically confirm the change.
 
-For an existing integration subnet, use authorized read-only Azure CLI
-inspection to establish the exact ID, region, delegation, address capacity,
-occupancy, NSG/routes/DNS, and operator ownership. Typed-gateway integration
-requires same-region delegation to `Microsoft.App/environments`; the CLI
-does not validate all prerequisites. Do not use the old service delegation
-or silently modify the subnet. Report missing prerequisite evidence.
+For outbound integration, record exact subnet, backend endpoint, DNS zone/link
+IDs and owners. Require the gateway's subscription/region, a dedicated subnet
+of at least `/27` (`/24` recommended), `Microsoft.App/environments` delegation,
+and the lab's outbound TCP 443 allowances to `Storage` and `AzureKeyVault`.
+Keep private endpoints outside the integration subnet. Check capacity,
+effective NSGs/firewalls, routes/return paths and DNS links/forwarding/resolver
+reachability with the owner; attachment does not establish these.
 
-The portal's inbound UI rollout and feature enrollment can restrict portal
-editing. They are not universal ARM availability guarantees. Use current
-published CLI/service evidence and permissions; do not bypass a service
-denial by changing feature registration or resource families.
+Keep backend hostnames for HTTPS validation. Subnet updates neither enable an
+identity nor grant [backend access](keys-and-identities.md); authentication
+and reachability are independent. Missing infrastructure goes to its owner.
 
-## Public access
+## Apply the smallest native change
 
-Before disabling public ingress, identify a working approved private path
-and its client/DNS dependencies, explain lockout risk, and confirm the exact
-change. Native configuration cannot prove private reachability.
-
-```bash
-az aigateway network update --ids "$GATEWAY_ID" \
-  --subscription "$SUBSCRIPTION" --public-network-access Disabled
-az aigateway network show --ids "$GATEWAY_ID" \
-  --subscription "$SUBSCRIPTION" -o json
-```
-
-Use `Enabled` only for an explicitly confirmed opening. Do not couple the
-change to an outbound update or automatically reopen public access after
-failure.
-
-## Outbound subnet integration
-
-After prerequisite review and networking confirmation:
+Refresh before writing: network/connection paths send no `If-Match`, so reads
+are not concurrency protection. `network update` sends only supplied settings:
 
 ```bash
 az aigateway network update --ids "$GATEWAY_ID" \
   --subscription "$SUBSCRIPTION" --subnet "$SUBNET_ID"
 ```
 
-To clear integration, use `--disable-vnet-integration true` instead.
-It cannot be combined with `--subnet`. Removing/changing integration can
-break private backends. Send ingress and outbound changes separately so
-their outcomes and recovery decisions remain clear.
+`$SUBNET_ID` is the existing subnet ARM ID. To detach, substitute
+`--disable-vnet-integration true`; it is mutually exclusive with `--subnet`.
+Either change can interrupt private backends. Public access uses
+`--public-network-access Enabled|Disabled`; never reopen automatically.
+If stronger service evidence enables disablement, first verify private
+client/DNS access and confirm a lockout/recovery plan.
 
-Prefer the native update's default LRO tracking. If explicitly using
-`--no-wait`, inspect advertised `network wait` conditions with bounded
-`--timeout`/`--interval`, retain tracking evidence, and read the desired
-network fields. A root's old healthy provisioning state or persisted subnet
-alone does not establish the underlying asynchronous operation succeeded.
-On timeout/failure, reconcile rather than repeat a disruptive update.
-No blanket ETag/atomic concurrency guarantee is implied.
+Prefer default operation tracking. With `--no-wait`, bound the parent wait:
+
+```bash
+az aigateway network wait --ids "$GATEWAY_ID" \
+  --subscription "$SUBSCRIPTION" --updated --timeout 600 --interval 15
+az aigateway show --ids "$GATEWAY_ID" --subscription "$SUBSCRIPTION" -o json
+```
+
+`--updated` checks parent provisioning (`Active`/`Succeeded`), not the changed
+subnet or operation result; stale success can precede operation failure.
+After either mode compare `properties.publicNetworkAccess`,
+`properties.backend.subnet.id`, provisioning and preserved siblings. Retain
+operation outcomes; reconcile failures/timeouts before retrying.
 
 ## Existing private endpoint connections
 
-Read the exact selected connection first:
-
 ```bash
+az aigateway network private-endpoint-connection list \
+  --subscription "$SUBSCRIPTION" -g "$RG" --gateway-name "$GATEWAY" -o json
 az aigateway network private-endpoint-connection show \
-  --subscription "$SUBSCRIPTION" -g "$RG" --gateway-name "$GATEWAY" \
-  -n "$CONNECTION_NAME" -o json
+  --ids "$CONNECTION_ID" --subscription "$SUBSCRIPTION" -o json
 ```
 
-Confirm the backing peer resource/subscription and whether the requested
-decision is appropriate for its current state. Never approve every pending
-connection automatically or trust only its display name.
-
-After immediate approval confirmation:
+Select `$CONNECTION_ID` under `$GATEWAY_ID/privateEndpointConnections/`, not
+the backing `privateEndpoint.id`. Match peer ID, owner, clients and current
+state; never bulk-approve or trust display names. For the confirmed `Pending`
+request:
 
 ```bash
 az aigateway network private-endpoint-connection approve \
-  --subscription "$SUBSCRIPTION" -g "$RG" --gateway-name "$GATEWAY" \
-  -n "$CONNECTION_NAME" --description "$DECISION_REASON"
+  --ids "$CONNECTION_ID" --subscription "$SUBSCRIPTION" \
+  --description "$DECISION_REASON"
 ```
 
-For a confirmed rejection use `reject` with the same selectors/reason.
-For a confirmed gateway-side disconnect use `delete`; explain connection
-loss before deletion. Use the exposed exact connection `--ids` if chosen
-instead of the separate selectors.
+Use `reject` with the same selectors/reason for a confirmed denial, or
+`delete` with those selectors but no `--description` for a confirmed disconnect.
+Rejection/deletion can cut off clients; neither removes the backing
+`Microsoft.Network/privateEndpoints` resource or DNS.
 
-Use default operation tracking or the exposed
-`network private-endpoint-connection wait` with the selected condition and
-bounds when necessary. Re-read `privateLinkServiceConnectionState.status`
-and provisioning for approve/reject; require authoritative absence for
-delete. An operation still in progress is not a completed decision.
-Unknown outcomes need reads, not blind duplicate decisions.
+Repeat `show`: require intended `properties.privateLinkServiceConnectionState.status`
+(`Approved`/`Rejected`) and completed provisioning, or authoritative absence for deletion.
+With `--no-wait`, use connection `wait` with the same selectors,
+`--updated` (or `--deleted`), `--timeout 600 --interval 15`. Here `--updated`
+checks child provisioning (`Active`/`Succeeded`), not approval. Reconcile
+unknown outcomes before retrying.
 
-These actions do not delete or create a `Microsoft.Network/privateEndpoints`
-resource, modify DNS/VNet configuration, or enroll a subscription. If the
-backing resource needs work, report its ID and the owner prerequisite.
+## Separate configuration from connectivity
+
+Report persisted fields/operation outcomes separately from runtime evidence.
+Native reads do not test DNS, NSGs or traffic. Obtain separately authorized
+evidence from the intended client/gateway path; another VM's DNS is preliminary.
+Any future private-only claim needs private client success and public-path
+rejection, not an authentication, DNS or backend error. Otherwise mark it
+unverified. Use [telemetry troubleshooting](telemetry-and-troubleshooting.md)
+for export failures, not public-access changes. Missing telemetry does not
+authorize network changes.

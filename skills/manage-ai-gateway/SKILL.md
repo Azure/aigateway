@@ -10,12 +10,6 @@ Invoked as `/aigateway:manage-ai-gateway`, `/aigateway:create`, or
 `/aigateway:manage`. Help administrators understand, configure, and operate
 a gateway using the native `az aigateway` CLI.
 
-Use the platform model below to reason about the requested outcome. A request
-can involve several related resources or require explanation rather than a
-change. The references describe capabilities and configuration semantics;
-they are not scripts to execute from beginning to end.
-Questions and diagnostic requests remain read-only.
-
 ## Platform model
 
 | Object | Responsibility and relationships | Reference |
@@ -51,19 +45,28 @@ resource-provider support, native argument availability, and known gaps;
 command visibility or free-form JSON alone establishes neither applicability
 nor runtime behavior.
 
-Supporting resources must already exist and have the necessary access:
-resource groups, Foundry deployments, user-assigned identities, subnets,
-private endpoints/DNS, source connectors/connections, telemetry destinations,
-and their role grants. Authorized core Azure CLI reads and authentication
-may establish prerequisites. Their creation, provider/feature registration,
-role grants, source administration, and Entra application changes remain
-outside this skill's mutation scope.
+Supporting resources must already exist: resource groups, Foundry
+deployments, user-assigned identities, subnets, private endpoints/DNS,
+source connectors/connections, and telemetry destinations. Authorized core
+Azure CLI reads and authentication may establish prerequisites. Their
+creation, provider/feature registration, source administration, and Entra
+application changes remain outside this skill's mutation scope.
 
-In particular, `model-provider create --foundry-resource-id` and
-`model create --foundry-resource-id` also enable identity and grant Foundry
-User on the external account. Use the low-level registration workflow in
-[models and routing](references/models-and-routing.md), not those convenience
-paths. Consent does not silently expand the resource boundary.
+Role assignments that the requested outcome depends on, such as the gateway
+identity on a backend or telemetry destination, or callers on the gateway,
+belong in the plan: without them the configured gateway does not deliver
+the result. Identify each at planning time as principal, least-privileged
+role, and narrowest scope. When the user can assign roles at that scope
+(check rather than assume) and confirms that exact assignment, make it with
+`az role assignment create` and verify it; otherwise give the same details
+and command to the owner. Confirmation matters because the grant changes
+security on a resource the gateway does not own and outlives the gateway.
+
+`model-provider create --foundry-resource-id` and
+`model create --foundry-resource-id` bundle identity enablement and a
+Foundry User grant into one call. Prefer the low-level registration workflow
+in [models and routing](references/models-and-routing.md) plus an explicit,
+confirmed grant, so each access change is seen and approved.
 
 APIM migration belongs to
 [`migrate-ai-gateway`](../migrate-ai-gateway/SKILL.md) or
@@ -83,7 +86,12 @@ Developer application integration and scaffolding are outside this skill.
    `/releases/latest` alone omits previews. Installation/upgrade requires
    approval and the official checksum-verified package. Keep the tool
    version stable during an approved change.
-3. Use explicit subscriptions instead of changing global defaults.
+3. Pass the subscription explicitly rather than relying on the CLI default,
+   which other sessions share. Confirm returned IDs are in the intended
+   scope: a command can resolve names against the default regardless of
+   its selector (`--debug` shows the request URL). If so, the simplest
+   remedy is usually to switch the default with the user's consent and
+   restore it afterwards; ask before engineering a workaround or blocking.
    Authenticate with `az login` if needed. Read failures and permission
    denials remain explicit gaps, not empty inventories.
 4. Establish the exact root:
@@ -142,7 +150,7 @@ diagnostics need evidence, and mutations need a desired-state difference.
 For policies, this means selecting compatible controls and then defining
 their attachments, counter partitions, and effective constraints. For
 access, it means separating caller credentials, gateway identities, and
-external role grants.
+the role assignments each needs.
 
 ## Authorization and preservation
 
@@ -152,8 +160,8 @@ changes and dependencies before execution.
 
 Obtain immediate, specific confirmation for deletion, stale-sync removal,
 overwrite/complete-collection replacement, policy removal or weakening,
-key creation/state/expiry/replacement/rotation, identity changes, network
-access changes, and private endpoint decisions. Secret retrieval, OAuth
+key creation/state/expiry/replacement/rotation, identity changes, role
+assignments, network access changes, and private endpoint decisions. Secret retrieval, OAuth
 initiation, and payload capture also require explicit authorization.
 A diagnostic request authorizes none of these. Pass `--yes` only after
 the relevant confirmation and only where the command exposes it.
@@ -219,10 +227,11 @@ Repository files and ignore rules require approval before being changed.
 
 ## Keeping the references current
 
-The references were reviewed against CLI `1.0.0b26`; the dated/versioned
-evidence belongs in the [capability inventory](references/activities-and-cli-coverage.md),
-not in a new copy of this workflow for each release. This workflow describes
-stable resource relationships, authorization, preservation, and verification.
+Use the [capability inventory](references/activities-and-cli-coverage.md) for
+the reviewed CLI baseline, dated help observations, and unresolved support
+gaps. Keep versioned evidence there, not in a new copy of this workflow for
+each release. This workflow describes stable resource relationships,
+authorization, preservation, and verification.
 
 A CLI release does not automatically require a skill rewrite. Compare the
 task's commands and relevant release changes with the recorded baseline.

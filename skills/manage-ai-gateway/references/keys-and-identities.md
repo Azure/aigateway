@@ -1,213 +1,213 @@
 # Caller authentication and outbound gateway identity
 
-There are two separate authentication connections:
+## Choose the task
 
-| Connection | Preferred authentication | Required authorization |
-| --- | --- | --- |
-| Inbound: application or user to gateway | Microsoft Entra ID OAuth access token for the caller | A gateway data-plane role at the intended gateway/workspace or asset scope |
-| Outbound: gateway to model provider or tool backend | Gateway managed identity, where the backend and native configuration support it | Backend roles or access grants for that gateway identity |
+| Task | Inspect → change |
+| --- | --- |
+| Authorize callers | Principal, token flow, grants and scope → least-privileged role |
+| Manage keys | Metadata, consumers and primary/secondary usage → one `api-key` operation |
+| Authenticate outbound | Identity, auth/audience and grants → change each separately |
+| Diagnose denial | Locate ARM/runtime/backend failure → read only, not credential substitution |
 
-Neither connection grants access to the other. A caller's token or gateway
-API key is not a backend credential. A gateway's managed identity does not
-give the caller permission to invoke the gateway.
-Apply the [scope, credential, and confirmation rules](../SKILL.md).
+Use the [shared safeguards](../SKILL.md) and resolved variables.
+Examples are independent, not a batch.
 
-## Inbound: prefer Microsoft Entra ID
+## Understand the effects
 
-Use the application's existing supported OAuth flow. Delegated users request
-`https://ai.gateway.azure.com/Data.All`; workload identities request resource
-`https://ai.gateway.azure.com`, or scope
-`https://ai.gateway.azure.com/.default` with an identity SDK. Send the runtime
-token in the `Authorization: Bearer <token>` header, not an ARM management
-token or a provider token. Use an identity library to refresh tokens; do not
-save access tokens in source files or replay scripts.
+**ARM management access is not runtime access.**
+Contributor implies neither invocation nor role-assignment authority.
+Prefer **AI Gateway Models User** on selected aliases,
+**AI Gateway Tools User** on selected ToolServers, or **AI Gateway User** for both.
+Default-workspace/gateway grants include future assets. Inspect direct,
+inherited and relevant group-derived grants and role DataActions before adding.
 
-The caller also needs **AI Gateway Models User**, **AI Gateway Tools User**,
-or **AI Gateway User** at the appropriate scope. A management role such as
-Contributor does not imply runtime invocation access. Delegated applications
-also need the gateway data-plane permission and tenant consent. See the
-[developer authentication workflow](../../use-ai-gateway/SKILL.md#establish-runtime-authentication)
-for token acquisition, and the
-[Entra ID and RBAC lab](https://github.com/Azure/aigateway/tree/main/labs/11-entra-rbac)
-for caller-role examples.
+Entra tokens target the gateway runtime, not ARM/backend. Check tenant/audience
+and delegated permission/consent separately from caller roles; portal token
+requests do not prove acceptance. Use the
+[Entra/RBAC lab](../../../labs/11-entra-rbac/README.md) for flow examples, verifying
+the intended audience. Keys do not repair missing caller roles.
 
-Role assignments and Entra application/consent changes are external
-prerequisites, not writes performed by this skill. Report the missing
-principal, role, and scope to the owner rather than substituting a shared key.
+**Keys are gateway-wide, not per-asset grants.** Primary/secondary share state,
+expiry and caller identity for usage and [caller-partitioned policies](policies.md).
+Suspension/expiry affects both; reactivation does not clear expiry. Rotation
+invalidates only the selected value, preserves caller identity and does not
+extend expiry. A new key changes caller identity: review accounting continuity
+and per-caller overrides before replacing rather than rotating.
 
-## Outbound: prefer gateway managed identity
+**Outbound identity is separate from callers.** Enable system identity or attach
+an **existing** user-assigned managed identity (UAMI); select asset auth and grant
+destination access separately. UAMI **resource ID** attaches it,
+**client ID** selects it, and **principal/object ID** receives grants. The token
+audience identifies a destination service, not an identity or authorization.
 
-Enable the gateway's system-assigned identity or attach an existing
-user-assigned managed identity, then select that identity in the supported
-provider or MCP source authentication configuration. Identity attachment
-alone does not configure backend authentication or grant access.
+Inspect dependent [providers](models-and-routing.md#provider-configuration),
+[MCP sources](mcp.md) and [exporters](telemetry-and-troubleshooting.md).
+Attachment does not switch their auth; removal can break them. Re-enabling
+system identity creates a new principal without old grants. UAMI detachment
+deletes neither identity nor grants, which other gateways may use.
 
-Before calling a backend, have its owner grant the selected gateway
-principal the required role at that backend's scope. For example, the
-Foundry onboarding path grants **Foundry User** on the existing account.
-For another model or tool target, verify its own required audience,
-role/access policy, and supported identity flow; do not reuse a Foundry
-grant or assume every MCP source supports managed identity.
-See [provider authentication](models-and-routing.md#provider-configuration),
-[MCP credentials](mcp.md), and the
-[backend identity lab](https://github.com/Azure/aigateway/tree/main/labs/12-backend-identity).
+Plan principal, required operations, least-privileged role and scope; reuse
+sufficient existing/custom-role access. Foundry's documented role is
+**Foundry User** (`53ca6127-db72-4b80-b1b0-d745d6d5456d`) at the existing account;
+other destinations differ. Check assignment authority, conditions and activation,
+then confirm the exact grant under the
+[role-assignment rule](../SKILL.md#operating-boundary) or hand it to its owner.
+Unreadable permissions/grants are gaps, not absence.
 
-Use the [identity commands below](#manage-outbound-gateway-identity) only
-after confirmation. External role grants remain the backend owner's work.
-Verify both gateway configuration and backend access; a saved identity
-setting alone does not prove a successful model or tool call.
+## Execute the smallest native change
 
-## Inbound alternative: gateway API keys
+Refresh state. Key create and identity show/assign/remove use names: apply the
+shared dispatch guard; use IDs where supported. Pass explicit subscriptions;
+protect shared CLI defaults. Coordinate concurrent admins: key/identity writes
+lack confirmed conditional guards; absence checks are not atomic create guards.
+Multi-step changes are nontransactional: stop dependent steps after failure.
 
-Use keys only when the chosen client cannot use the supported identity flow
-or the user explicitly requires them. They grant gateway-wide runtime access,
-not per-model/tool permissions. Keep values in an approved secret store and
-retrieve them only for the authorized use, in protected memory or protected
-files outside source control. Never put them in chat, logs, shell history,
-browser code, or replay scripts. The following operations manage these
-**inbound caller keys**, not provider or MCP backend credentials.
-
-### Inventory keys without retrieving values
+### Inspect or change caller keys
 
 ```bash
 az aigateway api-key list --subscription "$SUBSCRIPTION" \
   -g "$RG" --gateway-name "$GATEWAY" -o json
 az aigateway api-key show --subscription "$SUBSCRIPTION" \
-  -g "$RG" --gateway-name "$GATEWAY" -n "$KEY_NAME" -o json
+  --ids "$KEY_ID" -o json
 ```
 
-These return metadata, not key values. Select the key by resource identity,
-state, purpose, and expiry; there is no assumed `default` key and no silent
-first-key selection. The keys are gateway-wide, not per-model/tool grants.
-Creating one gives broad runtime access; explain and confirm that impact.
+Select by identity/purpose/state/expiry, not `default`/`master` or first result.
+Set `KEY_ID` from validated metadata; complete pagination before absence claims.
+Metadata does not establish usage.
 
-### Create, suspend, expire, or remove a key
+| Task | `az aigateway api-key` operation |
+| --- | --- |
+| Issue | `create`; confirm gateway-wide access and name absence |
+| Suspend | `update --ids "$KEY_ID" --state suspended` |
+| Reactivate | `update --ids "$KEY_ID" --state active`; check expiry |
+| Set expiry | `update --ids "$KEY_ID" --expiration-date "$EXPIRY"`; ISO 8601 |
+| Delete | `delete --ids "$KEY_ID"`; confirm affected consumers |
 
-After confirming the intended identity/access:
+Confirm key changes. Add `--subscription "$SUBSCRIPTION"` throughout:
 
 ```bash
 az aigateway api-key create --subscription "$SUBSCRIPTION" \
-  -g "$RG" --gateway-name "$GATEWAY" -n "$KEY_NAME" \
-  --display-name "$KEY_DISPLAY_NAME"
+  -g "$RG" --gateway-name "$GATEWAY" -n "$KEY_NAME" -o json
 ```
 
-Inspect existence before create and refuse an accidental overwrite.
-Create returns redacted metadata and may not preserve the requested
-friendly label; verify through `show`. Do not retrieve values automatically.
-If state/expiry is required, explain that a subsequent update is a separate
-write, not an atomic create-with-expiry.
-
-For selected state or expiry changes:
-
-```bash
-az aigateway api-key update --subscription "$SUBSCRIPTION" \
-  -g "$RG" --gateway-name "$GATEWAY" -n "$KEY_NAME" --state suspended
-```
-
-Use `--state active` to reactivate or `--expiration-date "$EXPIRY"` with an
-explicit ISO 8601 timestamp to change expiry. Confirm each access change,
-then verify actual metadata. Do not invent expiry-clearing syntax.
-Although `--display-name` is visible on update, the reviewed service rejects
-renaming; do not claim it succeeded.
-
-Confirmed `api-key delete` removes the selected key and breaks its clients.
-Read before deletion, explain consumers affected, execute with exact
-selectors/ID where supported, and require authoritative absence afterward.
-Do not delete keys merely because they appear unused; metadata is not
-traffic evidence.
+Create returns redacted metadata. State/expiry require a separate update, not
+atomic creation. Renaming is service-rejected despite `--display-name`;
+no expiry-clearing syntax is established.
 
 ### Retrieve or replace a value
 
-Retrieve only one deliberately selected key after explicit authorization.
-Use a private execution path with tracing disabled and capture the value
-without exposing command output. For example, inside a protected script:
+`list-secrets` reads both values; `--query` filters output, not server access.
+Authorize separately from creation/rotation. In an approved protected script,
+with tracing/debug/verbose disabled, retain only the needed value:
 
 ```bash
 AI_GATEWAY_API_KEY="$(az aigateway api-key list-secrets \
-  --subscription "$SUBSCRIPTION" -g "$RG" --gateway-name "$GATEWAY" \
-  -n "$KEY_NAME" --query primaryKey -o tsv)" || exit 1
+  --subscription "$SUBSCRIPTION" --ids "$KEY_ID" \
+  --query secondaryKey -o tsv)" || exit 1
 if [ -z "$AI_GATEWAY_API_KEY" ] || [ "$AI_GATEWAY_API_KEY" = "null" ]; then
-  printf '%s\n' 'No usable key value returned; verify key identity and permissions.' >&2
+  printf '%s\n' 'No usable key returned.' >&2
   exit 1
 fi
 ```
 
-Do not echo, log, dump the environment, or write this value into the replay
-script. Clear it with `unset AI_GATEWAY_API_KEY` after the approved use.
-A "Subscription not found" error can refer to the named key/subscription
-resource; inspect key metadata rather than switching Azure subscriptions
-blindly.
-
-`api-key update --primary-key` or `--secondary-key` replaces a selected value.
-Prefer regeneration unless a supplied replacement is specifically required.
-Use runtime secret input, never a literal in history. Scalar CLI flags can
-expose expanded secrets in process arguments even when shell history is safe;
-if the execution environment cannot protect that exposure, report the input
-channel limitation instead of passing the secret. Never invent file/STDIN
-support for scalar options.
+Keep secrets in protected memory/storage, never chat, logs, history, browser code
+or replay scripts; `unset AI_GATEWAY_API_KEY` after use. Prefer regeneration over
+`update --primary-key`/`--secondary-key`. Supplied scalar values can leak through
+process listings: require an established protected input path or report the
+limitation, not invented file/STDIN support.
 
 ### Stage rotation
 
-1. Identify which value clients currently use and choose the other value
-   for the first rotation. Do not assume primary is unused.
-2. Obtain confirmation for the selected key/value and invalidation impact.
-3. Execute one rotation:
+1. Establish primary/secondary usage; rotate the unused value first. If both
+   are used or usage is unknown, obtain a cutover plan.
+2. Confirm key/value, invalidation impact, expiry and overlap window.
+3. Execute once; secondary must be safe to invalidate for this example:
 
 ```bash
 az aigateway api-key regenerate --subscription "$SUBSCRIPTION" \
-  -g "$RG" --gateway-name "$GATEWAY" -n "$KEY_NAME" --key-type secondary
+  --ids "$KEY_ID" --key-type secondary -o none
 ```
 
-4. Retrieve the replacement only when authorized, through the protected
-   path; migrate clients through their owners. No app/secret-store writes
-   are included in this skill.
-5. Obtain client cutover evidence before separately confirming/rotating the
-   other value. Never rotate both in one batch.
+4. Retrieve only when authorized; owners cut over clients/secret stores.
+5. Require cutover evidence and separate confirmation before rotating the other
+   value, never both in one batch. For leaks, consider confirmed suspension.
 
-A successful rotation command does not prove clients work or that retrieval
-succeeded. If the command times out, reconcile before another rotation;
-repeating it may invalidate a replacement already in use.
+### Enable, attach, or remove outbound identity
 
-## Manage outbound gateway identity
+Inspect, then confirm the identity change:
 
 ```bash
 az aigateway identity show --subscription "$SUBSCRIPTION" \
   -g "$RG" -n "$GATEWAY" -o json
-```
-
-Inspect system identity type/principal, attached UAMIs/client IDs, and gateway
-provider/MCP/exporter auth dependencies. The parent must be an unambiguous
-typed gateway; identity assign/remove lack exposed exact `--ids` selectors
-in the reviewed CLI, so apply the skill's name-only dispatch guard.
-
-After identity/access confirmation, enable system identity or attach an
-existing UAMI:
-
-```bash
 az aigateway identity assign --subscription "$SUBSCRIPTION" \
-  -g "$RG" -n "$GATEWAY" --system-assigned true
+  -g "$RG" -n "$GATEWAY" --system-assigned true -o json
 ```
 
-Use `--user-assigned "$IDENTITY_ID"` for an existing UAMI instead.
-Other identities are preserved. Verify through `identity show` and the
-exact root `show`; wait with bounded `identity wait --updated` if the
-selected asynchronous operation requires it.
-
-After dependency review and immediate confirmation:
+Use `--user-assigned "$IDENTITY_ID"` instead for a UAMI; other identities are
+preserved absent races. After dependency review and removal confirmation:
 
 ```bash
 az aigateway identity remove --subscription "$SUBSCRIPTION" \
-  -g "$RG" -n "$GATEWAY" --user-assigned "$IDENTITY_ID"
+  -g "$RG" -n "$GATEWAY" --user-assigned "$IDENTITY_ID" -o json
 ```
 
-Use `--system-assigned true` instead to disable system identity. Removing
-system identity recycles its service principal; re-enabling is not a
-restoration of its old principal/grants. Detaching a UAMI does not delete
-the identity resource. Verify selected removals and retained identities.
+Use `--system-assigned true` instead to disable system identity. Resolve its
+principal after enablement; select asset auth via its reference.
+Prefer low-level Foundry registration: `--foundry-resource-id` convenience calls
+bundle system identity enablement and a Foundry User grant.
 
-No identity operation grants Foundry/telemetry/source access or cleans up
-external role assignments. Azure invocation roles under
-`Microsoft.Authorization/roleAssignments`, even when scoped to a gateway
-or alias/ToolServer, are outside this skill's own-RP resource boundary.
-Explain the exact missing role/scope/principal for the appropriate owner;
-do not use a gateway key or governance policy as a substitute.
+### Grant caller or destination access
+
+Resolve `PRINCIPAL_ID` (caller/selected identity's object ID), `ROLE_ID`,
+`GRANT_SCOPE`, `GRANT_SUBSCRIPTION` and `PRINCIPAL_TYPE` (`User`, `Group`, or
+`ServicePrincipal`; MI uses the latter). Use a validated alias/ToolServer ID for
+caller scope or destination ID for outbound access. Inspect before confirming:
+
+```bash
+az role assignment list --subscription "$GRANT_SUBSCRIPTION" \
+  --assignee-object-id "$PRINCIPAL_ID" --scope "$GRANT_SCOPE" \
+  --include-inherited --fill-principal-name false -o json
+```
+
+Resolve group-derived access separately; this list omits it.
+After authority and exact confirmation:
+
+```bash
+az role assignment create --subscription "$GRANT_SUBSCRIPTION" \
+  --assignee-object-id "$PRINCIPAL_ID" --assignee-principal-type "$PRINCIPAL_TYPE" \
+  --role "$ROLE_ID" --scope "$GRANT_SCOPE" -o json
+```
+
+The role-grant exception permits no portal APIs, Entra app writes or general Azure
+mutations. No native caller-access/app-consent or connector-ACL family is
+established; these are owner prerequisites, not native JSON features.
+
+## Verify configuration
+
+- **Keys:** show metadata; verify ID, state/expiry and preserved fields. Create
+  labels may not persist: re-read. Verify deletion by authoritative absence.
+- **Identity:** read the exact typed root; verify principal/client IDs, retained
+  identities and selected asset auth. Identity-show not-found can mean unassigned,
+  not a missing gateway. Bounded `identity wait --updated` waits for gateway
+  provisioning, not a specific identity/principal field.
+- **Grants:** re-read principal, role definition, scope and conditions. Conflict
+  does not prove the intended grant exists. Leave residual grants after
+  detachment/partial failure for explicit owner review.
+
+Reconcile uncertain delivery before retrying. Rotation metadata cannot prove
+which value clients received; repetition may invalidate replacements.
+Stop until cutover evidence resolves this.
+
+## Identify remaining runtime uncertainty
+
+Configuration/grants do not prove token issuance, propagation, reachability or
+invocation; not every backend supports MI. Runtime evidence needs separate
+authorization; no native inference/MCP test command is established.
+
+Locate denials before remediation: ARM → operator permissions; runtime → caller
+role/scope, tenant/audience/consent or key state/expiry; backend → selected
+identity, audience and destination grants. Check error codes: quotas/IP controls
+can also deny traffic. "Subscription not found" may mean the key resource.
+Use [troubleshooting](telemetry-and-troubleshooting.md) for nonsecret evidence.
+Report verified state, unverified runtime effects and owner prerequisites;
+diagnostics authorize no access changes or secret reads.

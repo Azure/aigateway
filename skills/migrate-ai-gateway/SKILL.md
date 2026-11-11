@@ -122,7 +122,13 @@ already supplied or observed; ask only for missing information needed now.
 For destination-bound planning, also establish the destination subscription,
 resource group/name, region if creation is needed, and ownership of existing
 target configuration. Local fallback exports require their own approval.
-Authenticate through `az login` when necessary. Do not change global defaults.
+Authenticate through `az login` when necessary. Pass subscriptions explicitly
+rather than relying on the CLI default, which other sessions share, and
+confirm returned IDs are in the intended scope: a command can resolve names
+against the default regardless of its selector (`--debug` shows the request
+URL). If so, the simplest remedy is usually to switch the default with the
+user's consent for the session and restore it afterwards; ask before
+engineering a workaround or blocking.
 With approval, install the current official extension using:
 
 ```bash
@@ -630,7 +636,8 @@ are representable and others are residual; retain every behavior ID exactly once
   migration never copies source key values or reads destination key secrets.
 - The native Foundry convenience commands import more than APIM metadata and
   can assign identity/RBAC. This adapter does not execute those shortcuts:
-  choose explicit low-level configuration or record an external prerequisite.
+  choose explicit low-level configuration and plan the role assignments it
+  needs as described under managed identity below.
 - The reviewed b22 `model-provider sync` owns Foundry missing/stale membership
   through authorized `--dry-run` evidence. Use `collect-sync-preview` only for an
   existing selected Foundry provider and bind its exact account, endpoint, target,
@@ -700,6 +707,15 @@ are representable and others are residual; retain every behavior ID exactly once
   `--system-assigned true` or `--user-assigned <json-array-of-resource-ids>`.
   This does not grant backend RBAC. Keep model policies on `az aigateway model
   policy set` only when its new-RP capability is available.
+- Role assignments the migrated traffic depends on, such as the gateway
+  identity on a backend (for example **Foundry User** on a Foundry account)
+  or callers on the gateway, are plan prerequisites: record each as principal, least-privileged role, and narrowest scope, so a
+  migrated gateway is not reported ready while it cannot serve. The adapter
+  does not execute them. When the user can assign roles at that scope and
+  confirms that exact assignment, run `az role assignment create` outside the
+  plan once the principal exists and before dependent verification;
+  otherwise give the owner the same details. Confirmation matters because
+  the grant changes security on a resource the gateway does not own.
 - Source conversion/deletion, DNS/client cutover, source key rotation, external
   deployments, resource-group creation, and backing private endpoint creation
   are out of scope.

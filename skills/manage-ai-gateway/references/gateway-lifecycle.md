@@ -1,111 +1,109 @@
 # Gateway lifecycle
 
-Apply [target resolution and safeguards](../SKILL.md) first. These examples
-use its scope variables and an existing resource group.
+Use the [shared workflow](../SKILL.md) and its Bash scope variables.
+The resource group and external dependencies must already exist.
 
-## Discover and inspect
+## Choose the task and inspect effects
+
+Choose provisioning, tags/SKU, or gateway deletion. For identity/network changes, use
+[identity and access](keys-and-identities.md) or [networking](networking.md).
+Provisioning publishes no callable assets; separately configure requested
+[model aliases](models-and-routing.md) or [MCP ToolServers](mcp.md).
 
 ```bash
 az aigateway list --subscription "$SUBSCRIPTION" --resource-group "$RG" -o json
 az aigateway show --ids "$GATEWAY_ID" --subscription "$SUBSCRIPTION" -o json
 ```
 
-List output can include legacy AI Gateway services; retain only exact
-`Microsoft.ApiManagement/aigateways` targets, while detecting same-name
-family collisions. A child listing is not proof of permission to read/write
-its parent. Inspect `id`, `type`, `location`, `tags`, `sku`, `identity`, and
-`properties.provisioningState`. Discover the runtime URL from returned
-metadata, not a fabricated hostname.
+Select `Microsoft.ApiManagement/aigateways`; retain legacy list matches for
+the shared collision check. Inspect `id`, `type`, `location`, `tags`, `sku`,
+`identity`, and `properties.provisioningState`. Discover the runtime URL
+from returned metadata (`properties.frontend.defaultHostname` or
+`properties.gatewayUrl`), not a fabricated hostname.
 
 ## Create
 
-Establish the exact subscription, existing RG, available region, unique name,
-and intended optional settings. Check the subscription's provider readiness
-and supported `aigateways` locations through authorized read-only Azure CLI
-discovery if needed. Missing registration is an owner prerequisite; do not
-register it. Do not apply a historical BasicV2/publisher/dual-resource design.
+Choose a globally unique name and supported `aigateways` region. Check
+registration and preview access; region availability alone does not establish
+access. Hand registration, RG creation, and other missing prerequisites to the
+owner. Omit legacy publisher/capacity inputs and companion resources.
 
-Refuse an existing gateway or a same-name legacy-family collision instead
-of treating creation as an upsert. Execute only the requested settings:
+Omit `--sku` for the documented default, Standard, or pass `--sku Standard`.
+Other tiers are not exposed; verify service support before planning a transition.
 
-```bash
-az aigateway create --subscription "$SUBSCRIPTION" \
-  --resource-group "$RG" --name "$GATEWAY" --location "$LOCATION"
-az aigateway show --ids "$GATEWAY_ID" --subscription "$SUBSCRIPTION" -o json
-```
-
-`LOCATION` is the selected region. Omitting `--sku` lets the service select
-its default (documented as Standard); explicit choices are `Standard`,
-`Premium`, or `Consumption`. Confirm cost/tier intent; do not infer a tier
-from an old APIM source.
-
-Optional native inputs, only when requested:
+Add only requested optional inputs to the create command:
 
 | Input | Requirements |
 | --- | --- |
 | `--tags @tags.json` | Complete intended tag object, no secrets |
-| `--system-assigned true` | Identity/access change explicitly authorized |
-| `--user-assigned <existing-identity-id>` | Existing identity; no provisioning or role grant |
+| `--system-assigned true` | Confirm identity enablement; backend grants remain separate |
 | `--subnet <existing-subnet-id>` | Networking confirmation and existing delegated subnet prerequisites in [networking](networking.md) |
-| `--sku <selected-tier>` | Explicit choice; not source sizing conversion |
-| `--no-wait` | Only if tracking is needed; acceptance is not completion |
 
-When asynchronous, use the exposed native wait and a bounded read:
+Attach existing user-assigned identities after creation; the native adapter
+rejects create-time `--user-assigned` despite help visibility.
+After the scoped inventory/collision check, create and wait:
 
 ```bash
+LOCATION="<supported-region>"
+az aigateway create --subscription "$SUBSCRIPTION" \
+  --resource-group "$RG" --name "$GATEWAY" --location "$LOCATION" --no-wait
 az aigateway wait --ids "$GATEWAY_ID" --subscription "$SUBSCRIPTION" \
   --created --timeout 1800 --interval 20
 az aigateway show --ids "$GATEWAY_ID" --subscription "$SUBSCRIPTION" -o json
 ```
 
-Check final healthy state and selected fields. On timeout or a lost create
-response, inspect this exact root before deciding whether creation failed.
-Do not retry against a different family/name, automatically delete the
-partially provisioned gateway, or provision extra resources.
+Verify the returned ID/type, location, SKU, tags, identity, and subnet.
+The typed wait accepts `properties.provisioningState` of `Active` or
+`Succeeded`. Reconcile timeout or a lost response by reading this exact root,
+not by recreating or deleting it.
 
 ## Update tags or SKU
 
-Read fresh state. `--tags` replaces the entire tag set: build `tags.json`
-by merging requested additions/removals with existing tags. Do not send a
-one-tag object unless replacement of all tags is intended.
+`--tags` replaces the entire set. Read fresh state, merge requested changes
+with existing tags into approved `tags.json`, and pass its actual path below.
+A one-tag object drops other tags.
 
 ```bash
+az aigateway show --ids "$GATEWAY_ID" --subscription "$SUBSCRIPTION" -o json
 az aigateway update --ids "$GATEWAY_ID" --subscription "$SUBSCRIPTION" \
   --tags @tags.json
 az aigateway show --ids "$GATEWAY_ID" --subscription "$SUBSCRIPTION" -o json
 ```
 
-For a tier change use the same command with `--sku "$SKU"` instead of
-`--tags`. Do not repeat unrelated fields. If `--no-wait` was selected,
-use `wait --updated` with bounds before read-back. Root updates do not
-guarantee atomic protection from concurrent edits.
+For a supported SKU-only change, substitute `--sku Standard` for
+`--tags @tags.json`; omit unchanged fields. Compare tags/SKU and preserved
+identity/network settings with the pre-read. With `--no-wait`, use the bounded
+wait above with `--updated` before read-back. Root updates lack atomic
+concurrent-edit protection; name/location changes are not exposed.
 
 ## Delete
 
-Inventory relevant models, providers, aliases, ToolServers, policies, keys,
-identities, exporters, and private connections as authorized. Explain client
-outage and gateway-owned configuration loss, and list external dependencies
-that will remain. Obtain confirmation for this exact gateway, then:
+Plan client outage, gateway-owned configuration loss, and system-identity loss.
+Inspect relevant models/providers, aliases, ToolServers, policies, keys,
+identities, exporters, and private connections; record external dependencies
+and role grants that remain. Refresh the exact gateway, obtain deletion
+confirmation, then:
 
 ```bash
-az aigateway delete --ids "$GATEWAY_ID" --subscription "$SUBSCRIPTION"
+az aigateway show --ids "$GATEWAY_ID" --subscription "$SUBSCRIPTION" -o json
+az aigateway delete --ids "$GATEWAY_ID" --subscription "$SUBSCRIPTION" --yes
 az aigateway wait --ids "$GATEWAY_ID" --subscription "$SUBSCRIPTION" \
   --deleted --timeout 1800 --interval 20
 ```
 
-Native confirmation must be handled explicitly; add `--yes` only after user
-confirmation and a help check. Verify authoritative absence with the wait
-and a scoped read. A denied read does not prove deletion. API Management
-retains a soft-delete record; do not promise purge or immediate name reuse.
-Never delete the RG, source deployments, Connector Namespace/connections,
-backing private endpoint, identity resources, or telemetry stores as cleanup.
+The wait verifies active-root absence, not purge; denied reads prove neither.
+The CLI documents a recoverable soft-delete record but exposes no native
+purge/recover operation; do not promise immediate name reuse. Leave external
+RGs, deployments, Connector Namespace/connections, private endpoints/DNS,
+user-assigned identities, telemetry stores, and role assignments untouched.
 
-## Reproducible output
+## Retain replay and unresolved effects
 
-For provisioning, retain a secret-free Bash script in an approved output
-location, with `set -euo pipefail`, required explicit input variables, the
-actual reviewed create/configuration sequence, and matching verification.
-Record prerequisite resources and authorization decisions separately. Reference
-runtime secret inputs by name only, and never silently replay an overwrite,
-deletion, key rotation, or access change. Do not claim the script is an
-atomic transaction or that rerunning every create is safe.
+Retain an approved-location, secret-free Bash replay with `set -euo pipefail`,
+explicit scope/inputs, actual changes, prerequisites, and verification.
+Preserve confirmation stops and reconcile existing state before replaying
+creates; the script is not transactional.
+
+Report provisioning separately from runtime readiness. Leave inference,
+tool availability, policy enforcement, connectivity, and telemetry delivery
+unverified without authorized runtime evidence.

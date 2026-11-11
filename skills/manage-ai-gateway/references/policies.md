@@ -1,31 +1,28 @@
 # Governance policy reference
 
-Policies configure runtime controls on a workspace or registered asset.
-This reference describes their mechanisms, applicability, accounting, and
-native authoring paths for `Microsoft.ApiManagement/aigateways`.
-Use it with the [administrator workflow](../SKILL.md) and
+Choose a control, its traffic boundary and caller partitions, then the
+smallest preserving native change. Authorization follows the
+[administrator workflow](../SKILL.md); support gaps are in the
 [capability inventory](activities-and-cli-coverage.md).
 
-## Policy catalogue
+## Choose compatible controls
 
 | Policy | Mechanism and principal configuration | Workspace defaults | Compatible asset hosts |
 | --- | --- | --- | --- |
-| `tokenLimit` | Token-volume allowance: `count`, `period`, `counterKey`, accounting `scope` | Model traffic | Models, aliases |
-| `costLimit` | Estimated USD allowance: stable `id`, `amount`, `period`, `counterKey`, `scope`, optional ordered `overrides` | Model traffic | Models, aliases |
-| `requestRateLimit` | Request-volume allowance: `callsPerPeriod`, `periodSeconds`, `counterKey`, `scope` | Applicable model/tool traffic | Models, aliases, ToolServers |
-| `ipFilter` | Caller IP admission: `action` (`Allow`/`Deny`) and `cidrRanges` | Applicable model/tool traffic | Models, aliases, ToolServers |
-| `toolThreatProtection` | Tool evaluation phases: `preInvocation`, `postInvocation` | Not supported | ToolServers |
-| `agentHooks` | Governance callbacks: stable `id`, resource `scope`, lifecycle `hooks`, HTTPS endpoint, authorization, optional failure mode/headers | Not supported | ToolServers |
+| `tokenLimit` | Bound token consumption: `count`, `period`, `counterKey`, accounting `scope` | Model traffic | Models, aliases |
+| `costLimit` | Control estimated USD consumption: stable `id`, `amount`, `period`, `counterKey`, `scope`, ordered `overrides` | Model traffic | Models, aliases |
+| `requestRateLimit` | Bound call volume: `callsPerPeriod`, `periodSeconds`, `counterKey`, `scope` | Applicable model/tool traffic | Models, aliases, ToolServers |
+| `ipFilter` | Admit/exclude caller networks: `action` (`Allow`/`Deny`), `cidrRanges` | Applicable model/tool traffic | Models, aliases, ToolServers |
+| `toolThreatProtection` | Evaluate tool threats through Agent 365: `preInvocation`, `postInvocation` | Not supported | ToolServers |
+| `agentHooks` | Ask a decision service for allow/deny: stable `id`, resource `scope`, lifecycle `hooks`, HTTPS endpoint, authorization, failure mode/headers | Not supported | ToolServers |
 
-This is the supported native authoring surface, not every type present in an
-older portal catalogue or CLI schema. Provider-specific exclusions belong
-in the capability inventory. Models and aliases are model-family hosts;
-individual tools and backend sources are not independent policy attachments.
+**Content safety remains legacy `Microsoft.ApiManagement/service` only**
+in reviewed native applicability. Portal support, visible setters, and JSON
+do not lift that limit; stop typed-gateway requests rather than retargeting.
+See the [capability inventory](activities-and-cli-coverage.md#operation-gaps-and-applicability).
 
-The three allowance policies measure different quantities: tokens, requests,
-and estimated cost. A request ceiling does not bound token size, and a
-token ceiling does not express a dollar budget. Several controls can
-constrain the same workload independently.
+Combine allowances for independent token, call, and cost constraints.
+MCP request limits do not provide model token/cost budgets.
 
 ## Attachment and effective configuration
 
@@ -36,32 +33,33 @@ It is not a separate ARM child resource.
 | --- | --- | --- |
 | Default workspace | `workspaces/default` | Shared configuration inherited by applicable assets |
 | Alias | `workspaces/default/aliases/<alias>` | Traffic using the callable alias and its selected backend pool |
-| Registered model | `workspaces/default/modelProviders/<provider>/models/<model>` | Traffic evaluated for that model registration |
+| Registered model | `workspaces/default/modelProviders/<provider>/models/<model>` | Traffic for that registration across aliases targeting it |
 | ToolServer | `workspaces/default/toolServers/<server>` | Applicable traffic through that MCP server |
 
-The current skill supports only the implicit default workspace. Provider
-registrations and arbitrary named asset groups are not policy hosts.
-An alias references backend models; it is not their ARM parent or their
-underlying deployment.
+Providers, individual tools, backend sources, and named asset groups are not
+policy hosts. Tool policies belong on the ToolServer; see [MCP](mcp.md).
 
-Effective configuration includes both compatible inherited workspace rules
-and direct asset rules. A looser direct allowance does not remove a workspace
-guardrail. Applicability and runtime evaluation order are separate questions;
-display order alone proves neither precedence nor override behavior.
+For alias-routed traffic, compatible workspace, alias, and selected model
+rules can all govern one call. A looser asset-local allowance does not replace
+an inherited guardrail. Portal display order is not evidence of runtime
+execution order.
 
 ## Accounting model
 
-An allowance policy consists of a policy instance, a traffic boundary, a
-caller partition, a quantity, and a period. Resolve all five before selecting
-its configuration.
+Separate the host, accounting scope, caller partitions, quantity, and period.
 
-**Traffic boundary.** Counting-policy JSON uses `scope: "workspace"` on a
-workspace host and `scope: "resource"` on an alias, model, or ToolServer.
-Workspace accounting includes applicable workspace traffic. Alias accounting
-includes its backend pool. Separate asset attachments establish separate
-policy instances even when their settings or names match. Shared accounting
-therefore requires a supported common traffic boundary, not a batch of
-identical policies.
+**Host versus accounting scope.** The host determines where a policy applies.
+The documented accounting contract lets an inherited counting policy share
+an instance across compatible resources (`scope: "workspace"`) or distribute
+independent instances per resource (`scope: "resource"`).
+Direct asset policies use resource scope.
+Native workspace setters always write workspace scope; they cannot author
+the inherited per-resource variant. Do not silently change that variant
+while editing an existing policy.
+
+An alias instance covers traffic through its backend pool. A model instance
+covers that registration across aliases targeting it. Identical policies
+on several assets remain separate instances, not one shared budget.
 
 **Caller partition.** `counterKey` divides traffic within that boundary:
 
@@ -75,37 +73,52 @@ identical policies.
 Callers reusing an API key share its Identity partition; clients behind the
 same observed IP share an IP partition. Composite dimensions form a
 combination, not two independent allowances. An omitted CLI option preserves
-or defaults a value and is not equivalent to explicitly selecting `[]`.
+or defaults a value; native new-policy defaults select Identity, not `[]`.
 
-**Quantity and period.** Token limits use positive counts and periods
+**Quantity and period.** Token limits use positive integer counts and periods
 `minute`, `hour`, or `day`. Request limits use positive request counts and
 positive intervals in seconds. Cost limits use nonnegative estimated USD
-amounts and periods `hour`, `day`, `week`, `month`, or `year`. Request units
-need runtime context: MCP transport activity, actual tool executions, model
-requests, and tokens are different measurements.
+amounts and UTC calendar periods `hour`, `day`, `week`, `month`, or `year`,
+not rolling windows (weeks start Monday). MCP transport activity, tool
+executions, model calls, and tokens are different measurements; establish
+the request unit from runtime evidence.
 
-**Policy identity.** Preserve existing IDs. A cost policy's stable `id`
+**Policy identity.** Preserve host-local IDs. A cost policy's stable `id`
 identifies its spend counter; changing it starts a new counter. Moving
-attachments or changing scope/dimensions changes accounting, even when
-the numeric allowance stays the same.
+attachments or changing scope/dimensions also changes accounting.
 
-Cost accounting charges observed usage after responses. Admitted concurrent
-requests can overshoot an allowance, and missing prices can undercount.
-A cost limit is an estimated-cost control rather than an Azure billing cap
-or guaranteed hard spending ceiling.
+Cost admission checks recorded spend without reserving the request's maximum
+cost, then charges observed usage after responses. Concurrent/admitted calls
+can overshoot. Missing usage/prices can yield zero or partial estimates;
+catalog pricing can differ from account billing. A cost limit is not a hard
+spending cap. Token/request limits add consumption controls, not price accuracy.
 
 ### Cost override semantics
 
 Overrides select an allowance within an Identity-partitioned cost policy.
 They require Identity as the only dimension; empty, IP, and composite
 partitions are incompatible. Entries are ordered and the first match wins.
-Selectors can use `apiKeyResourceId` or exact validated token `claims`;
-all claims in a selector must match.
+Each entry uses either a full gateway key `apiKeyResourceId` or validated
+token `claims`; all claim pairs must match. Use `tid` plus `oid` for a specific
+Entra identity, and place specific selectors before broader matching claims.
 
-An override changes each matching identity's allowance, not the counter
-partition. Matching several identities to one department claim does not
-pool their spend into a department budget. The policy neither issues claims
-nor creates a new caller dimension.
+An override changes each identity's allowance, not its partition. Matching
+several identities to a department claim does not pool their spend. The
+policy neither issues claims nor creates a caller dimension.
+
+### Choose a team budget boundary
+
+- **Per caller across models:** workspace token/cost policies with
+  `["identity"]`. Multiple users or keys still receive separate budgets.
+- **One team's pooled model traffic:** a team-specific alias with resource
+  token/cost policies and `counterKey: []` pools callers across its backend
+  pool. A model attachment instead covers every alias targeting that model;
+  workspace `[]` pools all applicable workspace traffic.
+
+An alias budget is a traffic boundary, not caller authorization: anyone
+allowed to use it consumes its pool, and traffic using another alias is
+outside it. A shared team key can share an Identity counter, but keys grant
+gateway-wide access; do not propose key sharing as team access isolation.
 
 ## Native configuration paths
 
@@ -116,39 +129,15 @@ nor creates a new caller dimension.
 | Alias | `model-alias show` | `model-alias update --policies @file` |
 | ToolServer | `mcp show` | `mcp update --policies @file` |
 
-All commands are prefixed with `az aigateway` and use the exact resolved
-subscription/gateway/asset selectors. The installed baseline exposes
-`policy list`, not `policy show`. There is no native arbitrary workspace
-policy-array write or provider-policy command.
+All commands use `az aigateway` and the [resolved selectors](../SKILL.md).
+`policy list`, not `policy show`, reads workspace policies. There is no
+native arbitrary workspace policy-array write or provider-policy command.
 
-Workspace counting setters write `scope: "workspace"`. Reviewed model
-setters do not always add explicit resource scope when creating a policy;
-inspect the resulting scope and use the complete native host-array path
-with explicit `scope: "resource"` when needed. There is no generic `--scope`
-option to supply that field.
+Model setters can create counting entries without explicit resource scope.
+Use the complete native host-array path when explicit `scope: "resource"`
+is needed; there is no generic setter `--scope` option.
 
-First-class setters preserve unrelated types but may consolidate duplicate
-same-type entries. Raw `--policies @file` replaces the complete host array.
-These paths are not interchangeable when several policy instances must
-remain distinct.
-
-## Deriving a policy change
-
-1. Establish the workload constraints: protected assets, covered traffic,
-   measurements, allowed quantities/periods, and caller partitions.
-2. Read workspace and affected resource policies. Identify the existing
-   effective controls and whether the requested behavior is already present.
-3. Compose compatible instances from the catalogue. For each, determine its
-   host, explicit accounting fields where applicable, required settings, and
-   external prerequisites. One requirement can need several controls; some
-   changes belong to routing or access configuration rather than a policy.
-4. Compare the proposed effective rules with current state. Resolve choices
-   that affect sharing, behavior, disruption, or cost; explain the resulting
-   constraints in administrator terms before applying the smallest change.
-5. Follow the common authorization/preservation rules and the native paths
-   above. Verify persisted configuration separately from runtime effects.
-
-Inspection examples use the [resolved variables](../SKILL.md):
+### Inspect before choosing a setter
 
 ```bash
 az aigateway policy list --subscription "$SUBSCRIPTION" \
@@ -158,14 +147,28 @@ az aigateway model policy list --subscription "$SUBSCRIPTION" \
 ```
 
 These return arrays. Alias and ToolServer reads expose `properties.policies`.
-Record exact host IDs, policy IDs/types, scope, dimensions, quantities,
-periods, and siblings; a policy's UI index is not a stable identity.
+Read both workspace and affected asset rules; identify the target instance
+by its ID where present, otherwise its full configuration, not a UI index.
+
+- Counting setters merge supplied fields into the first same-type entry,
+  preserving omitted fields, but delete later duplicates. IP setters rebuild
+  their entry, dropping omitted IDs/unknown fields. Use a setter only when
+  its resulting collection is intended.
+- For one asset entry among duplicates, edit the fresh complete array and use
+  the host's `update --policies @file`. Preserve every other instance, stable
+  ID, order, and unknown field. An isolated example object is not that array.
+- Type-based removal can delete multiple same-kind entries. Model
+  `policy remove` supports `--remove-token-limit true` and
+  `--remove-cost-limit true`; workspace removal also supports
+  `--remove-rate-limit true` and `--remove-ip-filter true`.
+- If workspace scope, duplicates, or fields cannot survive the setter, stop:
+  no native per-instance or complete-array workspace editing path is established.
+  Do not substitute REST or delete an imagined policy child.
 
 ## Configuration examples
 
-Values below illustrate valid shapes, not universal operating defaults.
-Raw objects are entries to merge into the **complete intended host array**.
-The selected native host update receives that array as `--policies @file`.
+Merge example entries into the **complete intended host array**, never as
+standalone replacement payloads.
 
 ### Token limit
 
@@ -177,8 +180,7 @@ az aigateway policy set --subscription "$SUBSCRIPTION" \
   --token-limit 30000 --token-period minute --token-counter-key Identity
 ```
 
-This defines a per-identity workspace allowance. A directly attached alias
-or model policy uses resource scope:
+For a pooled alias/model allowance:
 
 ```json
 {
@@ -186,7 +188,7 @@ or model policy uses resource scope:
   "scope": "resource",
   "count": 10000,
   "period": "minute",
-  "counterKey": ["identity"]
+  "counterKey": []
 }
 ```
 
@@ -197,14 +199,12 @@ az aigateway model-alias update --subscription "$SUBSCRIPTION" \
   -g "$RG" --gateway-name "$GATEWAY" -n "$ALIAS" --policies @policies.json
 ```
 
-For a model, use `model update` with provider/model selectors.
-`model policy set` and `set-token-limit` also support compatible partial
-updates, subject to the scope and duplicate-entry semantics above.
+For models use provider/model selectors with `model update`, or compatible
+partial `model policy set` / `set-token-limit` updates.
 
 ### Cost limit
 
-An explicit empty dimension array defines pooled accounting.
-`no-dimensions.json` contains:
+For pooled workspace accounting, `no-dimensions.json` contains:
 
 ```json
 []
@@ -216,14 +216,12 @@ az aigateway policy set --subscription "$SUBSCRIPTION" \
   --cost-limit 1000 --cost-period month --cost-counter-key @no-dimensions.json
 ```
 
-Use the selected amount/period and preserve an existing policy's ID on
-update. `model policy set` and `set-cost-limit` provide model-level paths
-for compatible policies. A resource-hosted cost policy with an override:
+A resource-hosted cost policy with an override:
 
 ```json
 {
   "type": "costLimit",
-  "id": "department-budget",
+  "id": "support-callers",
   "scope": "resource",
   "amount": 100,
   "period": "day",
@@ -232,11 +230,10 @@ for compatible policies. A resource-hosted cost policy with an override:
 }
 ```
 
-Each matching identity receives its own $25 allowance at this policy scope;
-unmatched identities use the default. Preserve override order and unknown
-existing variants. The reviewed `--cost-overrides` item schema declares no
-properties, so verified raw resource-host shapes are the available path;
-native arbitrary workspace override authoring is not established.
+Each matching identity receives $25; unmatched identities receive $100.
+Preserve override order and unknown variants. The native `--cost-overrides`
+item schema declares no properties: use reviewed resource-host JSON shapes,
+not an assumed arbitrary workspace override path.
 
 ### Request rate limit
 
@@ -251,18 +248,11 @@ az aigateway policy set --subscription "$SUBSCRIPTION" \
 A resource-local pooled request policy:
 
 ```json
-{
-  "type": "requestRateLimit",
-  "scope": "resource",
-  "callsPerPeriod": 60,
-  "periodSeconds": 60,
-  "counterKey": []
-}
+{"type": "requestRateLimit", "scope": "resource", "callsPerPeriod": 60, "periodSeconds": 60, "counterKey": []}
 ```
 
-Attach to a compatible alias, model, or ToolServer through its native
-complete-array update. A ToolServer policy accounts for applicable server
-traffic, not an independently scoped source or individual tool.
+Merge into a compatible host array. A ToolServer limit covers applicable
+server traffic, not a separately scoped source or tool.
 
 ### IP filter
 
@@ -274,10 +264,8 @@ az aigateway policy set --subscription "$SUBSCRIPTION" \
   --ip-filter-mode Allow --ip-addresses "$AUTHORIZED_CIDR"
 ```
 
-A resource-hosted `ipFilter` entry uses `action: "Allow"` or `"Deny"` and
-`cidrRanges`. It has no caller allowance counter. Use the actual authorized
-range; adding an allow list can exclude existing clients.
-
+A resource-hosted `ipFilter` uses `action: "Allow"` or `"Deny"` and
+`cidrRanges`, without a counter. An allow list can exclude existing clients.
 
 ### Tool threat protection
 
@@ -285,28 +273,28 @@ range; adding an allow list can exclude existing clients.
 {"type": "toolThreatProtection", "preInvocation": true, "postInvocation": false}
 ```
 
-Tool threat protection is part of Microsoft Agent 365 and requires an
-Agent 365 license. At least one phase must be enabled. This ToolServer-only
-policy also requires supported evaluation-service access and a delegated Entra user token;
-app-only calls are not equivalent. A denied post-invocation evaluation can
-withhold a result but cannot undo the tool execution.
+Enable at least one phase. Establish evaluation-service access and tenant
+licensing with the owner: current product prerequisites specify Agent 365;
+the [lab prerequisites](../../../labs/19-tool-threat-protection/README.md#before-you-begin)
+list Defender/Purview licensing. Calls require a delegated Entra user token
+for the gateway's evaluation-service OBO exchange; app-only/key-only calls
+are not substitutes.
+
+Pre-invocation denial prevents execution; post-invocation denial withholds
+the result, not the completed action. Evaluation/token-exchange failures
+fail closed even in Defender Audit mode. Discovery/session operations are
+not evaluated. HTTP 200 can contain an MCP `isError` denial; inspect the
+evaluation code, not just status.
 
 ### Agent hooks
 
-Agent hooks let a trusted decision service allow or deny an MCP tool action
-at the gateway boundary. Use a **before-tool** check to prevent an action
-such as an excessive refund; use an **after-tool** check to screen returned
-data before the caller receives it. An after-tool denial cannot undo an
-action that has already run.
+Agent hooks delegate MCP tool decisions to an existing trusted HTTPS callback.
+`preToolCall` can prevent execution; `postToolCall` can withhold results but
+cannot undo execution. The portal permits one policy and one intervention
+point per ToolServer. The contract describes both phases, but that and native
+free-form JSON do not establish verified dual-phase authoring.
 
-Read [Agent hooks policy: concepts, decisions, and limitations](https://ai.gateway.azure.com/docs/policies/agent-hooks)
-for the gateway's supported Agent Hooks contract, and
-[Create a pre-tool call hook](https://ai.gateway.azure.com/docs/policies/create-pre-tool-call-hook)
-for a working callback and allow/deny verification procedure.
-Hooks do not themselves implement a guardrail: the callback must evaluate
-the tool context and return the intended `allow` or `deny` verdict.
-
-For an existing, trusted Azure Function callback, a pre-tool policy entry is:
+For an existing Azure Function callback:
 
 ```json
 {
@@ -326,58 +314,51 @@ For an existing, trusted Azure Function callback, a pre-tool policy entry is:
 }
 ```
 
-To configure it:
+Resolve callback connectivity and authorization before attachment; confirm
+sending tool arguments/results. The callback must accept payloads without
+agent/session identity and return `allow`/`deny`, not approvals or transforms.
+URLs must be HTTPS without credentials, query, or fragment. Authentication:
 
-1. Select the ToolServer and choose `preToolCall` to block execution or
-   `postToolCall` to withhold results. The current portal supports one agent
-   hooks policy and one intervention point per server; do not infer support
-   for both from the free-form CLI policy argument.
-2. Obtain the existing HTTPS callback URL, its authentication details, and
-   approval to send it tool arguments/results. Callback deployment and access
-   grants are external prerequisites. Keep credentials out of the endpoint
-   URL; replace the example key only in approved protected input, not source
-   control, logs, or replay scripts.
-3. Keep `mode: "failClosed"` when a failed or invalid callback response must
-   block the action/result. Choose `failOpen` only with explicit approval to
-   let it proceed when evaluation is unavailable. This is failure handling,
-   not a replacement for the callback's normal allow/deny decision.
-4. Merge the entry into the ToolServer's complete policy array, preserving
-   its other entries and stable IDs. After confirming replacement impact,
-   apply with `az aigateway mcp update` and `--policies @policies.json`,
-   using the resolved subscription/gateway/server selectors.
-5. Read back the policy, then separately authorize safe allow and deny test
-   calls. Match callback verdicts with backend execution evidence: a blocked
-   request alone could be a callback failure under fail-closed behavior,
-   not proof that the intended guardrail matched.
+- `apiKey`: verified header and protected key input. Omit an unchanged
+  write-only value to preserve it; never send a redaction marker.
+- `managedIdentity`: `managedIdentity.resource` is the callback audience;
+  optional `clientId` selects a gateway-enabled user-assigned identity,
+  otherwise use its enabled system identity. Callback access remains a
+  separate prerequisite; follow [identity/grant handling](keys-and-identities.md).
+- `anonymous`: only for a deliberately public callback.
 
-Use the selected callback's verified authentication schema. Anonymous
-authentication is only for deliberately public callbacks, not a way to skip
-credential setup. Do not retry side-effecting tool calls merely because a
-post-tool hook withheld their results.
+`failClosed` (default) blocks callback failure/invalid responses; `failOpen`
+allows that failure path and is a weakening requiring confirmation. Neither
+mode changes a valid `allow`/`deny` verdict. Hook settings override shared
+endpoint/mode/auth (authorization replaces the object); literal non-secret
+headers merge case-insensitively. Preserve unedited shared settings.
+An empty hook header map does not clear inherited headers.
+Merge into the ToolServer array and apply only `mcp update --policies`;
+supplying `--endpoints` triggers an implicit secret read (see [MCP](mcp.md)).
+
+Use the [Agent Hooks contract](https://ai.gateway.azure.com/docs/policies/agent-hooks)
+and [callback verification procedure](https://ai.gateway.azure.com/docs/policies/guides/create-pre-tool-call-hook).
 
 ## Mutation and verification
 
-Preserve unrelated entries, IDs, order, and credentials from fresh
-authoritative state. Confirm complete-array replacement or policy weakening.
-If secret or unsupported fields cannot safely round-trip, stop rather than
-reconstructing them from redacted output.
+If secrets or unsupported fields cannot safely round-trip, stop rather than
+reconstructing policies from redacted output.
 
-Type-based `model policy remove` exposes `--remove-token-limit true` and
-`--remove-cost-limit true`. Workspace `policy remove` also exposes
-`--remove-rate-limit true` and `--remove-ip-filter true`. Removal can affect
-multiple same-kind entries; selecting one resource-hosted entry instead
-requires an explicitly reviewed full-array edit. No unexposed `--all` or
-standalone policy ARM deletion is implied.
-
-Model first-class policy writes and alias/MCP updates have their own
-conditional handling. Raw model and workspace writes do not provide blanket
-atomic concurrency protection. Conflicts require fresh reads and a new
-decision, not wildcard overwrites. Multi-host changes are sequential and
-may partially succeed.
+Model setters and alias/MCP updates use ETags; raw model updates do not,
+and workspace protection depends on a returned ETag. An internal ETag read
+does not bind your prepared array to its original read. Compare fresh policies
+before submission and use supported caller conditions; otherwise disclose
+the remaining concurrent-edit gap.
 
 Re-read workspace and affected hosts. Verify attachment, explicit accounting
 scope, dimensions, quantities, periods, stable IDs, override order, and
-retained siblings. Explain which effective controls now apply. Management
-read-back establishes configuration, not counter enforcement, runtime request
-units, failure behavior, or external evaluation success; those require
-separately authorized bounded verification.
+retained siblings. Explain which effective controls now apply.
+
+Read-back is not enforcement evidence. For an authorized bounded runtime
+check, compare pooled versus separate caller usage within one period;
+correlate a rejection with policy/backend traces rather than status alone.
+For cost, inspect pricing completeness as well as observed usage. Check IP
+admission from the intended client networks. For tool controls distinguish
+an explicit deny from evaluator/callback failure and confirm execution at
+the selected phase. Leave unavailable runtime evidence explicit; never
+replay a side-effecting tool call merely because its result was withheld.
