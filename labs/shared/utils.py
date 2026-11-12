@@ -50,7 +50,8 @@ AIGW_API = "2025-09-01-preview"         # Microsoft.ApiManagement/aigateways and
 COGNITIVE_API = "2025-04-01-preview"    # Microsoft.CognitiveServices (Foundry)
 RESOURCES_API = "2021-04-01"            # resource groups, resource providers, and deployments
 ROLES_API = "2022-04-01"                # Microsoft.Authorization/roleAssignments
-AIGW_SCOPE = "https://azure-api.net/aigateway/.default"   # Microsoft Entra token scope for gateway callers
+AIGW_SCOPE = "https://ai.gateway.azure.com/.default"      # Microsoft Entra token scope for gateway callers
+AIGW_APP_ID = "18550318-e177-4205-a743-6816d6fcdc3f"      # the aud claim of a gateway token: AI Gateway's app ID
 
 RESOURCE_KINDS = {   # ARM collection -> the name that clean-up messages use
     "aigateways": "gateway", "aliases": "alias", "apiKeys": "API key", "models": "model",
@@ -423,7 +424,7 @@ def parse_mcp(response: requests.Response) -> dict:
 
 def mcp_session(url: str, key: str):
     """Run initialize and notifications/initialized. Return the headers for later requests and the server info."""
-    headers = {"api-key": key, "Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
+    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
     init = requests.post(url, headers=headers, timeout=60, json={
         "jsonrpc": "2.0", "id": 1, "method": "initialize",
         "params": {"protocolVersion": "2025-03-26", "capabilities": {},

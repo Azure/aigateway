@@ -7,12 +7,12 @@ duration: 15
 tracks: [code]
 order: 17
 illustration: diagrams/architecture.svg
-tags: [plugin, skills, GitHub Copilot CLI, Claude Code, Cursor, Gemini CLI, MCP, AI_GATEWAY_API_KEY]
+tags: [plugin, skills, aigateway, GitHub Copilot CLI, Claude Code, Cursor, Gemini CLI, MCP, AI_GATEWAY_API_KEY]
 objectives:
-  - Install the AI Gateway plugin in your coding agent
-  - Discover a gateway's models and MCP tool servers from its Azure resource ID
+  - Install the aigateway plugin in your coding agent
+  - Discover a gateway's model aliases and MCP tool servers from its Azure resource ID
   - Generate and run app code that calls the gateway with a runtime key
-  - Review generated code for the right endpoint, model name, and secret handling
+  - Review generated code for the right endpoint, alias, and secret handling
 prereqs:
   - 02-first-model-call
 -->
@@ -31,10 +31,10 @@ prereqs:
 
 **You'll learn to**
 
-- Install the AI Gateway plugin in your coding agent
-- Discover a gateway's models and MCP tool servers from its Azure resource ID
+- Install the aigateway plugin in your coding agent
+- Discover a gateway's model aliases and MCP tool servers from its Azure resource ID
 - Generate and run app code that calls the gateway with a runtime key
-- Review generated code for the right endpoint, model name, and secret handling
+- Review generated code for the right endpoint, alias, and secret handling
 
 **Follow along:** 🌐 [Interactive version](https://azure.github.io/aigateway/labs/17-coding-agent-plugin/) with your own values filled in · 📓 [Jupyter notebook](17-coding-agent-plugin.ipynb) · 📁 [Lab files](infra/)
 
@@ -44,8 +44,9 @@ prereqs:
 Your platform team publishes models and MCP tools behind AI Gateway, and product developers want to use them
 without reading gateway settings or passing keys around in chat. The AI Gateway plugin teaches coding agents
 such as GitHub Copilot CLI, Claude Code, Cursor, and Gemini CLI what your gateway offers. It then generates
-code that uses the right endpoint, model name, and auth header. The plugin only reads from the gateway, so
-developers build on top of your governance instead of around it.
+code that uses the right endpoint, alias, and auth header. Its developer commands only read from the gateway, so
+developers build on top of your governance instead of around it. Administrators use the same plugin to create
+and manage gateways.
 
 ![AI Gateway architecture with coding agents among the clients that call one gateway](../assets/diagrams/architecture.svg "Coding agents call the same gateway as apps and agents. The code they generate goes through the gateway's access checks, policies, and telemetry like any other client.")
 
@@ -67,9 +68,9 @@ developers build on top of your governance instead of around it.
   documents its plugin support: [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/plugins-finding-installing),
   [Claude Code](https://code.claude.com/docs/en/plugins), [Cursor](https://cursor.com/docs/plugins), and
   [Gemini CLI](https://geminicli.com/docs/extensions/).
-- Read access to the gateway: the plugin uses your Azure sign-in to read it.
-- Python 3.10 or later to run the generated app. To scaffold a standalone agent, you also need the GitHub Copilot
-  CLI, because the GitHub Copilot SDK uses it.
+- Read access to the gateway: the plugin uses your Azure sign-in to read it. Read access doesn't let you call the
+  gateway's models or tools, so the app uses the key that you create below.
+- Python 3.10 or later to run the generated app.
 
 Set these variables in the shell that you'll start your coding agent from. Create a key for this app so you can
 revoke it on its own later.
@@ -147,30 +148,36 @@ The ID looks like
 
 ## How it works
 
-The plugin bundles one skill and two commands. The skill holds the know-how: which endpoints to call, which
-model name the gateway accepts, and how to send the key. The commands run that skill for a task.
+The `aigateway` plugin bundles commands and skills for two personas. Developers use `discover` and `build` to use
+a gateway's models and tools in their apps. Administrators use `create` and `manage` to run the gateway itself.
+The skills hold the know-how: which endpoints to call, which model name the gateway accepts, and how to send the
+credential. The commands run a skill for one task. This lab uses the developer commands.
 
 Discovery goes through Azure Resource Manager, which is why the plugin needs the resource ID and your Azure
-sign-in. Your app then calls the gateway's runtime URL with a runtime key, like any other client. The plugin is
-read-only against the gateway: it never creates, updates, or deletes gateways, models, tools, or keys. Creating
-those stays an administrator task in the [AI Gateway portal](https://ai.gateway.azure.com).
+sign-in. Your app then calls the gateway's runtime URL with a runtime key or a Microsoft Entra token, like any
+other client. The developer commands are read-only against the gateway: they never create, update, or delete
+gateways, models, tools, or keys. The administrator commands change the gateway through the `az aigateway` CLI,
+and ask you to confirm before they delete anything, change access, or read a secret.
 
 | Piece | Invoked as | What it does |
 |---|---|---|
-| Skill `use-ai-gateway` | `/ai-gateway:use-ai-gateway` | The full discover, select, credential, and integrate workflow. The commands use it too. |
-| Command `discover` | `/ai-gateway:discover <resource ID>` | Lists the gateway's models and MCP tool servers and suggests the ones that fit your use case. Stops there. |
-| Command `build` | `/ai-gateway:build <resource ID> <description>` | Discovers, gets a key, integrates the assets into your app, then runs the code once to check it. |
+| Skill `use-ai-gateway` | `/aigateway:use-ai-gateway` | The full discover, select, connect, and verify workflow. `discover` and `build` use it. |
+| Command `discover` | `/aigateway:discover <resource ID>` | Lists the gateway's model aliases, MCP tool servers, and key metadata, with each endpoint, operation, and auth requirement. Stops there. |
+| Command `build` | `/aigateway:build <resource ID> <description>` | Discovers what's missing, integrates the assets into your project with a credential you already have, then verifies one request. |
+| Commands `create` and `manage` | `/aigateway:create`, `/aigateway:manage` | Create a gateway, then configure and operate its models, tools, policies, and keys with the skill `manage-ai-gateway`. Both take the gateway name and resource group, then a region or the operation. |
+| Commands `migrate` and `feedback` | `/aigateway:migrate`, `/aigateway:feedback` | Move supported API Management configuration to AI Gateway, and package an agent session into a local ZIP file for the product team. |
 
 What the generated code relies on:
 
 | Item | Value |
 |---|---|
 | Model base URL (OpenAI-compatible) | `<gateway URL>/default/models/openai/v1` |
+| Model operation | One that the alias publishes: Chat Completions, Responses, Anthropic Messages, or embeddings |
 | MCP endpoint | `<gateway URL>/default/toolservers/<server-name>/mcp` |
-| Auth header | `api-key: <runtime key>`. The plugin writes it as `Api-Key`; header names aren't case-sensitive. |
-| Key source | The `AI_GATEWAY_API_KEY` environment variable, loaded from a git-ignored `.env` file |
-| Model name | The model's deployment name as the gateway publishes it, for example `gpt-5-mini` |
-| Agent scaffold | GitHub Copilot SDK, `github-copilot-sdk>=1.0.0`, Python unless you ask for TypeScript |
+| Auth header | `Authorization: Bearer <credential>`, a runtime key or a Microsoft Entra token, for both models and MCP tools |
+| Credential | A Microsoft Entra token or a key that you already have. A key comes from the `AI_GATEWAY_API_KEY` environment variable |
+| Model name | The alias as the gateway publishes it, for example `gpt-5-mini` |
+| Project | Your existing project, in its language and with its dependencies. A standalone agent only if you ask for one |
 
 ## Install the plugin
 
@@ -209,7 +216,7 @@ folder. In Cursor, use the dashboard, then open the folder.
 
 ```text title="GitHub Copilot CLI"
 /plugin marketplace add Azure/aigateway
-/plugin install ai-gateway@azure
+/plugin install aigateway@azure
 ```
 </details> <!-- gh -->
 
@@ -217,7 +224,7 @@ folder. In Cursor, use the dashboard, then open the folder.
 
 ```text title="Claude Code"
 /plugin marketplace add Azure/aigateway
-/plugin install ai-gateway@azure
+/plugin install aigateway@azure
 ```
 </details> <!-- gh -->
 
@@ -226,7 +233,7 @@ folder. In Cursor, use the dashboard, then open the folder.
 ```text title="Cursor"
 In the Cursor dashboard, open Plugins and select Add Marketplace.
 Import https://github.com/Azure/aigateway.
-Install ai-gateway from Customize.
+Install aigateway from Customize.
 ```
 </details> <!-- gh -->
 
@@ -235,27 +242,30 @@ Install ai-gateway from Customize.
 ```bash title="Gemini CLI"
 # Install the plugin as a Gemini CLI extension, straight from the GitHub repository
 gemini extensions install https://github.com/Azure/aigateway &&
-  echo "📦 The ai-gateway extension is installed in Gemini CLI"
+  echo "📦 The aigateway extension is installed in Gemini CLI"
 ```
 </details> <!-- gh -->
 
-The marketplace is named `azure` and the plugin `ai-gateway`.
+The marketplace is named `azure` and the plugin `aigateway`. GitHub Copilot CLI reports
+`Plugin "aigateway" installed successfully. Installed 4 skills.` Earlier versions of the plugin were named
+`ai-gateway`. If a guide still shows `/plugin install ai-gateway@azure`, use `aigateway@azure` instead.
 
 ### Check that the commands are available
 
 In your agent, run the discover command without a resource ID:
 
 ```text
-/ai-gateway:discover
+/aigateway:discover
 ```
 
-The plugin asks you for the gateway's resource ID before it makes any call. That's how you know it's loaded.
-Answer with the ID you printed, or continue with the next step.
+The plugin lists the gateways that your Azure sign-in can read in the current subscription and asks which one to
+use. It only reads. That's how you know it's loaded. Answer with your gateway's name or the ID you printed, or
+continue with the next step.
 
 <!-- /steps -->
 
 > **Checkpoint**
-> `/ai-gateway:discover` is recognized and asks for a gateway resource ID.
+> `/aigateway:discover` is recognized and asks which gateway to use.
 
 ## Discover what the gateway offers
 
@@ -263,35 +273,38 @@ Answer with the ID you printed, or continue with the next step.
 
 ### Run discover with your resource ID
 
-Paste the gateway ID that you printed in [Before you begin](#before-you-begin). Discover checks each MCP tool
-server with a call that needs a key, so tell it to use the key you created for this app:
+Paste the gateway ID that you printed in [Before you begin](#before-you-begin). Discover lists a tool server's
+tools only with a credential that you already have, so tell it to use the key you created for this app:
 
 ```text
-/ai-gateway:discover /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ApiManagement/aigateways/<gateway> For the MCP handshake, use the key in the AI_GATEWAY_API_KEY environment variable.
+/aigateway:discover /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ApiManagement/aigateways/<gateway> For the MCP handshake, use the key in the AI_GATEWAY_API_KEY environment variable.
 ```
 
-When your agent asks to run `az` or `curl` commands, approve the ones that read: getting a token, `GET` requests
-to `management.azure.com`, and MCP calls to your gateway URL. Deny any `PUT`, `PATCH`, or `DELETE`. The plugin
-never needs them.
+When your agent asks to run `az` or `curl` commands, approve the ones that read: `az aigateway` and `az rest`
+`GET` requests to `management.azure.com`, and MCP calls to your gateway URL. Deny any `PUT`, `PATCH`, or `DELETE`.
+Discover never needs them.
 
 ### Read the summary
 
-The plugin reads the gateway's runtime URL, lists the models with the exact name each one accepts, and lists the
-MCP tool servers with their endpoints. It checks each tool server with a full MCP handshake and reports how many
-tools it exposes. Then it highlights the best matches and asks which assets you want. Ask follow-up questions in
-plain language, for example:
+The plugin reads the gateway's runtime URL and lists each model alias with the operations it publishes, such as
+Chat Completions at `/default/models/openai/v1/chat/completions` and Responses at
+`/default/models/openai/v1/responses`. It lists the MCP tool servers with their endpoints. With your key, it runs
+an MCP handshake against each tool server and lists its tools, such as `learn_microsoft_docs_search`, without
+calling them. It also reports the gateway's API keys from their metadata, without their values. Ask follow-up
+questions in plain language, for example:
 
 ```text
 Which model fits short summaries? Do any tool servers search Microsoft Learn?
 ```
 
-Discover doesn't write code. If you don't name a key, it may read the secret of one of the gateway's keys for the
-MCP handshake, without showing it. Stop here, or move on to `build`.
+Discover doesn't write code, read key secrets, call models or tools, or change the gateway. If you don't name a
+credential, it still lists the aliases and tool servers, but not the tools. Stop here, or move on to `build`.
 
 <!-- /steps -->
 
 > **Checkpoint**
-> The summary lists the model you published in lab 02 and, if you did lab 04, the `learn` tool server.
+> The summary lists the alias you published in lab 02 and, if you did lab 04, the `learn` tool server and its
+> tools.
 
 ## Build an app with the gateway
 
@@ -299,11 +312,12 @@ MCP handshake, without showing it. Stop here, or move on to `build`.
 
 ### Describe what to build
 
-Run `build` with the same resource ID and a short description. To use the key you created for this app instead of
-letting the plugin pick one, say so in the description:
+Run `build` with the same resource ID and a short description. `build` uses a credential that you already have, so
+name the environment variable that holds the key you created for this app. Otherwise it asks which credential to
+use:
 
 ```text
-/ai-gateway:build /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ApiManagement/aigateways/<gateway> a Python command-line script that summarizes a support ticket from a text file. Use the <model-name> model and read the key from the AI_GATEWAY_API_KEY environment variable.
+/aigateway:build /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ApiManagement/aigateways/<gateway> a Python command-line script that summarizes a support ticket from a text file. Use the <model-name> model and read the key from the AI_GATEWAY_API_KEY environment variable.
 ```
 
 Other descriptions to try:
@@ -316,17 +330,20 @@ Other descriptions to try:
 
 ### Answer the plugin's questions
 
-`build` runs the discovery again and asks you to confirm the model and tools. Then it gets a key and asks what
-you're building, if your description didn't say:
+`build` reuses what you gave it, discovers only what's missing, and asks what you're building, if your
+description didn't say. It works in the project that's in the folder and follows its language, framework, and
+dependencies:
 
-- **Call a model**: code for the OpenAI-compatible endpoint, in your project's language.
-- **Connect MCP tools**: configuration for an MCP-capable client or app.
-- **Scaffold a standalone agent**: a complete GitHub Copilot SDK project with agent code, `.env`, `.env.example`,
-  `.gitignore`, `requirements.txt` or `package.json`, and a `README.md`.
+- **Call a model**: code for an operation that the alias publishes, such as Chat Completions or Responses.
+- **Connect MCP tools**: it lists the server's tools first, then configures the ones you choose by their exact
+  names in the MCP client that your project uses. It asks before it calls a tool.
+- **Build a standalone agent**: only when you ask for one, as in the last example above.
 
-If you didn't name a key, the plugin lists the gateway's keys and reads the secret of an active one. That needs
-permission to list key secrets on the gateway. When the plugin writes a key to `.env`, it's a live secret in
-plain text, kept out of Git by `.gitignore`.
+`build` sends the credential as an `Authorization: Bearer` header and keeps it where it is, such as in
+`AI_GATEWAY_API_KEY`. It never reads, creates, or rotates keys, so it writes no key to a file: an `.env.example`
+holds only an empty placeholder. Then it verifies the code with one request. If that request costs tokens and
+your description didn't approve it, `build` asks you first. If you decline, it tells you that the request wasn't
+verified.
 
 ### Review the generated code
 
@@ -334,20 +351,19 @@ Read the code before you run it again or commit it. Check that:
 
 - The base URL is your gateway URL followed by `/default/models/openai/v1`, or `/default/toolservers/<name>/mcp`
   for tools. Without `/default/`, calls return `404`.
-- The `model` value is a name your gateway accepts. To retarget models later without a code change, ask the agent
-  to use your alias, as explained in
-  [Publish models from any provider behind stable aliases](../03-multi-provider-aliases/README.md).
-- The key comes from `AI_GATEWAY_API_KEY` and goes in the `api-key` header. No key value appears in code,
-  `README.md`, or config files, and `.env.example` holds only a placeholder.
-- If the plugin wrote a `.env` file, `.gitignore` lists it.
+- The `model` value is the alias that discover listed, so you can retarget models later without a code change,
+  as explained in [Publish models from any provider behind stable aliases](../03-multi-provider-aliases/README.md).
+- The key comes from `AI_GATEWAY_API_KEY` and goes in the `Authorization: Bearer` header. No key value appears in code,
+  `README.md`, or config files, and `.env.example` holds only an empty placeholder.
+- If the project has a `.env` file, `.gitignore` lists it.
 - The app calls only the gateway's runtime URL, never `management.azure.com`.
-- For a scaffolded agent: `requirements.txt` pins `github-copilot-sdk>=1.0.0`, each MCP server lists the selected
-  tools by name instead of `"*"`, and tool permission requests wait for your approval.
+- For MCP tools: the configuration lists the selected tools by name instead of `"*"`, and tool calls wait for your
+  decision instead of approving all.
 
 ### Run the app
 
-`build` already ran the code once and reported the result. Run it yourself from the shell where you set
-`AI_GATEWAY_API_KEY`, using the command that `build` reported or the generated `README.md`. If the project has a
+`build` reported how it checked the code and the command that runs it. Run the app yourself from the shell where
+you set `AI_GATEWAY_API_KEY`, using that command or the generated `README.md`. If the project has a
 `requirements.txt`, install its packages in a virtual environment first:
 
 <details open><summary>Bash</summary> <!-- gh -->
@@ -398,7 +414,7 @@ If the app fails, this call tells you whether the problem is in the gateway setu
 # Call the model through the gateway with your key and alias, and print only the HTTP status code
 echo "🤖 HTTP status of a model call through the gateway:"
 curl -sS -o /dev/null -w "HTTP %{http_code}\n" "${AI_GATEWAY_URL%/}/default/models/openai/v1/chat/completions" \
-  -H "api-key: $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
   -d "{\"model\":\"$AI_GATEWAY_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}]}"
 ```
 </details> <!-- gh -->
@@ -410,7 +426,7 @@ curl -sS -o /dev/null -w "HTTP %{http_code}\n" "${AI_GATEWAY_URL%/}/default/mode
 Write-Host "🤖 HTTP status of a model call through the gateway:"
 $body = @{ model = $env:AI_GATEWAY_MODEL; messages = @(@{ role = "user"; content = "ping" }) } | ConvertTo-Json -Depth 5
 (Invoke-WebRequest -Method Post -Uri "$($env:AI_GATEWAY_URL.TrimEnd('/'))/default/models/openai/v1/chat/completions" `
-  -Headers @{ "api-key" = $env:AI_GATEWAY_API_KEY } -ContentType "application/json" -Body $body -SkipHttpErrorCheck).StatusCode
+  -Headers @{ Authorization = "Bearer $env:AI_GATEWAY_API_KEY" } -ContentType "application/json" -Body $body -SkipHttpErrorCheck).StatusCode
 ```
 </details> <!-- gh -->
 
@@ -418,13 +434,13 @@ Expect `HTTP 200` (`200` in PowerShell).
 
 ### Check that no secret can be committed
 
-Run this in the project folder. It checks that Git ignores `.env`, if the plugin wrote one, and that your key
+Run this in the project folder. It checks that Git ignores `.env`, if the project has one, and that your key
 appears in no other file.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# If the plugin wrote a .env file, the file that holds your key, check that Git ignores it
+# If the project has a .env file, which holds a key, check that Git ignores it
 if [ ! -e .env ]; then echo "✅ No .env file"
 elif git check-ignore -q .env; then echo "✅ .env is ignored"
 else echo "🚨 .env is not ignored"; fi
@@ -441,7 +457,7 @@ fi
 <details><summary>PowerShell</summary> <!-- gh -->
 
 ```powershell title="PowerShell"
-# If the plugin wrote a .env file, the file that holds your key, check that Git ignores it
+# If the project has a .env file, which holds a key, check that Git ignores it
 if (-not (Test-Path .env)) { Write-Host "✅ No .env file" } else {
   git check-ignore -q .env; if ($LASTEXITCODE -eq 0) { Write-Host "✅ .env is ignored" } else { Write-Host "🚨 .env is not ignored" } }
 
@@ -453,8 +469,8 @@ if ($hits) { Write-Host "🚨 The key appears in:"; $hits.Path } else { Write-Ho
 ```
 </details> <!-- gh -->
 
-Expect `✅ .env is ignored`, or `✅ No .env file` when the code reads the key only from your environment, and
-`✅ No key in project files`. If the plugin wrote a different key to `.env`, run the check again with that key in
+Expect `✅ No .env file` when the code reads the key only from your environment, or `✅ .env is ignored`, and
+`✅ No key in project files`. If `.env` holds a different key, run the check again with that key in
 `AI_GATEWAY_API_KEY`.
 
 <!-- /steps -->
@@ -492,7 +508,7 @@ exact MCP URL, run
       "type": "http",
       "url": "<gateway-url>/default/toolservers/learn/mcp",
       "headers": {
-        "api-key": "${input:aigw-key}"
+        "Authorization": "Bearer ${input:aigw-key}"
       }
     }
   }
@@ -507,16 +523,35 @@ entry keeps the key out of the file.
 
 ### Go keyless
 
-The plugin generates code that uses a runtime key. For production apps, switch to Microsoft Entra ID tokens with
-the audience `https://azure-api.net/aigateway`, as shown in
-[Go keyless with Microsoft Entra ID and RBAC](../11-entra-rbac/README.md).
+For production apps, ask `build` to use Microsoft Entra ID instead of a key. Your identity then needs the
+**AI Gateway Models User** role to call models, or **AI Gateway Tools User** to call tools: read access to the
+gateway grants neither. Signed in to the Azure CLI, you get tokens for the scope
+`https://ai.gateway.azure.com/Data.All`. Managed identities and service principals use
+`https://ai.gateway.azure.com/.default`. [Go keyless with Microsoft Entra ID and RBAC](../11-entra-rbac/README.md)
+shows both, and how to grant the roles.
+
+### Manage the gateway from your agent
+
+If you administer the gateway, the same plugin runs the `az aigateway` CLI for you. `manage` takes the gateway
+name, its resource group, and the task in plain language. Start with a request that only reads:
+
+```text
+/aigateway:manage <gateway> <resource-group> list the API keys and the model aliases
+```
+
+It replies with the keys, their state, and their expiration, without their values, and with each alias, its
+backend model, and the operations it publishes. Ask for changes the same way. `manage` runs the creates and
+updates that you ask for, and asks you to confirm before it deletes anything, changes access, or reads a secret.
+Foundry accounts and Connector Namespaces must already exist. The only thing outside the gateway that `manage`
+creates is a role assignment that the gateway needs to work, and only after you confirm. To create a gateway, run
+`/aigateway:create <gateway> <resource-group> <region>`.
 
 ## Clean up
 
 Keep the gateway, model, and alias. Other labs use them.
 
-Delete the key you created for this lab. Then delete the `ticket-summarizer` folder when you're done, because its
-`.env` file can hold a live key.
+Delete the key you created for this lab. Then delete the `ticket-summarizer` folder when you're done. If you added
+a `.env` file, it holds a live key.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -536,7 +571,7 @@ if ($?) { Write-Host "🚮 API key app-coding-agent is deleted" }
 ```
 </details> <!-- gh -->
 
-If the plugin wrote another gateway key to `.env` and that file was shared or committed, regenerate that key as
+If a `.env` file with another gateway key was shared or committed, regenerate that key as
 shown in [Issue and rotate runtime API keys](../10-api-keys/README.md). Remove the `ai-gateway-learn` entry from
 `.vscode/mcp.json` if you added it.
 
@@ -545,7 +580,7 @@ Optionally, remove the plugin. In Cursor, remove it where you installed it.
 <details open><summary>GitHub Copilot CLI</summary> <!-- gh -->
 
 ```text title="GitHub Copilot CLI"
-/plugin uninstall ai-gateway
+/plugin uninstall aigateway
 /plugin marketplace remove azure
 ```
 </details> <!-- gh -->
@@ -553,7 +588,7 @@ Optionally, remove the plugin. In Cursor, remove it where you installed it.
 <details><summary>Claude Code</summary> <!-- gh -->
 
 ```text title="Claude Code"
-/plugin uninstall ai-gateway@azure
+/plugin uninstall aigateway@azure
 /plugin marketplace remove azure
 ```
 </details> <!-- gh -->
@@ -561,14 +596,15 @@ Optionally, remove the plugin. In Cursor, remove it where you installed it.
 <details><summary>Gemini CLI</summary> <!-- gh -->
 
 ```bash title="Gemini CLI"
-# Remove the ai-gateway extension from Gemini CLI
-gemini extensions uninstall ai-gateway &&
-  echo "🚮 The ai-gateway extension is removed from Gemini CLI"
+# Remove the aigateway extension from Gemini CLI
+gemini extensions uninstall aigateway &&
+  echo "🚮 The aigateway extension is removed from Gemini CLI"
 ```
 </details> <!-- gh -->
 
 ## Next steps
 
+- [Use your gateway's models and tools in Claude Code](../25-claude-code/README.md)
 - [Connect agent frameworks to models and tools](../15-agent-frameworks/README.md)
 - [Go keyless with Microsoft Entra ID and RBAC](../11-entra-rbac/README.md)
 - [Deploy a Foundry hosted agent behind AI Gateway](../16-foundry-hosted-agent/README.md)
@@ -584,5 +620,5 @@ gemini extensions uninstall ai-gateway &&
 | :-- | :-: | --: |
 | [16 · Foundry hosted agent](../16-foundry-hosted-agent/README.md) | [All labs](../README.md) | [24 · GitHub Copilot BYOK](../24-github-copilot-byok/README.md) |
 
-<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (8 of 9)</sub>
+<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (8 of 10)</sub>
 <!-- gh:end -->

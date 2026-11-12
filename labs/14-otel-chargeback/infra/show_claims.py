@@ -3,7 +3,7 @@
 The token is decoded locally. Nothing is sent anywhere, and the signature isn't checked.
 
 Usage:
-    az account get-access-token --resource https://azure-api.net/aigateway --query accessToken -o tsv \
+    az account get-access-token --scope https://ai.gateway.azure.com/Data.All --query accessToken -o tsv \
         | python show_claims.py [extra-claim ...]
 
 Examples:

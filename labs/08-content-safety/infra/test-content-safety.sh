@@ -25,7 +25,7 @@ send() {
   body="$(jq -cn --arg model "$MODEL" --arg prompt "$2" \
     '{model:$model,max_completion_tokens:200,reasoning_effort:"none",messages:[{role:"user",content:$prompt}]}')"
   response="$(curl -sS --max-time 120 -w $'\n%{http_code}' "$URL" \
-    -H "api-key: $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" -d "$body")"
+    -H "Authorization: Bearer $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" -d "$body")"
   status="${response##*$'\n'}"
   response="${response%$'\n'*}"
   if [ "$status" = "200" ]; then

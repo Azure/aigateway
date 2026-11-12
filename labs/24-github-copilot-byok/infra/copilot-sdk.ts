@@ -11,9 +11,9 @@ if (!gatewayUrl || !apiKey) {
   throw new Error("Set AI_GATEWAY_URL and AI_GATEWAY_API_KEY first.");
 }
 
-// MCP endpoints read the key from the api-key header. Model calls send it as a bearer token.
+// The MCP server gets the key as a bearer token, like the model calls.
 const mcpServers: Record<string, MCPServerConfig> = mcpUrl
-  ? { "ai-gateway-learn": { type: "http", url: mcpUrl, headers: { "api-key": apiKey }, tools: ["*"] } }
+  ? { "ai-gateway-learn": { type: "http", url: mcpUrl, headers: { Authorization: `Bearer ${apiKey}` }, tools: ["*"] } }
   : {};
 
 const client = new CopilotClient();

@@ -30,7 +30,7 @@ $json = $body | ConvertTo-Json -Depth 5
 1..$Requests | ForEach-Object {
   # The script reads each body in full, so Invoke-WebRequest is enough here.
   $r = Invoke-WebRequest -Method Post -Uri $uri -Body $json -ContentType 'application/json' `
-    -Headers @{ 'api-key' = $env:AI_GATEWAY_API_KEY } -SkipHttpErrorCheck
+    -Headers @{ Authorization = "Bearer $env:AI_GATEWAY_API_KEY" } -SkipHttpErrorCheck
   $content = if ($r.Content -is [byte[]]) { [Text.Encoding]::UTF8.GetString($r.Content) } else { $r.Content }
   if ($r.StatusCode -eq 200) {
     $chunks = @($content -split "`n" | Where-Object { $_.StartsWith('data: {') } | ForEach-Object { $_.Substring(6) | ConvertFrom-Json })

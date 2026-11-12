@@ -20,7 +20,7 @@ BODY="$(jq -cn --arg model "$ALIAS" --arg prompt "$PROMPT" \
   '{model: $model, max_tokens: 1024, messages: [{role: "user", content: $prompt}]}')"
 
 RESPONSE="$(curl -sS -w '\n%{http_code}' "$URL" \
-  -H "api-key: $AI_GATEWAY_API_KEY" \
+  -H "Authorization: Bearer $AI_GATEWAY_API_KEY" \
   -H "anthropic-version: 2023-06-01" \
   -H "Content-Type: application/json" \
   -d "$BODY")"

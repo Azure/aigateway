@@ -2,7 +2,7 @@
 
 The agent uses the Responses model class with an AsyncOpenAI client pointed at the gateway's
 OpenAI-compatible endpoint, and an MCP server connection to the gateway's MCP endpoint. The client sends the runtime
-key as its API key, and the MCP connection sends it in the api-key header.
+key as its API key, and the MCP connection sends it as a bearer token.
 
 Usage:
     cp .env.example .env      # then fill in the values
@@ -51,7 +51,7 @@ async def main() -> None:
         name="gateway-tools",
         params={
             "url": f"{gateway_url}/default/toolservers/{server}/mcp",
-            "headers": {"api-key": api_key},
+            "headers": {"Authorization": f"Bearer {api_key}"},
             "timeout": 60,
         },
         cache_tools_list=True,

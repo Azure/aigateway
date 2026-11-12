@@ -199,7 +199,7 @@ with `HttpClient`.
 # Ask for a streamed reply: -N turns off curl's buffering, so that each event prints the moment it arrives
 echo "🤖 Raw server-sent events from the $AI_GATEWAY_MODEL alias:"
 curl -sSN "${AI_GATEWAY_URL%/}/default/models/openai/v1/chat/completions" \
-  -H "api-key: $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
   -d "{\"model\":\"$AI_GATEWAY_MODEL\",\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"Say hello in five words.\"}]}"
 ```
 </details> <!-- gh -->
@@ -286,7 +286,7 @@ trap 'rm -f "$headers"' EXIT
 
 # -N turns off curl's output buffering. jq reads the raw lines as they arrive and keeps running totals.
 curl -sSN -D "$headers" "${AI_GATEWAY_URL%/}/default/models/openai/v1/chat/completions" \
-  -H "api-key: $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" -d "$BODY" \
+  -H "Authorization: Bearer $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" -d "$BODY" \
 | jq -nRrj --unbuffered --argjson raw "$RAW" '
     def secs: (. * 100 | round) / 100 | tostring + " s";
     def summary:
@@ -413,7 +413,7 @@ The Responses API names every event. List the event types in order, then read th
 ```bash title="Bash"
 # Stream a Responses API reply into a file, so that you can count its events
 curl -sSN "${AI_GATEWAY_URL%/}/default/models/openai/v1/responses" \
-  -H "api-key: $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
   -d "{\"model\":\"$AI_GATEWAY_MODEL\",\"stream\":true,\"input\":\"Say hello in five words.\"}" > events.txt &&
   echo "🤖 Stream received from the $AI_GATEWAY_MODEL alias"
 
@@ -436,7 +436,7 @@ $body = @{ model = $env:AI_GATEWAY_MODEL; stream = $true; input = "Say hello in 
 
 # Send it: Invoke-WebRequest waits for the whole stream, which is fine here because you only count its events
 $r = Invoke-WebRequest -Method Post -Uri "$($env:AI_GATEWAY_URL.TrimEnd('/'))/default/models/openai/v1/responses" `
-  -Headers @{ "api-key" = $env:AI_GATEWAY_API_KEY } -ContentType "application/json" -Body $body
+  -Headers @{ Authorization = "Bearer $env:AI_GATEWAY_API_KEY" } -ContentType "application/json" -Body $body
 if ($?) { Write-Host "🤖 Stream received from the $env:AI_GATEWAY_MODEL alias" }
 
 # Count each run of the same event type, in order, the way uniq -c does
@@ -1001,7 +1001,7 @@ Run the burst once more and, while the alias is throttled, look at a full respon
 # Send one streamed request while the alias is throttled: -i prints the status line and the headers too
 echo "🚦 Expect 429 Too Many Requests while the limit is active, as plain JSON:"
 curl -sS -i "${AI_GATEWAY_URL%/}/default/models/openai/v1/chat/completions" \
-  -H "api-key: $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
   -d "{\"model\":\"$STREAM_ALIAS\",\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}]}"
 ```
 
@@ -1117,5 +1117,5 @@ the Bicep + azd track created its own gateway.
 | :-- | :-: | --: |
 | [22 · Priority & weighted routing](../22-model-routing/README.md) | [All labs](../README.md) | [04 · Federate MCP tools](../04-federate-mcp-tools/README.md) |
 
-<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (4 of 9) · [FinOps & operations](../README.md#learning-paths) (2 of 5)</sub>
+<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (4 of 10) · [FinOps & operations](../README.md#learning-paths) (2 of 5)</sub>
 <!-- gh:end -->

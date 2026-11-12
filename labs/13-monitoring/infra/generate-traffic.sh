@@ -27,7 +27,7 @@ send() { # <model> <prompt> <correlation-id>
   local body
   body=$(printf '{"model":"%s","messages":[{"role":"user","content":"%s"}]}' "$1" "$2")
   curl -sS -o /dev/null -w '%{http_code}' "$URL" \
-    -H "api-key: $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
     -H "x-correlation-id: $3" -d "$body"
 }
 

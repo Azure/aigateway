@@ -1,4 +1,4 @@
-import { box, zone, pills, pill, arrow, text, svgDoc } from './lib.mjs';
+import { box, zone, pills, pill, arrow, text, label, svgDoc } from './lib.mjs';
 
 export const enterpriseReference = () => svgDoc('enterprise-reference', {
   title: 'Enterprise reference deployment for Azure AI Gateway',
@@ -45,7 +45,7 @@ export const enterpriseReference = () => svgDoc('enterprise-reference', {
 
 export const githubCopilotByok = () => svgDoc('github-copilot-byok', {
   title: 'GitHub Copilot with models and tools from Azure AI Gateway',
-  desc: 'The GitHub Copilot app, Copilot CLI, Copilot SDK, and Copilot in VS Code each add the gateway as a bring-your-own-key model provider and the gateway learn MCP server as a tool server. They call the gpt-6.1-sol alias on the gateway OpenAI v1 endpoint with the Responses API, and the learn MCP endpoint, both with the github-copilot API key: as a bearer token for models and in the api-key header for MCP. The gateway applies a per-caller token limit, records usage for Monitoring, calls the gpt-6.1-sol deployment in Microsoft Foundry with its managed identity, and calls the public Microsoft Learn MCP server.',
+  desc: 'The GitHub Copilot app, Copilot CLI, Copilot SDK, and Copilot in VS Code each add the gateway as a bring-your-own-key model provider and the gateway learn MCP server as a tool server. They call the gpt-6.1-sol alias on the gateway OpenAI v1 endpoint with the Responses API, and the learn MCP endpoint, both with the github-copilot API key as a bearer token. The gateway applies a per-caller token limit, records usage for Monitoring, calls the gpt-6.1-sol deployment in Microsoft Foundry with its managed identity, and calls the public Microsoft Learn MCP server.',
   h: 486,
   body: () => {
     let o = zone(16, 20, 276, 372, 'GitHub Copilot', { ic: 'sparkle', tone: 'azure' });
@@ -81,8 +81,63 @@ export const githubCopilotByok = () => svgDoc('github-copilot-byok', {
     o += arrow('M646 92 H708', { tone: 'violet' });
     o += arrow('M646 186 C678 186 678 292 708 292', { tone: 'green' });
     o += text(16, 424, 'Models', 'dg-s') + text(84, 424, 'https://<gateway-host>/default/models/openai/v1', 'dg-m') + text(500, 424, 'Key as', 'dg-s') + text(552, 424, 'Authorization: Bearer', 'dg-m');
-    o += text(16, 446, 'Tools', 'dg-s') + text(84, 446, 'https://<gateway-host>/default/toolservers/learn/mcp', 'dg-m') + text(500, 446, 'Key as', 'dg-s') + text(552, 446, 'api-key header', 'dg-m');
+    o += text(16, 446, 'Tools', 'dg-s') + text(84, 446, 'https://<gateway-host>/default/toolservers/learn/mcp', 'dg-m') + text(500, 446, 'Key as', 'dg-s') + text(552, 446, 'Authorization: Bearer', 'dg-m');
     o += text(16, 468, 'Model', 'dg-s') + text(84, 468, 'gpt-6.1-sol', 'dg-m') + text(190, 468, 'Wire API', 'dg-s') + text(250, 468, 'responses', 'dg-m') + text(340, 468, 'Key', 'dg-s') + text(372, 468, 'github-copilot', 'dg-m');
+    return o;
+  },
+});
+
+export const claudeCode = () => svgDoc('claude-code', {
+  title: 'Claude Code with models and tools from Azure AI Gateway',
+  desc: 'Apps with the Anthropic SDK or REST, agents such as Foundry hosted agents and MCP clients, and coding agents such as Claude Code and GitHub Copilot call Azure AI Gateway with a Microsoft Entra ID token or a managed gateway key. The gateway handles access with Entra ID, managed keys, and RBAC; models with aliases, Foundry import, and routing; MCP with federated servers and tool allow lists; policies with token limits, cost limits, content safety, and IP filters; and observability with OpenTelemetry. It calls the claude-opus-5-5, claude-sonnet-5-5, and claude-haiku-5-5 deployments in Microsoft Foundry with its managed identity, where quota is tokens per minute per deployment, and the Microsoft Learn MCP server. The Anthropic API is an optional direct provider. The gateway exports telemetry over OTLP to Azure Monitor, and Azure Cost Management bills the Foundry models. Claude Code uses the base URL ending in /default/models/anthropic, sends the key as an Authorization bearer token, and calls the aliases named after the Foundry account and deployment.',
+  h: 610,
+  body: () => {
+    let o = zone(16, 20, 262, 392, 'Callers', { ic: 'users', tone: 'azure' });
+    const callers = [
+      ['Apps', 'Anthropic SDK', 'REST', 'app'],
+      ['Agents', 'Foundry hosted agents', 'MCP clients', 'agent'],
+      ['Coding agents', 'Claude Code', 'GitHub Copilot', 'terminal'],
+    ];
+    callers.forEach(([t, s, s2, ic], i) => {
+      o += box(28, 52 + i * 80, 238, 64, { t, s, s2, icon: ic, tone: 'azure', accent: i === 2 });
+    });
+    o += text(32, 316, 'CALLERS SIGN IN WITH', 'dg-cap');
+    o += pills(28, 326, ['Entra ID token (keyless)', 'Managed gateway key'], { tone: 'amber', maxW: 238 });
+    o += zone(312, 20, 348, 392, 'Azure AI Gateway', { gw: true, ic: 'sparkle' });
+    const rows = [
+      ['Access', 'Entra ID · managed keys · RBAC', null, 'lock', 'amber'],
+      ['Models', 'Aliases · Foundry import · routing', null, 'route', 'violet'],
+      ['MCP', 'Federated servers · tool allow lists', null, 'tools', 'green'],
+      ['Policies', 'Token limit · cost limit', 'Content safety · IP filter', 'gauge', 'magenta'],
+      ['Observability', 'OpenTelemetry · usage by key', null, 'chart', 'green'],
+    ];
+    rows.forEach(([t, s, s2, ic, tone], i) => {
+      o += box(326, 50 + i * 68, 320, 56, { t, s, s2, icon: ic, tone, accent: i === 3 });
+    });
+    o += zone(694, 20, 250, 224, 'Microsoft Foundry', { ic: 'cloud', tone: 'cyan' });
+    const models = [['claude-opus-5-5', 'Opus · main model'], ['claude-sonnet-5-5', 'Sonnet · /model sonnet'], ['claude-haiku-5-5', 'Haiku · background tasks']];
+    models.forEach(([t, s], i) => {
+      o += box(708, 50 + i * 54, 222, 46, { t, s, icon: 'models', tone: 'cyan', accent: i === 0 });
+    });
+    o += pill(708, 214, 'Managed identity · TPM quota', { tone: 'cyan' });
+    o += box(694, 262, 230, 56, { t: 'Anthropic API', s: 'Optional direct provider', icon: 'cloud', tone: 'amber' }).replace('class="dg-box"', 'class="dg-ghost"');
+    o += box(694, 334, 230, 56, { t: 'Microsoft Learn MCP', s: 'Tools for agents', icon: 'tools', tone: 'green', accent: true });
+    o += box(312, 452, 330, 60, { t: 'Azure Monitor', s: 'App Insights · Log Analytics · Grafana', icon: 'chart', tone: 'green', accent: true });
+    o += box(694, 452, 250, 60, { t: 'Azure Cost Management', s: 'Billing for Foundry models', icon: 'coins', tone: 'cyan' });
+    // Arrows last so they sit above zones.
+    callers.forEach((_, i) => {
+      const c = 84 + i * 80;
+      o += arrow(`M266 ${c} C290 ${c} 290 216 310 216`, { tone: 'azure', flow: i === 2 });
+    });
+    o += arrow('M646 140 C672 140 672 118 692 118', { tone: 'violet' });
+    o += arrow('M646 162 C690 162 690 290 692 290', { tone: 'amber', dashed: true });
+    o += arrow('M646 214 C670 214 670 362 692 362', { tone: 'green' });
+    o += arrow('M477 412 V450', { tone: 'green' });
+    o += label(483, 436, 'OTLP', { anchor: 'start', bg: false });
+    o += arrow('M934 244 V450', { tone: 'cyan', dashed: true });
+    o += text(16, 548, 'Base URL', 'dg-s') + text(96, 548, 'https://<gateway-host>/default/models/anthropic', 'dg-m') + text(520, 548, 'Key as', 'dg-s') + text(572, 548, 'Authorization: Bearer  (ANTHROPIC_AUTH_TOKEN)', 'dg-m');
+    o += text(16, 570, 'Models', 'dg-s') + text(96, 570, '<foundry-account>/claude-opus-5-5 · claude-sonnet-5-5 · claude-haiku-5-5', 'dg-m');
+    o += text(16, 592, 'Tools', 'dg-s') + text(96, 592, 'https://<gateway-host>/default/toolservers/learn/mcp', 'dg-m') + text(520, 592, 'Key as', 'dg-s') + text(572, 592, 'Authorization: Bearer', 'dg-m');
     return o;
   },
 });

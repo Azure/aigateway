@@ -16,7 +16,7 @@ if (-not $env:AI_GATEWAY_API_KEY) { throw 'Set $env:AI_GATEWAY_API_KEY to a runt
 
 $uri = "$($env:AI_GATEWAY_URL.TrimEnd('/'))/default/models/anthropic/v1/messages"
 $headers = @{
-  'api-key'           = $env:AI_GATEWAY_API_KEY
+  Authorization       = "Bearer $env:AI_GATEWAY_API_KEY"
   'anthropic-version' = '2023-06-01'
 }
 $body = @{

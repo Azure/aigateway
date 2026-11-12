@@ -19,10 +19,10 @@ platform teams enforce security, policy, networking, and observability.
 
 **[Browse the labs → azure.github.io/aigateway](https://azure.github.io/aigateway/)**
 
-26 step-by-step labs for customers and field teams. They start with the core AI gateway use cases (publishing
+27 step-by-step labs for customers and field teams. They start with the core AI gateway use cases (publishing
 models behind aliases, priority and weighted model routing, federating MCP tools, token limits and cost budgets,
 content safety, keys and Entra ID, monitoring, and chargeback) and continue to emerging ones (streaming with accurate token counts, agent frameworks, Foundry hosted agents, coding agents,
-GitHub Copilot with your own models, Agent 365, private networking, and an enterprise reference architecture). Each lab has portal, Azure CLI, Bicep, or
+GitHub Copilot and Claude Code with your own models, Agent 365, private networking, and an enterprise reference architecture). Each lab has portal, Azure CLI, Bicep, or
 code tracks, so you can follow it in the way that fits how you work: on the labs site, directly on GitHub, or
 in a Jupyter notebook.
 

@@ -23,7 +23,7 @@ $body = @{
 } | ConvertTo-Json -Depth 5 -Compress
 
 $r = Invoke-WebRequest -Method Post -Uri $uri -Body $body -ContentType 'application/json' `
-  -Headers @{ 'api-key' = $env:AI_GATEWAY_API_KEY } -TimeoutSec 120 -SkipHttpErrorCheck
+  -Headers @{ Authorization = "Bearer $env:AI_GATEWAY_API_KEY" } -TimeoutSec 120 -SkipHttpErrorCheck
 $content = if ($r.Content -is [byte[]]) { [Text.Encoding]::UTF8.GetString($r.Content) } else { [string]$r.Content }
 
 Write-Host "Status: $([int]$r.StatusCode)"

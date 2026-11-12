@@ -118,8 +118,8 @@ Add a `## <Month D, YYYY>` section at the top of `labs/RELEASE-NOTES.md`, as des
 3. Commit `labs/` and the root `README.md` with a message that names the product release, then push. Once the
    change merges to `main`, the **Publish labs site** workflow builds the site and publishes it to GitHub Pages.
 4. If the user publishes the Static Web App, run `npm run deploy:swa` and open `/release-notes/` on it.
-5. Delete the verification resources (gateways, the connector gateways that the portal creates with them, and
-   Foundry accounts, purging soft-deleted ones) and their deployment history.
+5. Delete the verification resources (gateways and Foundry accounts, purging soft-deleted ones) and their
+   deployment history.
 
 Finish with a short report: the releases handled, the labs added or updated, and any product change that no lab
 covers yet.

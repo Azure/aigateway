@@ -15,7 +15,7 @@ import { DefaultAzureCredential, getBearerTokenProvider } from "@azure/identity"
 import OpenAI from "openai";
 
 // App-only and managed identity callers must use /.default. It also works for an Azure CLI sign-in.
-const AI_GATEWAY_SCOPE = "https://azure-api.net/aigateway/.default";
+const AI_GATEWAY_SCOPE = "https://ai.gateway.azure.com/.default";
 
 function required(name: string): string {
   const value = process.env[name];

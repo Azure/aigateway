@@ -9,7 +9,7 @@
 #   ./call-protected-tool.sh key   [server-name] [query]   # runtime key in AI_GATEWAY_API_KEY (no bearer token)
 #
 # token mode uses AI_GATEWAY_TOKEN when set, otherwise it runs
-#   az account get-access-token --resource https://azure-api.net/aigateway
+#   az account get-access-token --scope https://ai.gateway.azure.com/Data.All
 # The script calls the Learn docs search tool (or the first tool whose name contains "search") unless you set
 # TOOL_NAME, and sends the query as {"query": "..."}. Use a benign query. Requires curl and jq.
 set -euo pipefail
@@ -23,7 +23,7 @@ ENDPOINT="${AI_GATEWAY_URL%/}/default/toolservers/${SERVER}/mcp"
 
 case "$AUTH" in
   token)
-    TOKEN="${AI_GATEWAY_TOKEN:-$(az account get-access-token --resource https://azure-api.net/aigateway --query accessToken -o tsv)}"
+    TOKEN="${AI_GATEWAY_TOKEN:-$(az account get-access-token --scope https://ai.gateway.azure.com/Data.All --query accessToken -o tsv)}"
     # Delegated (user) tokens carry an scp claim. App-only tokens carry roles instead and can't be used for evaluation.
     payload="$(printf '%s' "$TOKEN" | cut -d. -f2 | tr '_-' '/+')"
     while [ $(( ${#payload} % 4 )) -ne 0 ]; do payload="${payload}="; done
@@ -36,7 +36,7 @@ case "$AUTH" in
     HEADERS=(-H "Authorization: Bearer $TOKEN") ;;
   key)
     : "${AI_GATEWAY_API_KEY:?Set AI_GATEWAY_API_KEY to a runtime key from Access > Keys}"
-    HEADERS=(-H "api-key: $AI_GATEWAY_API_KEY") ;;
+    HEADERS=(-H "Authorization: Bearer $AI_GATEWAY_API_KEY") ;;
   *)
     echo "The first argument must be token or key." >&2; exit 1 ;;
 esac

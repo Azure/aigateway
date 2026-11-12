@@ -20,7 +20,7 @@ trap 'rm -f "$RESPONSE" "$TALLY"' EXIT
 echo "Sending $COUNT requests with \"model\": \"$ALIAS\""
 for i in $(seq 1 "$COUNT"); do
   CODE="$(curl -sS -o "$RESPONSE" -w '%{http_code}' "$URL" \
-    -H "api-key: $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" -d "$BODY")"
+    -H "Authorization: Bearer $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" -d "$BODY")"
   if [ "$CODE" = "200" ]; then
     SERVED="$(jq -r '.model // "unknown"' "$RESPONSE")"
   else

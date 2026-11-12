@@ -64,7 +64,7 @@ azure-identity==1.27.0
     #   azure-monitor-opentelemetry-exporter
 azure-monitor-opentelemetry-exporter==1.0.0b58
     # via microsoft-opentelemetry
-certifi==2026.7.22
+certifi==2026.10.23
     # via
     #   httpcore
     #   httpx
@@ -155,7 +155,7 @@ multidict==7.1.0
     # via
     #   aiohttp
     #   yarl
-oauthlib==4.0.0
+oauthlib==4.0.1
     # via requests-oauthlib
 openai==3.29.0
     # via agent-framework-openai

@@ -807,7 +807,7 @@ To see the header for a single call:
 # Send one request to the alias, and print only the x-ms-served-model header of the response
 echo "✨ Backend model that served one request to $ALIAS:"
 curl -sS -D - -o /dev/null "$AI_GATEWAY_URL/default/models/openai/v1/chat/completions" \
-  -H "api-key: $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
   -d "{\"model\": \"$ALIAS\", \"max_completion_tokens\": 16, \"messages\": [{\"role\": \"user\", \"content\": \"Hi\"}]}" |
   grep -i "^x-ms-served-model"
 ```
@@ -822,7 +822,7 @@ $body = @{ model = $ALIAS; max_completion_tokens = 16; messages = @(@{ role = "u
 # Send it, and print only the x-ms-served-model header of the response
 Write-Host "✨ Backend model that served one request to ${ALIAS}:"
 (Invoke-WebRequest -Method Post -Uri "$env:AI_GATEWAY_URL/default/models/openai/v1/chat/completions" `
-  -Headers @{ "api-key" = $env:AI_GATEWAY_API_KEY } -ContentType "application/json" -Body $body).Headers["x-ms-served-model"]
+  -Headers @{ Authorization = "Bearer $env:AI_GATEWAY_API_KEY" } -ContentType "application/json" -Body $body).Headers["x-ms-served-model"]
 ```
 </details> <!-- gh -->
 
@@ -1103,5 +1103,5 @@ own gateway.
 | :-- | :-: | --: |
 | [03 · Multi-provider aliases](../03-multi-provider-aliases/README.md) | [All labs](../README.md) | [23 · Streaming responses](../23-streaming-responses/README.md) |
 
-<sub>Learning paths: [Platform engineer](../README.md#learning-paths) (4 of 9) · [App & agent developer](../README.md#learning-paths) (3 of 9)</sub>
+<sub>Learning paths: [Platform engineer](../README.md#learning-paths) (4 of 9) · [App & agent developer](../README.md#learning-paths) (3 of 10)</sub>
 <!-- gh:end -->

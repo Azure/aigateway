@@ -789,15 +789,15 @@ Write-Host "🔖 Aliases on ${GATEWAY}:"
 ## Call Claude through the gateway
 
 Send a native Anthropic Messages request to the gateway's Anthropic route. Three things differ from a direct
-call to Anthropic: the URL is the gateway's, the `api-key` header carries your gateway runtime key, and `model`
+call to Anthropic: the URL is the gateway's, `Authorization: Bearer` carries your gateway runtime key, and `model`
 is the alias. Keep the `anthropic-version` header that the Messages API expects.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# Call support-chat with the native Messages API: your runtime key in api-key, and the alias in model
+# Call support-chat with the native Messages API: your runtime key as a bearer token, and the alias in model
 curl -sS "${AI_GATEWAY_URL%/}/default/models/anthropic/v1/messages" \
-  -H "api-key: $AI_GATEWAY_API_KEY" \
+  -H "Authorization: Bearer $AI_GATEWAY_API_KEY" \
   -H "anthropic-version: 2023-06-01" \
   -H "Content-Type: application/json" \
   -d '{"model": "support-chat", "max_tokens": 1024,
@@ -813,8 +813,8 @@ curl -sS "${AI_GATEWAY_URL%/}/default/models/anthropic/v1/messages" \
 <details><summary>PowerShell</summary> <!-- gh -->
 
 ```powershell title="PowerShell"
-# Build the request: your runtime key in api-key, the Messages API version, and the alias in model
-$headers = @{ 'api-key' = $env:AI_GATEWAY_API_KEY; 'anthropic-version' = '2023-06-01' }
+# Build the request: your runtime key as a bearer token, the Messages API version, and the alias in model
+$headers = @{ Authorization = "Bearer $env:AI_GATEWAY_API_KEY"; 'anthropic-version' = '2023-06-01' }
 $body = @{
   model      = 'support-chat'
   max_tokens = 1024
@@ -1184,8 +1184,9 @@ open `support-chat` and select **Policies**.
 
 ## Go further
 
-- **Use the Anthropic SDK.** Point the SDK at the gateway's Anthropic base URL. The SDK appends `/v1/messages`
-  itself and sends `anthropic-version` for you.
+- **Use the Anthropic SDK.** Point the SDK at the gateway's Anthropic base URL, and pass the runtime key as
+  `auth_token`, which the SDK sends as `Authorization: Bearer`. The SDK appends `/v1/messages` itself and sends
+  `anthropic-version` for you.
 
   ```python
   import os
@@ -1193,8 +1194,7 @@ open `support-chat` and select **Policies**.
 
   client = Anthropic(
       base_url=os.environ["AI_GATEWAY_URL"].rstrip("/") + "/default/models/anthropic",
-      api_key="unused",  # required by the SDK; the gateway reads the api-key header
-      default_headers={"api-key": os.environ["AI_GATEWAY_API_KEY"]},
+      auth_token=os.environ["AI_GATEWAY_API_KEY"],  # sent as Authorization: Bearer
   )
   message = client.messages.create(
       model="support-chat",
@@ -1315,5 +1315,5 @@ you created the key only for this lab, delete it in the Claude Console.
 | :-- | :-: | --: |
 | [02 · First model call](../02-first-model-call/README.md) | [All labs](../README.md) | [22 · Priority & weighted routing](../22-model-routing/README.md) |
 
-<sub>Learning paths: [Platform engineer](../README.md#learning-paths) (3 of 9) · [App & agent developer](../README.md#learning-paths) (2 of 9)</sub>
+<sub>Learning paths: [Platform engineer](../README.md#learning-paths) (3 of 9) · [App & agent developer](../README.md#learning-paths) (2 of 10)</sub>
 <!-- gh:end -->

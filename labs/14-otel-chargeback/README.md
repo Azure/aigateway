@@ -627,9 +627,9 @@ A claim only appears in telemetry if the validated token has it. Decode your own
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# Get a token for AI Gateway's audience, and decode its claims locally, including the custom cost_center claim
+# Get a token for AI Gateway, and decode its claims locally, including the custom cost_center claim
 echo "👤 Claims in your token for AI Gateway:"
-az account get-access-token --resource https://azure-api.net/aigateway --query accessToken -o tsv \
+az account get-access-token --scope https://ai.gateway.azure.com/Data.All --query accessToken -o tsv \
   | python3 infra/show_claims.py cost_center
 ```
 </details> <!-- gh -->
@@ -637,9 +637,9 @@ az account get-access-token --resource https://azure-api.net/aigateway --query a
 <details><summary>PowerShell</summary> <!-- gh -->
 
 ```powershell title="PowerShell"
-# Get a token for AI Gateway's audience, and decode its claims locally, including the custom cost_center claim
+# Get a token for AI Gateway, and decode its claims locally, including the custom cost_center claim
 Write-Host "👤 Claims in your token for AI Gateway:"
-az account get-access-token --resource https://azure-api.net/aigateway --query accessToken -o tsv |
+az account get-access-token --scope https://ai.gateway.azure.com/Data.All --query accessToken -o tsv |
   python infra/show_claims.py cost_center
 ```
 </details> <!-- gh -->
@@ -647,11 +647,11 @@ az account get-access-token --resource https://azure-api.net/aigateway --query a
 On GitHub, open [infra/show_claims.py](infra/show_claims.py). The script prints `aud`, `ver`, `tid`, `oid`, `appid`,
 `azp`, and `idtyp`, plus any claim names you pass. Nothing leaves your machine.
 
-Expected output: `aud` is `https://azure-api.net/aigateway`, `tid` and `oid` are GUIDs, and either `appid` (v1
-token) or `azp` (v2 token) holds the Azure CLI's client ID. `cost_center` is `(not in token)`.
+Expected output: `aud` is AI Gateway's app ID, `18550318-e177-4205-a743-6816d6fcdc3f`, `ver` is `2.0`, `tid` and
+`oid` are GUIDs, and `azp` holds the Azure CLI's client ID (a v1 token would carry it in `appid`). `cost_center` is `(not in token)`.
 
 > [!IMPORTANT]
-> Tokens for AI Gateway are issued for its audience, `https://azure-api.net/aigateway`. Before you add a custom
+> Tokens for AI Gateway are issued for its app ID, `18550318-e177-4205-a743-6816d6fcdc3f`. Before you add a custom
 > claim such as `cost_center` to **Token claim attributes**, decode a real token from that caller and confirm the
 > claim is there. If it isn't, map client apps (`appid` or `azp`) to cost centers in your report instead.
 
@@ -681,7 +681,7 @@ Write-Host "📊 Requests by caller:"
 On GitHub, open [send-attributed-traffic.sh](infra/send-attributed-traffic.sh) or
 [send-attributed-traffic.ps1](infra/send-attributed-traffic.ps1).
 
-Expected output: ten rows, all `200`, alternating between `api-key` and `entra`. A `401` or `403` on the `entra`
+Expected output: ten rows, all `200`, alternating between `key` and `entra`. A `401` or `403` on the `entra`
 rows means your role assignment is missing or hasn't propagated yet.
 
 ### Find your callers in Monitoring

@@ -16,7 +16,7 @@ if (-not $env:AI_GATEWAY_URL) { throw 'Set $env:AI_GATEWAY_URL to the gateway ru
 if (-not $env:AI_GATEWAY_API_KEY) { throw 'Set $env:AI_GATEWAY_API_KEY to a runtime key from Access > Keys' }
 
 $uri = "$($env:AI_GATEWAY_URL.TrimEnd('/'))/default/models/openai/v1/chat/completions"
-$headers = @{ 'api-key' = $env:AI_GATEWAY_API_KEY }
+$headers = @{ Authorization = "Bearer $env:AI_GATEWAY_API_KEY" }
 
 $tests = [ordered]@{
   neutral = 'In two sentences, explain why teams put an API gateway in front of AI models.'
