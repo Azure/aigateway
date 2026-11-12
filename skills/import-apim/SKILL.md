@@ -12,6 +12,7 @@ one object at a time.
 ```
 apim-import collect  --apim <name> -g <rg> -o inventory.json
 apim-import plan     --inventory inventory.json -o plan.json
+# ... run resolve-models where the plan proposes it ...
 # ... adapt plan.json with the operator ...
 apim-import plan     --inventory inventory.json -o plan.json   # re-run; adaptations survive
 ```
@@ -47,6 +48,11 @@ things — three identical rate limits are one item. Do not unbatch them.
 | `translate` | It maps, but the semantics differ. Which target semantics? |
 | `accept-loss` | No equivalent. Accept, compensate, retain in APIM, or block? |
 | `enumerate` | A fact that only exists at runtime or in the operator's head. |
+
+An `enumerate` item proposing `resolve-models` is **not** a question. Run it — the tool fetches the
+catalogue using the credential the inventory already knows how to retrieve, and re-planning closes
+the item. Asking the operator to type model names the tool can fetch is the governing rule being
+broken in the other direction.
 | `name` | What clients send as `model`. A default is proposed; confirm or replace. |
 | `scope` | How gateway-wide keys and Entra RBAC replace per-product subscription keys. |
 | `collapse` | Only the `default` workspace exists on the target. |

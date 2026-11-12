@@ -118,15 +118,33 @@ class TestAssets:
         signals = {signal["type"] for signal in model["detection"]["signals"]}
         assert signals == {"backendNaming", "namedValueNaming"}
 
-    def test_unrecognized_provider_is_reported_as_unknown_not_guessed(self, inventory):
+    def test_an_unrecognized_host_still_yields_a_known_protocol(self, inventory):
+        # api.meta.ai matches no provider rule, so the vendor is not identified.
+        # The import naming still declares the protocol -- and with it, where the
+        # model list lives. Reporting "unknown" here made the plan ask an operator
+        # to type model names the tool could have fetched.
         provider = next(
             p for p in inventory["assets"]["modelProviders"]
             if p["origin"].get("backendName") == "meta-ai-openai-endpoint"
         )
-        assert provider["providerKind"] == "unknown"
+        assert provider["providerKind"] == "openAiCompatible"
+        assert provider["apiDialect"] == "openAIChatCompletions"
         assert provider["targetProviderKind"] == "Custom"
         assert provider["models"]["status"] == "unresolved"
-        assert "Confirm the provider" in " ".join(provider["models"]["notes"])
+        assert provider["models"]["discoverySource"] == "modelsEndpoint"
+        assert "resolve-models" in " ".join(provider["models"]["notes"])
+
+    def test_the_model_asset_agrees_with_its_provider(self, inventory):
+        # Regression: the asset said openAiCompatible while the provider said
+        # unknown, and the plan quoted the provider.
+        model = next(m for m in inventory["assets"]["models"] if m["source"]["name"] == "meta-ai")
+        provider = next(
+            p for p in inventory["assets"]["modelProviders"]
+            if p["origin"].get("backendName") == "meta-ai-openai-endpoint"
+        )
+        assert model["provider"]["kind"] == provider["providerKind"]
+        assert model["provider"]["apiDialect"] == provider["apiDialect"]
+        assert model["models"]["discoverySource"] == provider["models"]["discoverySource"]
 
     def test_passthrough_mcp_marks_tools_as_runtime_only(self, inventory):
         server = next(a for a in inventory["assets"]["mcpServers"] if a["source"]["name"] == "support-mcp")

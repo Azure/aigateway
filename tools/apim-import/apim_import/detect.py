@@ -148,19 +148,26 @@ _AI_NAMED_VALUE_SUFFIX = re.compile(r"(?i)-LLM$")
 # Provider identity (who) and protocol (how) are orthogonal: a Foundry host
 # reached at /openai/v1 is a Foundry provider speaking the OpenAI protocol.
 _IMPORT_PROTOCOL = (
-    (re.compile(r"(?i)-openai-endpoint$"), "openAiCompatible", "openAIChatCompletions"),
-    (re.compile(r"(?i)-ai-endpoint$"), "foundry", "azureOpenAI"),
+    (re.compile(r"(?i)-openai-endpoint$"), "openAiCompatible", "openAIChatCompletions", "modelsEndpoint"),
+    (re.compile(r"(?i)-ai-endpoint$"), "foundry", "azureOpenAI", "armDeployments"),
 )
 
 
 def protocol_from_backend_name(name: str | None) -> dict[str, Any] | None:
-    """Protocol declared by APIM's AI import naming convention, if any."""
-    for pattern, provider_kind, dialect in _IMPORT_PROTOCOL:
+    """Protocol declared by APIM's AI import naming convention, if any.
+
+    Carries the catalogue source too: knowing an upstream speaks the OpenAI
+    protocol is also knowing its model list is one GET away at /v1/models.
+    Leaving that out made the plan ask an operator to type model names the tool
+    could have fetched.
+    """
+    for pattern, provider_kind, dialect, catalog in _IMPORT_PROTOCOL:
         if name and pattern.search(name):
             return {
                 "providerKind": provider_kind,
                 "apiDialect": dialect,
                 "targetProviderKind": "Foundry" if provider_kind == "foundry" else "Custom",
+                "catalog": catalog,
                 "basis": "importConvention",
             }
     return None

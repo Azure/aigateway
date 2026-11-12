@@ -381,6 +381,7 @@ class Collector:
                     "targetProviderKind": (
                         rule.target_provider_kind if rule else convention["targetProviderKind"]
                     ),
+                    "catalog": (convention or {}).get("catalog") or (rule.catalog if rule else None),
                     "basis": "backendHost" if rule else convention["basis"],
                     "protocolBasis": "importConvention" if convention else (
                         "backendHost" if rule else None
@@ -837,6 +838,7 @@ class Collector:
                 "resourceIdRef": backend.get("resourceIdRef"),
                 "rule": rule,
                 "foundryRef": is_foundry_ref,
+                "declaredProvider": backend.get("provider") or {},
                 "languageModel": backend.get("languageModel"),
                 "secretRefs": backend.get("secretRefs") or [],
                 "credentials": backend.get("credentials"),
@@ -871,15 +873,20 @@ class Collector:
             # id, or by APIM's AI import naming alone. Only the first two identify the
             # provider; the third says "this is a model backend" and nothing more.
             rule = candidate["rule"] or (foundry_rule if candidate.get("foundryRef") else None)
+            # The backend already resolved protocol and catalogue from the import
+            # naming; the provider asset must not contradict it.
+            declared = candidate.get("declaredProvider") or {}
             name = candidate["origin"].get("backendName") or (urlsplit(candidate["endpoint"] or "").hostname or key)
             record: dict[str, Any] = {
                 "id": ids.asset("modelProvider", name, workspace),
                 "kind": "modelProvider",
                 "workspace": workspace or "default",
-                "providerKind": rule.kind if rule else "unknown",
-                "providerLabel": rule.label if rule else None,
-                "targetProviderKind": rule.target_provider_kind if rule else "Custom",
-                "apiDialect": rule.api_dialect if rule else None,
+                "providerKind": (rule.kind if rule else None) or declared.get("kind") or "unknown",
+                "providerLabel": rule.label if rule else declared.get("label"),
+                "targetProviderKind": (
+                    rule.target_provider_kind if rule else declared.get("targetProviderKind") or "Custom"
+                ),
+                "apiDialect": declared.get("apiDialect") or (rule.api_dialect if rule else None),
                 "endpoint": candidate["endpoint"],
                 "origin": candidate["origin"],
                 "auth": _provider_auth(candidate, self.registry),
@@ -888,7 +895,7 @@ class Collector:
                 "azure": None,
                 "models": {
                     "status": "unresolved",
-                    "discoverySource": rule.catalog if rule else "unknown",
+                    "discoverySource": (rule.catalog if rule else None) or declared.get("catalog") or "unknown",
                     "resolved": [],
                     "notes": [],
                 },
@@ -963,7 +970,7 @@ class Collector:
                         "Endpoint resolves to no Cognitive Services account in the scanned subscriptions. "
                         "Pass --foundry-subscription for cross-subscription backends."
                     )
-            elif rule and rule.catalog == "modelsEndpoint":
+            elif record["models"]["discoverySource"] == "modelsEndpoint":
                 record["models"]["notes"].append(
                     f"Run 'apim-import resolve-models' to list models from {record['endpoint']}/v1/models "
                     "using the referenced credential, resolved in memory only."
@@ -1151,9 +1158,10 @@ class Collector:
             "azure": None,
         }
 
+        catalog = (provider_rule.catalog if provider_rule else None) or resolved.get("catalog")
         models: dict[str, Any] = {
             "status": "unresolved",
-            "discoverySource": provider_rule.catalog if provider_rule else "unknown",
+            "discoverySource": catalog or "unknown",
             "resolved": [],
             "declared": sorted(_declared_models(operations, effective.get("elements") or [])),
             "notes": [],
@@ -1229,11 +1237,12 @@ class Collector:
                     "Backend looks like an Azure AI Foundry endpoint but no matching Cognitive Services "
                     "account was found in the scanned subscriptions. Pass --foundry-subscription."
                 )
-        elif provider_rule and provider_rule.catalog == "modelsEndpoint":
+        elif catalog == "modelsEndpoint":
+            models["discoverySource"] = "modelsEndpoint"
             models["notes"].append(
-                f"Model list is discoverable from {provider_rule.label} at {endpoint or '<endpoint>'}/v1/models, "
-                "which requires the backend credential. Run 'apim-import resolve-models' to fetch it "
-                "just-in-time without persisting the key."
+                f"{provider.get('label') or provider.get('kind')} speaks the OpenAI protocol, so its "
+                f"model list is one GET away at {endpoint or '<endpoint>'}/v1/models with the backend "
+                "credential. Run 'apim-import resolve-models' to fetch it without persisting the key."
             )
         elif provider_rule:
             models["notes"].append(

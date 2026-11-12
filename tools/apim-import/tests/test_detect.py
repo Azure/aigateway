@@ -115,6 +115,8 @@ class TestImportConvention:
             "providerKind": "openAiCompatible",
             "apiDialect": "openAIChatCompletions",
             "targetProviderKind": "Custom",
+            # Knowing it speaks OpenAI is also knowing where its model list is.
+            "catalog": "modelsEndpoint",
             "basis": "importConvention",
         }
 

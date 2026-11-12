@@ -281,8 +281,11 @@ class PlanBuilder:
                 blocking=True,
             )
         else:
-            for resolved in models.get("resolved") or []:
+            registrations = models.get("resolved") or []
+            for resolved in registrations:
                 self._model_registration(model, resolved)
+            if registrations:
+                self._alias_naming(model, registrations)
 
         # Dialect translation.
         translation = endpoints.get("translation") or {}
@@ -341,24 +344,53 @@ class PlanBuilder:
                 }],
             },
         )
-        # The callable name is not in APIM: it arrives in the request body.
+
+    def _alias_naming(self, model: dict[str, Any], registrations: list[dict[str, Any]]) -> None:
+        """One naming decision per API, not one per model.
+
+        The callable name is not in APIM -- it arrives in the request body -- so
+        every model needs one. Asked per model, a provider exposing a catalogue of
+        fifty turns into fifty questions whose answer is "the model's own name".
+        It is one decision with a per-model default that can be overridden.
+        """
+        asset_id = model["id"]
+        members = [
+            {
+                "modelName": entry.get("modelName"),
+                "proposedAliasName": entry.get("deploymentName") or entry.get("modelName"),
+                "supportedEndpoints": (entry.get("target") or {}).get("supportedEndpoints") or [],
+            }
+            for entry in registrations
+        ]
+        sample = ", ".join(str(member["proposedAliasName"]) for member in members[:4])
+        more = f" and {len(members) - 4} more" if len(members) > 4 else ""
         self._add(
-            item_id=ids.item(asset_id, f"alias/{name}"),
-            source={"assetId": asset_id, "assetKind": "modelApi", "aspect": f"alias:{name}"},
+            item_id=ids.item(asset_id, "aliasNames"),
+            source={"assetId": asset_id, "assetKind": "modelApi", "aspect": "aliasNames"},
             kind="name",
             verdict="partial",
             capability_id="alias.create",
-            proposal=name,
+            proposal="use-model-names",
             rationale=(
-                "An alias publishes the route, and its routingName is what clients send as `model`. "
-                "APIM does not store it, so the deployment name is proposed as the default."
+                f"An alias publishes the route, and its routingName is what clients send as `model`. "
+                f"APIM does not store it. Proposed for {len(members)} model(s): {sample}{more}."
             ),
-            options=[_opt(name, "Use the deployment name."), _opt("<other>", "Supply the name clients send.")],
-            evidence={"defaultFrom": "deploymentName", "supportedEndpoints": endpoints},
+            options=[
+                _opt("use-model-names", "Publish each model under its own name."),
+                _opt("override", "Supply names per model; set them in this item's members."),
+            ],
+            evidence={"members": members, "count": len(members)},
             target={
                 "capability": "alias.create",
-                "objects": [{"routingName": name, "backendModels": [{"modelName": _slug(name),
-                                                                      "priority": 0, "weight": 100}]}],
+                "objects": [
+                    {
+                        "routingName": member["proposedAliasName"],
+                        "backendModels": [{"modelName": _slug(str(member["proposedAliasName"])),
+                                            "priority": 0, "weight": 100}],
+                        "supportedEndpoints": member["supportedEndpoints"],
+                    }
+                    for member in members
+                ],
             },
         )
 

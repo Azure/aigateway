@@ -21,10 +21,6 @@ _SERVICE_ID = re.compile(
 )
 
 NOT_IMPLEMENTED = {
-    "resolve-models": (
-        "Fetches the live model catalogue for non-Azure providers (OpenAI /v1/models, "
-        "Anthropic /v1/models, and so on) by resolving the backend credential in memory."
-    ),
     "apply": (
         "Executes one plan item at a time against the target gateway, resolving secrets "
         "just in time and journalling each attempt so a failed run resumes."
@@ -117,6 +113,23 @@ def build_parser() -> argparse.ArgumentParser:
     plan_cmd.add_argument("--compact", action="store_true", help="Write minified JSON")
     plan_cmd.add_argument("--quiet", action="store_true", help="Suppress the summary on stderr")
 
+    resolve = subparsers.add_parser(
+        "resolve-models",
+        help="Read a provider's live model catalogue and write it back into the inventory",
+    )
+    resolve.add_argument("--inventory", required=True, help="Path to inventory.json")
+    resolve.add_argument(
+        "-o", "--output", help="Where to write the updated inventory (default: in place)"
+    )
+    resolve.add_argument(
+        "--allow-secret-use", action="append", default=[], metavar="PROVIDER_ID|all",
+        help=(
+            "Authorize using a provider's credential to read its catalogue; repeatable. "
+            "Without it nothing is read and the command reports what it would do"
+        ),
+    )
+    resolve.add_argument("--subscription", help="Subscription for the control-plane reads")
+
     validate = subparsers.add_parser("validate", help="Check an artifact against its JSON Schema")
     validate.add_argument("file", help="Path to inventory.json")
 
@@ -146,6 +159,8 @@ def main(argv: list[str] | None = None) -> int:
         return _collect(args)
     if args.command == "plan":
         return _plan(args)
+    if args.command == "resolve-models":
+        return _resolve_models(args)
     if args.command == "validate":
         return _validate(args)
     if args.command == "summary":
@@ -256,6 +271,52 @@ def _plan(args: argparse.Namespace) -> int:
         if args.output != "-":
             print(f"\nWrote {args.output} ({len(payload):,} bytes)", file=sys.stderr)
     return 0
+
+
+def _resolve_models(args: argparse.Namespace) -> int:
+    from .resolve import resolve_models, resolvable
+
+    path = Path(args.inventory)
+    try:
+        inventory = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    if inventory.get("kind") != "apimAiInventory":
+        print("error: --inventory is not an apimAiInventory document", file=sys.stderr)
+        return 2
+
+    candidates = resolvable(inventory)
+    if not candidates:
+        print("No provider has an unresolved catalogue reachable over its endpoint.", file=sys.stderr)
+        return 0
+
+    allow = {value for value in args.allow_secret_use}
+    client = ArmClient(subscription=args.subscription) if allow else None
+    results = resolve_models(inventory, client=client, allow=allow)
+
+    for result in results:
+        print(f"  {result.status:18} {result.provider_id} -> {result.catalogue_url}", file=sys.stderr)
+        if result.models:
+            print(f"                     {', '.join(result.models[:8])}"
+                  + (" ..." if len(result.models) > 8 else ""), file=sys.stderr)
+        elif result.detail:
+            print(f"                     {result.detail}", file=sys.stderr)
+
+    if not allow:
+        print(
+            "\nNothing was read. Reading a catalogue uses the provider's credential, so it needs "
+            "explicit authorization:\n  --allow-secret-use <providerId>   (or 'all')",
+            file=sys.stderr,
+        )
+        return 0
+
+    resolved = [result for result in results if result.status == "resolved"]
+    if resolved:
+        output = Path(args.output) if args.output else path
+        output.write_text(json.dumps(inventory, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        print(f"\nUpdated {output} ({len(resolved)} provider(s) resolved)", file=sys.stderr)
+    return 0 if all(r.status in {"resolved", "needsAuthorization"} for r in results) else 1
 
 
 def _validate(args: argparse.Namespace) -> int:

@@ -13,8 +13,8 @@ answer before it can move anything:
 3. **How does an automated migration get the credentials without anyone reading them?** Every
    secret becomes a reference plus the exact command that retrieves it at apply time.
 
-Status: `collect`, `plan` and `validate` are implemented and verified against live APIM instances.
-`resolve-models` and `apply` are specified below and not yet built.
+Status: `collect`, `resolve-models`, `plan` and `validate` are implemented and verified against
+live APIM instances. `apply` is specified below and not yet built.
 
 ---
 
@@ -75,6 +75,9 @@ apim-import collect --apim apim-gateway-demo -g a365-gateway-governance -o inven
 # Propose a migration plan, then re-run it after adapting items in place
 apim-import plan --inventory inventory.json -o plan.json
 apim-import plan --inventory inventory.json -o plan.json --probe-cli   # check the installed az extension too
+
+# Fill in a provider's model list where it needs the backend credential
+apim-import resolve-models --inventory inventory.json --allow-secret-use all
 
 # Narrow the scope
 apim-import collect --apim <name> -g <rg> --family mcp --family a2a
@@ -480,6 +483,32 @@ otherwise.
 
 ---
 
+## Resolving a model catalogue
+
+`collect` never reads a secret, so a provider that only exposes its models over an authenticated
+endpoint comes back `unresolved`. `resolve-models` is the one step that touches a credential, which
+is why it is separate and opt-in:
+
+```bash
+apim-import resolve-models --inventory inventory.json                       # reports what it would do
+apim-import resolve-models --inventory inventory.json --allow-secret-use all
+```
+
+The credential is resolved in memory by replaying the retrieval recipe the inventory already
+recorded — as a request, not as the recorded shell command, so the value never reaches a command
+line where process arguments would expose it. It is used for one GET and dropped. It is never
+written to the inventory, a file, or a log.
+
+Knowing an upstream speaks the OpenAI protocol is also knowing its model list is one GET away, so
+APIM's import naming (`*-openai-endpoint`) sets `discoverySource: "modelsEndpoint"` and the plan
+proposes `resolve-models` rather than asking an operator to type model names the tool can fetch.
+An endpoint that already carries its version prefix is not doubled: `.../openai/v1` becomes
+`.../openai/v1/models`, not `.../openai/v1/v1/models`.
+
+Resolving closes a question without opening new ones. A catalogue of fifty models produces fifty
+model registrations and **one** naming decision, because the alias names batch with a per-model
+default.
+
 ## The plan
 
 `plan` matches the inventory against a **capability inventory** — `capabilities/aigateway-1.0.0b26.json`,
@@ -551,12 +580,6 @@ no target at all. So the first question about a model API is not how to map it b
 can move** — and `split` keeps the rest on APIM rather than dropping it.
 
 ## Planned commands
-
-### `resolve-models`
-
-Fills in `models.resolved` for non-Azure providers. Resolves the referenced `secretRef` in memory,
-calls the provider's catalogue endpoint, writes back model identifiers, and discards the credential.
-Opt-in per provider, because it is the one step that touches a secret.
 
 ### `apply`
 
