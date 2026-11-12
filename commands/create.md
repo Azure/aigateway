@@ -12,8 +12,6 @@ Use `$ARGUMENTS` to resolve the gateway name, resource group, and supported Azur
 region. Resolve the explicit subscription, inspect existing resources, and explain
 the intended changes and possible costs. Explicit create intent authorizes routine
 creation; follow the skill's separate confirmation gates for identity or networking.
-Create only `Microsoft.ApiManagement/aigateways` in an existing resource group.
-Do not provision external prerequisites, target a legacy service, or use REST
-bypasses. Use native `az aigateway create` and verify the exact resource and
+Use native `az aigateway create` and verify the exact resource and
 provisioning state. Do not overwrite an existing gateway or configure unrequested
 assets. Report resource identity and state without credentials.
