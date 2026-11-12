@@ -1,57 +1,27 @@
 ---
-description: Select or use supplied Azure AI Gateway assets and integrate them into an app, with or without gateway control-plane access.
-argument-hint: [gateway resource id, runtime endpoint, or connection details] [optional use case]
+description: Connect an existing application or workflow to Azure AI Gateway models and MCP tools.
+argument-hint: [gateway resource ID, runtime endpoint, or connection details] [use case]
 ---
 
 # /aigateway:build
 
-Take the user all the way from discovery to working code that uses an existing
-Azure AI Gateway's models and/or MCP tools — in whatever they're building. This command runs
-the **full** workflow in the bundled skill `skills/use-ai-gateway/SKILL.md` end to end:
+Connect the requested existing gateway model or MCP tools to the user's
+application or workflow. Follow `skills/use-ai-gateway/SKILL.md`; skip
+discovery when the supplied callable contract is complete.
 
-1. **Identify & select** assets using Part 1 of the skill and `$ARGUMENTS`.
-   With authorized management reads, discover and explain a relevant shortlist.
-   Without control-plane access, use supplied model endpoints/callable names and
-   known MCP URLs; do not require an ARM ID or permission elevation. If only a host
-   is known, help with authentication/URL structure and ask for the missing published
-   model/protocol or MCP endpoint, not guessed assets. Explain relevant constraints
-   and unknowns, preserve explicit choices, and confirm the finite selection.
-2. **Establish runtime authentication** using Microsoft Entra ID or an existing
-   gateway key, following the skill. Prefer Entra for production and scoped access.
-   Retrieve a selected existing key only with explicit approval; never create or
-   rotate one. The current gateway contract uses `Authorization: Bearer` for both
-   credential types. Management access does not imply runtime invocation permission.
-   Runtime-only users use an existing secure binding or approved sign-in; do not
-   list keys or retrieve management secrets on that path.
-3. **Integrate** (Part 2 of the skill). Ask what the user is building and pick the path:
-   - **Call a model** over its advertised protocol: Chat Completions, Responses,
-     Anthropic Messages, embeddings, or another documented operation.
-   - **Connect MCP tools** from an MCP-capable client/app.
-   - **Scaffold a standalone agent** with the **GitHub Copilot SDK**
-     if the user wants a ready-to-run agent project. Follow the skill's current
-     SDK/runtime requirements; default to Python unless they ask for TypeScript.
-     Produce a complete project: agent code, `.env.example`, `.gitignore`
-     (must ignore `.env`), `requirements.txt` (or `package.json`), and a `README.md`.
-     Allowlist selected tools and require explicit permission decisions.
-   Integrate into the user's existing project when they have one, respecting its language
-   and conventions.
-4. **Run and verify** a bounded integration request with approval for cost and any
-   side effects. Report what actually worked; `429`/quota, timeout, or missing
-   credentials are failed/inconclusive checks, not a successful round trip.
+1. Reuse supplied details. If needed, make relevant read-only discovery with
+   the current Azure CLI identity. Do not require management access for a known
+   runtime endpoint. Preserve explicit asset choices; ask only for missing
+   published details.
+2. Use an existing approved Entra or gateway-key binding as
+   `Authorization: Bearer`. Never retrieve, create or rotate keys here.
+3. Integrate the exact model operation or selected MCP tools into the existing
+   project using its conventions. List MCP tools before configuring or calling
+   them; get approval for the specific call and arguments.
+4. Verify one bounded request after confirming any cost or side effect. Report
+   the actual result; errors and timeouts are not success.
 
-### Guardrails
-
-- **Consumption only.** This is strictly read-only against the gateway. Never issue ARM
-  `PUT`/`PATCH`/`DELETE` calls and never create, provision, or delete gateways, models,
-  tools, connections, or products. If the user asks to provision anything, tell them
-  that is an administrator task done in the [Azure AI Gateway Portal](https://ai.gateway.azure.com).
-- **Never hardcode secrets.** Use environment variables or a secret store, never
-  browser bundles. Do not persist runtime tokens. Write a live API key to an ignored
-  `.env` only with explicit approval and an exposure warning.
-- Preserve the callable alias name, exact supported operation, verified gateway
-  runtime host, and `/default/` workspace. Do not substitute upstream endpoints,
-  backend deployment names for aliases, or guessed SDK paths.
-- Use the selected gateway's verified authentication contract. Never send an ARM
-  token as a runtime credential or fall back between identities to bypass a denial.
-- MCP discovery is version-aware and read-only. Never invoke tools without separate
-  approval, expose unselected tools, or generate approval-all permission handlers.
+Do not change gateways, assets, roles, keys, policies or backend connections.
+Preserve the callable alias, published endpoint and `/default/` workspace.
+Never use an upstream endpoint, substitute a backend model name or expose a
+credential.
