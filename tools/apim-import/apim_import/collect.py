@@ -58,12 +58,24 @@ class CollectOptions:
     apim_api_version: str = DEFAULT_APIM_API_VERSION
     cognitive_api_version: str | None = None
     include_policy_xml: bool = True
+    operation_policies: bool = False
     fast: bool = False
     max_apis: int | None = None
 
 
 class Collector:
-    def __init__(self, client: ArmClient, service_id: str, options: CollectOptions) -> None:
+    def __init__(
+        self,
+        client: ArmClient,
+        service_id: str,
+        options: CollectOptions,
+        *,
+        progress: Any = None,
+    ) -> None:
+        # A collection is dozens of serial round trips with nothing to show for
+        # minutes. Without a heartbeat a slow network is indistinguishable from a
+        # hang, which is exactly how the first trial run read.
+        self.progress = progress or (lambda message: None)
         self.client = client
         self.service_id = service_id.rstrip("/")
         self.options = options
@@ -133,6 +145,7 @@ class Collector:
                     "includeApi": self.options.include_api,
                     "excludeApi": self.options.exclude_api,
                     "resolveFoundry": self.options.resolve_foundry,
+                    "operationPolicies": self.options.operation_policies,
                     "fast": self.options.fast,
                 },
                 "requestCount": self.client.call_count,
@@ -718,7 +731,10 @@ class Collector:
                 "workspace": workspace or "default",
                 "source": _api_source(raw, workspace),
                 "detection": classification.to_dict(),
-                "policyRefs": _policy_refs(policy_id, document, workspace, shared, name, operations),
+                "policyRefs": _policy_refs(
+                    policy_id, document, workspace, shared, name, operations,
+                    operation_policies_collected=self.options.operation_policies,
+                ),
                 "access": self._access(raw, name, workspace, shared),
             }
 
@@ -1061,21 +1077,32 @@ class Collector:
     def _collect_operations(self, api_url: str, name: str, workspace: str | None, scope: str) -> list[dict[str, Any]]:
         raw = self._list(f"{api_url}/operations", "operations", f"{scope}/api:{name}", quiet=True)
         operations = []
+        # APIM exposes no bulk read for operation policies, so collecting them
+        # costs one round trip per operation -- 110 of 171 reads on a single real
+        # instance, nearly all returning 404. It is off by default and the skip is
+        # recorded, because "not collected" must not read as "none exist".
+        collect_policies = self.options.operation_policies
+        if not collect_policies and raw:
+            self.coverage.append(
+                _coverage("operationPolicies", f"{scope}/api:{name}", "notCollected", len(raw), None)
+            )
         for entry in raw:
             props = entry.get("properties") or {}
             operation_name = entry.get("name") or ""
             policy_id = ids.policy("operation", f"{ids.scoped(workspace, name)}/{operation_name}")
-            document = self._capture_policy(
-                scope={
-                    "level": "operation",
-                    "name": operation_name,
-                    "apiName": name,
-                    "resourceId": entry.get("id"),
-                },
-                scope_url=f"{api_url}/operations/{operation_name}",
-                policy_id=policy_id,
-                quiet=True,
-            )
+            document = None
+            if collect_policies:
+                document = self._capture_policy(
+                    scope={
+                        "level": "operation",
+                        "name": operation_name,
+                        "apiName": name,
+                        "resourceId": entry.get("id"),
+                    },
+                    scope_url=f"{api_url}/operations/{operation_name}",
+                    policy_id=policy_id,
+                    quiet=True,
+                )
             operations.append(
                 {
                     "name": operation_name,
@@ -1607,6 +1634,7 @@ class Collector:
                 self.warnings.append({"code": "collectionRead", "collection": collection, "scope": scope, "message": str(exc)})
             return []
         self.coverage.append(_coverage(collection, scope, "complete" if items else "empty", len(items), None))
+        self.progress(f"{collection}@{scope}: {len(items)} ({self.client.call_count} reads)")
         return items
 
 
@@ -2073,10 +2101,12 @@ def _policy_refs(
     shared: dict[str, Any],
     api_name: str,
     operations: list[dict[str, Any]] | None = None,
+    operation_policies_collected: bool = False,
 ) -> dict[str, Any]:
     refs: dict[str, Any] = {
         "global": ids.policy("global"),
         "api": policy_id if document else None,
+        "operationPoliciesCollected": operation_policies_collected,
         "fragments": [ids.policy("fragment", name) for name in (document or {}).get("fragmentRefs", [])],
         "products": [],
         "operations": [

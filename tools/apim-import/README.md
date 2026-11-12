@@ -90,7 +90,14 @@ apim-import summary inventory.json --format markdown
 
 `collect` is read-only. It issues `GET` requests only, and never calls a `list*` secret action.
 Running it needs `Reader` on the APIM instance, plus `Reader` on any Cognitive Services account
-you want resolved.
+you want resolved. It prints a heartbeat per collection to stderr, because a run is dozens of
+serial round trips and a slow network is otherwise indistinguishable from a hang.
+
+**Operation policies are opt-in.** APIM exposes no bulk read for them, so collecting them costs one
+round trip per operation — on one real instance that was 110 of 171 reads, nearly all returning 404,
+and it took the run from 37 seconds to over eight minutes. Skipping them is recorded twice, because
+"not collected" must never read as "none exist": a `notCollected` entry in `collection.coverage`
+with the number skipped, and `policyRefs.operationPoliciesCollected: false` on each asset.
 
 <details>
 <summary>All <code>collect</code> options</summary>
@@ -106,6 +113,7 @@ you want resolved.
 | `--foundry-subscription` | Extra subscription to scan for Cognitive Services accounts |
 | `--no-foundry` | Skip ARM deployment resolution |
 | `--no-policy-xml` | Keep the normalized element list, drop the raw XML |
+| `--operation-policies` | Also read a policy for every operation. Off by default: APIM has no bulk read, so it costs one round trip each |
 | `--fast` | Skip operation enumeration for non-MCP APIs (faster, weaker model detection) |
 | `--max-apis` | Stop after N APIs, for a smoke run |
 

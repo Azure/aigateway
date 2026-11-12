@@ -44,7 +44,10 @@
             "properties": {
               "collection": {"type": "string"},
               "scope": {"type": "string"},
-              "status": {"enum": ["complete", "empty", "notFound", "failed"]},
+              "status": {
+                "description": "notCollected means the read was deliberately skipped; it is not evidence that nothing is there.",
+                "enum": ["complete", "empty", "notFound", "failed", "notCollected"]
+              },
               "count": {"type": "integer", "minimum": 0},
               "error": {"type": ["string", "null"]}
             }
@@ -485,7 +488,11 @@
         "api": {"type": ["string", "null"]},
         "fragments": {"type": "array", "items": {"type": "string"}},
         "products": {"type": "array", "items": {"type": "string"}},
-        "operations": {"type": "array", "items": {"type": "string"}}
+        "operations": {"type": "array", "items": {"type": "string"}},
+        "operationPoliciesCollected": {
+          "description": "False means an empty `operations` list says nothing about whether operation policies exist.",
+          "type": "boolean"
+        }
       }
     },
 

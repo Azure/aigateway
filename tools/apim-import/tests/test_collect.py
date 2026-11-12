@@ -534,6 +534,56 @@ class TestPublishableSurface:
         }
 
 
+class TestCollectionCost:
+    """Reading a policy per operation cost 110 of 171 round trips on one real
+    instance, nearly all returning 404. It is opt-in, and the skip is recorded
+    because "not collected" must not read as "none exist"."""
+
+    def test_operation_policies_are_not_read_by_default(self, inventory):
+        levels = [doc["scope"]["level"] for doc in inventory["policies"]]
+        assert "operation" not in levels
+
+    def test_the_skip_is_recorded_in_coverage(self, inventory):
+        skipped = [
+            entry for entry in inventory["collection"]["coverage"]
+            if entry["status"] == "notCollected"
+        ]
+        assert skipped
+        assert all(entry["collection"] == "operationPolicies" for entry in skipped)
+        # The count says how many were skipped, so the size of the gap is visible.
+        assert all(entry["count"] > 0 for entry in skipped)
+
+    def test_the_asset_says_an_empty_list_proves_nothing(self, inventory):
+        for model in inventory["assets"]["models"]:
+            refs = model["policyRefs"]
+            assert refs["operationPoliciesCollected"] is False
+            assert refs["operations"] == []
+
+    def test_opting_in_collects_them_and_records_no_gap(self):
+        document = Collector(FakeArmClient(), SERVICE, options(operation_policies=True)).run()
+        assert not [
+            entry for entry in document["collection"]["coverage"]
+            if entry["status"] == "notCollected"
+        ]
+        for model in document["assets"]["models"]:
+            assert model["policyRefs"]["operationPoliciesCollected"] is True
+
+    def test_skipping_costs_fewer_reads_than_collecting(self):
+        lean = FakeArmClient()
+        Collector(lean, SERVICE, options()).run()
+        full = FakeArmClient()
+        Collector(full, SERVICE, options(operation_policies=True)).run()
+        assert lean.call_count < full.call_count
+
+    def test_progress_is_reported_so_slow_is_not_mistaken_for_hung(self):
+        seen: list[str] = []
+        Collector(FakeArmClient(), SERVICE, options(), progress=seen.append).run()
+        assert seen
+        assert any("apis@" in message for message in seen)
+        # Each heartbeat carries a running read count.
+        assert all("reads)" in message for message in seen)
+
+
 class TestBackendRoles:
     """A policy that points at a backend declares what it is for.
 

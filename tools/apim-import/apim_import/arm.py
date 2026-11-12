@@ -8,6 +8,7 @@ headers, and error bodies stay intact.
 
 from __future__ import annotations
 
+import http.client
 import json
 import subprocess
 import time
@@ -19,6 +20,20 @@ from typing import Any, Iterable
 
 DEFAULT_ENDPOINT = "https://management.azure.com"
 RETRY_STATUSES = {408, 429, 500, 502, 503, 504}
+
+# Everything a transport can fail with that is worth retrying. TimeoutError and
+# ConnectionError are OSError subclasses outside the URLError hierarchy, so
+# naming them explicitly is what keeps a hung read from escaping uncaught.
+_TRANSPORT_ERRORS = (
+    urllib.error.URLError,
+    TimeoutError,
+    ConnectionError,
+    http.client.HTTPException,
+)
+
+
+def _reason(exc: BaseException) -> str:
+    return str(getattr(exc, "reason", None) or exc) or exc.__class__.__name__
 
 
 class ArmError(RuntimeError):
@@ -126,11 +141,14 @@ class ArmClient:
                     time.sleep(_retry_delay(response, attempt))
                     continue
                 return response
-            except urllib.error.URLError as exc:
+            except _TRANSPORT_ERRORS as exc:
+                # A socket timeout raises TimeoutError, which is an OSError and
+                # *not* a URLError. Catching only URLError let a hung read escape
+                # uncaught and abort a whole collection instead of retrying it.
                 if attempt <= self.max_retries:
                     time.sleep(min(2 ** attempt, 20))
                     continue
-                raise ArmError(f"Network error calling {full}: {exc.reason}", url=full) from exc
+                raise ArmError(f"Network error calling {full}: {_reason(exc)}", url=full) from exc
 
     def _build_url(self, url: str, api_version: str | None, params: dict[str, str] | None) -> str:
         if not url.startswith("http"):

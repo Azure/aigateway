@@ -84,6 +84,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Omit raw policy XML and keep only the normalized element list",
     )
     behaviour.add_argument(
+        "--operation-policies", action="store_true",
+        help=(
+            "Also read a policy for every operation. One round trip each and no bulk read exists, "
+            "so this is off by default and the skip is recorded in coverage"
+        ),
+    )
+    behaviour.add_argument(
         "--fast", action="store_true",
         help="Skip operation enumeration for non-MCP APIs (faster, weaker model detection)",
     )
@@ -167,11 +174,17 @@ def _collect(args: argparse.Namespace) -> int:
         apim_api_version=args.api_version,
         cognitive_api_version=args.cognitive_api_version,
         include_policy_xml=args.include_policy_xml,
+        operation_policies=args.operation_policies,
         fast=args.fast,
         max_apis=args.max_apis,
     )
     client = ArmClient(subscription=subscription)
-    collector = Collector(client, service_id, options)
+
+    def progress(message: str) -> None:
+        if not args.quiet:
+            print(f"  ... {message}", file=sys.stderr, flush=True)
+
+    collector = Collector(client, service_id, options, progress=progress)
     try:
         document = collector.run()
     except ArmError as exc:
