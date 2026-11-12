@@ -1,8 +1,8 @@
 {
   "name": "aigateway",
-  "description": "Create, configure, manage, and build applications on Azure AI Gateway. Includes read-only developer integration and assisted APIM V2 migration with local validation and explicit approval.",
+  "description": "Create, configure, manage, and build applications on Azure AI Gateway. Includes read-only developer integration, gateway administration, and local feedback packaging.",
   "version": "3.0.0",
-  "keywords": ["ai-gateway", "agents", "mcp", "models", "azure", "integration", "management", "migration"],
+  "keywords": ["ai-gateway", "agents", "mcp", "models", "azure", "integration", "management"],
   "author": {
     "name": "Microsoft",
     "url": "https://www.microsoft.com"
@@ -15,13 +15,11 @@
     "./commands/build.md",
     "./commands/create.md",
     "./commands/manage.md",
-    "./commands/migrate.md",
     "./commands/feedback.md"
   ],
   "skills": [
     "./skills/use-ai-gateway/",
     "./skills/manage-ai-gateway/",
-    "./skills/migrate-ai-gateway/",
     "./skills/feedback-ai-gateway/"
   ]
 }

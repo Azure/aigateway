@@ -17,10 +17,10 @@ authorizes routine creates and updates. Follow the skill's specific confirmation
 gates for destructive/access changes, secret retrieval, OAuth initiation, and
 sensitive payload capture. Report unsupported CLI activities explicitly.
 
-If the request is to assess, plan, execute, or resume an APIM migration, stop
-this workflow and use `skills/migrate-ai-gateway/SKILL.md` (or direct the user to
-`/aigateway:migrate`). Use its local inventory/validation helpers and do not
-use management commands to bypass its capability or approval gates.
+Migrating an existing APIM workload is outside this plugin's scope. If the
+request is to assess, plan, or execute such a migration, say so instead of
+improvising one: do not read or convert `Microsoft.ApiManagement/service`
+configuration, and do not use management commands as a substitute.
 After any mutation, verify from the command result and, where supported, the
 corresponding `show` or `list` command. Report the outcome without exposing
 secrets.

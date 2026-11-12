@@ -65,10 +65,9 @@ User on the external account. Use the low-level registration workflow in
 [models and routing](references/models-and-routing.md), not those convenience
 paths. Consent does not silently expand the resource boundary.
 
-APIM migration belongs to
-[`migrate-ai-gateway`](../migrate-ai-gateway/SKILL.md) or
-`/aigateway:migrate`, with its separate capability and approval gates.
-Developer application integration and scaffolding are outside this skill.
+Migrating an existing `Microsoft.ApiManagement/service` workload is outside
+this skill: do not read, convert, or replicate source APIM configuration here.
+Developer application integration and scaffolding are also outside this skill.
 
 ## Prerequisites and target resolution
 
@@ -230,7 +229,3 @@ Update affected command recipes and capability evidence when flags, schemas,
 resource dispatch, or behavior change; update this workflow only when those
 changes alter the operating model or safeguards. Do not treat newer help as
 proof that a previously unsupported mutation is safe.
-
-The migration helper has a separate, stricter reviewed capability profile.
-A new CLI version must pass that profile's review and fresh plan approvals
-before migration writes; this management guidance does not bypass that gate.
