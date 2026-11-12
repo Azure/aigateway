@@ -185,8 +185,9 @@ only the model calls leave for the gateway. Five environment variables do it:
 | `ANTHROPIC_DEFAULT_SONNET_MODEL` | `<foundry-account-name>/claude-sonnet-5-5` | The alias behind the `sonnet` tier. |
 | `ANTHROPIC_DEFAULT_HAIKU_MODEL` | `<foundry-account-name>/claude-haiku-5-5` | The alias behind the `haiku` tier, which Claude Code also uses for small background tasks. |
 
-Claude Code picks a model by tier, so `--model sonnet` or `/model sonnet` switches it to the Sonnet alias. The gateway
-gives each alias its own policies, and **Caller identity** gives each key its own counters:
+Claude Code picks a model by tier, so `--model sonnet` or `/model sonnet` switches it to the Sonnet alias. A model that
+you saved with `/model`, or set in `ANTHROPIC_MODEL`, replaces the default, so the commands that need Opus pass
+`--model opus`. The gateway gives each alias its own policies, and **Caller identity** gives each key its own counters:
 
 | Alias | Token limit for each caller | Cost limit for each caller |
 |---|---|---|
@@ -883,9 +884,9 @@ used and its cost estimate:
 cd ~/contoso-calc &&
   echo "📂 Practice project: ~/contoso-calc"
 
-# Run one prompt on the default model, Opus, and print the reply, the alias that answered, and the cost estimate
+# Run one prompt on Opus, and print the reply, the alias that answered, and the cost estimate
 echo "🤖 Claude Code answer:"
-claude -p "Reply with the single word pong" --output-format json \
+claude -p "Reply with the single word pong" --model opus --output-format json \
   | jq -r 'if .is_error then "🚨 \(.result)"
            else "✅ \(.result) · \(.modelUsage | keys | join(", ")) · $\(.total_cost_usd * 10000 | round / 10000)" end'
 ```
@@ -898,9 +899,9 @@ claude -p "Reply with the single word pong" --output-format json \
 Set-Location ~/contoso-calc
 if ($?) { Write-Host "📂 Practice project: ~/contoso-calc" }
 
-# Run one prompt on the default model, Opus, and print the reply, the alias that answered, and the cost estimate
+# Run one prompt on Opus, and print the reply, the alias that answered, and the cost estimate
 Write-Host "🤖 Claude Code answer:"
-$run = claude -p "Reply with the single word pong" --output-format json | ConvertFrom-Json
+$run = claude -p "Reply with the single word pong" --model opus --output-format json | ConvertFrom-Json
 if ($run.is_error) { Write-Host "🚨 $($run.result)" }
 else {
   $models = $run.modelUsage.PSObject.Properties.Name -join ', '
@@ -1404,9 +1405,9 @@ Wait a minute for the change to reach the gateway.
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# Ask Opus, the default model, for up to five stories, and stop at the first error
+# Ask Opus for up to five stories, and stop at the first error
 for i in 1 2 3 4 5; do
-  RUN="$(claude -p "Write a 300-word short story about a gateway that guards a city" --output-format json)"
+  RUN="$(claude -p "Write a 300-word short story about a gateway that guards a city" --model opus --output-format json)"
   echo "$RUN" | jq -r --arg i "$i" \
     'if .is_error then "🚨 Run \($i): \(.result)" else "✅ Run \($i): \(.usage.output_tokens) output tokens" end'
   [ "$(echo "$RUN" | jq -r .is_error)" = "true" ] && break
@@ -1417,9 +1418,9 @@ done
 <details><summary>PowerShell</summary> <!-- gh -->
 
 ```powershell title="PowerShell"
-# Ask Opus, the default model, for up to five stories, and stop at the first error
+# Ask Opus for up to five stories, and stop at the first error
 foreach ($i in 1..5) {
-  $run = claude -p "Write a 300-word short story about a gateway that guards a city" --output-format json |
+  $run = claude -p "Write a 300-word short story about a gateway that guards a city" --model opus --output-format json |
     ConvertFrom-Json
   if ($run.is_error) { Write-Host "🚨 Run ${i}: $($run.result)"; break }
   Write-Host "✅ Run ${i}: $($run.usage.output_tokens) output tokens"
