@@ -111,10 +111,11 @@ Administrators can create a gateway or manage an existing one:
 The [administrator skill](skills/manage-ai-gateway/SKILL.md) provides native CLI
 runbooks for gateway lifecycle, models and aliases, MCP sources, policies, keys,
 identities, networking, and telemetry. It manages only
-`Microsoft.ApiManagement/aigateways` and its own children; external resources and
-role grants must already be prepared. Routine create/update intent authorizes the
+`Microsoft.ApiManagement/aigateways` and its own children; external resources
+must already exist, and role assignments the setup depends on are granted only
+after specific confirmation. Routine create/update intent authorizes the
 requested work; destructive, access-sensitive, and secret-related operations have
-specific confirmation gates. [Portal activity coverage and CLI gaps](skills/manage-ai-gateway/references/activities-and-cli-coverage.md)
+specific confirmation gates. Portal activity coverage and CLI gaps
 are explicit rather than bypassed with REST or legacy resource types.
 
 #### Share feedback

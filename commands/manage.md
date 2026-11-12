@@ -10,9 +10,9 @@ platform engineer. Follow the complete workflow in
 `skills/manage-ai-gateway/SKILL.md`, especially **Configure gateway assets** and
 **Operate**. Use the current native `az aigateway` command group, scoped to
 `Microsoft.ApiManagement/aigateways` and its own default-workspace children.
-Do not mutate external prerequisites, use legacy service destinations, run
-Foundry convenience onboarding with external role-grant side effects, or
-bypass a missing command with REST.
+Do not mutate external prerequisites except for the skill's confirmed role-grant
+exception. Do not use legacy service destinations or bypass a missing command
+with REST.
 
 Use `$ARGUMENTS` to resolve the target and operation. Confirm the active
 subscription and inspect current state before proposing commands. Prefer read-only
@@ -25,6 +25,3 @@ Migrating an existing APIM workload is outside this plugin's scope. If the
 request is to assess, plan, or execute such a migration, say so instead of
 improvising one: do not read or convert `Microsoft.ApiManagement/service`
 configuration, and do not use management commands as a substitute.
-After any mutation, verify from the command result and, where supported, the
-corresponding `show` or `list` command. Report the outcome without exposing
-secrets.
