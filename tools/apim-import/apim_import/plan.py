@@ -420,7 +420,32 @@ class PlanBuilder:
                 } if rule["verdict"] in {"native", "partial"} else {},
                 blocking=rule["verdict"] == "gap",
             )
-        discovery = (server.get("toolDiscovery") or {}).get("status")
+        discovery_record = server.get("toolDiscovery") or {}
+        discovery = discovery_record.get("status")
+        if discovery == "complete" and discovery_record.get("policiesApplied") is False:
+            # The list came from the upstream with the API's policies bypassed, so
+            # it can be broader than what callers reach through the gateway.
+            # Treating it as settled would publish tools APIM currently withholds.
+            self._add(
+                item_id=ids.item(asset_id, "tools"),
+                source={"assetId": asset_id, "assetKind": "mcpServer", "aspect": "toolExposure"},
+                kind="enumerate",
+                verdict="partial",
+                proposal="accept-as-listed",
+                rationale=(
+                    f"{discovery_record.get('discoveredCount')} tools were listed directly from the "
+                    "upstream because the gateway route was unavailable, so the API's policies did "
+                    "not run. APIM may be withholding some of these from callers today."
+                ),
+                options=[
+                    _opt("accept-as-listed", "Federate every tool the upstream exposes."),
+                    _opt("verify-through-gateway", "Re-list through APIM before deciding."),
+                    _opt("retain-in-apim", "Do not migrate this server."),
+                ],
+                evidence={"toolDiscovery": discovery_record,
+                          "tools": [tool.get("name") for tool in server.get("tools") or []]},
+                blocking=True,
+            )
         if discovery == "runtimeOnly":
             tool_rule = _first(
                 self.caps.asset_rules(),

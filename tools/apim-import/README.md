@@ -13,8 +13,8 @@ answer before it can move anything:
 3. **How does an automated migration get the credentials without anyone reading them?** Every
    secret becomes a reference plus the exact command that retrieves it at apply time.
 
-Status: `collect`, `resolve-models`, `plan` and `validate` are implemented and verified against
-live APIM instances. `apply` is specified below and not yet built.
+Status: `collect`, `resolve-models`, `discover-tools`, `plan` and `validate` are implemented and
+verified against live APIM instances. `apply` is specified below and not yet built.
 
 ---
 
@@ -508,6 +508,38 @@ An endpoint that already carries its version prefix is not doubled: `.../openai/
 Resolving closes a question without opening new ones. A catalogue of fifty models produces fifty
 model registrations and **one** naming decision, because the alias names batch with a per-model
 default.
+
+## Listing an MCP server's tools
+
+APIM stores no tool names for a passthrough server -- it proxies `tools/list` to the upstream -- so
+the only way to know them is to ask at runtime. `discover-tools` is the MCP counterpart of
+`resolve-models`: opt-in, credential-aware, and explicit about which route it took.
+
+```bash
+apim-import discover-tools --inventory inventory.json                        # reports what it would do
+apim-import discover-tools --inventory inventory.json --allow-secret-use all
+```
+
+**The route changes the answer**, so it is recorded rather than assumed:
+
+| Route | What the list means | Recorded as |
+| --- | --- | --- |
+| Through the APIM gateway | What callers actually see, because the API's policies ran | `policiesApplied: true` |
+| Directly at the upstream | Policies were bypassed, so it can be broader than the gateway exposes | `policiesApplied: false` |
+
+`auto` prefers the gateway and falls back. A list obtained by bypassing policy does **not** settle
+the question: the plan raises a decision saying APIM may be withholding some of those tools today,
+because federating them all would widen what callers can reach.
+
+Observed across the live instances, all three outcomes occur: a public server listed cleanly through
+the gateway; an Entra-claim-gated API that refused at the gateway and listed from the upstream with
+the caveat recorded; and one that refused on both routes and is reported as failed with both
+reasons, never as zero tools.
+
+The client speaks streamable HTTP, reads replies as either JSON or SSE, follows 307/308 with the
+method and body intact (a missing trailing slash is the common cause), and carries the
+`Mcp-Session-Id` from `initialize` with the `notifications/initialized` acknowledgement -- a
+stateful server rejects everything after the handshake without them.
 
 ## The plan
 

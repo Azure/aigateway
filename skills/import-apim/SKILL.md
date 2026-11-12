@@ -12,7 +12,7 @@ one object at a time.
 ```
 apim-import collect  --apim <name> -g <rg> -o inventory.json
 apim-import plan     --inventory inventory.json -o plan.json
-# ... run resolve-models where the plan proposes it ...
+# ... run resolve-models / discover-tools where the plan proposes them ...
 # ... adapt plan.json with the operator ...
 apim-import plan     --inventory inventory.json -o plan.json   # re-run; adaptations survive
 ```
@@ -48,6 +48,11 @@ things — three identical rate limits are one item. Do not unbatch them.
 | `translate` | It maps, but the semantics differ. Which target semantics? |
 | `accept-loss` | No equivalent. Accept, compensate, retain in APIM, or block? |
 | `enumerate` | A fact that only exists at runtime or in the operator's head. |
+
+An `enumerate` item about an MCP server's tools is **not** a question either: run
+`discover-tools`, which calls `tools/list` for you. Prefer the gateway route -- that is the list
+callers actually see. If it falls back to the upstream, the API's policies did not run, so say so
+when you put the list to the operator rather than presenting it as what the gateway exposes.
 
 An `enumerate` item proposing `resolve-models` is **not** a question. Run it — the tool fetches the
 catalogue using the credential the inventory already knows how to retrieve, and re-planning closes

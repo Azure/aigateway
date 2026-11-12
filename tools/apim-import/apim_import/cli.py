@@ -130,6 +130,25 @@ def build_parser() -> argparse.ArgumentParser:
     )
     resolve.add_argument("--subscription", help="Subscription for the control-plane reads")
 
+    tools_cmd = subparsers.add_parser(
+        "discover-tools",
+        help="Ask a passthrough MCP server which tools it exposes and record them",
+    )
+    tools_cmd.add_argument("--inventory", required=True, help="Path to inventory.json")
+    tools_cmd.add_argument("-o", "--output", help="Where to write the updated inventory (default: in place)")
+    tools_cmd.add_argument(
+        "--allow-secret-use", action="append", default=[], metavar="ASSET_ID|all",
+        help="Authorize calling a server; repeatable. Without it nothing is called",
+    )
+    tools_cmd.add_argument(
+        "--route", choices=["auto", "gateway", "upstream"], default="auto",
+        help=(
+            "auto (default) prefers the gateway, which is what callers see, and falls back to the "
+            "upstream; upstream bypasses APIM policies and can list more tools than the gateway exposes"
+        ),
+    )
+    tools_cmd.add_argument("--subscription", help="Subscription for the control-plane reads")
+
     validate = subparsers.add_parser("validate", help="Check an artifact against its JSON Schema")
     validate.add_argument("file", help="Path to inventory.json")
 
@@ -161,6 +180,8 @@ def main(argv: list[str] | None = None) -> int:
         return _plan(args)
     if args.command == "resolve-models":
         return _resolve_models(args)
+    if args.command == "discover-tools":
+        return _discover_tools(args)
     if args.command == "validate":
         return _validate(args)
     if args.command == "summary":
@@ -317,6 +338,50 @@ def _resolve_models(args: argparse.Namespace) -> int:
         output.write_text(json.dumps(inventory, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         print(f"\nUpdated {output} ({len(resolved)} provider(s) resolved)", file=sys.stderr)
     return 0 if all(r.status in {"resolved", "needsAuthorization"} for r in results) else 1
+
+
+def _discover_tools(args: argparse.Namespace) -> int:
+    from .mcp import discover_tools, discoverable
+
+    path = Path(args.inventory)
+    try:
+        inventory = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    if inventory.get("kind") != "apimAiInventory":
+        print("error: --inventory is not an apimAiInventory document", file=sys.stderr)
+        return 2
+    if not discoverable(inventory):
+        print("No MCP server has a runtime-only tool list.", file=sys.stderr)
+        return 0
+
+    allow = {value for value in args.allow_secret_use}
+    client = ArmClient(subscription=args.subscription) if allow else None
+    results = discover_tools(inventory, client=client, allow=allow, route=args.route)
+
+    for result in results:
+        print(f"  {result.status:18} {result.asset_id} via {result.route}", file=sys.stderr)
+        if result.tools:
+            print(f"                     {', '.join(t['name'] for t in result.tools[:10])}"
+                  + (" ..." if len(result.tools) > 10 else ""), file=sys.stderr)
+        if result.detail:
+            print(f"                     {result.detail}", file=sys.stderr)
+
+    if not allow:
+        print(
+            "\nNothing was called. Listing tools calls the server and may use a subscription key, "
+            "so it needs explicit authorization:\n  --allow-secret-use <assetId>   (or 'all')",
+            file=sys.stderr,
+        )
+        return 0
+
+    found = [result for result in results if result.status == "discovered"]
+    if found:
+        output = Path(args.output) if args.output else path
+        output.write_text(json.dumps(inventory, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        print(f"\nUpdated {output} ({len(found)} server(s) discovered)", file=sys.stderr)
+    return 0 if all(r.status in {"discovered", "needsAuthorization"} for r in results) else 1
 
 
 def _validate(args: argparse.Namespace) -> int:
