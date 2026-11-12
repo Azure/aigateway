@@ -26,10 +26,20 @@ const args = process.argv.slice(2);
 const flag = (name) => args.includes(name);
 const option = (name) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };
 
-async function get(url) {
-  const res = await fetch(url, { headers: { 'user-agent': 'ai-gateway-labs-release-check' } });
-  if (!res.ok) throw new Error(`GET ${url} returned ${res.status}`);
-  return res.text();
+// Retries network errors, 429 and 5xx twice, then throws, so a lost chunk never passes for an empty one.
+async function get(url, attempts = 3) {
+  for (let attempt = 1; ; attempt++) {
+    let res;
+    try {
+      res = await fetch(url, { headers: { 'user-agent': 'ai-gateway-labs-release-check' } });
+    } catch (e) {
+      if (attempt >= attempts) throw new Error(`GET ${url} failed: ${e.cause?.code ?? e.message}`);
+    }
+    if (res?.ok) return res.text();
+    const transient = !res || res.status === 429 || res.status >= 500;
+    if (res && (!transient || attempt >= attempts)) throw new Error(`GET ${url} returned ${res.status}`);
+    await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
+  }
 }
 
 // Template literals keep "\r" escapes before real line breaks, and "\`" or "\${" for literal characters.
@@ -44,7 +54,7 @@ async function loadChunks() {
   if (!next.length) throw new Error(`No JavaScript bundle found in ${DOCS}`);
   while (next.length) {
     const batch = next.splice(0, 24);
-    const texts = await Promise.all(batch.map((url) => get(url).catch(() => '')));
+    const texts = await Promise.all(batch.map((url) => get(url)));
     batch.forEach((url, i) => chunks.set(url.split('/').pop(), texts[i]));
     for (const text of texts) {
       for (const m of text.matchAll(/["'`](?:\.\/|\/?assets\/)([\w.~-]+\.js)["'`]/g)) {

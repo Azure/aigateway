@@ -65,6 +65,7 @@ resource deployments 'Microsoft.CognitiveServices/accounts/deployments@2025-04-0
 }]
 
 var foundryEndpoint = foundryAccount.properties.endpoint
+var roleAssignments = '${foundryAccountId}/providers/Microsoft.Authorization/roleAssignments'
 
 module foundryUserRole '../../02-first-model-call/infra/foundry-user-role.bicep' = if (grantFoundryUser) {
   name: take('foundry-user-${uniqueString(gateway.id, foundryAccountId)}', 64)
@@ -162,3 +163,4 @@ output anthropicBaseUrl string = 'https://${gateway.properties.frontend.defaultH
 output providerName string = provider.name
 output aliasNames array = [for (m, i) in claudeModels: '${foundryAccountName}/${m.name}']
 output apiKeyName string = apiKey.name
+output roleAssignmentId string = grantFoundryUser ? '${roleAssignments}/${foundryUserRole!.outputs.roleAssignmentName}' : ''
