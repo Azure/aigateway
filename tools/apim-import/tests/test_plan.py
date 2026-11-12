@@ -89,6 +89,29 @@ class TestDocument:
         )
         assert item["proposal"] == "retain-in-apim"
 
+    def test_a_missing_cli_command_is_not_blamed_on_the_mapping_rules(self, inventory):
+        # Regression: a capability the installed extension does not expose flipped
+        # the item to accept-loss with no options, which then tripped the rulesGap
+        # fallback -- sending the reader to fix a rules file that is fine.
+        from apim_import.capability import CapabilityMap
+
+        caps = CapabilityMap.load().probe(
+            lambda command: None if command == ["mcp", "create"] else {"x"},
+            available=lambda: True,
+        )
+        document = build_plan(inventory, caps)
+        blocked = [i for i in document["items"] if i.get("capabilityUnavailable")]
+        assert blocked
+        for item in blocked:
+            assert not item.get("rulesGap"), f"{item['id']} blames the rules for a CLI gap"
+            assert "local CLI" in item["rationale"]
+            assert "upgrade-cli" in {option["value"] for option in item["options"]}
+
+    def test_every_item_explains_itself(self, plan):
+        for item in plan["items"]:
+            if item["status"] in {"needs-decision", "ready"}:
+                assert item["rationale"].strip(), f"{item['id']} has no rationale"
+
     def test_an_incomplete_rule_is_reported_rather_than_hidden(self, capabilities, inventory):
         import copy
 

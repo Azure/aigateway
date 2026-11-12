@@ -28,6 +28,10 @@ DEFAULT_CATALOG = "aigateway-1.0.0b26.json"
 # extension exposes for it, or None when the command is absent.
 Probe = Callable[[list[str]], "set[str] | None"]
 
+# Whether the `az aigateway` extension is installed at all. A per-command probe
+# cannot tell "this command is missing" from "nothing is installed"; this can.
+Presence = Callable[[], bool]
+
 
 class CapabilityError(RuntimeError):
     pass
@@ -111,14 +115,29 @@ class CapabilityMap:
 
     # -------------------------------------------------------------- probe
 
-    def probe(self, probe: Probe | None = None) -> "CapabilityMap":
+    def probe(self, probe: Probe | None = None, *, available: Presence | None = None
+              ) -> "CapabilityMap":
         """Reconcile the declared table against the installed extension.
 
         A command the catalog declares but the CLI does not expose becomes
         ``unavailable``; one exposed without a required option is also
         ``unavailable``, naming the option. Without a probe the table stays
         ``declared`` and nothing is claimed about the local install.
+
+        A probe can only speak for an extension that is *there*. When
+        ``az aigateway`` is absent altogether, every command reads as missing,
+        which would demote the whole catalog to ``unavailable`` and turn native
+        mappings into blocking losses. That is an unknown, not an absence, so it
+        raises instead. Supplying ``probe`` yourself asserts the presence
+        question is already answered; pass ``available`` to override either way.
         """
+        if available is None:
+            available = (lambda: True) if probe is not None else az_extension_present
+        if not available():
+            raise CapabilityError(
+                "the 'aigateway' az extension is not installed, so the installed CLI cannot be "
+                "probed. Install it, or plan without --probe-cli to use the declared table."
+            )
         probe = probe or az_option_probe
         for capability in self.capabilities.values():
             options = probe(capability.command)
@@ -183,6 +202,22 @@ class CapabilityMap:
 
 
 # ---------------------------------------------------------------- probing
+
+
+def az_extension_present(*, timeout: int = 30) -> bool:
+    """Whether `az aigateway` resolves at all.
+
+    Asks the one question the per-command probe cannot: an uninstalled extension
+    makes every command look absent, which is an unknown about the local CLI
+    rather than evidence the target lacks the capability.
+    """
+    try:
+        proc = subprocess.run(
+            ["az", "aigateway", "--help"], capture_output=True, text=True, timeout=timeout
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):  # pragma: no cover
+        return False
+    return proc.returncode == 0
 
 
 def az_option_probe(command: Iterable[str], *, timeout: int = 30) -> set[str] | None:

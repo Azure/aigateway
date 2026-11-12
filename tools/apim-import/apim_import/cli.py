@@ -227,7 +227,11 @@ def _plan(args: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     if args.probe_cli:
-        capabilities.probe()
+        try:
+            capabilities.probe()
+        except CapabilityError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
 
     # An existing plan at the output path is the previous generation: its adapted
     # items are preserved rather than overwritten.

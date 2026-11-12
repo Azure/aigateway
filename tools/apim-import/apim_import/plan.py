@@ -140,7 +140,14 @@ class PlanBuilder:
             "decidedAgainst": None,
         }
         if capability and not capability.usable:
-            # The catalog declares it; the installed CLI does not expose it.
+            # The catalog declares it; the installed CLI does not expose it. That
+            # is a limit of the local tooling, not of the target, and the item has
+            # to say so -- otherwise it reads as a missing target capability and
+            # the generic loss options send the reader to fix the wrong thing.
+            missing = (
+                f" (missing {', '.join(capability.missing_options)})"
+                if capability.missing_options else ""
+            )
             item["status"] = NEEDS_DECISION
             item["kind"] = item["kind"] or "accept-loss"
             item["blocking"] = True
@@ -148,6 +155,17 @@ class PlanBuilder:
                 "support": capability.support,
                 "missingOptions": capability.missing_options,
             }
+            item["rationale"] = (
+                f"The installed az extension does not expose `az aigateway "
+                f"{' '.join(capability.command)}`{missing}. This is a limit of the local CLI, "
+                "not of the target."
+                + (f" Mapping: {item['rationale']}" if item["rationale"] else "")
+            )
+            item["options"] = [
+                _opt("upgrade-cli", "Install or upgrade the aigateway extension, then re-plan."),
+                _opt("retain-in-apim", "Keep this workload on APIM for now."),
+                _opt("block", "Stop until the CLI can perform it."),
+            ]
         if capability and capability.limitations:
             item["capabilityLimitations"] = capability.limitations
         if item["status"] == NEEDS_DECISION and not item["options"]:
@@ -360,7 +378,8 @@ class PlanBuilder:
                 verdict=rule["verdict"],
                 capability_id=rule.get("capabilityId"),
                 proposal=rule.get("proposal"),
-                rationale=rule.get("rationale", ""),
+                rationale=rule.get("rationale")
+                or f"A {pattern} MCP server registers as a tool server with its upstream endpoints.",
                 options=[_opt(value, "") for value in rule.get("options") or []],
                 evidence={"pattern": pattern, "upstream": server.get("upstream")},
                 target={
@@ -440,7 +459,14 @@ class PlanBuilder:
                 verdict=rule["verdict"],
                 capability_id=rule.get("capabilityId"),
                 proposal=rule.get("proposal"),
-                rationale=rule.get("rationale", ""),
+                # A native mapping needs no argument, but it still has to say what
+                # it does -- an item with a blank rationale is unreviewable.
+                rationale=rule.get("rationale")
+                or (
+                    f"`{element['name']}` maps to the target's `{rule['target']}` policy."
+                    if rule.get("target")
+                    else f"`{element['name']}` is carried by another object."
+                ),
                 options=[_opt(value, "") for value in rule.get("options") or []]
                 or _loss_options(rule["verdict"]),
                 evidence={

@@ -1,6 +1,6 @@
 import pytest
 
-from apim_import.capability import CapabilityMap
+from apim_import.capability import CapabilityError, CapabilityMap
 
 
 @pytest.fixture(scope="module")
@@ -50,6 +50,34 @@ class TestProbe:
     def test_usable_tracks_support(self):
         caps = CapabilityMap.load().probe(lambda command: None)
         assert not caps.capability("model.create").usable
+
+
+class TestProbeNeedsTheExtension:
+    """An uninstalled extension is an unknown about the CLI, not a missing target
+    capability. Reporting it as absence demotes native mappings to blocking
+    losses, so the probe refuses rather than guessing."""
+
+    def test_an_absent_extension_refuses_to_probe(self):
+        with pytest.raises(CapabilityError, match="not installed"):
+            CapabilityMap.load().probe(lambda command: None, available=lambda: False)
+
+    def test_refusing_leaves_the_table_untouched(self):
+        caps = CapabilityMap.load()
+        with pytest.raises(CapabilityError):
+            caps.probe(lambda command: None, available=lambda: False)
+        assert caps.probed is False
+        assert all(cap.support == "declared" for cap in caps.capabilities.values())
+
+    def test_a_present_extension_probes_normally(self):
+        caps = CapabilityMap.load().probe(lambda command: None, available=lambda: True)
+        assert caps.probed is True
+        assert all(cap.support == "unavailable" for cap in caps.capabilities.values())
+
+    def test_supplying_a_probe_answers_the_presence_question(self):
+        # Tests inject a probe and never shell out; that assertion stands alone.
+        caps = CapabilityMap.load().probe(lambda command: {"deployment-config", "api-format",
+                                                           "supported-endpoints"})
+        assert caps.capability("model.create").support == "conditional"
 
 
 class TestPolicyRules:
