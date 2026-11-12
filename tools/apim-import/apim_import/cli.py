@@ -25,13 +25,9 @@ NOT_IMPLEMENTED = {
         "Fetches the live model catalogue for non-Azure providers (OpenAI /v1/models, "
         "Anthropic /v1/models, and so on) by resolving the backend credential in memory."
     ),
-    "assess": (
-        "Maps the inventory onto AI Gateway building blocks using a versioned capability "
-        "map, and emits assessment.json with per-asset verdicts, gaps, and questions."
-    ),
-    "plan": (
-        "Combines inventory.json, assessment.json, and decisions.json into an ordered, "
-        "idempotent migration plan with just-in-time secret resolution."
+    "apply": (
+        "Executes one plan item at a time against the target gateway, resolving secrets "
+        "just in time and journalling each attempt so a failed run resumes."
     ),
 }
 
@@ -97,6 +93,23 @@ def build_parser() -> argparse.ArgumentParser:
     output.add_argument("--compact", action="store_true", help="Write minified JSON")
     output.add_argument("--quiet", action="store_true", help="Suppress the progress summary on stderr")
 
+    plan_cmd = subparsers.add_parser(
+        "plan", help="Propose a migration plan from an inventory, or regenerate one in place"
+    )
+    plan_cmd.add_argument("--inventory", required=True, help="Path to inventory.json")
+    plan_cmd.add_argument(
+        "-o", "--output", default="plan.json",
+        help="Plan path. An existing plan at this path is read first and its adapted items preserved",
+    )
+    plan_cmd.add_argument("--capabilities", help="Capability catalogue path (default: the bundled one)")
+    plan_cmd.add_argument("--rules", help="Mapping rules path (default: the bundled one)")
+    plan_cmd.add_argument(
+        "--probe-cli", action="store_true",
+        help="Reconcile the capability catalogue against the installed az extension",
+    )
+    plan_cmd.add_argument("--compact", action="store_true", help="Write minified JSON")
+    plan_cmd.add_argument("--quiet", action="store_true", help="Suppress the summary on stderr")
+
     validate = subparsers.add_parser("validate", help="Check an artifact against its JSON Schema")
     validate.add_argument("file", help="Path to inventory.json")
 
@@ -124,6 +137,8 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if args.command == "collect":
         return _collect(args)
+    if args.command == "plan":
+        return _plan(args)
     if args.command == "validate":
         return _validate(args)
     if args.command == "summary":
@@ -177,6 +192,55 @@ def _collect(args: argparse.Namespace) -> int:
     return 0
 
 
+def _plan(args: argparse.Namespace) -> int:
+    from .capability import CapabilityError, CapabilityMap
+    from .plan import build_plan
+
+    try:
+        inventory = json.loads(Path(args.inventory).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    if inventory.get("kind") != "apimAiInventory":
+        print("error: --inventory is not an apimAiInventory document", file=sys.stderr)
+        return 2
+
+    try:
+        capabilities = CapabilityMap.load(
+            catalog_path=Path(args.capabilities) if args.capabilities else None,
+            rules_path=Path(args.rules) if args.rules else None,
+        )
+    except CapabilityError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    if args.probe_cli:
+        capabilities.probe()
+
+    # An existing plan at the output path is the previous generation: its adapted
+    # items are preserved rather than overwritten.
+    previous = None
+    output = Path(args.output)
+    if args.output != "-" and output.exists():
+        try:
+            previous = json.loads(output.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            print(f"error: existing plan at {args.output} is not valid JSON: {exc}", file=sys.stderr)
+            return 1
+
+    document = build_plan(inventory, capabilities, previous=previous)
+    payload = json.dumps(document, indent=None if args.compact else 2, ensure_ascii=False)
+    if args.output == "-":
+        print(payload)
+    else:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(payload + "\n", encoding="utf-8")
+    if not args.quiet:
+        print(summary_mod.render_plan(document), file=sys.stderr)
+        if args.output != "-":
+            print(f"\nWrote {args.output} ({len(payload):,} bytes)", file=sys.stderr)
+    return 0
+
+
 def _validate(args: argparse.Namespace) -> int:
     path = Path(args.file)
     try:
@@ -184,12 +248,12 @@ def _validate(args: argparse.Namespace) -> int:
     except (OSError, json.JSONDecodeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
-    errors = validate_inventory(document)
+    errors = validate_document(document)
     if errors:
         for error in errors:
             print(f"invalid: {error}", file=sys.stderr)
         return 1
-    print(f"{path} is a valid apimAiInventory document")
+    print(f"{path} is a valid {document.get('kind')} document")
     return 0
 
 
@@ -239,6 +303,20 @@ def _active_subscription() -> str | None:
     return proc.stdout.strip() or None if proc.returncode == 0 else None
 
 
+_SCHEMA_FOR_KIND = {
+    "apimAiInventory": "inventory.schema.json",
+    "apimMigrationPlan": "plan.schema.json",
+}
+
+
+def validate_document(document: Any) -> list[str]:
+    """Validate an artifact against the schema for its own `kind`."""
+    kind = document.get("kind") if isinstance(document, dict) else None
+    if kind not in _SCHEMA_FOR_KIND:
+        return [f"<root>: unknown artifact kind {kind!r}; expected one of {sorted(_SCHEMA_FOR_KIND)}"]
+    return _validate_against(document, _SCHEMA_FOR_KIND[kind])
+
+
 def validate_inventory(document: Any) -> list[str]:
     """Validate against the bundled schema, or structurally when jsonschema is absent."""
     schema_path = Path(__file__).resolve().parent.parent / "schemas" / "inventory.schema.json"
@@ -246,6 +324,23 @@ def validate_inventory(document: Any) -> list[str]:
         import jsonschema  # type: ignore
     except ImportError:
         return _structural_errors(document)
+    try:
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    except OSError as exc:  # pragma: no cover
+        return [f"schema unavailable: {exc}"]
+    validator = jsonschema.Draft202012Validator(schema)
+    return [
+        f"{'/'.join(str(part) for part in error.path) or '<root>'}: {error.message}"
+        for error in sorted(validator.iter_errors(document), key=lambda err: list(err.path))
+    ][:50]
+
+
+def _validate_against(document: Any, schema_name: str) -> list[str]:
+    schema_path = Path(__file__).resolve().parent.parent / "schemas" / schema_name
+    try:
+        import jsonschema  # type: ignore
+    except ImportError:
+        return _structural_errors(document) if schema_name == "inventory.schema.json" else []
     try:
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
     except OSError as exc:  # pragma: no cover

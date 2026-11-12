@@ -43,6 +43,7 @@ MCP_POLICY = """<policies>
     <include-fragment fragment-id="killswitch" />
     <rate-limit-by-key calls="60" renewal-period="60" counter-key="@(context.Subscription.Id)" />
     <ip-filter action="allow"><address-range from="10.0.0.0" to="10.0.0.255" /></ip-filter>
+    <set-header name="x-mcp-caller" exists-action="override"><value>gateway</value></set-header>
   </inbound>
   <backend><base /></backend><outbound><base /></outbound><on-error><base /></on-error>
 </policies>"""
@@ -237,10 +238,27 @@ ROUTES: dict[str, Any] = {
     f"{SERVICE}/authorizationProviders": [],
     f"{SERVICE}/loggers": [],
     f"{SERVICE}/diagnostics": [],
+    # A real Azure OpenAI import publishes far more than inference: assistants,
+    # threads and vector stores come along and have no target at all.
     f"{SERVICE}/apis/aoai-api/operations": [
         {"id": f"{SERVICE}/apis/aoai-api/operations/chat", "name": "chat",
          "properties": {"displayName": "chat", "method": "POST",
-                        "urlTemplate": "/deployments/{deployment-id}/chat/completions"}}
+                        "urlTemplate": "/deployments/{deployment-id}/chat/completions"}},
+        {"id": f"{SERVICE}/apis/aoai-api/operations/embeddings", "name": "embeddings",
+         "properties": {"displayName": "embeddings", "method": "POST",
+                        "urlTemplate": "/deployments/{deployment-id}/embeddings"}},
+        {"id": f"{SERVICE}/apis/aoai-api/operations/threads", "name": "threads",
+         "properties": {"displayName": "create thread", "method": "POST",
+                        "urlTemplate": "/threads?api-version={api-version}"}},
+        {"id": f"{SERVICE}/apis/aoai-api/operations/thread_runs", "name": "thread_runs",
+         "properties": {"displayName": "create run", "method": "POST",
+                        "urlTemplate": "/threads/{thread_id}/runs?api-version={api-version}"}},
+        {"id": f"{SERVICE}/apis/aoai-api/operations/assistants", "name": "assistants",
+         "properties": {"displayName": "list assistants", "method": "GET",
+                        "urlTemplate": "/assistants?api-version={api-version}"}},
+        {"id": f"{SERVICE}/apis/aoai-api/operations/vs", "name": "vs",
+         "properties": {"displayName": "vector stores", "method": "GET",
+                        "urlTemplate": "/vector_stores?api-version={api-version}"}},
     ],
     f"{SERVICE}/apis/orders-rest/operations": [
         {"id": f"{SERVICE}/apis/orders-rest/operations/list_orders", "name": "list_orders",

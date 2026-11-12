@@ -354,9 +354,25 @@ class Collector:
                 "secretRefs": _dedupe(secret_refs),
                 "provider": None,
             }
+            # Host identifies the vendor; APIM's import naming declares the protocol.
+            # They are orthogonal -- a Foundry account reached at /openai/v1 is a
+            # Foundry provider speaking the OpenAI protocol -- and between them they
+            # usually answer "what provider is this?" without asking anyone.
             rule = detect.provider_for_url(props.get("url"))
-            if rule:
-                record["provider"] = {"kind": rule.kind, "label": rule.label, "apiDialect": rule.api_dialect}
+            convention = detect.protocol_from_backend_name(name)
+            if rule or convention:
+                record["provider"] = {
+                    "kind": rule.kind if rule else convention["providerKind"],
+                    "label": rule.label if rule else None,
+                    "apiDialect": (convention or {}).get("apiDialect") or (rule.api_dialect if rule else None),
+                    "targetProviderKind": (
+                        rule.target_provider_kind if rule else convention["targetProviderKind"]
+                    ),
+                    "basis": "backendHost" if rule else convention["basis"],
+                    "protocolBasis": "importConvention" if convention else (
+                        "backendHost" if rule else None
+                    ),
+                }
 
             # A languageModel backend states its dialect and model outright. That
             # declaration beats the host heuristic: a Foundry host serving the
@@ -1089,11 +1105,20 @@ class Collector:
         provider_rule = classification.provider
         endpoint = targets[0]["url"] if targets else props.get("serviceUrl")
 
+        # The backend record already resolved the provider from host and import
+        # naming; prefer it over the classifier's host-only view so an API whose
+        # host matches nothing still reports its protocol instead of "unknown".
+        resolved = (backend_record or {}).get("provider") or {}
         provider: dict[str, Any] = {
-            "kind": provider_rule.kind if provider_rule else "unknown",
-            "label": provider_rule.label if provider_rule else None,
-            "apiDialect": provider_rule.api_dialect if provider_rule else None,
-            "targetProviderKind": provider_rule.target_provider_kind if provider_rule else "Custom",
+            "kind": (provider_rule.kind if provider_rule else None) or resolved.get("kind") or "unknown",
+            "label": (provider_rule.label if provider_rule else None) or resolved.get("label"),
+            "apiDialect": resolved.get("apiDialect") or (provider_rule.api_dialect if provider_rule else None),
+            "targetProviderKind": (
+                provider_rule.target_provider_kind if provider_rule
+                else resolved.get("targetProviderKind") or "Custom"
+            ),
+            "basis": resolved.get("basis") or ("backendHost" if provider_rule else None),
+            "protocolBasis": resolved.get("protocolBasis"),
             "endpoint": endpoint,
             "auth": _backend_auth(backend_record, effective, self.registry),
             "azure": None,
@@ -1217,6 +1242,13 @@ class Collector:
                 "backendDialects": backend_dialects,
                 "backendDialectsDeclared": bool(backend_dialects),
                 "translation": translation,
+                # How much of what this API publishes the target can publish at
+                # all. AI Gateway exposes four inference routes; everything else
+                # an APIM API fronts has no target, so this is the input to the
+                # scope decision rather than a detail.
+                "surface": detect.summarize_surface(
+                    [operation["urlTemplate"] for operation in operations]
+                ),
                 "operations": operations,
                 "basePath": props.get("path"),
             },

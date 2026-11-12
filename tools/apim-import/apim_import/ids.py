@@ -79,6 +79,17 @@ def expression(digest: str) -> str:
     return f"expr:{digest[:12]}"
 
 
+def item(subject: str, aspect: str = "") -> str:
+    """Stable id for a migration plan item.
+
+    Derived from the asset and the aspect being decided, so an unchanged APIM
+    object keeps the same item id across regenerations and a settled decision
+    stays attached to it.
+    """
+    base = _slug(subject.replace(":", "/"))
+    return f"item:{base}/{_slug(aspect)}" if aspect else f"item:{base}"
+
+
 _ARM_URL = re.compile(r"^https?://[^/]+(/subscriptions/.+)$", re.IGNORECASE)
 
 

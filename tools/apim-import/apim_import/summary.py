@@ -97,6 +97,68 @@ def render(document: dict[str, Any], *, fmt: str = "text") -> str:
     return "\n".join(lines)
 
 
+def render_plan(document: dict[str, Any], *, fmt: str = "text") -> str:
+    """A readable view of the plan, grouped by what still needs deciding."""
+    lines: list[str] = []
+    summary = document.get("summary") or {}
+    source = document.get("source") or {}
+    target = document.get("target") or {}
+    bullet = "- " if fmt == "markdown" else "  "
+    heading = "## " if fmt == "markdown" else ""
+
+    lines.append(f"{heading}Migration plan: {source.get('name')}")
+    caps = target.get("capabilities") or {}
+    lines.append(
+        f"{bullet}{summary.get('total')} items against CLI {caps.get('cliVersion')} "
+        f"({'probed' if caps.get('probed') else 'declared, not probed'})"
+    )
+    by_status = summary.get("byStatus") or {}
+    lines.append(
+        f"{bullet}" + ", ".join(f"{count} {status}" for status, count in sorted(by_status.items()))
+    )
+    lines.append("")
+
+    unsettled = [
+        item for item in document.get("items") or []
+        if item.get("status") in {"needs-decision", "stale"}
+    ]
+    lines.append(f"{heading}Needs a decision ({len(unsettled)}, {summary.get('blocking')} blocking)")
+    for kind, count in (summary.get("byKind") or {}).items():
+        lines.append(f"{bullet}{kind}: {count}")
+    for item in unsettled:
+        flag = "!" if item.get("blocking") else " "
+        src = item.get("source") or {}
+        asset = src.get("assetId") or f"{src.get('assetKind')}:{src.get('aspect')}"
+        options = "/".join(option["value"] for option in item.get("options") or [])
+        lines.append(
+            f"{'  - ' if fmt == 'markdown' else '    '}{flag} [{item.get('kind')}] {asset}"
+            f" -> proposal={item.get('proposal')}"
+            + (f" of {options}" if options else "")
+        )
+        if item.get("status") == "stale":
+            lines.append(f"{'      ' if fmt != 'markdown' else '    '}stale: {item.get('staleReason')}")
+    lines.append("")
+
+    ready = [item for item in document.get("items") or [] if item.get("status") == "ready"]
+    lines.append(f"{heading}Ready to execute ({len(ready)})")
+    for item in ready[:12]:
+        lines.append(
+            f"{'  - ' if fmt == 'markdown' else '    '}{item.get('capabilityId')}: "
+            f"{(item.get('source') or {}).get('assetId')}"
+            f" [{(item.get('source') or {}).get('aspect')}]"
+        )
+    if len(ready) > 12:
+        lines.append(f"{'  - ' if fmt == 'markdown' else '    '}... and {len(ready) - 12} more")
+    lines.append("")
+
+    prerequisites = document.get("prerequisites") or []
+    if prerequisites:
+        lines.append(f"{heading}Manual prerequisites ({len(prerequisites)})")
+        for entry in prerequisites:
+            lines.append(f"{bullet}[{entry.get('owner')}] {entry.get('summary')}")
+    return "\n".join(lines)
+
+
 def _asset_detail(family: str, item: dict[str, Any]) -> str:
     if family == "modelProviders":
         models = item.get("models") or {}

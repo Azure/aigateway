@@ -141,6 +141,157 @@ _NAME_HINTS = re.compile(
 _AI_BACKEND_SUFFIX = re.compile(r"(?i)-(?:openai|ai)-endpoint$")
 _AI_NAMED_VALUE_SUFFIX = re.compile(r"(?i)-LLM$")
 
+# The suffix does not just say "this is an AI backend" -- it says which protocol
+# the wizard imported. Observed consistently across two live instances:
+#   *-openai-endpoint -> an OpenAI-protocol upstream  (api.meta.ai, .../openai/v1)
+#   *-ai-endpoint     -> an Azure AI Foundry upstream (*.services.ai.azure.com)
+# Provider identity (who) and protocol (how) are orthogonal: a Foundry host
+# reached at /openai/v1 is a Foundry provider speaking the OpenAI protocol.
+_IMPORT_PROTOCOL = (
+    (re.compile(r"(?i)-openai-endpoint$"), "openAiCompatible", "openAIChatCompletions"),
+    (re.compile(r"(?i)-ai-endpoint$"), "foundry", "azureOpenAI"),
+)
+
+
+def protocol_from_backend_name(name: str | None) -> dict[str, Any] | None:
+    """Protocol declared by APIM's AI import naming convention, if any."""
+    for pattern, provider_kind, dialect in _IMPORT_PROTOCOL:
+        if name and pattern.search(name):
+            return {
+                "providerKind": provider_kind,
+                "apiDialect": dialect,
+                "targetProviderKind": "Foundry" if provider_kind == "foundry" else "Custom",
+                "basis": "importConvention",
+            }
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Publishable surface
+#
+# A live AI Gateway publishes exactly four inference routes (verified against
+# a365-aigw-rp-demo at API version 2026-09-01-preview). Every operation a source
+# API exposes either maps onto one of these or has no target at all, so this
+# table is what decides how much of an API can actually move.
+# ---------------------------------------------------------------------------
+
+TARGET_ROUTES: dict[str, str] = {
+    "chatCompletions": "/openai/v1/chat/completions",
+    "responses": "/openai/v1/responses",
+    "embeddings": "/openai/v1/embeddings",
+    "messages": "/v1/messages",
+}
+
+# Ordered. Container resources are matched before the generic verbs they contain,
+# so /openai/threads/{id}/messages is a thread operation and not the Anthropic
+# messages route.
+_SURFACE_RULES: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"/assistants\b"), "assistants"),
+    (re.compile(r"/threads\b"), "threads"),
+    (re.compile(r"/vector_stores\b"), "vectorStores"),
+    (re.compile(r"/files\b"), "files"),
+    (re.compile(r"/batches\b"), "batches"),
+    (re.compile(r"/fine_tuning\b"), "fineTuning"),
+    (re.compile(r"/moderations\b"), "moderations"),
+    (re.compile(r"/audio/"), "audio"),
+    (re.compile(r"/images/"), "images"),
+    (re.compile(r"/chat/completions\b"), "chatCompletions"),
+    (re.compile(r"/v1/messages\b"), "messages"),
+    (re.compile(r"/responses\b"), "responses"),
+    (re.compile(r"/embeddings\b"), "embeddings"),
+    (re.compile(r"/completions\b"), "legacyCompletions"),
+    (re.compile(r"/models\b"), "modelCatalogue"),
+    (re.compile(r"/realtime\b"), "realtime"),
+)
+
+_WILDCARD = re.compile(r"/\*\s*$|^/\*")
+
+
+def classify_operation(url_template: str) -> dict[str, Any]:
+    """Place one operation template against the target's publishable routes."""
+    path = (url_template or "").split("?", 1)[0]
+    if _WILDCARD.search(path):
+        return {"template": url_template, "group": "wildcard", "publishable": None, "route": None}
+    for pattern, group in _SURFACE_RULES:
+        if pattern.search(path):
+            route = TARGET_ROUTES.get(group)
+            # The plain route is directly publishable. A sub-resource of a
+            # publishable group (GET /responses/{id}) is in scope for the same
+            # API but its support is not established, so it is not claimed.
+            exact = bool(route) and path.rstrip("/").endswith(_GROUP_TAIL[group])
+            return {
+                "template": url_template,
+                "group": group,
+                "publishable": bool(route),
+                "route": route if route and exact else None,
+                "subresource": bool(route) and not exact,
+            }
+    return {"template": url_template, "group": "other", "publishable": False, "route": None}
+
+
+_GROUP_TAIL = {
+    "chatCompletions": "chat/completions",
+    "responses": "responses",
+    "embeddings": "embeddings",
+    "messages": "messages",
+}
+
+
+def summarize_surface(url_templates: list[str]) -> dict[str, Any]:
+    """Per-asset breakdown of what can and cannot be published on the target."""
+    operations = [classify_operation(template) for template in url_templates]
+    wildcard = [op for op in operations if op["group"] == "wildcard"]
+    groups: dict[str, dict[str, Any]] = {}
+    for operation in operations:
+        if operation["group"] == "wildcard":
+            continue
+        entry = groups.setdefault(
+            operation["group"],
+            {"group": operation["group"], "publishable": operation["publishable"],
+             "route": TARGET_ROUTES.get(operation["group"]), "count": 0, "subresources": 0,
+             "samples": []},
+        )
+        entry["count"] += 1
+        if operation.get("subresource"):
+            entry["subresources"] += 1
+        if len(entry["samples"]) < 3:
+            entry["samples"].append(operation["template"])
+
+    publishable = sorted(
+        (entry for entry in groups.values() if entry["publishable"]), key=lambda e: e["group"]
+    )
+    unpublishable = sorted(
+        (entry for entry in groups.values() if not entry["publishable"]),
+        key=lambda e: (-e["count"], e["group"]),
+    )
+    summary: dict[str, Any] = {
+        "status": "bounded",
+        "basis": "operationTemplates",
+        "operationCount": len(operations),
+        "publishable": publishable,
+        "unpublishable": unpublishable,
+        "publishableCount": sum(entry["count"] for entry in publishable),
+        "unpublishableCount": sum(entry["count"] for entry in unpublishable),
+        "targetRoutes": sorted(TARGET_ROUTES.values()),
+    }
+    if wildcard:
+        # A wildcard forwards whatever the upstream offers. Reporting zero
+        # inference routes here would read as "nothing to migrate" when the truth
+        # is that configuration cannot answer the question at all.
+        summary["status"] = "unbounded"
+        summary["note"] = (
+            f"{len(wildcard)} wildcard operation(s) forward every upstream path, so the exposed "
+            "surface cannot be read from configuration. The routes callers actually use have to be "
+            "established with the operator or from traffic."
+        )
+    elif not operations:
+        summary["status"] = "unknown"
+        summary["note"] = (
+            "No operations were enumerated for this API, so its published surface is undetermined "
+            "rather than empty."
+        )
+    return summary
+
 _LLM_POLICY_FAMILIES = {"tokenLimit", "tokenMetrics", "semanticCache", "contentSafety"}
 _LLM_POLICY_ELEMENTS = {
     "azure-openai-token-limit", "llm-token-limit",

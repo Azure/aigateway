@@ -103,6 +103,101 @@ class TestProviderRules:
         assert all(rule.target_provider_kind in {"Foundry", "Custom"} for rule in detect.PROVIDERS)
 
 
+class TestImportConvention:
+    """APIM's AI import names the backend after the protocol it imported.
+
+    Observed consistently across two live instances. Reading it means the
+    provider rarely has to be asked about.
+    """
+
+    def test_openai_suffix_declares_the_openai_protocol(self):
+        assert detect.protocol_from_backend_name("meta-ai-openai-endpoint") == {
+            "providerKind": "openAiCompatible",
+            "apiDialect": "openAIChatCompletions",
+            "targetProviderKind": "Custom",
+            "basis": "importConvention",
+        }
+
+    def test_ai_suffix_declares_foundry(self):
+        found = detect.protocol_from_backend_name("a2a-intent-fdry-9a73-ai-endpoint")
+        assert (found["providerKind"], found["targetProviderKind"]) == ("foundry", "Foundry")
+
+    def test_other_names_declare_nothing(self):
+        assert detect.protocol_from_backend_name("orders-backend") is None
+        assert detect.protocol_from_backend_name(None) is None
+
+
+class TestPublishableSurface:
+    """AI Gateway publishes four inference routes; everything else has no target."""
+
+    def test_the_four_target_routes(self):
+        assert sorted(detect.TARGET_ROUTES.values()) == [
+            "/openai/v1/chat/completions", "/openai/v1/embeddings",
+            "/openai/v1/responses", "/v1/messages",
+        ]
+
+    def test_inference_routes_are_publishable(self):
+        for template, group in [
+            ("/openai/deployments/{deployment-id}/chat/completions?api-version={v}", "chatCompletions"),
+            ("/openai/deployments/{deployment-id}/embeddings?api-version={v}", "embeddings"),
+            ("/openai/responses?api-version={v}", "responses"),
+            ("/anthropic/v1/messages", "messages"),
+        ]:
+            result = detect.classify_operation(template)
+            assert (result["group"], result["publishable"]) == (group, True), template
+            assert result["route"] == detect.TARGET_ROUTES[group]
+
+    def test_assistants_surface_has_no_target(self):
+        for template, group in [
+            ("/openai/assistants/{assistant_id}?api-version={v}", "assistants"),
+            ("/openai/threads/{thread_id}/runs?api-version={v}", "threads"),
+            ("/openai/vector_stores/{vector_store_id}/files?api-version={v}", "vectorStores"),
+            ("/openai/deployments/{d}/audio/speech?api-version={v}", "audio"),
+            ("/openai/deployments/{d}/images/generations?api-version={v}", "images"),
+            ("/openai/deployments/{d}/completions?api-version={v}", "legacyCompletions"),
+        ]:
+            result = detect.classify_operation(template)
+            assert (result["group"], result["publishable"]) == (group, False), template
+
+    def test_container_resources_win_over_the_verbs_they_contain(self):
+        # /threads/{id}/messages is a thread operation, not the Anthropic route.
+        assert detect.classify_operation(
+            "/openai/threads/{thread_id}/messages?api-version={v}"
+        )["group"] == "threads"
+
+    def test_chat_completions_is_not_legacy_completions(self):
+        assert detect.classify_operation("/v1/chat/completions")["group"] == "chatCompletions"
+
+    def test_subresources_of_a_publishable_group_are_not_claimed(self):
+        result = detect.classify_operation("/openai/responses/{response_id}/input_items")
+        assert result["group"] == "responses"
+        assert result["subresource"] is True
+        assert result["route"] is None
+
+    def test_summary_splits_publishable_from_not(self):
+        summary = detect.summarize_surface([
+            "/openai/deployments/{d}/chat/completions?api-version={v}",
+            "/openai/threads?api-version={v}",
+            "/openai/threads/{thread_id}?api-version={v}",
+            "/openai/vector_stores?api-version={v}",
+        ])
+        assert summary["status"] == "bounded"
+        assert (summary["publishableCount"], summary["unpublishableCount"]) == (1, 3)
+        assert [entry["group"] for entry in summary["unpublishable"]] == ["threads", "vectorStores"]
+
+    def test_wildcard_surface_is_unbounded_not_empty(self):
+        # Reporting zero inference routes would read as "nothing to migrate".
+        summary = detect.summarize_surface(["/*", "/*"])
+        assert summary["status"] == "unbounded"
+        assert summary["publishableCount"] == 0
+        assert "cannot be read from configuration" in summary["note"]
+
+    def test_no_operations_is_unknown_not_empty(self):
+        summary = detect.summarize_surface([])
+        assert summary["status"] == "unknown"
+        assert "undetermined rather than empty" in summary["note"]
+
+
 class TestDialects:
     def test_inference_paths_map_to_dialects(self):
         assert detect.api_dialect_for_paths(["/chat/completions"]) == ["openAIChatCompletions"]

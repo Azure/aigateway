@@ -428,7 +428,7 @@ class TestInferenceIsMarked:
         # operation-level policy looked like it had none.
         model = next(m for m in inventory["assets"]["models"] if m["source"]["name"] == "aoai-api")
         assert model["policyRefs"]["operations"] == []
-        assert [op["name"] for op in model["endpoints"]["operations"]] == ["chat"]
+        assert "chat" in [op["name"] for op in model["endpoints"]["operations"]]
 
     def test_unparseable_subscription_scope_is_unknown_not_service_wide(self):
         import fake_arm
@@ -485,6 +485,53 @@ class TestInferenceIsMarked:
         entry = next(e for e in inventory["excludedBackends"] if e["name"] == "support-backend")
         assert entry["reason"]
         assert entry["usedByAssets"] == ["mcp:support-mcp"]
+
+
+class TestPublishableSurface:
+    """What the target can publish of what the source exposes.
+
+    Drives the scope decision, so it has to be on the asset rather than
+    re-derived later.
+    """
+
+    def test_provider_is_resolved_from_import_naming_not_asked_about(self, inventory):
+        # Regression for the governing rule: APIM already answers this through
+        # the backend name `meta-ai-openai-endpoint`, so it is not a question.
+        model = next(m for m in inventory["assets"]["models"] if m["source"]["name"] == "meta-ai")
+        provider = model["provider"]
+        assert provider["kind"] == "openAiCompatible"
+        assert provider["apiDialect"] == "openAIChatCompletions"
+        assert provider["targetProviderKind"] == "Custom"
+        assert provider["protocolBasis"] == "importConvention"
+
+    def test_host_identifies_the_vendor_naming_declares_the_protocol(self, inventory):
+        model = next(m for m in inventory["assets"]["models"] if m["source"]["name"] == "aoai-api")
+        assert model["provider"]["kind"] == "foundry"
+        assert model["provider"]["basis"] == "backendHost"
+
+    def test_each_model_api_carries_a_surface_breakdown(self, inventory):
+        for model in inventory["assets"]["models"]:
+            surface = model["endpoints"]["surface"]
+            assert surface["status"] in {"bounded", "unbounded", "unknown"}
+            assert surface["basis"] == "operationTemplates"
+            assert sorted(surface["targetRoutes"]) == [
+                "/openai/v1/chat/completions", "/openai/v1/embeddings",
+                "/openai/v1/responses", "/v1/messages",
+            ]
+
+    def test_wildcard_api_reports_an_unbounded_surface(self, inventory):
+        model = next(m for m in inventory["assets"]["models"] if m["source"]["name"] == "meta-ai")
+        assert model["endpoints"]["surface"]["status"] == "unbounded"
+
+    def test_bounded_api_counts_what_cannot_move(self, inventory):
+        model = next(m for m in inventory["assets"]["models"] if m["source"]["name"] == "aoai-api")
+        surface = model["endpoints"]["surface"]
+        assert surface["status"] == "bounded"
+        # chat/completions and embeddings move; threads, assistants and vector stores cannot.
+        assert surface["publishableCount"] == 2
+        assert {entry["group"] for entry in surface["unpublishable"]} == {
+            "threads", "assistants", "vectorStores"
+        }
 
 
 class TestBackendRoles:

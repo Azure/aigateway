@@ -13,8 +13,8 @@ answer before it can move anything:
 3. **How does an automated migration get the credentials without anyone reading them?** Every
    secret becomes a reference plus the exact command that retrieves it at apply time.
 
-Status: `collect` and `validate` are implemented and verified against live APIM instances.
-`resolve-models`, `assess`, and `plan` are specified below and not yet built.
+Status: `collect`, `plan` and `validate` are implemented and verified against live APIM instances.
+`resolve-models` and `apply` are specified below and not yet built.
 
 ---
 
@@ -26,37 +26,32 @@ executable. The tool is therefore a **pipeline of pure functions over files**, n
 
 ```
           ┌─────────────┐
-  APIM ──▶│   collect   │──▶ inventory.json      facts only, no verdicts, no secrets
+  APIM ──▶│   collect   │──▶ inventory.json    facts only, no verdicts, no secrets
           └─────────────┘
                  │
           ┌─────────────┐
-          │resolve-models│──▶ inventory.json     (optional) third-party model catalogues
-          └─────────────┘
-                 │
+          │    plan     │──▶ plan.json         proposed, then adapted in place
+          └─────────────┘         ▲
+                 │                │  agent + operator settle what does not map
+                 │                └────────────── re-run; adaptations survive
           ┌─────────────┐
-          │   assess    │──▶ assessment.json     verdicts, gaps, and questions
-          └─────────────┘     ▲
-                 │            │
-                 │     ┌──────────────┐
-                 │     │ decisions.json│         what the operator chose (hand-authored)
-                 │     └──────────────┘
-          ┌─────────────┐
-          │    plan     │──▶ plan.json           ordered, idempotent, secret-resolving
+          │    apply    │──▶ one object at a time, journalled and resumable
           └─────────────┘
 ```
 
-The rule that makes the loop converge: **derived files are never hand-edited.** When the operator
-says "that rate limit should become a token limit instead" or "merge these three APIs into one
-alias", the agent writes that into `decisions.json` and re-runs `assess`. Re-running is cheap,
-deterministic, and diffable, so a clarification never destroys earlier work, and the reasoning
-behind every deviation stays attached to the artifact instead of living in chat history.
+**`plan.json` is the one living artifact.** Every item arrives proposed, with a rationale and its
+options spelled out; `needs-decision` means "confirm or change this", not "the tool has no opinion".
+Adapting an item means setting `status` and `decision` on it — nothing else.
 
-| Artifact | Produced by | Hand-edited | Contains |
+Re-running `plan` is safe and is the normal way to work. Adapted items are preserved, and an item is
+re-opened only when the APIM facts **it** rested on changed, with `staleReason` saying what moved.
+An unrelated change never disturbs settled work.
+
+| Artifact | Produced by | Adapted | Contains |
 | --- | --- | --- | --- |
 | `inventory.json` | `collect` | no | What APIM holds, verbatim, plus resolved Azure deployments |
-| `assessment.json` | `assess` | no | Per-asset target mapping, feasibility verdict, gaps, questions |
-| `decisions.json` | the agent, with the operator | **yes** | Answers, overrides, accepted gaps, chosen names |
-| `plan.json` | `plan` | no | The migration asset: ordered operations with secret recipes |
+| `plan.json` | `plan` | **yes, in place** | One item per source aspect: proposal, options, evidence, and pre-shaped target objects |
+| `journal.json` | `apply` | no | Attempts and resume state |
 
 ---
 
@@ -76,6 +71,10 @@ pip install -e '.[dev]'                # adds jsonschema (strict validate) and p
 ```bash
 # Inventory everything AI-related in one APIM instance
 apim-import collect --apim apim-gateway-demo -g a365-gateway-governance -o inventory.json
+
+# Propose a migration plan, then re-run it after adapting items in place
+apim-import plan --inventory inventory.json -o plan.json
+apim-import plan --inventory inventory.json -o plan.json --probe-cli   # check the installed az extension too
 
 # Narrow the scope
 apim-import collect --apim <name> -g <rg> --family mcp --family a2a
@@ -473,37 +472,106 @@ otherwise.
 
 ---
 
+## The plan
+
+`plan` matches the inventory against a **capability inventory** — `capabilities/aigateway-1.0.0b26.json`,
+a curated table of what `az aigateway` can actually do, pinned to a CLI revision, plus
+`capabilities/rules.json` mapping source shapes to target capabilities. A new AI Gateway release is
+a data change, not a code change. With `--probe-cli`, the declared table is reconciled against the
+installed extension, so a capability the docs promise but the local CLI does not expose is reported
+`unavailable` instead of being planned against.
+
+Each item is one source aspect and what becomes of it:
+
+```jsonc
+{
+  "id": "item:model/a2a-intent-fdry-9a73/surface",
+  "source": {"assetId": "model:a2a-intent-fdry-9a73", "aspect": "publishedSurface"},
+  "status": "needs-decision",     // ready | needs-decision | adapted | excluded | stale
+  "kind": "reduce-surface",
+  "proposal": "split",
+  "rationale": "7 of 50 operations map to the four publishable routes. No target for: threads x17, …",
+  "options": [
+    {"value": "split", "consequence": "Inference moves; 43 operations stay on APIM."},
+    {"value": "inference-only", "consequence": "Inference moves and the rest is dropped; those callers break."}
+  ],
+  "target": {"capability": "alias.create", "objects": [ /* pre-shaped az inputs */ ]},
+  "blocking": true
+}
+```
+
+**Decision kinds.** `reduce-surface` (what part of an API can move), `translate` (maps with different
+semantics), `accept-loss` (no equivalent), `enumerate` (a fact only runtime or the operator has),
+`name` (what clients send as `model`), `scope` (access model), `collapse` (workspaces).
+
+There is deliberately no `identify` kind. If a provider or protocol cannot be identified, that is a
+collector gap to fix — see the governing rule below.
+
+**Batching.** Items of the same kind and shape merge into one, so three identical `rate-limit-by-key`
+policies are one decision about partitioning, not three. Which attributes make two policies
+different is declared per rule (`batchOn`), so two token limits with different ceilings but the same
+counter key stay one item.
+
+### What counts as a question
+
+> **An item needs a human only when the target cannot do something, or when the answer exists only
+> in a caller's head. If the answer is derivable from APIM configuration, it is a collector bug, not
+> a question.**
+
+The same discipline as the inference rule above, one level up, and easy to violate by accident.
+Asking "which provider is `meta-ai`?" looks like diligence, but APIM already answered: its backend
+is named `meta-ai-openai-endpoint`, and the import wizard writes `-openai-endpoint` for
+OpenAI-protocol upstreams and `-ai-endpoint` for Foundry. The collector reads that now.
+
+Two consequences in the output: an item carrying `rulesGap` means the mapping rules were incomplete
+and offered generic options — fix the rules rather than asking. And an item with `cannotAccept: true`
+is an unknown from a failed read; it cannot be closed by accepting a loss, and the schema rejects
+the attempt.
+
+### The dominant decision
+
+A live AI Gateway publishes exactly four inference routes:
+
+```
+/openai/v1/chat/completions   /openai/v1/responses
+/openai/v1/embeddings         /v1/messages
+```
+
+A real Azure OpenAI import publishes far more. On `a2a-intent-fdry-9a73`, 50 operations reduce to 7:
+17 thread operations, 16 vector-store, 5 assistants, 3 audio, 1 images and 1 legacy completions have
+no target at all. So the first question about a model API is not how to map it but **how much of it
+can move** — and `split` keeps the rest on APIM rather than dropping it.
+
 ## Planned commands
 
 ### `resolve-models`
 
 Fills in `models.resolved` for non-Azure providers. Resolves the referenced `secretRef` in memory,
 calls the provider's catalogue endpoint, writes back model identifiers, and discards the credential.
-Opt-in per provider (`--allow-secret-use <provider>|all`) because it is the one step that touches a
-secret, and it should be a deliberate act.
+Opt-in per provider, because it is the one step that touches a secret.
 
-### `assess`
+### `apply`
 
-A pure function of `inventory.json` + a versioned capability map + `decisions.json`, emitting
-`assessment.json`:
+Executes the plan one object at a time, driven by an agent that narrates each step:
 
-- **Target projection** per asset — the AI Gateway objects it becomes, pre-shaped for `az aigateway`.
-- **Verdict** — `ready`, `needsDecision`, or `cannotMigrate`, with the evidence behind it.
-- **Gaps** — stable id, severity, whether it blocks, and the nearest compensating control.
-- **Questions** — stable id, the exact text to put to the operator, the shape of a valid answer, and
-  what it unblocks.
+```
+apim-import apply --plan plan.json --next
+```
 
-The capability map is a data file keyed by AI Gateway API version, so a new release is a data change.
+Per step: re-check preconditions, resolve any `$secretRef` from the inventory's recipe, invoke `az`,
+read back and assert the desired state is a subset of observed, append to `journal.json`. Secrets
+reach `az` only as `@file` with mode `0600`, never as scalar flags, because scalar flags expose
+values in process arguments.
 
-### `plan`
+Ordering is a DAG: gateway → identity → provider → model → alias, with MCP and telemetry as parallel
+branches and policies last. Re-entrancy is read-before-write, since only `model-alias set` is a
+documented upsert; four operations replace whole collections (alias backend pool, `--policies @file`,
+`mcp --endpoints`, gateway tags) and need read-merge-write preserving stable policy ids —
+`costLimit.id` especially, since changing it starts a new spend counter. No rollback exists, so a
+failed step stops its branch and reports for reconciliation rather than retrying blind.
 
-Emits `plan.json`: ordered, idempotent operations (providers → models → aliases → tool servers →
-policies → keys), each with its ARM request and the `secretRef`s it needs. It opens with a secret
-preflight listing every credential read and the permission it requires, so an agent can confirm it
-*can* finish before it starts. It refuses to emit while any blocking question is unanswered or any
-blocking gap is unaccepted — assessment is not execution approval.
-
----
+A name-collision preflight against `Microsoft.ApiManagement/service` is mandatory: several commands
+dispatch by name without `--ids`, and in a migration source and target plausibly share a name.
 
 ## Development
 
@@ -513,12 +581,13 @@ uv venv .venv && uv pip install --python .venv/bin/python pytest jsonschema
 .venv/bin/python -m pytest -q
 ```
 
-119 tests cover secret classification and recipes, policy normalization, asset detection, and a
+187 tests cover secret classification and recipes, policy normalization, asset detection, and a
 full collector run against a canned ARM surface (`tests/fake_arm.py`) that mirrors the shapes that
 matter: a passthrough MCP server, a tool projection over REST, a Foundry model API behind a
 weighted backend pool with a managed-identity credential, a model API detectable only by naming
 convention, a Foundry-hosted A2A agent, a workspace holding a unified model API over a
-`languageModel` backend, and a plain REST API that must be excluded.
+`languageModel` backend, an Azure OpenAI import whose assistants and vector-store surface cannot
+move, and a plain REST API that must be excluded.
 
 The suite must stay offline. `tests/test_collect.py` builds options through a local `options()`
 helper that pins `cognitive_api_version`, because leaving it unset makes `FoundryResolver` ask
