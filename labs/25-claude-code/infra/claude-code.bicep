@@ -1,9 +1,9 @@
 // Publishes the Claude deployments of a Microsoft Foundry account through an existing Azure AI Gateway, for Claude
 // Code: grants the gateway's managed identity the Foundry User role on the account, creates a Foundry provider named
-// after the account, registers each deployment as an Anthropic Messages model, publishes the alias
-// "<account>/<deployment>" for each one with a token limit per caller, adds a cost limit per caller to one alias, and
-// creates a runtime API key for Claude Code. The aliases have the same names as the ones that the portal's import
-// creates, so the Claude Code settings work with either track. Key values are never outputs.
+// after the account unless the gateway already has one, registers each deployment as an Anthropic Messages model
+// under it, publishes the alias "<account>/<deployment>" for each one with a token limit per caller, adds a cost limit
+// per caller to one alias, and creates a runtime API key for Claude Code. The aliases have the same names as the ones
+// that the portal's import creates, so the Claude Code settings work with either track. Key values are never outputs.
 targetScope = 'resourceGroup'
 
 @description('Name of the existing AI Gateway (Microsoft.ApiManagement/aigateways) in this resource group.')
@@ -34,6 +34,9 @@ param budgetId string = 'claude-code-budget'
 
 @description('Grant the gateway\'s managed identity the Foundry User role on the account. Set it to false when the role is already assigned, for example by the portal\'s import.')
 param grantFoundryUser bool = true
+
+@description('Create the Foundry provider named after the account. Set it to false when the gateway already has it, for example from the portal\'s import, so that the template keeps its settings, such as its authentication.')
+param createProvider bool = true
 
 @description('Name of the runtime API key to create for Claude Code.')
 param apiKeyName string = 'claude-code'
@@ -78,7 +81,7 @@ module foundryUserRole '../../02-first-model-call/infra/foundry-user-role.bicep'
 }
 
 #disable-next-line BCP081
-resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2025-09-01-preview' = {
+resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2025-09-01-preview' = if (createProvider) {
   parent: workspace
   name: foundryAccountName
   dependsOn: [
@@ -102,11 +105,22 @@ resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@
   }
 }
 
+// The models go under the provider, whether the template created it or the gateway already had it.
+#disable-next-line BCP081
+resource accountProvider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2025-09-01-preview' existing = {
+  parent: workspace
+  name: foundryAccountName
+}
+
 // Claude deployments speak the Anthropic Messages API, so the gateway serves them on /default/models/anthropic.
 #disable-next-line BCP081
 resource models 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2025-09-01-preview' = [for (m, i) in claudeModels: {
-  parent: provider
+  parent: accountProvider
   name: m.name
+  dependsOn: [
+    foundryUserRole
+    provider
+  ]
   properties: {
     displayName: m.name
     supportedEndpoints: [
@@ -160,7 +174,7 @@ resource apiKey 'Microsoft.ApiManagement/aigateways/apiKeys@2025-09-01-preview' 
 
 output gatewayUrl string = 'https://${gateway.properties.frontend.defaultHostname}'
 output anthropicBaseUrl string = 'https://${gateway.properties.frontend.defaultHostname}/default/models/anthropic'
-output providerName string = provider.name
+output providerName string = accountProvider.name
 output aliasNames array = [for (m, i) in claudeModels: '${foundryAccountName}/${m.name}']
 output apiKeyName string = apiKey.name
 output roleAssignmentId string = grantFoundryUser ? '${roleAssignments}/${foundryUserRole!.outputs.roleAssignmentName}' : ''
