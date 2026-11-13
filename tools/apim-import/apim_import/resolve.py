@@ -215,24 +215,20 @@ def resolve_models(
 def _apply(inventory: dict[str, Any], provider: dict[str, Any], result: Resolution) -> None:
     """Write the catalogue back onto the provider and the APIs that use it."""
     models = provider.setdefault("models", {})
-    models["status"] = "resolved" if result.models else "empty"
+    # A catalogue answers "which models exist", never "what can each one serve".
+    # The OpenAI /v1/models response carries no modality, so the reply is a
+    # proposal to confirm, not a resolved set: writing it out as resolved
+    # published an image model and a speech-to-text model as chat-completions
+    # endpoints that would have failed at the upstream.
+    models["status"] = "catalogued" if result.models else "empty"
     models["discoverySource"] = "modelsEndpoint"
     models["resolvedFrom"] = result.catalogue_url
-    models["resolved"] = [
-        {
-            "modelName": name,
-            "apiFormat": provider.get("apiDialect"),
-            "target": {
-                "providerKind": provider.get("targetProviderKind") or "Custom",
-                "deployment": {"modelName": name},
-                "supportedEndpoints": ["/openai/v1/chat/completions"],
-            },
-        }
-        for name in result.models
-    ]
+    models["catalogue"] = list(result.models)
     models["notes"] = [
         f"Catalogue read from {result.catalogue_url}. The credential was resolved in memory "
-        "and not persisted."
+        "and not persisted.",
+        f"{len(result.models)} model(s) offered. The catalogue states no modality, so which of "
+        "them can serve an inference route is not established by this read.",
     ]
     for asset in (inventory.get("assets") or {}).get("models") or []:
         if provider["id"] in (asset.get("providerIds") or []):
@@ -240,6 +236,7 @@ def _apply(inventory: dict[str, Any], provider: dict[str, Any], result: Resoluti
             asset_models.update({
                 "status": models["status"],
                 "discoverySource": "modelsEndpoint",
-                "resolved": models["resolved"],
+                "catalogue": models["catalogue"],
+                "resolvedFrom": models["resolvedFrom"],
                 "notes": models["notes"],
             })

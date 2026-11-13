@@ -776,8 +776,12 @@ def _model_create(executor: Executor, step: Step, obj: dict[str, Any]) -> tuple[
     ]
     if spec.get("apiFormat"):
         argv += ["--api-format", spec["apiFormat"]]
-    for endpoint in spec.get("supportedEndpoints") or []:
-        argv += ["--supported-endpoints", endpoint]
+    # `--supported-endpoints` takes space-separated values, not a repeatable
+    # flag: repeating it keeps only the last, which silently registered a model
+    # on one route when the plan asked for several.
+    endpoints = spec.get("supportedEndpoints") or []
+    if endpoints:
+        argv += ["--supported-endpoints", *endpoints]
     return argv + ["-o", "json"], [path]
 
 
@@ -799,7 +803,10 @@ def _alias_set(executor: Executor, step: Step, obj: dict[str, Any]) -> tuple[lis
         if not resource_id and not executor.execute:
             # Nothing has been created in a rehearsal, so an unresolved id is
             # expected rather than a fault. Showing the shape is the useful thing.
-            resource_id = f"<id of {backend.get('modelName')} at apply time>"
+            # Space-free: this sits inside a shorthand object, where a space
+            # ends the token and would make the rehearsed command unusable if
+            # an operator pasted it.
+            resource_id = f"<resolved-at-apply-time:{backend.get('modelName')}>"
         if not resource_id:
             why = executor._lookup_failures.get(
                 (backend.get("providerName"), backend.get("modelName"))
@@ -811,8 +818,16 @@ def _alias_set(executor: Executor, step: Step, obj: dict[str, Any]) -> tuple[lis
                 f"{step.item_id}: no registered model named {backend.get('modelName')!r} under "
                 f"provider {backend.get('providerName')!r}; run the models phase first"
             )
-        argv += ["--backend-model", f"resource-id={resource_id} "
-                 f"priority={backend.get('priority', 0)} weight={backend.get('weight', 100)}"]
+        # `--backend-model` is an az CLI shorthand *object*: it needs brace form,
+        # `{key:value,...}`, in a single token. Both `resource-id=<id> priority=0`
+        # and `resource-id=<id>,priority=0` are read as one bare resource id, and
+        # the service then rejects a model whose id has the other fields glued on.
+        argv += ["--backend-model",
+                 "{{resource-id:{id},priority:{p},weight:{w}}}".format(
+                     id=resource_id,
+                     p=backend.get("priority", 0),
+                     w=backend.get("weight", 100),
+                 )]
     return argv + ["-o", "json"], []
 
 

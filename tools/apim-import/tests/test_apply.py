@@ -4,6 +4,7 @@ import json
 import pytest
 
 from apim_import.apply import (
+    _PHASE_FOR_CAPABILITY,
     ApplyError,
     CommandResult,
     Executor,
@@ -721,3 +722,69 @@ class TestAPhaseDeclaresWhatItLeavesBehind:
         detail = " ".join(s.detail for s in steps)
         assert "AuthorizationFailed" in detail
         assert "run the models phase first" not in detail
+
+
+class TestCliArgumentContracts:
+    """Shapes the az CLI requires, each verified against a live gateway once.
+
+    These are the failures a unit test catches and a reading does not: the
+    command exits zero and the object is created wrong.
+    """
+
+    def _argv_for(self, settled, inventory, capability):
+        executor = Executor(settled, inventory, new_journal(settled), runner=_Runner())
+        steps = [s for s in executor.run_phase(_PHASE_FOR_CAPABILITY[capability])
+                 if s.capability_id == capability]
+        assert steps
+        return [cmd for s in steps for cmd in s.commands]
+
+    def test_supported_endpoints_is_one_flag_with_many_values(self, settled, inventory):
+        # Repeating the flag keeps only the last value, so a model the plan
+        # gave two routes was registered on one.
+        multi = self._argv_for(settled, inventory, "model.create")
+        for argv in multi:
+            assert argv.count("--supported-endpoints") <= 1, " ".join(argv)
+        two_route = [argv for argv in multi
+                     if "--supported-endpoints" in argv
+                     and len([a for a in argv[argv.index("--supported-endpoints") + 1:]
+                              if a.startswith("/")]) > 1]
+        assert two_route, "the fixture should plan a model with more than one route"
+
+    def test_backend_model_uses_shorthand_brace_form(self, settled, inventory):
+        for argv in self._argv_for(settled, inventory, "alias.create"):
+            if "--backend-model" not in argv:
+                continue
+            value = argv[argv.index("--backend-model") + 1]
+            # `resource-id=<id> priority=0` parses as one bare id with the rest
+            # glued on, and the service rejects it.
+            assert value.startswith("{") and value.endswith("}"), value
+            assert "resource-id:" in value and "priority:" in value and "weight:" in value
+            # A space ends the token, so the whole object must be space-free --
+            # including the rehearsal placeholder an operator might paste.
+            assert " " not in value, value
+
+
+class TestMcpEndpointContracts:
+    def test_an_mcp_source_carries_the_absolute_endpoint_url(self, settled):
+        for item in settled["items"]:
+            if item.get("capabilityId") != "mcp.create":
+                continue
+            for obj in (item.get("target") or {}).get("objects") or []:
+                for endpoint in obj.get("endpoints") or []:
+                    if endpoint.get("kind") == "mcp":
+                        url = endpoint["mcp"]["url"]
+                        # A bare backend host points the gateway at the site root.
+                        assert url.rstrip("/") != url[:8] + url[8:].split("/")[0]
+                        assert url.count("/") >= 3, url
+
+    def test_every_source_has_the_namespace_the_cli_requires(self, settled):
+        seen = []
+        for item in settled["items"]:
+            if item.get("capabilityId") != "mcp.create":
+                continue
+            for obj in (item.get("target") or {}).get("objects") or []:
+                namespaces = [e.get("namespace") for e in obj.get("endpoints") or []]
+                assert all(namespaces), f"{item['id']} has a source with no namespace"
+                assert len(set(namespaces)) == len(namespaces), "namespaces must be unique"
+                seen += namespaces
+        assert seen, "the fixture should plan at least one tool server"

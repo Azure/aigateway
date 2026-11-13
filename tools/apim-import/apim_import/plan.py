@@ -401,7 +401,7 @@ class PlanBuilder:
             )
 
         # Models: a registration needs a model name.
-        if models.get("status") in {"unresolved", "empty"}:
+        if models.get("status") in {"unresolved", "empty", "catalogued"}:
             registrations = self._enumerate_models(model, models)
         else:
             registrations = models.get("resolved") or []
@@ -459,23 +459,54 @@ class PlanBuilder:
         no models at all.
         """
         asset_id = model["id"]
+        catalogue = models.get("catalogue") or []
+        if catalogue:
+            # The catalogue has been read, so nobody has to type names -- but it
+            # lists what exists, not what each one can serve, and publishing a
+            # model that cannot serve the route is a decision rather than a
+            # detail. Confirming is one step; pruning is an edit to the same list.
+            sample = ", ".join(str(name) for name in catalogue[:6])
+            more = f" and {len(catalogue) - 6} more" if len(catalogue) > 6 else ""
+            options = [
+                _opt("list-models",
+                     f"Publish the {len(catalogue)} the catalogue returned; drop any that cannot "
+                     "serve an inference route by editing `decision.models`."),
+                _opt("retain-in-apim", "Do not migrate this API."),
+            ]
+            proposal = "list-models"
+            rationale = (
+                f"The catalogue at {models.get('resolvedFrom')} returned {len(catalogue)} model(s): "
+                f"{sample}{more}. It states no modality, so whether each one serves an inference "
+                "route is not established -- an image or speech model published here would fail at "
+                "the upstream."
+            )
+        else:
+            options = [
+                _opt("resolve-models", "Read the provider's catalogue with its credential."),
+                _opt("list-models", "Name the models to register."),
+                _opt("retain-in-apim", "Do not migrate this API."),
+            ]
+            # A provider with a catalogue endpoint has an actionable default:
+            # fetch it rather than ask someone to type model names.
+            proposal = ("resolve-models"
+                        if models.get("discoverySource") == "modelsEndpoint" else "list-models")
+            rationale = (" ".join(models.get("notes") or [])
+                         or "The model catalogue could not be resolved.")
+
         item = self._add(
             item_id=ids.item(asset_id, "models"),
             source={"assetId": asset_id, "assetKind": "modelApi", "aspect": "modelCatalogue"},
             kind="enumerate",
             verdict="partial",
             capability_id="model.create",
-            # A provider with a catalogue endpoint has an actionable default:
-            # fetch it rather than ask someone to type model names.
-            proposal="resolve-models" if models.get("discoverySource") == "modelsEndpoint"
-            else "list-models",
-            rationale=" ".join(models.get("notes") or []) or "The model catalogue could not be resolved.",
-            options=[
-                _opt("resolve-models", "Read the provider's catalogue with its credential."),
-                _opt("list-models", "Name the models to register."),
-                _opt("retain-in-apim", "Do not migrate this API."),
-            ],
-            evidence={"discoverySource": models.get("discoverySource"), "notes": models.get("notes")},
+            proposal=proposal,
+            rationale=rationale,
+            options=options,
+            evidence={
+                "discoverySource": models.get("discoverySource"),
+                "catalogue": catalogue,
+                "notes": models.get("notes"),
+            },
             blocking=True,
         )
 
@@ -1217,7 +1248,14 @@ def _mcp_endpoints(server: dict[str, Any]) -> list[dict[str, Any]]:
             endpoints.append({
                 "kind": "mcp",
                 "required": True,
-                "mcp": {"url": upstream["url"], "transport": upstream.get("transport") or "streamableHttp"},
+                # The target wants the absolute URL of the MCP endpoint, which is
+                # the backend URL plus the path APIM proxies to -- the same join
+                # mcp.upstream_url() makes for tool discovery. Registering the
+                # bare backend host points the gateway at the site root.
+                "mcp": {
+                    "url": upstream["url"].rstrip("/") + (upstream.get("mcpPath") or "/mcp"),
+                    "transport": upstream.get("transport") or "streamableHttp",
+                },
             })
     for source in server.get("openApiSources") or []:
         endpoints.append({
@@ -1225,7 +1263,21 @@ def _mcp_endpoints(server: dict[str, Any]) -> list[dict[str, Any]]:
             "required": True,
             "openApi": {"specSource": {"type": "url", "$fromExport": source.get("apiName")}},
         })
+    _namespace_endpoints(server, endpoints)
     return endpoints
+
+
+def _namespace_endpoints(server: dict[str, Any], endpoints: list[dict[str, Any]]) -> None:
+    """Give every source the `namespace` the target requires.
+
+    `mcp create` rejects an endpoint without one, and APIM has no equivalent
+    field to carry over: a passthrough API proxies one upstream and names
+    nothing. The server's own name is the natural identifier for its only
+    source; additional sources are suffixed so the set stays unique.
+    """
+    base = _slug(server["id"])
+    for index, endpoint in enumerate(endpoints):
+        endpoint["namespace"] = base if index == 0 else f"{base}-{index + 1}"
 
 
 # Sections and control flow wrap policy statements; anything else that wraps an

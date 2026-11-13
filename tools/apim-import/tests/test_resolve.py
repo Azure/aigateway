@@ -133,17 +133,21 @@ class TestResolution:
         resolve_models(document, client=_SecretClient(), allow={"all"},
                        fetcher=lambda url, headers: ["model-a", "model-b"])
         provider = next(p for p in document["assets"]["modelProviders"] if p["id"] == provider_id)
-        assert provider["models"]["status"] == "resolved"
-        assert [m["modelName"] for m in provider["models"]["resolved"]] == ["model-a", "model-b"]
+        # Catalogued, not resolved: the reply says which models exist and
+        # nothing about what any of them can serve.
+        assert provider["models"]["status"] == "catalogued"
+        assert provider["models"]["catalogue"] == ["model-a", "model-b"]
         assert provider["models"]["resolvedFrom"]
+        assert not provider["models"].get("resolved")
 
     def test_the_apis_using_that_provider_are_updated_too(self, inventory):
         document = copy.deepcopy(inventory)
         resolve_models(document, client=_SecretClient(), allow={"all"},
                        fetcher=lambda url, headers: ["model-a"])
         asset = next(m for m in document["assets"]["models"] if m["source"]["name"] == "meta-ai")
-        assert asset["models"]["status"] == "resolved"
+        assert asset["models"]["status"] == "catalogued"
         assert asset["models"]["discoverySource"] == "modelsEndpoint"
+        assert asset["models"]["catalogue"] == ["model-a"]
 
     def test_the_credential_never_reaches_the_inventory(self, inventory):
         document = copy.deepcopy(inventory)
@@ -176,25 +180,52 @@ class TestResolution:
 
 
 class TestPlanAfterResolving:
-    """Resolving must close a question, not open ten new ones."""
+    """Resolving must answer the question, not open ten new ones.
 
-    def test_the_catalogue_question_disappears(self, inventory):
-        caps = CapabilityMap.load()
-        before = build_plan(copy.deepcopy(inventory), caps)
-        assert [i for i in before["items"] if i["source"]["aspect"] == "modelCatalogue"]
+    It stops short of settling it: a catalogue lists what exists and states no
+    modality, so publishing every entry is a choice. Writing them out as
+    resolved registered an image model and a speech-to-text model as
+    chat-completions endpoints, which would have failed at the upstream.
+    """
 
+    def _catalogued(self, inventory, names):
         resolved = copy.deepcopy(inventory)
         resolve_models(resolved, client=_SecretClient(), allow={"all"},
-                       fetcher=lambda u, h: [f"m{n}" for n in range(10)])
-        after = build_plan(resolved, caps)
-        assert not [i for i in after["items"] if i["source"]["aspect"] == "modelCatalogue"]
+                       fetcher=lambda u, h: list(names))
+        return resolved
+
+    def test_the_catalogue_question_stays_but_arrives_answered(self, inventory):
+        caps = CapabilityMap.load()
+        names = [f"m{n}" for n in range(10)]
+        plan = build_plan(self._catalogued(inventory, names), caps)
+
+        item = next(i for i in plan["items"] if i["source"]["aspect"] == "modelCatalogue")
+        assert item["evidence"]["catalogue"] == names
+        assert item["proposal"] == "list-models"
+        # Nobody has to type the names, and nothing is published unconfirmed.
+        assert "resolve-models" not in {o["value"] for o in item["options"]}
+        assert not [
+            obj for i in plan["items"] if i["source"].get("assetId") == "model:meta-ai"
+            for obj in (i.get("target") or {}).get("objects") or []
+        ]
+
+    def test_the_question_says_why_it_is_still_a_question(self, inventory):
+        caps = CapabilityMap.load()
+        plan = build_plan(self._catalogued(inventory, ["m1", "m2"]), caps)
+        item = next(i for i in plan["items"] if i["source"]["aspect"] == "modelCatalogue")
+        assert "no modality" in item["rationale"]
 
     def test_ten_models_cost_one_naming_decision_not_ten(self, inventory):
         caps = CapabilityMap.load()
-        resolved = copy.deepcopy(inventory)
-        resolve_models(resolved, client=_SecretClient(), allow={"all"},
-                       fetcher=lambda u, h: [f"m{n}" for n in range(10)])
-        plan = build_plan(resolved, caps)
+        names = [f"m{n}" for n in range(10)]
+        catalogued = self._catalogued(inventory, names)
+        first = build_plan(catalogued, caps)
+        for item in first["items"]:
+            if item["source"]["aspect"] == "modelCatalogue":
+                item["status"] = "adapted"
+                item["decision"] = {"value": "list-models", "models": names}
+
+        plan = build_plan(catalogued, caps, previous=first)
         naming = [
             i for i in plan["items"]
             if i["kind"] == "name" and i["source"]["assetId"] == "model:meta-ai"
@@ -202,6 +233,27 @@ class TestPlanAfterResolving:
         assert len(naming) == 1
         assert naming[0]["evidence"]["count"] == 10
         assert naming[0]["proposal"] == "use-model-names"
+
+    def test_confirming_the_catalogue_publishes_exactly_what_was_confirmed(self, inventory):
+        caps = CapabilityMap.load()
+        names = [f"m{n}" for n in range(10)]
+        catalogued = self._catalogued(inventory, names)
+        first = build_plan(catalogued, caps)
+        keep = names[:7]
+        for item in first["items"]:
+            if item["source"]["aspect"] == "modelCatalogue":
+                item["status"] = "adapted"
+                item["decision"] = {"value": "list-models", "models": keep}
+
+        plan = build_plan(catalogued, caps, previous=first)
+        published = [
+            obj["name"]
+            for i in plan["items"] if i.get("capabilityId") == "model.create"
+            and i["source"].get("assetId") == "model:meta-ai"
+            for obj in (i.get("target") or {}).get("objects") or []
+        ]
+        assert published == keep
+        assert plan["summary"]["plannerGaps"] == 0
 
     def test_resolving_does_not_increase_the_decision_count(self, inventory):
         caps = CapabilityMap.load()
@@ -211,3 +263,10 @@ class TestPlanAfterResolving:
                        fetcher=lambda u, h: [f"m{n}" for n in range(10)])
         after = build_plan(resolved, caps)["summary"]["unsettled"]
         assert after <= before
+
+    def test_the_question_names_where_the_catalogue_came_from(self, inventory):
+        caps = CapabilityMap.load()
+        plan = build_plan(self._catalogued(inventory, ["m1"]), caps)
+        item = next(i for i in plan["items"] if i["source"]["aspect"] == "modelCatalogue")
+        assert "None" not in item["rationale"]
+        assert "http" in item["rationale"]
