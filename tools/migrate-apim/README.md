@@ -633,6 +633,29 @@ Each item is one source aspect and what becomes of it:
 semantics), `accept-loss` (no equivalent), `enumerate` (a fact only runtime or the operator has),
 `name` (what clients send as `model`), `scope` (access model), `collapse` (workspaces).
 
+**"Can this be migrated?" has three negative answers, and the plan distinguishes them.** The target
+cannot do it — a `gap` verdict and a loss decision. The installed CLI cannot author it —
+`capabilityUnavailable`, a local-tooling limit the operator fixes by upgrading the extension. Or
+**this tool has no builder for it**: the gateway supports the mapping, `az aigateway` exposes the
+command, and `apply` still runs no step. That last one is `appliedByHand` on the item, naming the
+phase it would have belonged to and the command that does it:
+
+```jsonc
+"appliedByHand": {
+  "phase": "policies",
+  "command": "az aigateway model policy set",
+  "reason": "migrate-apim has no builder for this capability."
+}
+```
+
+Today that is `model.policy`, `policy.update`, `key.create` and `telemetry.create` — the `policies`
+and `keys` phases in full. It is said on the item, in the plan summary under **Applied by hand**
+rather than counted as ready to execute, on an unsettled item's rationale while the decision is
+still open (choosing counter semantics for a policy nobody will author is wasted work), and again
+by `apply` as a `by hand` phase. One predicate produces all four, because the plan counting an item
+as ready while a phase ran no step for it is exactly how this went unnoticed: the migration ended,
+the policies were not there, and nothing in the run had said so.
+
 There is deliberately no `identify` kind. If a provider or protocol cannot be identified, that is a
 collector gap to fix — see the governing rule below.
 

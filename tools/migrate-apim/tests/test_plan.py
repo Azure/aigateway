@@ -885,3 +885,83 @@ class TestPoolSessionAffinity:
         built = build_plan(self._with_affinity(inventory, {"enabled": True}), capabilities)
         item = next(i for i in built["items"] if i["source"]["aspect"] == "sessionAffinity")
         assert item["evidence"]["apimSessionAffinity"] == {"enabled": True}
+
+
+class TestWorkThisToolCannotAuthor:
+    """The third answer to "can this be migrated?", and the one that read as a lie.
+
+    An agent asked why the policies never got configured had to read `apply.py`
+    to find out: the plan proposed `model.policy`, the operator settled it, the
+    summary counted it ready, and the phase that was supposed to carry it ran no
+    steps. The gateway supports it and so does the installed CLI -- only this
+    tool does not, and that is the plan's fact to state, not apply's to discover.
+    """
+
+    @pytest.fixture
+    def settled(self, inventory, capabilities):
+        """A plan taken through the documented loop: settle, then re-run `plan`."""
+        first = build_plan(copy.deepcopy(inventory), capabilities)
+        for item in first["items"]:
+            if item["status"] == "needs-decision":
+                item["status"] = "adapted"
+                item["decision"] = item["proposal"] or "accept"
+        return build_plan(copy.deepcopy(inventory), capabilities, previous=first)
+
+    def test_settled_work_with_no_builder_says_so_on_the_item(self, settled):
+        from migrate_apim.apply import AUTHORED_HERE, PHASE_FOR_CAPABILITY
+
+        unbuildable = [
+            item for item in settled["items"]
+            if item.get("capabilityId") in PHASE_FOR_CAPABILITY
+            and item["capabilityId"] not in AUTHORED_HERE
+            and (item.get("target") or {}).get("objects")
+        ]
+        assert unbuildable, "the fixture should settle work this tool has no builder for"
+        for item in unbuildable:
+            assert item.get("appliedByHand"), item["id"]
+            assert "no builder" in item["appliedByHand"]["reason"]
+            assert "cannot author it" in item["rationale"], item["rationale"]
+
+    def test_it_names_the_command_the_operator_has_to_run(self, settled):
+        item = next(i for i in settled["items"]
+                    if i.get("capabilityId") == "model.policy" and i.get("appliedByHand"))
+        # Read off the catalogue rather than composed here: the point is to spare
+        # whoever reads this plan the reconstruction, not to guess at flags.
+        assert item["appliedByHand"]["command"] == "az aigateway model policy set"
+        assert item["appliedByHand"]["phase"] == "policies"
+
+    def test_an_unsettled_item_says_it_while_the_decision_is_still_open(self, plan):
+        """Choosing counter semantics for a policy nobody will author is wasted work."""
+        item = next(i for i in plan["items"]
+                    if i.get("capabilityId") == "model.policy"
+                    and i["status"] == "needs-decision")
+        assert "However this is settled" in item["rationale"], item["rationale"]
+        # Not the settled marker: which way it goes is still open.
+        assert "appliedByHand" not in item
+
+    def test_an_item_this_tool_can_build_is_not_marked(self, settled):
+        item = next(i for i in settled["items"] if i.get("capabilityId") == "model.create")
+        assert "appliedByHand" not in item
+        assert "no builder" not in item["rationale"]
+
+    def test_the_plan_is_still_schema_valid(self, settled):
+        assert validate_document(settled) == []
+
+    def test_the_summary_separates_it_from_what_apply_will_do(self, settled):
+        from migrate_apim.summary import render_plan
+
+        rendered = render_plan(settled)
+        assert "az aigateway model policy set" in rendered
+        by_hand = [i for i in settled["items"] if i.get("appliedByHand")]
+        ready = [i for i in settled["items"]
+                 if i["status"] == "ready" and not i.get("appliedByHand")]
+        # The count under "Ready to execute" is a claim about what apply will do.
+        assert f"Ready to execute ({len(ready)})" in rendered
+        assert f"Applied by hand ({len(by_hand)})" in rendered
+
+    def test_apply_and_the_plan_agree_on_what_is_by_hand(self, settled):
+        """Two sources of truth for one fact is how it drifted in the first place."""
+        from migrate_apim.apply import unperformable_for
+
+        assert {e["itemId"] for e in unperformable_for(settled)} == \
+            {i["id"] for i in settled["items"] if i.get("appliedByHand")}

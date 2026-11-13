@@ -113,6 +113,7 @@ class PlanBuilder:
         merged, orphaned = self._merge_with_previous(self.items)
         self._check_buildable(merged)
         self._check_produces(merged)
+        self._mark_by_hand(merged)
         # Defects in this tool, not decisions for the operator. They are carried
         # on the plan so that whoever reads it sees work that will not happen,
         # rather than discovering it when a phase produces nothing.
@@ -1103,6 +1104,51 @@ class PlanBuilder:
         })
 
     # ------------------------------------------------------------- merge
+
+    def _mark_by_hand(self, items: list[dict[str, Any]]) -> None:
+        """Say which settled work `apply` will leave for the operator.
+
+        The third answer to "can this be migrated", after "the target cannot"
+        and "the installed CLI cannot": the gateway can, the CLI can, and this
+        tool has no builder. Unsaid, such an item is settled, approved and
+        counted as ready to execute, and the only signal is a phase that runs
+        no steps -- which reads as a phase with nothing in it.
+
+        Run after the merge, because a decision settled in a previous
+        generation is what turns an item into work that would be applied.
+        """
+        from .apply import AUTHORED_HERE, PHASE_FOR_CAPABILITY, unperformable_phase
+
+        for item in items:
+            capability_id = item.get("capabilityId") or ""
+            if capability_id not in PHASE_FOR_CAPABILITY or capability_id in AUTHORED_HERE:
+                continue
+            capability = self.caps.capability(capability_id)
+            command = f"az aigateway {' '.join(capability.command)}" if capability else None
+            phase = unperformable_phase(item)
+            if not phase:
+                # Still unsettled. Which way it is settled does not change who
+                # applies it, and that belongs in front of the operator while
+                # they are choosing between semantics for it.
+                if item.get("status") in {NEEDS_DECISION, STALE}:
+                    item["rationale"] = (
+                        (f"{item['rationale']} " if item.get("rationale") else "")
+                        + "However this is settled, `apply` has no builder for "
+                        f"`{capability_id}`: the work stays with the operator."
+                    )
+                continue
+            item["appliedByHand"] = {
+                "phase": phase,
+                "command": command,
+                "reason": "migrate-apim has no builder for this capability.",
+            }
+            item["rationale"] = (
+                (f"{item['rationale']} " if item.get("rationale") else "")
+                + "This tool cannot author it: the gateway supports the mapping and "
+                + (f"`{command}` exists" if command else "the installed CLI exposes it")
+                + f", but `apply` has no builder, so the {phase} phase will run no step for it "
+                "and the operator applies it themselves."
+            )
 
     def _check_buildable(self, items: list[dict[str, Any]]) -> None:
         """Flag target objects that no command could be built from.

@@ -4,7 +4,7 @@ import json
 import pytest
 
 from migrate_apim.apply import (
-    _PHASE_FOR_CAPABILITY,
+    PHASE_FOR_CAPABILITY,
     ApplyError,
     CommandResult,
     Executor,
@@ -738,7 +738,7 @@ class TestCliArgumentContracts:
 
     def _argv_for(self, settled, inventory, capability):
         executor = Executor(settled, inventory, new_journal(settled), runner=_Runner())
-        steps = [s for s in executor.run_phase(_PHASE_FOR_CAPABILITY[capability])
+        steps = [s for s in executor.run_phase(PHASE_FOR_CAPABILITY[capability])
                  if s.capability_id == capability]
         assert steps
         return [cmd for s in steps for cmd in s.commands]

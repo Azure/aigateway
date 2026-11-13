@@ -40,7 +40,7 @@ PHASES: tuple[str, ...] = (
     "gateway", "identity", "providers", "models", "aliases", "toolServers", "policies", "keys",
 )
 
-_PHASE_FOR_CAPABILITY = {
+PHASE_FOR_CAPABILITY = {
     "gateway.create": "gateway",
     "identity.assign": "identity",
     "provider.create": "providers",
@@ -365,7 +365,7 @@ def steps_for(plan: dict[str, Any]) -> list[Step]:
         target = item.get("target") or {}
         if not capability_id or not target.get("objects"):
             continue
-        phase = _PHASE_FOR_CAPABILITY.get(capability_id)
+        phase = PHASE_FOR_CAPABILITY.get(capability_id)
         if not phase or capability_id not in _BUILDERS:
             # Planned, but this tool cannot perform it. Surfaced by preflight as
             # manual work rather than becoming a step that fails at execution.
@@ -381,6 +381,22 @@ def steps_for(plan: dict[str, Any]) -> list[Step]:
     return sorted(steps, key=lambda step: PHASES.index(step.phase))
 
 
+def unperformable_phase(item: dict[str, Any]) -> str | None:
+    """The phase this item's work belongs to, when nothing here can build it.
+
+    One predicate, because `plan` states this on the item and `apply` reports it
+    on the phase. Two copies of it drifted once already -- the plan counted work
+    as ready that a phase then ran no steps for.
+    """
+    capability_id = item.get("capabilityId") or ""
+    phase = PHASE_FOR_CAPABILITY.get(capability_id)
+    if (phase and item.get("status") in {"ready", "adapted"}
+            and (item.get("target") or {}).get("objects")
+            and capability_id not in AUTHORED_HERE):
+        return phase
+    return None
+
+
 def unperformable_for(plan: dict[str, Any]) -> list[dict[str, str]]:
     """Planned work this tool has no builder for, by phase.
 
@@ -390,12 +406,9 @@ def unperformable_for(plan: dict[str, Any]) -> list[dict[str, str]]:
     """
     out = []
     for item in plan.get("items") or []:
-        capability_id = item.get("capabilityId") or ""
-        phase = _PHASE_FOR_CAPABILITY.get(capability_id)
-        if (phase and item.get("status") in {"ready", "adapted"}
-                and (item.get("target") or {}).get("objects")
-                and capability_id not in _BUILDERS):
-            out.append({"itemId": item["id"], "capabilityId": capability_id, "phase": phase})
+        phase = unperformable_phase(item)
+        if phase:
+            out.append({"itemId": item["id"], "capabilityId": item["capabilityId"], "phase": phase})
     return out
 
 
@@ -931,6 +944,12 @@ _BUILDERS: dict[str, Callable[[Executor, Step, dict[str, Any]], tuple[list[str],
     "alias.create": _alias_set,
     "mcp.create": _mcp_create,
 }
+
+# What this tool can author, as opposed to what it knows a phase for. The
+# difference is work a run reports as `by hand`, and the plan says so at
+# planning time: `policies` and `keys` hold capabilities the gateway supports
+# and the CLI exposes, which nothing here builds yet.
+AUTHORED_HERE: frozenset[str] = frozenset(_BUILDERS)
 
 # Where the object a step plans and the object its read returns are different
 # shapes, this translates one into the other for verification.

@@ -129,6 +129,15 @@ supports this, we cannot configure it from here" is a different decision from "t
 this". These come from the catalogue's `serviceOnly` list, and the honest outcome is usually
 `accept-loss` plus a line in the final report telling the operator what to set by hand.
 
+An item carrying `appliedByHand` is a fourth: the gateway supports it, `az aigateway` exposes the
+command, and **this tool has no builder**, so `apply` will run no step for it. Today that is every
+`model.policy`, `policy.update`, `key.create` and `telemetry.create` item — the `policies` and
+`keys` phases entire. Say it while the item is still being settled, not afterwards: the decision is
+still worth recording, but the operator is choosing how *they* will configure it. Carry the
+`command` into the final report. Never report such an item as migrated, and do not quietly run the
+command yourself in its place — if the operator asks you to, that is a new agreement about writes,
+made with the commands in front of them.
+
 ## 3. Execute
 
 **Migration is additive.** Everything is provisioned into the gateway; nothing is removed from

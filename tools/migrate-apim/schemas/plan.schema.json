@@ -199,6 +199,14 @@
           "description": "Present when the catalogue declares the capability but the installed CLI does not expose it.",
           "type": "object"
         },
+        "appliedByHand": {
+          "description": "Present when the gateway and the installed CLI support the mapping but migrate-apim has no builder for it, so apply runs no step and the operator applies it themselves.",
+          "type": "object",
+          "properties": {
+            "command": {"type": ["string", "null"]},
+            "reason": {"type": "string"}
+          }
+        },
         "capabilityLimitations": {"type": "array", "items": {"type": "string"}},
         "shapeDigest": {
           "description": "The question and its choices. A change here invalidates a decision made earlier.",

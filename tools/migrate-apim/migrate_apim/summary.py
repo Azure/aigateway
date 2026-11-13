@@ -139,17 +139,36 @@ def render_plan(document: dict[str, Any], *, fmt: str = "text") -> str:
             lines.append(f"{'      ' if fmt != 'markdown' else '    '}stale: {item.get('staleReason')}")
     lines.append("")
 
-    ready = [item for item in document.get("items") or [] if item.get("status") == "ready"]
+    # Separated, because "ready to execute" is a promise about what `apply` will
+    # do. An item this tool has no builder for is ready in every other sense and
+    # will still be sitting there, unapplied, when the last phase reports done.
+    # Settled items count here whether they arrived ready or were adapted into it.
+    by_hand = [item for item in document.get("items") or [] if item.get("appliedByHand")]
+    ready = [item for item in document.get("items") or []
+             if item.get("status") == "ready" and not item.get("appliedByHand")]
     lines.append(f"{heading}Ready to execute ({len(ready)})")
     for item in ready[:12]:
         lines.append(
             f"{'  - ' if fmt == 'markdown' else '    '}{item.get('capabilityId')}: "
-            f"{(item.get('source') or {}).get('assetId')}"
-            f" [{(item.get('source') or {}).get('aspect')}]"
+            f"{_item_source(item)}"
         )
     if len(ready) > 12:
         lines.append(f"{'  - ' if fmt == 'markdown' else '    '}... and {len(ready) - 12} more")
     lines.append("")
+
+    if by_hand:
+        lines.append(f"{heading}Applied by hand ({len(by_hand)})")
+        lines.append(
+            f"{bullet}The gateway and the installed CLI support these; `apply` has no builder for "
+            "them, so it will run no step and report the phase as `by hand`."
+        )
+        for item in by_hand:
+            command = (item.get("appliedByHand") or {}).get("command") or "no command recorded"
+            lines.append(
+                f"{'  - ' if fmt == 'markdown' else '    '}{item.get('capabilityId')}: "
+                f"{_item_source(item)} -> {command}"
+            )
+        lines.append("")
 
     # Bad news belongs in the summary. Reported only inside the plan file, a gap
     # or an orphaned decision leaves this view reading as a clean bill of health
@@ -174,6 +193,16 @@ def render_plan(document: dict[str, Any], *, fmt: str = "text") -> str:
         for entry in prerequisites:
             lines.append(f"{bullet}[{entry.get('owner')}] {entry.get('summary')}")
     return "\n".join(lines)
+
+
+def _item_source(item: dict[str, Any]) -> str:
+    """What this item is about, in one phrase.
+
+    A policy or an identity item has no asset id -- printing the `None` it holds
+    said less than the kind of thing it is.
+    """
+    source = item.get("source") or {}
+    return f"{source.get('assetId') or source.get('assetKind')} [{source.get('aspect')}]"
 
 
 def _asset_detail(family: str, item: dict[str, Any]) -> str:
