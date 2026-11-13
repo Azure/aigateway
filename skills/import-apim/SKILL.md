@@ -117,6 +117,13 @@ keys`; run one per turn, report what it produced, and stop before the next.
 If a step comes back `mutationUnknown`, the write was accepted but its outcome could not be
 established. Do not retry it. Re-running the phase reconciles it by reading the target.
 
+Read what a phase prints, not just whether it failed. `unverified` means the write happened and
+could not be confirmed — report it as written, never as verified. A line marked `not performed`
+names work in that phase this tool has no implementation for: it will be absent from the gateway
+until someone applies it by hand, so carry it into the final report rather than letting a phase
+that printed no errors read as a phase that did everything. `no steps in this phase` is a real
+outcome too, and worth saying out loud.
+
 Before the first write, put the `prerequisites` list to the operator. These are outside the
 gateway's resource provider — Foundry RBAC grants, caller `AI Gateway Models User` / `Tools User`
 roles, Entra consent, `mcp authorize` completion, private endpoint approvals. A plan that executes

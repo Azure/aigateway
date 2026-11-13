@@ -221,12 +221,23 @@ def az_extension_present(*, timeout: int = 30) -> bool:
 
 
 def az_option_probe(command: Iterable[str], *, timeout: int = 30) -> set[str] | None:
-    """Ask the installed extension which options a command exposes."""
+    """Ask the installed extension which options a command exposes.
+
+    Returns None when the command is not exposed. Raises when the probe itself
+    could not run: with the extension already established as present, a timeout
+    says nothing about the command, and reporting it as absent would turn a
+    native mapping into a blocking loss on the strength of a slow subprocess.
+    """
     argv = ["az", "aigateway", *command, "--help"]
     try:
         proc = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
-    except (FileNotFoundError, subprocess.TimeoutExpired):  # pragma: no cover
-        return None
+    except FileNotFoundError as exc:  # pragma: no cover
+        raise CapabilityError(f"the az CLI could not be run to probe {' '.join(argv)}") from exc
+    except subprocess.TimeoutExpired as exc:  # pragma: no cover
+        raise CapabilityError(
+            f"probing `{' '.join(argv)}` timed out after {timeout}s, so whether the installed CLI "
+            "exposes it is unknown. Re-run, or plan without --probe-cli to use the declared table."
+        ) from exc
     if proc.returncode != 0:
         return None
     options: set[str] = set()

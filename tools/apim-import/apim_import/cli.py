@@ -501,6 +501,16 @@ def _apply(args: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         _write_journal(journal, journal_path)
         return 1
+    # Said before the steps, because an empty phase prints nothing at all and
+    # would otherwise read as a phase that had nothing left to do.
+    skipped = executor.unperformable(phase)
+    if not steps:
+        print(f"  no steps in this phase{' for this tool to run' if skipped else ''}.",
+              file=sys.stderr)
+    for entry in skipped:
+        print(f"  {'not performed':16} {entry['itemId']}", file=sys.stderr)
+        print(f"                   {entry['capabilityId']} has no implementation here; it will be "
+              "absent from the gateway until applied by hand", file=sys.stderr)
     for step in steps:
         print(f"  {step.status:16} {step.item_id}", file=sys.stderr)
         if step.detail:

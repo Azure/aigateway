@@ -621,3 +621,103 @@ class TestRehearsalShowsEveryCommand:
         for step in steps:
             if step.item_id in recorded and step.commands:
                 assert len(recorded[step.item_id]["commands"]) == len(step.commands)
+
+
+class TestAFailedCheckIsNotACleanCheck:
+    """A check that could not run must not read as one that found nothing."""
+
+    def _collision_runner(self, returncode, stderr):
+        class _R:
+            calls = []
+
+            def __call__(self, argv, _payload=None):
+                if "resource" in argv[:2]:
+                    return CommandResult(returncode, "", stderr)
+                return CommandResult(1, "")
+        return _R()
+
+    def test_a_missing_resource_is_a_clean_check(self, settled, inventory):
+        runner = self._collision_runner(1, "ResourceNotFound: ...was not found")
+        codes = {f["code"] for f in preflight(settled, inventory, runner=runner)}
+        assert "nameCollision" not in codes
+        assert "nameCollisionUnknown" not in codes
+
+    def test_a_denied_read_is_reported_as_unestablished(self, settled, inventory):
+        runner = self._collision_runner(1, "AuthorizationFailed: does not have permission")
+        finding = next(f for f in preflight(settled, inventory, runner=runner)
+                       if f["code"] == "nameCollisionUnknown")
+        assert "AuthorizationFailed" in finding["message"]
+
+    def test_an_untried_secret_recipe_is_declared(self, settled, inventory):
+        codes = {f["code"] for f in preflight(settled, inventory, runner=_Runner())}
+        # The fixture's providers authenticate with a key, so something is needed.
+        if codes & {"secretNotRetrievable", "secretMissing"}:
+            pytest.skip("fixture has no retrievable secrets to report")
+        assert "secretRetrievalUntried" in codes
+
+    def test_acknowledgement_does_not_claim_to_gate_writing(self, settled, inventory):
+        finding = next(f for f in preflight(settled, inventory, runner=_Runner())
+                       if f["code"] == "prerequisites")
+        assert "does not gate writing" in finding["remedy"]
+
+
+class TestVerificationThatChecksNothing:
+    def test_an_empty_desired_shape_is_not_comparable(self):
+        from apim_import.apply import _comparable
+
+        assert _comparable({"a": 1}) is True
+        assert _comparable({}) is False
+        assert _comparable({"a": {}, "b": []}) is False
+        assert _comparable([None, None]) is False
+        assert _comparable({"a": {"b": "x"}}) is True
+
+    def test_a_write_with_nothing_checkable_is_unverified_not_verified(self, settled, inventory):
+        # _subset is satisfied by anything here, so "verified" would be a claim
+        # about configuration that no read established.
+        from apim_import.apply import _DESIRED
+
+        obj = next(
+            o
+            for item in settled["items"] if item.get("capabilityId") == "model.create"
+            for o in (item.get("target") or {}).get("objects") or []
+        )
+        reads = {obj["name"]: {"name": obj["name"], "properties": {"anything": "at all"}}}
+        _DESIRED["model.create"] = lambda _e, o: {}
+        try:
+            executor = Executor(settled, inventory, new_journal(settled), runner=_Runner(reads=reads),
+                                execute=True, skip_rehearsal=True)
+            steps = [s for s in executor.run_phase("models") if s.capability_id == "model.create"]
+            # The one with a stubbed read-back: present, but nothing comparable.
+            assert steps[0].status == "unverified", steps[0].detail
+            assert "nothing in it could be compared" in steps[0].detail
+            assert not any(s.status == "verified" for s in steps)
+        finally:
+            from apim_import.apply import _model_desired
+            _DESIRED["model.create"] = _model_desired
+
+
+class TestAPhaseDeclaresWhatItLeavesBehind:
+    def test_work_with_no_builder_is_named_by_its_phase(self, settled, inventory):
+        executor = Executor(settled, inventory, new_journal(settled), runner=_Runner())
+        named = {e["capabilityId"] for phase in PHASES for e in executor.unperformable(phase)}
+        planned = {
+            i["capabilityId"] for i in settled["items"]
+            if i.get("status") in {"ready", "adapted"} and i.get("capabilityId")
+            and (i.get("target") or {}).get("objects")
+        }
+        from apim_import.apply import _BUILDERS
+        assert named == {c for c in planned if c not in _BUILDERS}
+
+    def test_a_model_lookup_failure_is_not_reported_as_an_absent_model(self, settled, inventory):
+        class _Denied:
+            def __call__(self, argv, _payload=None):
+                if "model" in argv and "show" in argv:
+                    return CommandResult(1, "", "AuthorizationFailed: no access")
+                return CommandResult(1, "")
+
+        executor = Executor(settled, inventory, new_journal(settled), runner=_Denied(),
+                            execute=True, skip_rehearsal=True)
+        steps = [s for s in executor.run_phase("aliases") if s.capability_id == "alias.create"]
+        detail = " ".join(s.detail for s in steps)
+        assert "AuthorizationFailed" in detail
+        assert "run the models phase first" not in detail

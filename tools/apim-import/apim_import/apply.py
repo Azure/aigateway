@@ -204,6 +204,18 @@ def preflight(plan: dict[str, Any], inventory: dict[str, Any], *, runner: Runner
                 f"{len(missing)} referenced credential(s) are not in the inventory: "
                 + ", ".join(missing[:3]),
                 "Re-collect the inventory.")
+    # `retrievable` says a documented retrieval recipe exists for that class of
+    # credential, not that this run's identity can execute it. Nothing has
+    # fetched anything yet, so a silent pass here would present an untried
+    # recipe as a settled one -- and the first attempt happens mid-phase, which
+    # is the cost preflight exists to avoid.
+    untried = [ref for ref in needed if ref in secrets_by_id and secrets_by_id[ref].get("retrievable")]
+    if untried:
+        finding("secretRetrievalUntried", False,
+                f"{len(untried)} credential(s) have a retrieval recipe that has not been run: "
+                + ", ".join(untried[:3]) + ("..." if len(untried) > 3 else ""),
+                "Each needs a data-plane read this tool has not attempted -- Key Vault get, or an "
+                "APIM listSecrets. A missing grant surfaces when the step runs, not here.")
 
     created = {
         obj.get("name")
@@ -247,7 +259,10 @@ def preflight(plan: dict[str, Any], inventory: dict[str, Any], *, runner: Runner
         finding("prerequisites", False,
                 f"{len(prerequisites)} step(s) only an administrator can do: "
                 + ", ".join(p["id"] for p in prerequisites),
-                "Acknowledge each with --acknowledge <id> once it is done.")
+                "Acknowledge each with --acknowledge <id> once it is done. Acknowledgement is "
+                "recorded, not checked, and does not gate writing: these are external grants this "
+                "tool cannot see, and a gateway builds cleanly without them while failing to "
+                "serve traffic.")
 
     if runner and target_id:
         findings.extend(_name_collision_check(Target.parse(target_id), runner))
@@ -294,6 +309,26 @@ def _name_collision_check(target: Target, runner: Runner) -> list[dict[str, Any]
                 "resource group. Commands that dispatch by name could resolve to it."
             ),
             "remedy": "Use a different gateway name.",
+        }]
+    # A read that failed is not a name that is free. `az resource show` exits
+    # non-zero for a missing resource and for a missing permission alike, and
+    # treating the second as the first reports a check that never ran as a
+    # clean one -- on the question of whether commands could hit the source
+    # APIM instead of the target.
+    noise = f"{result.stderr} {result.stdout}".lower()
+    if not result.ok and not any(
+        token in noise for token in ("resourcenotfound", "not found", "could not be found")
+    ):
+        return [{
+            "code": "nameCollisionUnknown", "blocking": False,
+            "message": (
+                f"Whether a Microsoft.ApiManagement/service named {target.name!r} already exists "
+                f"could not be established: {(result.stderr or result.stdout).strip()[:200]}"
+            ),
+            "remedy": (
+                "Check by hand with `az resource show --resource-type "
+                "Microsoft.ApiManagement/service`, then acknowledge prereq:name-collision."
+            ),
         }]
     return []
 
@@ -369,6 +404,10 @@ class Executor:
         # rehearsal unless asked otherwise.
         self.execute = execute
         self.skip_rehearsal = skip_rehearsal
+        # Why a model lookup came back empty, keyed by (provider, model).
+        # None means established as absent; a string is the reason the question
+        # could not be answered.
+        self._lookup_failures: dict[tuple[str | None, str | None], str | None] = {}
         self.target = Target.parse((plan.get("target") or {}).get("resourceId") or "")
         self.secrets = {entry["id"]: entry for entry in inventory.get("secrets") or []}
 
@@ -408,6 +447,25 @@ class Executor:
             if steps and not self.phase_complete(phase):
                 return phase
         return None
+
+    def unperformable(self, phase: str) -> list[dict[str, str]]:
+        """Work belonging to this phase that this tool cannot carry out.
+
+        A phase reports on the steps it ran, so work it has no builder for is
+        absent from that report. Running `policies` and being told only that it
+        was rehearsed reads as the phase being covered, when the content-safety
+        and token-limit items in it will simply never happen. Named here so the
+        phase can say what it is leaving behind.
+        """
+        out = []
+        for item in self.plan.get("items") or []:
+            capability_id = item.get("capabilityId")
+            if (_PHASE_FOR_CAPABILITY.get(capability_id or "") == phase
+                    and item.get("status") in {"ready", "adapted"}
+                    and (item.get("target") or {}).get("objects")
+                    and capability_id not in _BUILDERS):
+                out.append({"itemId": item["id"], "capabilityId": capability_id})
+        return out
 
     def run_phase(self, phase: str) -> list[Step]:
         if phase not in PHASES:
@@ -496,6 +554,14 @@ class Executor:
             desired = {k: v for k, v in desired.items() if k not in unreadable}
             note += f"; {', '.join(unreadable)} is not returned by a read and was not compared"
 
+        # Whatever is left has to constrain something. If dropping the unreadable
+        # fields -- or the plan itself -- leaves nothing to check, a read-back
+        # proves only that an object is there, and saying "verified" would be a
+        # claim about its configuration that nothing established.
+        checkable = _comparable(desired)
+        if not checkable:
+            note += "; nothing in this object can be checked against a read"
+
         # Read first, and build second. Building resolves credentials, so doing it
         # up front would read a secret for a step that turns out to need no write
         # at all -- the commonest case on a re-run.
@@ -503,7 +569,7 @@ class Executor:
             observed = self._read(step, obj)
         except (ApplyError, ResolveError) as exc:
             return "failed", str(exc), []
-        if observed is not None and _subset(desired, observed):
+        if observed is not None and checkable and _subset(desired, observed):
             return "verified", "already present with the desired state" + note, []
 
         try:
@@ -530,6 +596,9 @@ class Executor:
                 return ("mutationUnknown",
                         "the write returned success but the object could not be read back",
                         redacted)
+            if not checkable:
+                return "unverified", "written, and read back; nothing in it could be " \
+                                     "compared against the plan" + note, redacted
             if _subset(desired, observed):
                 return "verified", "created and read back" + note, redacted
             return "failed", "the object exists but does not match the desired state", redacted
@@ -574,7 +643,13 @@ class Executor:
         return result.json() if result.ok else None
 
     def _model_resource_id(self, provider: str | None, model: str | None) -> str | None:
-        """Read a registered model's ARM id from the gateway."""
+        """Read a registered model's ARM id from the gateway.
+
+        Records why a lookup came back empty. The caller turns None into "no
+        such model, run the models phase first", which is a diagnosis -- and
+        the wrong one if the read failed for an access or transport reason,
+        sending the operator to re-run a phase that had already worked.
+        """
         if not provider or not model:
             return None
         result = self.runner([
@@ -583,7 +658,16 @@ class Executor:
             "-n", model, "--query", "id", "-o", "tsv",
         ], None)
         value = (result.stdout or "").strip()
-        return value if result.ok and value and value != "null" else None
+        if result.ok and value and value != "null":
+            return value
+        noise = f"{result.stderr} {result.stdout}".lower()
+        absent = any(
+            token in noise for token in ("notfound", "not found", "could not be found")
+        ) or (result.ok and not value)
+        self._lookup_failures[(provider, model)] = None if absent else (
+            (result.stderr or result.stdout).strip()[:200] or "the read returned no id"
+        )
+        return None
 
     def _json_file(self, payload: dict[str, Any]) -> str:
         """Write a structured argument out, resolving any credential just in time.
@@ -717,7 +801,13 @@ def _alias_set(executor: Executor, step: Step, obj: dict[str, Any]) -> tuple[lis
             # expected rather than a fault. Showing the shape is the useful thing.
             resource_id = f"<id of {backend.get('modelName')} at apply time>"
         if not resource_id:
+            why = executor._lookup_failures.get(
+                (backend.get("providerName"), backend.get("modelName"))
+            )
             raise ApplyError(
+                f"{step.item_id}: could not resolve a model named {backend.get('modelName')!r} "
+                f"under provider {backend.get('providerName')!r}: {why}"
+                if why else
                 f"{step.item_id}: no registered model named {backend.get('modelName')!r} under "
                 f"provider {backend.get('providerName')!r}; run the models phase first"
             )
@@ -907,6 +997,23 @@ def write_only(value: Any) -> bool:
     if isinstance(value, dict) and set(value) == {"$secretRef"}:
         return True
     return value == "<resolved at apply time>"
+
+
+def _comparable(desired: Any) -> bool:
+    """Whether this desired shape actually constrains anything.
+
+    `_subset` answers "is every wanted field present with that value", so a
+    shape with no wanted fields is satisfied by any object at all. Letting that
+    count as verification would pass a step that checked nothing, which is the
+    one thing a read-back exists to rule out.
+    """
+    if write_only(desired):
+        return False
+    if isinstance(desired, dict):
+        return any(_comparable(value) for value in desired.values())
+    if isinstance(desired, list):
+        return any(_comparable(value) for value in desired)
+    return desired is not None
 
 
 def _subset(desired: Any, observed: Any) -> bool:

@@ -683,3 +683,52 @@ class TestBatchMembersAreTrackedIndividually:
                     and i.get("evidence", {}).get("members")]
         for item in policies:
             assert all("#" in key for key in _member_digests(item)), item["id"]
+
+
+class TestTheSummaryShowsBadNews:
+    """A view that omits what will not happen reads as a clean bill of health."""
+
+    def test_planner_gaps_appear_in_the_rendered_plan(self, plan):
+        from apim_import.summary import render_plan
+
+        gapped = copy.deepcopy(plan)
+        gapped["plannerGaps"] = [{"id": "item:model/x/models", "gap": "names no models"}]
+        rendered = render_plan(gapped)
+        assert "Will not happen as planned (1)" in rendered
+        assert "names no models" in rendered
+
+    def test_orphaned_decisions_appear_in_the_rendered_plan(self, plan):
+        from apim_import.summary import render_plan
+
+        orphaned = copy.deepcopy(plan)
+        orphaned["orphanedDecisions"] = [{"id": "item:gone", "decision": "split", "note": "n"}]
+        rendered = render_plan(orphaned)
+        assert "Settled decisions with no item (1)" in rendered
+        assert "item:gone" in rendered
+
+    def test_a_clean_plan_says_neither(self, plan):
+        from apim_import.summary import render_plan
+
+        rendered = render_plan(plan)
+        assert "Will not happen as planned" not in rendered
+        assert "Settled decisions with no item" not in rendered
+
+
+class TestAProbeThatCouldNotRun:
+    """An unanswerable probe is not evidence the CLI lacks a command."""
+
+    def test_a_timeout_raises_rather_than_demoting_the_catalogue(self):
+        import subprocess
+        from apim_import.capability import CapabilityError, az_option_probe
+
+        def _boom(*_a, **_k):
+            raise subprocess.TimeoutExpired(cmd="az", timeout=30)
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(subprocess, "run", _boom)
+            with pytest.raises(CapabilityError, match="unknown"):
+                az_option_probe(["model", "create"])
+
+    def test_a_command_the_cli_does_not_expose_is_still_unavailable(self, capabilities):
+        probed = CapabilityMap.load().probe(probe=lambda _c: None, available=lambda: True)
+        assert all(c.support == "unavailable" for c in probed.capabilities.values())

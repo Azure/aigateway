@@ -151,6 +151,23 @@ def render_plan(document: dict[str, Any], *, fmt: str = "text") -> str:
         lines.append(f"{'  - ' if fmt == 'markdown' else '    '}... and {len(ready) - 12} more")
     lines.append("")
 
+    # Bad news belongs in the summary. Reported only inside the plan file, a gap
+    # or an orphaned decision leaves this view reading as a clean bill of health
+    # for a plan that will not carry out part of what it was asked to.
+    gaps = document.get("plannerGaps") or []
+    if gaps:
+        lines.append(f"{heading}Will not happen as planned ({len(gaps)})")
+        for entry in gaps:
+            lines.append(f"{bullet}{entry.get('id')}: {entry.get('gap')}")
+        lines.append("")
+
+    orphaned = document.get("orphanedDecisions") or []
+    if orphaned:
+        lines.append(f"{heading}Settled decisions with no item ({len(orphaned)})")
+        for entry in orphaned:
+            lines.append(f"{bullet}{entry.get('id')}: {entry.get('decision')}")
+        lines.append("")
+
     prerequisites = document.get("prerequisites") or []
     if prerequisites:
         lines.append(f"{heading}Manual prerequisites ({len(prerequisites)})")
