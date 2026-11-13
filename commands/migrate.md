@@ -3,11 +3,11 @@ description: Migrate AI workloads from an Azure API Management instance to Azure
 argument-hint: <apim-name> <resource-group> [target-gateway]
 ---
 
-# /aigateway:import
+# /aigateway:migrate
 
 Move model APIs, MCP servers, and A2A agents from `Microsoft.ApiManagement/service` to
 `Microsoft.ApiManagement/aigateways`. Follow the complete workflow in
-`skills/import-apim/SKILL.md`. Use `$ARGUMENTS` to resolve the source instance and, when
+`skills/migrate-apim/SKILL.md`. Use `$ARGUMENTS` to resolve the source instance and, when
 given, the target gateway.
 
 The work has four steps and they do not collapse into one another:

@@ -1,19 +1,19 @@
 {
   "name": "aigateway",
   "version": "3.1.0",
-  "description": "Create, configure, manage, and build applications on Azure AI Gateway. Includes read-only developer integration, gateway administration, and local feedback packaging.",
+  "description": "Create, configure, manage, and build applications on Azure AI Gateway. Includes read-only developer integration, gateway administration, migration from API Management, and local feedback packaging.",
   "commands": [
     "./commands/aigateway/discover.toml",
     "./commands/aigateway/build.toml",
     "./commands/aigateway/create.toml",
     "./commands/aigateway/manage.toml",
-    "./commands/aigateway/import.toml",
+    "./commands/aigateway/migrate.toml",
     "./commands/aigateway/feedback.toml"
   ],
   "skills": [
     "./skills/use-ai-gateway/",
     "./skills/manage-ai-gateway/",
-    "./skills/import-apim/",
+    "./skills/migrate-apim/",
     "./skills/feedback-ai-gateway/"
   ]
 }

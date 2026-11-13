@@ -3,7 +3,7 @@ description = "Migrate AI workloads from an Azure API Management instance to Azu
 prompt = """
 Move model APIs, MCP servers, and A2A agents from `Microsoft.ApiManagement/service` to
 `Microsoft.ApiManagement/aigateways`. Follow the complete workflow in
-`skills/import-apim/SKILL.md`. Use the arguments below to resolve the source instance
+`skills/migrate-apim/SKILL.md`. Use the arguments below to resolve the source instance
 and, when given, the target gateway.
 
 The work has four steps and they do not collapse into one another:

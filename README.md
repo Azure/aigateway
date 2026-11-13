@@ -57,11 +57,11 @@ personas:
 | Command `build` | `/aigateway:build` | End-to-end: discover, retrieve a credential, and integrate the models/tools into your app. |
 | Command `create` | `/aigateway:create` | Create a gateway and verify that it is ready for configuration. |
 | Command `manage` | `/aigateway:manage` | Configure and operate a gateway and its assets. |
-| Command `import` | `/aigateway:import` | Migrate AI workloads from an API Management instance: inventory it, plan the move, adapt the plan with you, then provision phase by phase. |
+| Command `migrate` | `/aigateway:migrate` | Migrate AI workloads from an API Management instance: inventory it, plan the move, adapt the plan with you, then provision phase by phase. |
 | Command `feedback` | `/aigateway:feedback` | Package one selected agent session into a local ZIP for user-controlled sharing; anonymization and review are mandatory for GitHub issues. |
 | Skill `use-ai-gateway` | `/aigateway:use-ai-gateway` | Use AI assets from Azure AI Gateway to build intelligent applications. |
 | Skill `manage-ai-gateway` | `/aigateway:manage-ai-gateway` | Full administrator workflow for creating, configuring, and operating a gateway. |
-| Skill `import-apim` | `/aigateway:import-apim` | Move model APIs, MCP servers, and A2A agents from APIM to a gateway, one settled decision at a time. |
+| Skill `migrate-apim` | `/aigateway:migrate-apim` | Move model APIs, MCP servers, and A2A agents from APIM to a gateway, one settled decision at a time. |
 
 ### Install
 
@@ -113,7 +113,7 @@ Administrators can create a gateway or manage an existing one:
 Moving an existing API Management instance onto a gateway is its own workflow:
 
 ```
-/aigateway:import my-apim-instance my-resource-group
+/aigateway:migrate my-apim-instance my-resource-group
 ```
 
 It inventories the AI assets APIM holds, proposes a plan against what the installed

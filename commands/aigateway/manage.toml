@@ -19,7 +19,7 @@ sensitive payload capture. Report unsupported CLI activities explicitly.
 
 Migrating an existing APIM workload is a different job with its own command. If
 the request is to assess, plan, or execute such a migration, hand it to the
-`import` command rather than improvising one here: do not read or convert
+`migrate` command rather than improvising one here: do not read or convert
 `Microsoft.ApiManagement/service` configuration, and do not use management
 commands as a substitute for the migration workflow.
 After any mutation, verify from the command result and, where supported, the

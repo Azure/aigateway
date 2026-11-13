@@ -23,6 +23,6 @@ sensitive payload capture. Report unsupported CLI activities explicitly.
 
 Migrating an existing APIM workload is a different job with its own command. If
 the request is to assess, plan, or execute such a migration, hand it to
-`/aigateway:import` rather than improvising one here: do not read or convert
+`/aigateway:migrate` rather than improvising one here: do not read or convert
 `Microsoft.ApiManagement/service` configuration, and do not use management
 commands as a substitute for the migration workflow.
