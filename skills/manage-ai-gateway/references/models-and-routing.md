@@ -4,7 +4,7 @@ Low-level JSON schemas, update semantics, alias pool routing, and deletion order
 
 ## Low-level provider JSON schemas
 
-Use `--kind Foundry --foundry @foundry.json` when selecting a user-assigned managed identity, API key authentication, or managing RBAC separately from `--foundry "<account-id-or-name>"`:
+Use `--kind Foundry --foundry @foundry.json` when selecting a user-assigned managed identity, API key authentication, or managing RBAC separately from `--foundry-resource-id "<account-id>"`:
 
 ```json
 {

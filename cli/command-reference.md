@@ -130,10 +130,10 @@ Use the selected backend's actual protocol/operation path, not this example
 for every model. Low-level create uses `--deployment-config`; general
 `model update` uses `--deployment` with a JSON object.
 
-The convenience `model-provider import --foundry "<account-id-or-name>"`
+The convenience `model-provider import --foundry-resource-id "<account-id>"`
 imports every deployment, enables gateway identity, and grants **Foundry User**
-on that account (`model-provider create --foundry "<account-id-or-name>"`
-registers the Foundry provider without importing deployments).
+on that account (`model-provider create --foundry-resource-id "<account-id>"`
+registers the Foundry provider without importing deployments unless `--import-models` is passed).
 `model create --foundry-resource-id "<account-id>"
 --deployment "<deployment-name>"` onboards one deployment with external
 access setup. These require additional permission and explicit intent.

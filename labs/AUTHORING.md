@@ -458,7 +458,7 @@ Keep the video optional: every step it shows must also be written in the lab.
   servers (including `mcp update --versions`). Don't pass `--sku` to `az aigateway create`: the service default,
   `Standard`, is the only SKU it accepts. `api-key create` doesn't need `--display-name`. Create models with
   `--deployment-config "{resourceId:…,modelName:…}"`, because `model create --foundry-resource-id --deployment`
-  crashes in 1.0.0b22, or import every deployment with `model-provider create --foundry-resource-id`. Call ARM with
+  crashes in 1.0.0b22, or import every deployment with `model-provider import --foundry-resource-id`. Call ARM with
   `az rest` only for what the extension can't do yet: MCP tool rules (`allowList`, `blocked`, `accessState`) and
   writing a whole policy array from a file. A tool server has no top-level `failureMode`: the service drops it, and
   only an endpoint's `required` setting persists. Say why in one sentence. Set

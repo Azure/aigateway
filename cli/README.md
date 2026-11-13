@@ -136,7 +136,7 @@ published model route.
 
 Follow the [provider, model, and alias examples](command-reference.md#models-and-aliases).
 Those low-level paths keep external role grants separate. The convenience
-`model-provider import --foundry` path instead imports every
+`model-provider import --foundry-resource-id` path instead imports every
 deployment and enables gateway identity/grants **Foundry User** on the
 account; use it only when that broader change is intended and authorized.
 
