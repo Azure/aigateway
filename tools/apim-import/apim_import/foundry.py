@@ -172,6 +172,28 @@ def _deployment(raw: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# A deployment's capabilities map is declared by Foundry, so which routes a model
+# can serve is read rather than guessed. Capabilities with no target -- assistants
+# and agents among them -- simply have no entry.
+_CAPABILITY_ROUTES = {
+    "chatcompletion": "/openai/v1/chat/completions",
+    "chatcompletions": "/openai/v1/chat/completions",
+    "responses": "/openai/v1/responses",
+    "embeddings": "/openai/v1/embeddings",
+}
+
+
+def supported_endpoints(deployment: dict[str, Any]) -> list[str]:
+    """The publishable routes this deployment declares it can serve."""
+    capabilities = deployment.get("capabilities") or {}
+    found: list[str] = []
+    for name in capabilities:
+        route = _CAPABILITY_ROUTES.get(str(name).lower())
+        if route and route not in found:
+            found.append(route)
+    return sorted(found)
+
+
 def target_model_registration(account: FoundryAccount, deployment: dict[str, Any]) -> dict[str, Any]:
     """Shape a resolved deployment the way an AI Gateway model registration wants it."""
     return {
@@ -181,6 +203,7 @@ def target_model_registration(account: FoundryAccount, deployment: dict[str, Any
             "modelVersion": deployment.get("modelVersion"),
             "resourceId": deployment.get("resourceId"),
         },
+        "supportedEndpoints": supported_endpoints(deployment),
         "providerEndpoint": f"https://{sorted(account.hosts)[0]}/" if account.hosts else None,
         "providerResourceIds": [account.resource_id],
     }

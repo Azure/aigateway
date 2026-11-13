@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Azure/aigateway/tools/apim-import/schemas/journal.schema.json",
+  "title": "APIM migration journal",
+  "description": "What a migration run actually did. The plan is intent; this is history, so a failed run resumes instead of restarting.",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "target", "startedAt", "phases", "steps"],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "kind": {"const": "apimMigrationJournal"},
+    "target": {"type": ["string", "null"]},
+    "source": {
+      "description": "The APIM instance this came from. Never written to: migration is additive.",
+      "type": ["string", "null"]
+    },
+    "startedAt": {"type": "string", "format": "date-time"},
+    "updatedAt": {"type": "string", "format": "date-time"},
+    "acknowledged": {
+      "description": "Manual prerequisites an operator has confirmed are done.",
+      "type": "array", "items": {"type": "string"}
+    },
+    "phases": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "status": {"enum": ["running", "complete", "stopped"]},
+          "startedAt": {"type": "string"},
+          "completedAt": {"type": "string"},
+          "stoppedAt": {"type": "string"},
+          "steps": {"type": "integer"}
+        }
+      }
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["itemId", "status"],
+        "properties": {
+          "itemId": {"type": "string"},
+          "capabilityId": {"type": "string"},
+          "phase": {"type": "string"},
+          "status": {
+            "description": "mutationUnknown means the write was accepted but its outcome could not be established; it is never blindly retried, only reconciled by reading the target.",
+            "enum": ["pending", "planned", "verified", "failed", "mutationUnknown"]
+          },
+          "detail": {"type": "string"},
+          "argv": {
+            "description": "The command as run, with any @file argument redacted.",
+            "type": "array", "items": {"type": "string"}
+          },
+          "at": {"type": "string"}
+        }
+      }
+    }
+  }
+}

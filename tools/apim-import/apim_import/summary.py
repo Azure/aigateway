@@ -188,3 +188,32 @@ def _asset_detail(family: str, item: dict[str, Any]) -> str:
             + f" upstream={upstream.get('url') or 'unresolved'}"
         )
     return ""
+
+
+def render_journal(journal: dict[str, Any], steps: list[Any]) -> str:
+    """Where the run is: phases done, steps verified, anything stuck."""
+    lines = ["Migration run"]
+    lines.append(f"  target: {journal.get('target')}")
+    by_status: dict[str, int] = {}
+    for entry in journal.get("steps") or []:
+        by_status[entry["status"]] = by_status.get(entry["status"], 0) + 1
+    lines.append(f"  steps: {len(steps)} planned, "
+                 + (", ".join(f"{count} {status}" for status, count in sorted(by_status.items()))
+                    or "none run"))
+    phases = journal.get("phases") or {}
+    for name in ("gateway", "identity", "providers", "models", "aliases", "toolServers",
+                 "policies", "keys"):
+        planned = [step for step in steps if getattr(step, "phase", None) == name]
+        if not planned:
+            continue
+        record = phases.get(name) or {}
+        lines.append(f"    {name:12} {record.get('status', 'pending'):10} ({len(planned)} steps)")
+    stuck = [e for e in journal.get("steps") or []
+             if e["status"] in {"failed", "mutationUnknown"}]
+    if stuck:
+        lines.append("  stuck:")
+        for entry in stuck:
+            lines.append(f"    {entry['status']}: {entry['itemId']} -- {entry.get('detail', '')[:120]}")
+    if journal.get("acknowledged"):
+        lines.append(f"  acknowledged: {', '.join(journal['acknowledged'])}")
+    return "\n".join(lines)

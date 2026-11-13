@@ -93,9 +93,21 @@ do it, and do not offer to.
 Keep a visible TODO of the phases and say which one you are in. Work one phase at a time, report
 what it produced, and stop for the operator before starting the next.
 
-Only once nothing is `needs-decision` or `stale`. Work the plan one object at a time and narrate
-each one. Dependency order is fixed: gateway → identity → provider → model → alias, with MCP and
-telemetry as parallel branches and policies last.
+Only once nothing is `needs-decision`, `stale`, or orphaned.
+
+```bash
+apim-import apply --plan plan.json --inventory inventory.json --preflight
+apim-import apply --plan plan.json --inventory inventory.json --next-phase              # rehearsal
+apim-import apply --plan plan.json --inventory inventory.json --next-phase --execute
+```
+
+Start with `--preflight` and resolve everything blocking. Then **rehearse each phase before
+executing it** — a run without `--execute` prints the exact commands, which is what you show the
+operator. Phases are `gateway → identity → providers → models → aliases → toolServers → policies →
+keys`; run one per turn, report what it produced, and stop before the next.
+
+If a step comes back `mutationUnknown`, the write was accepted but its outcome could not be
+established. Do not retry it. Re-running the phase reconciles it by reading the target.
 
 Before the first write, put the `prerequisites` list to the operator. Those are steps the tool
 cannot perform — Foundry RBAC grants, caller `AI Gateway Models User` / `Tools User` roles, Entra

@@ -13,8 +13,8 @@ answer before it can move anything:
 3. **How does an automated migration get the credentials without anyone reading them?** Every
    secret becomes a reference plus the exact command that retrieves it at apply time.
 
-Status: `collect`, `resolve-models`, `discover-tools`, `plan` and `validate` are implemented and
-verified against live APIM instances. `apply` is specified below and not yet built.
+Status: `collect`, `resolve-models`, `discover-tools`, `plan`, `apply` and `validate` are
+implemented and verified against live APIM instances.
 
 ---
 
@@ -646,36 +646,54 @@ A real Azure OpenAI import publishes far more. On `a2a-intent-fdry-9a73`, 50 ope
 no target at all. So the first question about a model API is not how to map it but **how much of it
 can move** — and `split` keeps the rest on APIM rather than dropping it.
 
-## Planned commands
+## Applying the plan
 
-### `apply`
-
-Executes the plan one object at a time, driven by an agent that narrates each step:
-
+```bash
+apim-import apply --plan plan.json --inventory inventory.json --preflight
+apim-import apply --plan plan.json --inventory inventory.json --next-phase            # rehearsal
+apim-import apply --plan plan.json --inventory inventory.json --next-phase --execute  # writes
+apim-import apply --plan plan.json --inventory inventory.json --status
 ```
-apim-import apply --plan plan.json --next
-```
 
-Per step: re-check preconditions, resolve any `$secretRef` from the inventory's recipe, invoke `az`,
-read back and assert the desired state is a subset of observed, append to `journal.json`. Secrets
-reach `az` only as `@file` with mode `0600`, never as scalar flags, because scalar flags expose
-values in process arguments.
+**Migration is additive. Nothing is ever removed from APIM.** Every operation provisions into the
+gateway, so a half-finished run leaves a partially built gateway and a source still serving exactly
+as before. Retiring anything from APIM is the operator's decision after validating the new gateway;
+this tool does not do it and will not offer to.
 
-**Migration is additive. Nothing is ever removed from APIM.** `apply` provisions into the gateway and
-never writes to the source, so a half-finished run leaves a partially built gateway and an APIM
-instance that is still serving exactly as before. Retiring anything from APIM is a separate decision
-the operator makes after validating the new gateway — this tool does not do it and will not offer to.
+**A run is a rehearsal unless you pass `--execute`.** The rehearsal prints the exact command each
+step would run, with `@file` arguments redacted, so the whole sequence can be reviewed before
+anything is written.
 
-Ordering is a DAG: gateway → identity → provider → model → alias, with MCP and telemetry as parallel
-branches and policies last. Re-entrancy is read-before-write, since only `model-alias set` is a
-documented upsert; four operations replace whole collections (alias backend pool, `--policies @file`,
-`mcp --endpoints`, gateway tags) and need read-merge-write preserving stable policy ids —
-`costLimit.id` especially, since changing it starts a new spend counter. There is no transaction
-across steps, so a failed step stops its branch and reports for reconciliation rather than retrying
-blind; the fallback is always "finish or fix the new gateway", never "restore the old one".
+### Preflight
 
-A name-collision preflight against `Microsoft.ApiManagement/service` is mandatory: several commands
-dispatch by name without `--ids`, and in a migration source and target plausibly share a name.
+There is no transaction across steps, so the cost of finding a problem halfway is a half-built
+gateway. `--preflight` refuses while any of these stands: the plan names no target; an item still
+needs a decision; a settled decision has been orphaned; a referenced credential is missing or not
+mechanically retrievable; or a `Microsoft.ApiManagement/service` shares the target's name, which
+matters because several CLI commands dispatch by name without `--ids`. Manual prerequisites are
+raised as notes and acknowledged with `--acknowledge <id>`.
+
+### Phases
+
+`gateway → identity → providers → models → aliases → toolServers → policies → keys`, one phase per
+invocation so an operator always knows where the run is. A failed step stops its phase rather than
+building on an unestablished state.
+
+Three properties make a partial run recoverable without a transaction:
+
+| Property | Why |
+| --- | --- |
+| **Read before write** | A step reads its target first and skips the write when the desired state is already there — which is both how a re-run resumes and how an ambiguous failure recovers |
+| **The journal is the history** | `journal.json` records every attempt beside the plan, so the plan stays intent and a failed run resumes rather than restarts |
+| **Ambiguity is named** | A write accepted but not readable back is `mutationUnknown`, never blindly retried — the next run reconciles it by reading the target |
+
+An item can produce several objects — an API with two models publishes two aliases — and every one
+is executed; running only the first would quietly under-provision. A model's ARM id does not exist
+until the models phase has created it, so aliases bind it at run time rather than guessing it at
+planning time. `model-alias set` is used because it is the one documented create-or-update.
+
+Secrets reach `az` only as `@file` with mode `0600`, never as scalar flags, because scalar flags
+expose values in process arguments. The recorded `argv` redacts those paths.
 
 ## Development
 

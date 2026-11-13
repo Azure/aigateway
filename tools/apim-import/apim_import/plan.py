@@ -69,6 +69,7 @@ class PlanBuilder:
 
     def build(self) -> dict[str, Any]:
         assets = self.inventory.get("assets") or {}
+        self._gateway()
         for provider in assets.get("modelProviders") or []:
             self._provider(provider)
         for model in assets.get("models") or []:
@@ -186,6 +187,33 @@ class PlanBuilder:
             )
         self.items.append(item)
         return item
+
+    def _gateway(self) -> None:
+        """The target gateway itself, created by apply when it is not there yet.
+
+        Region follows the source unless the operator says otherwise; a gateway in
+        a different region to its backends pays for every call.
+        """
+        if not self.target:
+            return
+        service = self.inventory.get("service") or {}
+        self._add(
+            item_id=ids.item("gateway", "create"),
+            source={"assetId": None, "assetKind": "gateway", "aspect": "create"},
+            kind=None,
+            verdict="native",
+            capability_id="gateway.create",
+            rationale=(
+                f"Creates the target gateway in {service.get('location')}, following the source's "
+                "region so model and tool traffic does not cross one."
+            ),
+            evidence={"targetResourceId": self.target, "sourceLocation": service.get("location")},
+            target={
+                "capability": "gateway.create",
+                "objects": [{"name": self.target.rstrip("/").rsplit("/", 1)[-1],
+                             "location": service.get("location")}],
+            },
+        )
 
     def _provider(self, provider: dict[str, Any]) -> None:
         kind = provider.get("targetProviderKind") or "Custom"
@@ -334,6 +362,7 @@ class PlanBuilder:
         name = resolved.get("deploymentName") or resolved.get("modelName") or "model"
         target = resolved.get("target") or {}
         endpoints = target.get("supportedEndpoints") or []
+        provider_name = _provider_name(model)
         self._add(
             item_id=ids.item(asset_id, f"model/{name}"),
             source={"assetId": asset_id, "assetKind": "modelApi", "aspect": f"model:{name}"},
@@ -346,6 +375,8 @@ class PlanBuilder:
                 "capability": "model.create",
                 "objects": [{
                     "name": _slug(name),
+                    "providerName": provider_name,
+                    "apiFormat": _api_format(endpoints),
                     "deploymentConfig": target.get("deployment") or {},
                     "supportedEndpoints": endpoints,
                 }],
@@ -392,8 +423,15 @@ class PlanBuilder:
                 "objects": [
                     {
                         "routingName": member["proposedAliasName"],
-                        "backendModels": [{"modelName": _slug(str(member["proposedAliasName"])),
-                                            "priority": 0, "weight": 100}],
+                        "backendModels": [{
+                            "modelName": _slug(str(member["proposedAliasName"])),
+                            # Resolved against the gateway during the aliases
+                            # phase: a model's ARM id is a runtime fact.
+                            "providerName": _provider_name(model),
+                            "resourceId": None,
+                            "priority": 0,
+                            "weight": 100,
+                        }],
                         "supportedEndpoints": member["supportedEndpoints"],
                     }
                     for member in members
@@ -755,6 +793,36 @@ class PlanBuilder:
 
 
 # ---------------------------------------------------------------- helpers
+
+
+def _provider_name(model: dict[str, Any]) -> str | None:
+    """The CLI name of the provider a model registers under.
+
+    Derived from the backend the API routes to, which is the same slug the
+    provider item registers itself under.
+    """
+    for target in (model.get("routing") or {}).get("targets") or []:
+        if target.get("backendId"):
+            return _slug(target["backendId"])
+    return None
+
+
+def _api_format(endpoints: list[str]) -> str | None:
+    """The target's apiFormat for a set of published routes.
+
+    The enum is AnthropicMessages, OpenAIChatCompletions and ResponsesApi only,
+    while a live gateway serves `/openai/v1/embeddings` too. So an embeddings-only
+    model takes the OpenAI format with its route carried in supportedEndpoints;
+    the routes are declared, the format is the closest the enum allows.
+    """
+    joined = " ".join(endpoints or [])
+    if "/v1/messages" in joined:
+        return "AnthropicMessages"
+    if "chat/completions" in joined or "embeddings" in joined:
+        return "OpenAIChatCompletions"
+    if "/responses" in joined:
+        return "ResponsesApi"
+    return None
 
 
 def _opt(value: str, consequence: str) -> dict[str, str]:

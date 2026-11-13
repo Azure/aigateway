@@ -70,11 +70,19 @@ class TestAssets:
         )
         assert provider["models"]["status"] == "resolved"
         assert provider["models"]["discoverySource"] == "armDeployments"
-        [model] = provider["models"]["resolved"]
+        model = next(m for m in provider["models"]["resolved"] if m["deploymentName"] == "gpt-5")
         assert (model["modelName"], model["modelVersion"]) == ("gpt-5.2", "2025-12-11")
         # Pre-shaped for an AI Gateway model registration.
         assert model["target"]["deployment"]["resourceId"].endswith("/deployments/gpt-5")
         assert model["target"]["providerKind"] == "Foundry"
+        # Routes come from the deployment's declared capabilities, not a guess.
+        assert model["target"]["supportedEndpoints"] == [
+            "/openai/v1/chat/completions", "/openai/v1/responses"
+        ]
+        embedding = next(
+            m for m in provider["models"]["resolved"] if m["deploymentName"] == "text-embedding-3-large"
+        )
+        assert embedding["target"]["supportedEndpoints"] == ["/openai/v1/embeddings"]
 
     def test_detects_managed_identity_as_the_backend_auth_mode(self, inventory):
         model = next(m for m in inventory["assets"]["models"] if m["source"]["name"] == "aoai-api")

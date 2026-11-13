@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from . import summary as summary_mod
+from . import apply as apply_mod
 from .arm import ArmClient, ArmError
 from .collect import Collector, CollectOptions, DEFAULT_APIM_API_VERSION, GENERATOR_VERSION
 
@@ -21,10 +22,6 @@ _SERVICE_ID = re.compile(
 )
 
 NOT_IMPLEMENTED = {
-    "apply": (
-        "Executes one plan item at a time against the target gateway, resolving secrets "
-        "just in time and journalling each attempt so a failed run resumes."
-    ),
 }
 
 
@@ -156,6 +153,26 @@ def build_parser() -> argparse.ArgumentParser:
     )
     tools_cmd.add_argument("--subscription", help="Subscription for the control-plane reads")
 
+    apply_cmd = subparsers.add_parser(
+        "apply", help="Provision a settled plan into the target gateway, one phase at a time"
+    )
+    apply_cmd.add_argument("--plan", required=True, help="Path to plan.json")
+    apply_cmd.add_argument("--inventory", required=True, help="Path to inventory.json")
+    apply_cmd.add_argument("--journal", default="journal.json", help="Execution state (default: journal.json)")
+    apply_cmd.add_argument("--preflight", action="store_true", help="Run the checks and stop")
+    apply_cmd.add_argument("--status", action="store_true", help="Report where the run is and stop")
+    apply_cmd.add_argument("--phase", help=f"Run one phase ({', '.join(apply_mod.PHASES)})")
+    apply_cmd.add_argument("--next-phase", action="store_true", help="Run the next incomplete phase")
+    apply_cmd.add_argument(
+        "--execute", action="store_true",
+        help="Actually write. Without it the run is a rehearsal that prints the commands",
+    )
+    apply_cmd.add_argument(
+        "--acknowledge", action="append", default=[], metavar="PREREQ_ID",
+        help="Record that a manual prerequisite is done; repeatable",
+    )
+    apply_cmd.add_argument("--subscription", help="Subscription for credential reads")
+
     validate = subparsers.add_parser("validate", help="Check an artifact against its JSON Schema")
     validate.add_argument("file", help="Path to inventory.json")
 
@@ -189,6 +206,8 @@ def main(argv: list[str] | None = None) -> int:
         return _resolve_models(args)
     if args.command == "discover-tools":
         return _discover_tools(args)
+    if args.command == "apply":
+        return _apply(args)
     if args.command == "validate":
         return _validate(args)
     if args.command == "summary":
@@ -401,6 +420,105 @@ def _discover_tools(args: argparse.Namespace) -> int:
     return 0 if all(r.status in {"discovered", "needsAuthorization"} for r in results) else 1
 
 
+def _apply(args: argparse.Namespace) -> int:
+    from .apply import ApplyError, Executor, new_journal, preflight, steps_for
+
+    try:
+        plan = json.loads(Path(args.plan).read_text(encoding="utf-8"))
+        inventory = json.loads(Path(args.inventory).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    if plan.get("kind") != "apimMigrationPlan":
+        print("error: --plan is not an apimMigrationPlan document", file=sys.stderr)
+        return 2
+
+    journal_path = Path(args.journal)
+    journal = (
+        json.loads(journal_path.read_text(encoding="utf-8"))
+        if journal_path.exists() else new_journal(plan)
+    )
+    journal["_path"] = str(journal_path)
+    for entry in args.acknowledge:
+        if entry not in journal["acknowledged"]:
+            journal["acknowledged"].append(entry)
+
+    findings = preflight(plan, inventory)
+    outstanding = [
+        f for f in findings
+        if f["blocking"] or f["code"] not in {"prerequisites"}
+        or not all(p["id"] in journal["acknowledged"] for p in plan.get("prerequisites") or [])
+    ]
+    if args.preflight or outstanding:
+        print("Preflight:", file=sys.stderr)
+        for finding in findings or [{"code": "ok", "blocking": False,
+                                     "message": "nothing outstanding", "remedy": ""}]:
+            mark = "BLOCK" if finding["blocking"] else " note"
+            print(f"  [{mark}] {finding['code']}: {finding['message']}", file=sys.stderr)
+            if finding.get("remedy"):
+                print(f"          {finding['remedy']}", file=sys.stderr)
+    blocking = [f for f in findings if f["blocking"]]
+    if args.preflight:
+        _write_journal(journal, journal_path)
+        return 1 if blocking else 0
+    if blocking:
+        print("\nRefusing to apply while a blocking finding stands.", file=sys.stderr)
+        return 1
+
+    try:
+        executor = Executor(
+            plan, inventory, journal,
+            arm_client=ArmClient(subscription=args.subscription) if args.execute else None,
+            execute=args.execute,
+        )
+    except ApplyError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    if args.status:
+        print(summary_mod.render_journal(journal, steps_for(plan)), file=sys.stderr)
+        return 0
+
+    phase = args.phase or (executor.next_phase() if args.next_phase else None)
+    if not phase:
+        print(summary_mod.render_journal(journal, steps_for(plan)), file=sys.stderr)
+        if not args.phase and not args.next_phase:
+            print("\nPass --next-phase to run the next one, or --phase <name>.", file=sys.stderr)
+        return 0
+
+    mode = "EXECUTING" if args.execute else "rehearsal (pass --execute to write)"
+    print(f"Phase {phase} -- {mode}", file=sys.stderr)
+    try:
+        steps = executor.run_phase(phase)
+    except ApplyError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        _write_journal(journal, journal_path)
+        return 1
+    for step in steps:
+        print(f"  {step.status:16} {step.item_id}", file=sys.stderr)
+        if step.detail:
+            print(f"                   {step.detail}", file=sys.stderr)
+        if not args.execute and step.argv:
+            print(f"                   $ {' '.join(step.argv)}", file=sys.stderr)
+    _write_journal(journal, journal_path)
+
+    stuck = [s for s in steps if s.status in {"failed", "mutationUnknown"}]
+    remaining = executor.next_phase()
+    if stuck:
+        print(f"\nStopped in {phase}. The source APIM is untouched; the gateway is partially built.",
+              file=sys.stderr)
+        return 1
+    print(f"\nPhase {phase} complete."
+          + (f" Next: {remaining}." if remaining else " No phases remain."), file=sys.stderr)
+    return 0
+
+
+def _write_journal(journal: dict, path: Path) -> None:
+    payload = {k: v for k, v in journal.items() if not k.startswith("_")}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
 def _validate(args: argparse.Namespace) -> int:
     path = Path(args.file)
     try:
@@ -466,6 +584,7 @@ def _active_subscription() -> str | None:
 _SCHEMA_FOR_KIND = {
     "apimAiInventory": "inventory.schema.json",
     "apimMigrationPlan": "plan.schema.json",
+    "apimMigrationJournal": "journal.schema.json",
 }
 
 

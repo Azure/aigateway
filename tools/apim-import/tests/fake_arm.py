@@ -284,11 +284,20 @@ ROUTES: dict[str, Any] = {
                         "customSubDomainName": "aif", "disableLocalAuth": False,
                         "publicNetworkAccess": "Enabled"}}
     ],
+    # An account normally carries several deployments, and which routes each can
+    # serve is declared in its capabilities map rather than inferred.
     f"{ACCOUNT}/deployments": [
         {"id": f"{ACCOUNT}/deployments/gpt-5", "name": "gpt-5",
          "properties": {"model": {"format": "OpenAI", "name": "gpt-5.2", "version": "2025-12-11"},
-                        "provisioningState": "Succeeded", "raiPolicyName": "DefaultLight"},
-         "sku": {"name": "GlobalStandard", "capacity": 15000}}
+                        "provisioningState": "Succeeded", "raiPolicyName": "DefaultLight",
+                        "capabilities": {"chatCompletion": "true", "responses": "true",
+                                         "assistants": "true"}},
+         "sku": {"name": "GlobalStandard", "capacity": 15000}},
+        {"id": f"{ACCOUNT}/deployments/text-embedding-3-large", "name": "text-embedding-3-large",
+         "properties": {"model": {"format": "OpenAI", "name": "text-embedding-3-large", "version": "1"},
+                        "provisioningState": "Succeeded",
+                        "capabilities": {"embeddings": "true"}},
+         "sku": {"name": "Standard", "capacity": 120}},
     ],
 }
 
