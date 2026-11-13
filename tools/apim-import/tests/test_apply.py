@@ -276,3 +276,46 @@ class TestRehearsalLeavesNoState:
         executor = Executor(settled, inventory, journal, runner=runner, execute=True)
         [step] = executor.run_phase("gateway")
         assert step.status == "verified"
+
+
+class TestEveryWriteCanBeChecked:
+    """A capability the tool can write but not read back blocks a phase forever,
+    because completeness is derived from what has been confirmed."""
+
+    def test_every_builder_has_a_reader(self):
+        from apim_import.apply import _BUILDERS, _READERS
+
+        missing = sorted(set(_BUILDERS) - set(_READERS))
+        assert missing == [], f"no read-back for: {', '.join(missing)}"
+
+    def test_the_identity_read_shape_matches_what_is_planned(self):
+        from apim_import.apply import _DESIRED, _subset
+
+        desired = _DESIRED["identity.assign"]({"systemAssigned": True, "userAssigned": None})
+        observed = {"principalId": "p", "tenantId": "t", "type": "SystemAssigned"}
+        # The planned object and the read are different shapes; comparing them
+        # directly never matched, so the step could never be verified.
+        assert _subset(desired, observed)
+
+    def test_reusing_a_user_assigned_identity_expects_that_type(self):
+        from apim_import.apply import _DESIRED, _subset
+
+        desired = _DESIRED["identity.assign"]({"decision": "reuse:/subscriptions/s/uami/one"})
+        assert _subset(desired, {"type": "UserAssigned"})
+        assert not _subset(desired, {"type": "SystemAssigned"})
+
+    def test_an_unreadable_capability_does_not_block_the_run(self, inventory, settled):
+        import apim_import.apply as mod
+
+        reader = mod._READERS.pop("identity.assign")
+        try:
+            journal = new_journal(settled)
+            Executor(settled, inventory, journal, runner=_Runner()).run_phase("identity")
+            executor = Executor(settled, inventory, journal, runner=_Runner(), execute=True)
+            [step] = executor.run_phase("identity")
+            assert step.status == "unverified"
+            assert "cannot read it back" in step.detail
+            # It still counts as done, or the run would never move past it.
+            assert executor.phase_complete("identity")
+        finally:
+            mod._READERS["identity.assign"] = reader

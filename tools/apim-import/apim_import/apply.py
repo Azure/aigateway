@@ -315,23 +315,30 @@ class Executor:
 
     # -- phases ---------------------------------------------------------
 
-    def verified(self) -> set[str]:
-        return {entry["itemId"] for entry in self.journal.get("steps") or []
-                if entry.get("status") == "verified"}
-
     def phase_complete(self, phase: str) -> bool:
         """Derived, never stored.
 
-        A phase is complete when every step in it has been verified. Trusting a
-        stored flag let a rehearsal -- which verifies nothing -- mark a phase
-        done, so the execute pass skipped it and built on a gateway that was
-        never created.
+        A phase is complete when every step in it is done. Trusting a stored flag
+        let a rehearsal -- which verifies nothing -- mark a phase done, so the
+        execute pass skipped it and built on a gateway that was never created.
+
+        "Done" includes a step this tool wrote but cannot read back. Requiring
+        verification it is incapable of performing left the run stuck on a step
+        that had in fact succeeded.
         """
         steps = [step for step in steps_for(self.plan) if step.phase == phase]
         if not steps:
             return True
         done = self.verified()
         return all(step.item_id in done for step in steps)
+
+    def verified(self) -> set[str]:
+        return {entry["itemId"] for entry in self.journal.get("steps") or []
+                if entry.get("status") in {"verified", "unverified"}}
+
+    def unverified(self) -> set[str]:
+        return {entry["itemId"] for entry in self.journal.get("steps") or []
+                if entry.get("status") == "unverified"}
 
     def rehearsed(self, phase: str) -> bool:
         return phase in (self.journal.get("rehearsals") or {})
@@ -396,7 +403,7 @@ class Executor:
             if status in {"failed", "mutationUnknown"}:
                 break
 
-        for bad in ("mutationUnknown", "failed"):
+        for bad in ("mutationUnknown", "failed", "unverified"):
             if bad in outcomes:
                 step.status = bad
                 break
@@ -418,8 +425,9 @@ class Executor:
         try:
             # Read before write: an object already in the desired state is not
             # written again, which is what makes a re-run safe.
+            desired = _DESIRED.get(step.capability_id, lambda o: o)(obj)
             observed = self._read(step, obj)
-            if observed is not None and _subset(obj, observed):
+            if observed is not None and _subset(desired, observed):
                 return "verified", "already present with the desired state", redacted
             if not self.execute:
                 return "planned", "dry run; not executed", redacted
@@ -430,10 +438,16 @@ class Executor:
 
             observed = self._read(step, obj)
             if observed is None:
+                if step.capability_id not in _READERS:
+                    # The write succeeded and this tool has no way to read it
+                    # back. That is not the same as not knowing whether it
+                    # happened, and conflating them blocked the phase forever.
+                    return ("unverified",
+                            "written, but this tool cannot read it back to confirm it", redacted)
                 return ("mutationUnknown",
                         "the write returned success but the object could not be read back",
                         redacted)
-            if _subset(obj, observed):
+            if _subset(desired, observed):
                 return "verified", "created and read back", redacted
             return "failed", "the object exists but does not match the desired state", redacted
         finally:
@@ -560,10 +574,7 @@ def _identity_assign(executor: Executor, step: Step, obj: dict[str, Any]) -> tup
         "az", "aigateway", "identity", "assign", *executor.target.selectors,
         "-n", executor.target.name,
     ]
-    user_assigned = obj.get("userAssigned") or []
-    decision = str(obj.get("decision") or "")
-    if decision.startswith("reuse:"):
-        user_assigned = [decision.split("reuse:", 1)[1]]
+    user_assigned = _identity_choice(obj)
     if user_assigned:
         argv += ["--user-assigned", *user_assigned]
     else:
@@ -641,6 +652,24 @@ def _mcp_create(executor: Executor, step: Step, obj: dict[str, Any]) -> tuple[li
     ], [path])
 
 
+def _identity_choice(obj: dict[str, Any]) -> list[str]:
+    """Which identity this step assigns, honouring a settled reuse decision."""
+    decision = str(obj.get("decision") or "")
+    if decision.startswith("reuse:"):
+        return [decision.split("reuse:", 1)[1]]
+    return list(obj.get("userAssigned") or [])
+
+
+def _identity_desired(obj: dict[str, Any]) -> dict[str, Any]:
+    """What `identity show` should report once this step has run.
+
+    The planned object says what to assign; verification needs what the read
+    returns. Comparing the two directly never matched, so the step could not be
+    verified however many times it succeeded.
+    """
+    return {"type": "UserAssigned" if _identity_choice(obj) else "SystemAssigned"}
+
+
 def _alias_name(spec: dict[str, Any]) -> str:
     return spec.get("name") or str(spec["routingName"]).replace("/", "-").replace(".", "-")
 
@@ -652,6 +681,12 @@ _BUILDERS: dict[str, Callable[[Executor, Step, dict[str, Any]], tuple[list[str],
     "model.create": _model_create,
     "alias.create": _alias_set,
     "mcp.create": _mcp_create,
+}
+
+# Where the object a step plans and the object its read returns are different
+# shapes, this translates one into the other for verification.
+_DESIRED: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
+    "identity.assign": _identity_desired,
 }
 
 # Options the catalogue marks required, checked before a command is run.
@@ -676,6 +711,8 @@ _READERS: dict[str, Callable[[Executor, Step, dict[str, Any]], list[str]]] = {
     "alias.create": lambda e, s, o: ["az", "aigateway", "model-alias", "show", *e.target.selectors,
                                    "--gateway-name", e.target.name, "-n", _alias_name(o),
                                    "-o", "json"],
+    "identity.assign": lambda e, s, o: ["az", "aigateway", "identity", "show", *e.target.selectors,
+                                        "-n", e.target.name, "-o", "json"],
     "mcp.create": lambda e, s, o: ["az", "aigateway", "mcp", "show", *e.target.selectors,
                                  "--gateway-name", e.target.name, "-n", o["name"],
                                  "-o", "json"],

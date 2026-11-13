@@ -47,8 +47,8 @@
           "capabilityId": {"type": "string"},
           "phase": {"type": "string"},
           "status": {
-            "description": "mutationUnknown means the write was accepted but its outcome could not be established; it is never blindly retried, only reconciled by reading the target.",
-            "enum": ["pending", "planned", "verified", "failed", "mutationUnknown"]
+            "description": "unverified means the write succeeded and this tool has no way to read it back -- different from mutationUnknown, where the write was accepted but its outcome could not be established. Only the latter is never blindly retried.",
+            "enum": ["pending", "planned", "verified", "unverified", "failed", "mutationUnknown"]
           },
           "detail": {"type": "string"},
           "argv": {

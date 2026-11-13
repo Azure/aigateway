@@ -695,6 +695,14 @@ Three properties make a partial run recoverable without a transaction:
 | **The journal is the history** | `journal.json` records every attempt beside the plan, so the plan stays intent and a failed run resumes rather than restarts |
 | **Ambiguity is named** | A write accepted but not readable back is `mutationUnknown`, never blindly retried — the next run reconciles it by reading the target |
 
+`mutationUnknown` and `unverified` are different things and were once conflated. The first means the
+write was accepted but its result could not be established; the second means the write succeeded and
+this tool has no way to read it back at all. Only the first is an ambiguity to reconcile. The second
+counts as done — requiring verification the tool is incapable of performing left a run stuck on a
+step that had in fact succeeded — and is reported separately as "written but not confirmed by this
+tool". Every capability that can be written now has a read-back, enforced by a test, so the second
+case should not arise.
+
 An item can produce several objects — an API with two models publishes two aliases — and every one
 is executed; running only the first would quietly under-provision. A model's ARM id does not exist
 until the models phase has created it, so aliases bind it at run time rather than guessing it at

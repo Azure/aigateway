@@ -219,6 +219,11 @@ def render_journal(journal: dict[str, Any], steps: list[Any]) -> str:
         state = "complete" if done else ("stopped" if stuck else "pending")
         rehearsed = " (rehearsed)" if name in (journal.get("rehearsals") or {}) else ""
         lines.append(f"    {name:12} {state:10} ({len(planned)} steps){rehearsed}")
+    unverified = [e for e in journal.get("steps") or [] if e["status"] == "unverified"]
+    if unverified:
+        lines.append("  written but not confirmed by this tool:")
+        for entry in unverified:
+            lines.append(f"    {entry['itemId']} -- {entry.get('detail', '')[:100]}")
     stuck = [e for e in journal.get("steps") or []
              if e["status"] in {"failed", "mutationUnknown"}]
     if stuck:
