@@ -479,6 +479,15 @@ def _apply(args: argparse.Namespace) -> int:
         print("\nPhases to run:", file=sys.stderr)
         for line in summary_mod.render_phases(journal, steps_for(plan), plan=plan):
             print(line, file=sys.stderr)
+        # Said once, here, because preflight is the one command that runs before
+        # everything else. A run that spans days of turns is held together by
+        # somebody's list, and a list nobody made is the run that loses a phase.
+        print(
+            "\nPut these in your task list now, one entry per phase, and tick them from what a "
+            "run\nprints rather than from memory -- this checklist is rebuilt from the journal "
+            "every\ntime, and a list kept alongside it drifts.",
+            file=sys.stderr,
+        )
         _write_journal(journal, journal_path)
         return 1 if blocking else 0
     if blocking:

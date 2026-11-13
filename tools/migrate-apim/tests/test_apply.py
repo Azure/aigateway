@@ -1008,3 +1008,48 @@ class TestTheClosingPortalCheck:
         assert f"https://ai.gateway.azure.com{TARGET}/overview" in err, err
         # The order matters: the link last is what the reader leaves with.
         assert err.index("were not applied") < err.index("ai.gateway.azure.com"), err
+
+
+class TestPreflightAsksForTheList:
+    """The checklist is only useful if somebody keeps one.
+
+    A migration runs one phase per invocation across many turns, so the run is
+    held together by a list outside the tool. An agent driving this read the
+    instruction in the skill and still did not make one, so the tool says it at
+    the moment it applies -- preflight, before any phase has run.
+    """
+
+    def _preflight(self, plan, inventory, tmp_path, monkeypatch):
+        from migrate_apim import apply as apply_mod, cli
+
+        monkeypatch.setattr(apply_mod, "_run", lambda argv, payload=None: CommandResult(1, ""))
+        plan_path, inventory_path = tmp_path / "plan.json", tmp_path / "inventory.json"
+        plan_path.write_text(json.dumps(plan))
+        inventory_path.write_text(json.dumps(inventory))
+        return cli.main(["apply", "--plan", str(plan_path), "--inventory", str(inventory_path),
+                         "--journal", str(tmp_path / "journal.json"), "--preflight"])
+
+    def test_preflight_asks_for_one_task_per_phase(
+        self, settled, inventory, tmp_path, monkeypatch, capsys
+    ):
+        self._preflight(settled, inventory, tmp_path, monkeypatch)
+        err = capsys.readouterr().err
+        assert "task list" in err, err
+        assert "one entry per phase" in err, err
+        # Right under the list it is asking to be copied, not adrift in the
+        # preflight findings above it.
+        assert err.index("Phases to run:") < err.index("task list"), err
+
+    def test_a_phase_run_does_not_repeat_the_ask(
+        self, settled, inventory, tmp_path, monkeypatch, capsys
+    ):
+        """Said once. Repeated every phase it becomes noise to scroll past."""
+        from migrate_apim import apply as apply_mod, cli
+
+        monkeypatch.setattr(apply_mod, "_run", lambda argv, payload=None: CommandResult(1, ""))
+        plan_path, inventory_path = tmp_path / "plan.json", tmp_path / "inventory.json"
+        plan_path.write_text(json.dumps(settled))
+        inventory_path.write_text(json.dumps(inventory))
+        cli.main(["apply", "--plan", str(plan_path), "--inventory", str(inventory_path),
+                  "--journal", str(tmp_path / "journal.json"), "--next-phase"])
+        assert "task list" not in capsys.readouterr().err

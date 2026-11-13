@@ -39,14 +39,14 @@ a loss. An item whose `evidence.targetSupports` is true means the gateway can do
 the installed CLI cannot author it -- put that distinction to the operator rather than
 reporting a capability the target lacks.
 
-Run `apply --preflight` first and resolve everything blocking. Rehearse each phase before
+Run `apply --preflight` first and resolve everything blocking. It prints the eight phases
+and asks you to track them: make one TODO entry per phase before the first write, and tick
+them from what each run prints rather than from memory. Rehearse each phase before
 executing it, show the operator the actual commands, and get explicit agreement before
-`--execute` creates real Azure resources. Work one phase per turn, mirror the phase
-checklist that every `apply` run prints into your host's TODO list, and report what each
-phase produced before starting the next. Put the
-manual prerequisites -- Foundry RBAC, caller role assignments, Entra consent, private
-endpoint approvals -- to the operator before the first write, and never acknowledge one
-on their behalf.
+`--execute` creates real Azure resources. Work one phase per turn and report what each
+produced before starting the next. Put the manual prerequisites -- Foundry RBAC, caller
+role assignments, Entra consent, private endpoint approvals -- to the operator before the
+first write, and never acknowledge one on their behalf.
 
 Never pass a secret as a scalar CLI flag, write one to a file the tool did not create, or
 print one. The inventory carries retrieval recipes, not values.

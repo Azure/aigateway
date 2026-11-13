@@ -731,6 +731,12 @@ Phase models -- EXECUTING
   keys         by hand    (0 steps, 1 by hand)
 ```
 
+**`--preflight` also asks for a list to be kept**, once, under the phases it just printed: one entry
+per phase, ticked from what a run prints. A migration runs one phase per invocation over as many
+turns, so the thing holding it together is a list outside the tool — and an agent told to keep one
+in a skill file it read ten steps earlier does not reliably make it. Asked for where the phases are
+printed, at the only command that always precedes the writes, it does.
+
 `complete` matches what `--next-phase` will do rather than what was verified, so a phase it refuses
 to hand back is never listed as pending; the written-but-unconfirmed part is marked instead of
 hidden. A phase holding only work this tool has no builder for is listed as `by hand`: it has no

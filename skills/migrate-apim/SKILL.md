@@ -136,10 +136,15 @@ APIM. A failed run leaves a partially built gateway and a source still serving a
 anything from APIM is the operator's decision after they have validated the new gateway — do not
 do it, and do not offer to.
 
-Every `apply` run prints the phase checklist — all eight, with `>` on the one being run. Mirror it
-into your host's TODO list, one entry per phase, and tick entries from what the tool printed rather
-than from memory: the checklist is derived from the journal, your list is not. Work one phase at a
-time, report what it produced, and stop for the operator before starting the next.
+**Make the TODO list before the first write.** `apply --preflight` prints the eight phases and
+asks for it: create one entry per phase, in that order, with whatever task tool your host gives
+you — `TodoWrite` in Claude Code. If you have none, say so once and print the checklist in every
+reply instead. A migration runs one phase per turn over many turns; the list is what holds it
+together, and the phase nobody is tracking is the phase that goes missing.
+
+Every later `apply` run reprints the checklist with `>` on the phase being run. Tick your entries
+from what the tool printed, never from memory: its list is rebuilt from the journal, yours is not.
+Work one phase at a time, report what it produced, and stop for the operator before the next.
 
 A phase listed as `by hand` has work this tool has no builder for and no steps to run, so
 `--next-phase` passes over it. It is not done — carry it into the final report as configuration the
