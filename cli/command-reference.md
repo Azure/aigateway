@@ -1,6 +1,6 @@
 # Azure AI Gateway CLI command reference
 
-This is the human-readable reference for the published **1.0.0b26** extension.
+This is the human-readable reference for the published **1.0.0b30** extension.
 Start with [installation and quickstart](README.md). Use this page to find a
 command, understand its purpose, and copy a configuration example. Use the
 installed command's `--help` for all arguments and allowed values; help
@@ -19,12 +19,12 @@ table lists the public commands in the reviewed wheel.
 | Group | Commands | Purpose |
 | --- | --- | --- |
 | Top level | `create`, `show`, `list`, `update`, `delete`, `wait`, `version` | Gateway lifecycle, tags/tier, and installed version |
-| `model-provider` | `create`, `show`, `list`, `update`, `delete`, `sync` | Backend connection and model registration reconciliation |
+| `model-provider` | `create`, `import`, `show`, `list`, `update`, `delete`, `sync` | Backend connection, Foundry bulk onboarding, and model registration reconciliation |
 | `model` | `create`, `show` (`get`), `list`, `update`, `delete` | Register existing backend models and their protocol metadata |
 | `model-alias` | `create`, `set`, `show`, `list`, `update`, `delete` | Publish callable names and priority/weight target pools |
 | `model policy` | `list`, `set`, `set-token-limit`, `set-cost-limit`, `set-content-safety`, `remove` | Model-local policy configuration; content safety is legacy-only |
 | `policy` | `list`, `set`, `set-token-limit`, `set-cost-limit`, `set-rate-limit`, `set-ip-filter`, `set-content-safety`, `remove` | Default-workspace controls; content safety is legacy-only |
-| `mcp` | `create`, `show`, `list`, `update`, `delete`, `authorize` | ToolServer registration and configured backend OAuth initiation |
+| `mcp` | `create`, `import`, `show`, `list`, `update`, `delete`, `authorize` | ToolServer registration, bulk import, and configured backend OAuth initiation |
 | `mcp source` | `add`, `list`, `remove` | Individual backend source membership |
 | `api-key` | `create`, `show`, `list`, `update`, `delete`, `list-secrets`, `regenerate` | Inbound gateway-wide client keys |
 | `identity` | `assign`, `show`, `remove`, `wait` | Outbound gateway managed identities |
@@ -130,9 +130,11 @@ Use the selected backend's actual protocol/operation path, not this example
 for every model. Low-level create uses `--deployment-config`; general
 `model update` uses `--deployment` with a JSON object.
 
-The convenience `model-provider create --foundry-resource-id "<account-id>"`
+The convenience `model-provider import --foundry "<account-id-or-name>"`
 imports every deployment, enables gateway identity, and grants **Foundry User**
-on that account. `model create --foundry-resource-id "<account-id>"
+on that account (`model-provider create --foundry "<account-id-or-name>"`
+registers the Foundry provider without importing deployments).
+`model create --foundry-resource-id "<account-id>"
 --deployment "<deployment-name>"` onboards one deployment with external
 access setup. These require additional permission and explicit intent.
 Neither creates the underlying deployments.

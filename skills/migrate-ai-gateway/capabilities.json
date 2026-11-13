@@ -10,9 +10,9 @@
   },
   "cliEvidence": {
     "revision": "b2204cf4a32f2d69e07fc475cee7c6056a28e711",
-    "documentedVersion": "1.0.0b26",
-    "wheelSha256": "6cc6a91a3345f558896a2a3f127451faf88096d4456d5c88e81630ce35840e25",
-    "releaseNotes": "https://github.com/Azure/aigateway/releases/tag/cli-v1.0.0b26",
+    "documentedVersion": "1.0.0b30",
+    "wheelSha256": "3f984df96bf6fe82f7b92e5e4ce88b067e347af9b0032b59c00716fd56d4b5af",
+    "releaseNotes": "https://github.com/Azure/aigateway/releases/tag/cli-v1.0.0b30",
     "quickstart": "https://github.com/Azure/aigateway/blob/b2204cf4a32f2d69e07fc475cee7c6056a28e711/cli/README.md",
     "commandReference": "https://github.com/Azure/aigateway/blob/b2204cf4a32f2d69e07fc475cee7c6056a28e711/cli/command-reference.md",
     "routingContract": "Installed azext_aigateway/_rp.py SUPPORTED_NEW_COMMANDS, CHILD_READS, and CHILD_WRITES; fingerprinted and inspected without importing code."
