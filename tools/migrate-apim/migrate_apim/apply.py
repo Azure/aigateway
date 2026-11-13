@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
+from .azcli import CLI_MISSING, az_argv
 from .resolve import ResolveError, resolve_secret
 
 SCHEMA_VERSION = "1.0"
@@ -985,10 +986,12 @@ _READERS: dict[str, Callable[[Executor, Step, dict[str, Any]], list[str]]] = {
 
 
 def _run(argv: list[str], _payload: dict[str, Any] | None = None) -> CommandResult:
+    # Resolved at the call, not in the journal: the journal records the command an
+    # operator would re-run, which is `az`, not this machine's path to it.
     try:
-        proc = subprocess.run(argv, capture_output=True, text=True, timeout=600)
+        proc = subprocess.run(az_argv(argv), capture_output=True, text=True, timeout=600)
     except FileNotFoundError:
-        return CommandResult(127, "", "the Azure CLI is not on PATH")
+        return CommandResult(127, "", CLI_MISSING)
     except subprocess.TimeoutExpired:
         # Unestablished, not failed: the service may have accepted the write.
         return CommandResult(124, "", "the command timed out before reporting an outcome")

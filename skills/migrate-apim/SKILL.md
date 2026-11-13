@@ -34,6 +34,10 @@ the plugin updates. Ask before installing anything into the operator's environme
 If none of those resolve, say so and stop. Do not approximate the tool with `az` commands: the
 inventory's value is that it is complete and says where it is not, which a hand-rolled read is not.
 
+Every command reads ARM with the operator's Azure CLI login, so `az login` has to have happened.
+The tool resolves `az` on `PATH` itself, Windows included; if it is missing or logged out, that is
+the first line of the error. Ask the operator to log in rather than wrapping or patching the tool.
+
 ```
 migrate-apim collect  --apim <name> -g <rg> -o inventory.json
 migrate-apim plan     --inventory inventory.json -o plan.json
@@ -57,6 +61,10 @@ it; do not open by asking "the whole instance or just AI?".
 
 Check `collection.coverage` for `failed` entries before trusting the result. A failed read is an
 unknown, not an absence.
+
+The tool writes progress to stderr and results to stdout. Do not read stderr output as failure —
+some shells, PowerShell among them, present it as an error. Use the exit code. If a command does
+fail, report its message as written rather than working around it: it names the cause.
 
 ## 2. Adapt the plan
 

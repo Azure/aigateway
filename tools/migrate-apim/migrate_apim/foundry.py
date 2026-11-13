@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlsplit
 
-from .arm import ArmClient, ArmError, newest_api_version
+from .arm import ArmAuthError, ArmClient, ArmError, newest_api_version
 from .ids import normalize_arm_id
 
 DEFAULT_API_VERSION = "2025-06-01"
@@ -75,6 +75,8 @@ class FoundryResolver:
         url = f"/subscriptions/{subscription_id}/providers/Microsoft.CognitiveServices/accounts"
         try:
             accounts = self.client.list(url, self.api_version)
+        except ArmAuthError:
+            raise
         except ArmError as exc:
             self.errors.append({"subscriptionId": subscription_id, "error": str(exc)})
             return 0
@@ -131,6 +133,8 @@ class FoundryResolver:
         raw = None
         try:
             raw = self.client.get_json(resource_id, self.api_version)
+        except ArmAuthError:
+            raise
         except ArmError as exc:
             self.errors.append({"resourceId": resource_id, "error": str(exc)})
             return None
@@ -141,6 +145,8 @@ class FoundryResolver:
             return account.deployments
         try:
             raw = self.client.list(f"{account.resource_id}/deployments", self.api_version)
+        except ArmAuthError:
+            raise
         except ArmError as exc:
             account.deployments = []
             account.deployments_error = str(exc)

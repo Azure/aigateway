@@ -734,3 +734,41 @@ class TestPoolBehaviourReachesTheAsset:
         # absent key is indistinguishable from a pool that does not use it.
         assert "sessionAffinity" in routing
         assert "failureResponse" in routing
+
+
+class TestAServiceThatCouldNotBeRead:
+    """Regression: every failed service read was reported as "not found".
+
+    An operator looking at a service that plainly exists -- `az apim show`
+    succeeds on it -- was sent to check the name, the resource group and the
+    subscription, while the real cause (a denied read, a dead CLI, a network
+    error) sat unread in a coverage entry.
+    """
+
+    class _Failing(FakeArmClient):
+        def __init__(self, response):
+            super().__init__()
+            self._response = response
+
+        def request(self, method, url, **kwargs):
+            self.call_count += 1
+            return self._response
+
+    def test_a_denied_read_reports_the_denial(self):
+        from migrate_apim.arm import ArmError, ArmResponse
+
+        body = {"error": {"code": "AuthorizationFailed", "message": "does not have authorization"}}
+        client = self._Failing(ArmResponse(403, body, json.dumps(body)))
+        with pytest.raises(ArmError) as excinfo:
+            Collector(client, SERVICE, options()).run()
+        assert "AuthorizationFailed" in str(excinfo.value)
+        assert "not found" not in str(excinfo.value)
+
+    def test_a_genuine_404_still_says_not_found_and_what_to_check(self):
+        from migrate_apim.arm import ArmError, ArmResponse
+
+        client = self._Failing(ArmResponse(404, {"error": {"code": "ResourceNotFound"}}, ""))
+        with pytest.raises(ArmError) as excinfo:
+            Collector(client, SERVICE, options()).run()
+        assert "not found" in str(excinfo.value)
+        assert "--subscription" in str(excinfo.value)

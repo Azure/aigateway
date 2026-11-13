@@ -18,6 +18,8 @@ import urllib.request
 from dataclasses import dataclass, field
 from typing import Any, Iterable
 
+from .azcli import CLI_MISSING, az_argv
+
 DEFAULT_ENDPOINT = "https://management.azure.com"
 RETRY_STATUSES = {408, 429, 500, 502, 503, 504}
 
@@ -44,6 +46,17 @@ class ArmError(RuntimeError):
         self.status = status
         self.url = url
         self.body = body
+
+
+class ArmAuthError(ArmError):
+    """No token could be obtained, so no request can succeed.
+
+    Separate from ``ArmError`` because it is fatal rather than partial: the
+    per-collection handlers record a failed read and carry on, which is right
+    for one 403 and wrong for a missing or logged-out CLI — that turns a whole
+    run into "nothing found" with the cause buried in a coverage entry. Every
+    handler re-raises this one.
+    """
 
 
 @dataclass
@@ -93,11 +106,16 @@ class ArmClient:
         if self.subscription:
             cmd += ["--subscription", self.subscription]
         try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            proc = subprocess.run(az_argv(cmd), capture_output=True, text=True, timeout=120)
         except FileNotFoundError as exc:  # pragma: no cover - environment dependent
-            raise ArmError("The Azure CLI ('az') is not on PATH. Install it and run 'az login'.") from exc
+            raise ArmAuthError(CLI_MISSING) from exc
+        except subprocess.TimeoutExpired as exc:
+            raise ArmAuthError(
+                "The Azure CLI did not return a token within 120s. Run "
+                "'az account get-access-token' to see what it is waiting on."
+            ) from exc
         if proc.returncode != 0:
-            raise ArmError(
+            raise ArmAuthError(
                 "Could not acquire an ARM token from the Azure CLI. Run 'az login' "
                 f"(and 'az account set -s <subscription>') first.\n{proc.stderr.strip()}"
             )
@@ -257,7 +275,7 @@ def newest_api_version(
         "--output", "json", "--only-show-errors",
     ]
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        proc = subprocess.run(az_argv(cmd), capture_output=True, text=True, timeout=timeout)
     except (FileNotFoundError, subprocess.TimeoutExpired):  # pragma: no cover
         return None
     if proc.returncode != 0:

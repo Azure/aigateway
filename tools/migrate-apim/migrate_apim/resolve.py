@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 from urllib.parse import urlsplit, urlunsplit
 
-from .arm import ArmClient, ArmError
+from .arm import ArmAuthError, ArmClient, ArmError
 
 # Injected so tests never make a network call.
 Fetcher = Callable[[str, dict], list[str]]
@@ -196,6 +196,8 @@ def resolve_models(
             if not secret:
                 raise ResolveError("no ARM client available to resolve the credential")
             result.models = fetcher(result.catalogue_url, auth_headers(provider, secret))
+        except ArmAuthError:
+            raise
         except (ResolveError, ArmError) as exc:
             result.status = "failed"
             result.detail = str(exc)

@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
+from .azcli import az_argv
+
 CAPABILITIES_DIR = Path(__file__).resolve().parent.parent / "capabilities"
 DEFAULT_CATALOG = "aigateway-1.0.0b26.json"
 
@@ -227,7 +229,7 @@ def az_extension_present(*, timeout: int = 30) -> bool:
     """
     try:
         proc = subprocess.run(
-            ["az", "aigateway", "--help"], capture_output=True, text=True, timeout=timeout
+            az_argv(["az", "aigateway", "--help"]), capture_output=True, text=True, timeout=timeout
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):  # pragma: no cover
         return False
@@ -244,7 +246,7 @@ def az_option_probe(command: Iterable[str], *, timeout: int = 30) -> set[str] | 
     """
     argv = ["az", "aigateway", *command, "--help"]
     try:
-        proc = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+        proc = subprocess.run(az_argv(argv), capture_output=True, text=True, timeout=timeout)
     except FileNotFoundError as exc:  # pragma: no cover
         raise CapabilityError(f"the az CLI could not be run to probe {' '.join(argv)}") from exc
     except subprocess.TimeoutExpired as exc:  # pragma: no cover

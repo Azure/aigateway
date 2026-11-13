@@ -83,6 +83,14 @@ editable install breaks the next time the plugin updates.
 Every example below writes `migrate-apim`. Without the installed command, that is
 `PYTHONPATH=<tool-dir> python3 -m migrate_apim.cli`.
 
+Credentials come from the Azure CLI, which the tool resolves on `PATH` the way the shell does —
+including `az.cmd` on Windows. If `az` is missing or not logged in, every command says so on the
+first line and exits; it never reports that as an empty or missing resource.
+
+Progress goes to **stderr** and results to stdout, so `-o -` can be piped. A PowerShell host may
+surface that progress as a `NativeCommandError`: it is a heartbeat, not a failure. Judge a run by
+its exit code, or pass `--quiet`.
+
 ## Usage
 
 ```bash

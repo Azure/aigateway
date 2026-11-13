@@ -12,7 +12,8 @@ from typing import Any
 
 from . import summary as summary_mod
 from . import apply as apply_mod
-from .arm import ArmClient, ArmError
+from .arm import ArmAuthError, ArmClient, ArmError
+from .azcli import CLI_MISSING, az_argv, az_available
 from .collect import Collector, CollectOptions, DEFAULT_APIM_API_VERSION, GENERATOR_VERSION
 
 _SERVICE_ID = re.compile(
@@ -194,7 +195,16 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    try:
+        return _dispatch(parser, args)
+    except ArmAuthError as exc:
+        # Fatal, and the same for every command: no token means no request, so
+        # the cause belongs on one line rather than inside a traceback.
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
 
+
+def _dispatch(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     if args.command in NOT_IMPLEMENTED:
         print(
             f"'{args.command}' is not implemented yet.\n\n{NOT_IMPLEMENTED[args.command]}\n\n"
@@ -609,7 +619,11 @@ def _resolve_service_id(args: argparse.Namespace) -> tuple[str, str | None]:
         raise ValueError("--resource-group is required when --apim is a name rather than a resource id")
     subscription = args.subscription or _active_subscription()
     if not subscription:
-        raise ValueError("could not determine the subscription; pass --subscription")
+        raise ValueError(
+            CLI_MISSING if not az_available() else
+            "could not determine the subscription from 'az account show'. Run 'az login' "
+            "(and 'az account set -s <subscription>'), or pass --subscription."
+        )
     return (
         f"/subscriptions/{subscription}/resourceGroups/{args.resource_group}"
         f"/providers/Microsoft.ApiManagement/service/{value}"
@@ -619,7 +633,8 @@ def _resolve_service_id(args: argparse.Namespace) -> tuple[str, str | None]:
 def _active_subscription() -> str | None:
     try:
         proc = subprocess.run(
-            ["az", "account", "show", "--query", "id", "--output", "tsv", "--only-show-errors"],
+            az_argv(["az", "account", "show", "--query", "id", "--output", "tsv",
+                     "--only-show-errors"]),
             capture_output=True, text=True, timeout=60,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):

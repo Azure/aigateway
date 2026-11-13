@@ -15,7 +15,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from . import detect, ids, policy as policy_mod, secrets
-from .arm import ArmClient, ArmError
+from .arm import ArmAuthError, ArmClient, ArmError
 from .foundry import FoundryResolver, target_model_registration
 
 SCHEMA_VERSION = "1.0"
@@ -180,7 +180,18 @@ class Collector:
     def _service(self) -> dict[str, Any]:
         raw = self._get(self.service_id, "service", "service")
         if raw is None:
-            raise ArmError(f"API Management service not found: {self.service_id}")
+            # Why the read failed is the whole message here: reporting every
+            # failure as "not found" sent an operator hunting for a service
+            # that was there all along.
+            entry = self.coverage[-1]
+            if entry.get("status") == "notFound":
+                raise ArmError(
+                    f"API Management service not found: {self.service_id}. Check the name, the "
+                    "resource group, and that --subscription is the one that holds it."
+                )
+            raise ArmError(
+                f"Could not read the API Management service {self.service_id}: {entry.get('error')}"
+            )
         props = raw.get("properties") or {}
         identity = raw.get("identity") or {}
         user_assigned = identity.get("userAssignedIdentities") or {}
@@ -1677,6 +1688,8 @@ class Collector:
     ) -> dict[str, Any] | None:
         try:
             raw = self.client.get_policy(scope_url, self.api_version)
+        except ArmAuthError:
+            raise
         except ArmError as exc:
             if not quiet:
                 self.warnings.append({"code": "policyRead", "scope": policy_id, "message": str(exc)})
@@ -1704,6 +1717,8 @@ class Collector:
     ) -> dict[str, Any] | None:
         try:
             resp = self.client.request("GET", url, api_version=self.api_version, params=params)
+        except ArmAuthError:
+            raise
         except ArmError as exc:
             self.coverage.append(_coverage(collection, scope, "failed", 0, str(exc)))
             return None
@@ -1719,6 +1734,8 @@ class Collector:
     def _list(self, url: str, collection: str, scope: str, *, quiet: bool = False) -> list[dict[str, Any]]:
         try:
             items = self.client.list(url, self.api_version)
+        except ArmAuthError:
+            raise
         except ArmError as exc:
             self.coverage.append(_coverage(collection, scope, "failed", 0, str(exc)))
             if not quiet:
