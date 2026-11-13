@@ -1062,6 +1062,51 @@ def _model_desired(executor: Executor, obj: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _model_policy_desired(executor: Executor, obj: dict[str, Any]) -> dict[str, Any]:
+    """A token limit as `model show` returns it.
+
+    Read from a live gateway after the first write: the policy comes back in the
+    model's `policies` array as
+
+        {"count": 10000, "counterKey": ["identity"], "period": "minute",
+         "scope": "resource", "type": "tokenLimit"}
+
+    which is a different shape from the one the command took in three ways.
+    `count` is a number where the plan carries the source attribute's string,
+    `counterKey` is always an array, and `scope` is added by the service. The
+    planned object compared straight against that read reported a correctly
+    written policy as "exists but does not match the desired state".
+    """
+    settings = obj.get("settings") or {}
+    policy: dict[str, Any] = {
+        "type": obj.get("type") or "tokenLimit",
+        "period": settings.get("period") or "minute",
+    }
+    count = settings.get("count")
+    if count is not None:
+        try:
+            policy["count"] = int(str(count))
+        except ValueError:
+            policy["count"] = count
+    dimensions = _counter_dimensions(obj)
+    if dimensions:
+        policy["counterKey"] = dimensions
+    # Not `scope`: the service sets it, so it says nothing about this write.
+    return {"policies": [policy]}
+
+
+def _named_object_desired(executor: Executor, obj: dict[str, Any]) -> dict[str, Any]:
+    """What a read establishes for an object this tool creates by name.
+
+    The settings are deliberately not compared. A gateway-wide policy and a
+    telemetry exporter have read-back shapes nobody here has observed yet, and
+    guessing at field names would report a correct write as failed. Existence
+    under the name that was asked for is what this does establish; the step
+    says `unverified` about the rest rather than claiming it.
+    """
+    return {"name": obj["name"]} if obj.get("name") else {}
+
+
 def _alias_desired(executor: Executor, obj: dict[str, Any]) -> dict[str, Any]:
     """An alias as `model-alias show` returns it.
 
@@ -1119,6 +1164,14 @@ _DESIRED: dict[str, Callable[[Executor, dict[str, Any]], dict[str, Any]]] = {
     "identity.assign": _identity_desired,
     "model.create": _model_desired,
     "alias.create": _alias_desired,
+    "model.policy": _model_policy_desired,
+    "key.create": _named_object_desired,
+    "telemetry.create": _named_object_desired,
+    # No entry for policy.update: `policy list` returns the baseline array and
+    # the planned object is not in that shape, so comparing them would fail a
+    # correct write. Until someone reads one back, the step reports `unverified`
+    # -- written, not confirmed -- which is what is actually known.
+    "policy.update": lambda _executor, _obj: {},
 }
 
 # Fields the control plane accepts on write and never returns on read. They are

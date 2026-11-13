@@ -1202,3 +1202,88 @@ class TestPolicyAndKeyBuilders:
         from migrate_apim.apply import _BUILDERS, _READERS
 
         assert sorted(set(_BUILDERS) - set(_READERS)) == []
+
+
+class TestATokenLimitReadsBackDifferentlyFromHowItIsWritten:
+    """The shape a live gateway returned, pinned.
+
+    The first execution against a real gateway wrote the policy correctly and
+    reported "the object exists but does not match the desired state", because
+    the planned object and the read-back are three kinds of different: `count`
+    comes back a number, `counterKey` always an array, and `scope` is added by
+    the service. Verified against aigw-moved-apim on 2026-11-13.
+    """
+
+    LIVE_READ = {
+        "name": "gpt-4o",
+        "properties": {
+            "deployment": {"modelName": "gpt-4o", "modelVersion": "2024-11-20"},
+            "displayName": None,
+            "policies": [{
+                "count": 10000,
+                "counterKey": ["identity"],
+                "period": "minute",
+                "scope": "resource",
+                "type": "tokenLimit",
+            }],
+            "providerKind": "Foundry",
+            "supportedEndpoints": ["/openai/v1/chat/completions", "/openai/v1/responses"],
+        },
+    }
+
+    def _desired(self, settled, inventory, obj):
+        from migrate_apim.apply import _DESIRED
+
+        executor = Executor(settled, inventory, new_journal(settled), runner=_Runner())
+        return _DESIRED["model.policy"](executor, obj)
+
+    def test_the_planned_object_matches_what_the_gateway_returned(self, settled, inventory):
+        from migrate_apim.apply import _subset
+
+        planned = {"type": "tokenLimit", "modelName": "gpt-4o",
+                   "providerName": "a2a-intent-fdry-9a73-ai-endpoint",
+                   "settings": {"count": "10000", "counterKey": "@(context.Subscription.Id)"},
+                   "decision": "identity"}
+        assert _subset(self._desired(settled, inventory, planned), self.LIVE_READ)
+
+    def test_the_raw_planned_object_does_not(self, settled, inventory):
+        """What the failure was: the plan's own shape against the read."""
+        from migrate_apim.apply import _subset
+
+        planned = {"type": "tokenLimit", "modelName": "gpt-4o",
+                   "settings": {"count": "10000"}, "decision": "identity"}
+        assert not _subset(planned, self.LIVE_READ)
+
+    def test_a_different_ceiling_is_not_accepted(self, settled, inventory):
+        from migrate_apim.apply import _subset
+
+        planned = {"type": "tokenLimit", "modelName": "gpt-4o",
+                   "settings": {"count": "500"}, "decision": "identity"}
+        assert not _subset(self._desired(settled, inventory, planned), self.LIVE_READ)
+
+    def test_a_different_counter_is_not_accepted(self, settled, inventory):
+        from migrate_apim.apply import _subset
+
+        planned = {"type": "tokenLimit", "modelName": "gpt-4o",
+                   "settings": {"count": "10000"}, "decision": "ipAddress"}
+        assert not _subset(self._desired(settled, inventory, planned), self.LIVE_READ)
+
+    def test_the_service_added_scope_is_not_compared(self, settled, inventory):
+        """It says nothing about this write, so asserting on it only breaks."""
+        planned = {"type": "tokenLimit", "modelName": "gpt-4o",
+                   "settings": {"count": "10000"}, "decision": "identity"}
+        assert "scope" not in self._desired(settled, inventory, planned)["policies"][0]
+
+    def test_a_pooled_counter_asserts_nothing_about_the_dimensions(self, settled, inventory):
+        planned = {"type": "tokenLimit", "modelName": "gpt-4o",
+                   "settings": {"count": "10000"}, "decision": "pooled"}
+        assert "counterKey" not in self._desired(settled, inventory, planned)["policies"][0]
+
+    def test_a_baseline_policy_claims_nothing_it_has_not_seen(self, settled, inventory):
+        """`policy list`'s shape is unobserved, so the step says unverified."""
+        from migrate_apim.apply import _DESIRED, _comparable
+
+        executor = Executor(settled, inventory, new_journal(settled), runner=_Runner())
+        desired = _DESIRED["policy.update"](executor, {"type": "requestRateLimit",
+                                                       "settings": {"callsPerPeriod": "60"}})
+        assert not _comparable(desired)

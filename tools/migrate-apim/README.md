@@ -904,10 +904,22 @@ version `2026-09-01-preview`.
 The `policies` and `keys` builders — `model.policy`, `policy.update`, `key.create`,
 `telemetry.create` — were planned and rehearsed end to end against `a365-bugbash-v2` and the
 gateway migrated from it, which produced three `model policy set` commands carrying each API's own
-ceiling. Every argv they build was checked against the installed extension's own parser. **None of
-the four has had its write executed against a live gateway yet**, so the read-back shapes their
-verification compares against are the first thing to re-check: a step that writes correctly and
-cannot be read back reports `unverified`, not `failed`.
+ceiling. Every argv they build was checked against the installed extension's own parser.
+
+`model.policy` has been executed: the write landed, and the first run then reported *"the object
+exists but does not match the desired state"* for a policy that was correctly set. A token limit
+reads back from `model show` in a different shape from the one the command takes — `count` a
+number where the plan holds the source attribute's string, `counterKey` always an array, and a
+`scope` the service adds — so the translation is now pinned to that live response in
+`_model_policy_desired`. It is the same defect family as `_model_desired` and `_alias_desired`
+before it: a correct write, reported as a mismatch, by a comparison against a shape nobody had
+read.
+
+`policy.update`, `key.create` and `telemetry.create` have **not had their writes executed**. Keys
+and exporters verify on the name they were created under; the gateway-wide baseline compares
+nothing, because `policy list`'s shape is unobserved and a guess at its field names would fail a
+correct write. Those steps report `unverified` — written, not confirmed — which is what is actually
+known, and pinning their read-backs is the first thing to do with a live gateway.
 
 Not otherwise exercised against live configuration, and therefore the next things to re-check:
 self-hosted gateways, backend pools in production shapes, workspace-scoped products and
