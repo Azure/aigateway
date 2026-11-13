@@ -573,6 +573,18 @@ class Executor:
         desired = _DESIRED.get(step.capability_id, lambda _e, o: o)(self, obj)
         note = "; its credential is write-only and was not read back" if _has_write_only(obj) else ""
 
+        # What the source carried and the target has no field for. Said on the
+        # step, because "verified" is otherwise read as the whole policy having
+        # moved: a token limit whose hourly quota did not travel is a different
+        # policy from the one APIM was enforcing.
+        unmapped = obj.get("unmappedAttributes") or {}
+        if unmapped:
+            note += (
+                "; the source also set "
+                + ", ".join(f"{name}={value}" for name, value in sorted(unmapped.items()))
+                + ", which the target has no equivalent for"
+            )
+
         # Verification establishes what a read can carry, and says which fields
         # that excludes rather than quietly narrowing what "verified" covers.
         unreadable = [

@@ -1200,6 +1200,7 @@ class PlanBuilder:
                         "policyId": member.get("policyId"), "path": member.get("path")},
                 })
                 continue
+            unmapped = _unmapped_attributes(target_type, member)
             for registration in registrations:
                 objects.append({
                     "type": target_type,
@@ -1208,6 +1209,7 @@ class PlanBuilder:
                     "settings": settings,
                     "scope": scope,
                     "configurationComplete": bool(settings),
+                    "unmappedAttributes": unmapped,
                     "fullConfigurationAt": {
                         "policyId": member.get("policyId"), "path": member.get("path")},
                 })
@@ -1246,6 +1248,7 @@ class PlanBuilder:
             "settings": settings,
             "configurationComplete": complete,
             "scope": {"level": "gateway", "name": "default"},
+            "unmappedAttributes": _unmapped_attributes(target_type, strictest),
             "fullConfigurationAt": {
                 "policyId": strictest.get("policyId"), "path": strictest.get("path")},
         }
@@ -1792,6 +1795,21 @@ def _policy_settings(target_type: str, member: dict[str, Any]) -> dict[str, Any]
         field: attributes.get(attribute)
         for attribute, field in mapping.items()
         if attributes.get(attribute) is not None
+    }
+
+
+def _unmapped_attributes(target_type: str, member: dict[str, Any]) -> dict[str, Any]:
+    """Source attributes the target has no field for.
+
+    `llm-token-limit` on the bugbash instance carried a 5000/Hourly quota and
+    `estimate-prompt-tokens` beside the per-minute rate. Only the rate maps, so
+    the other two did not travel -- and the step that applied the rate reported
+    `verified`, which read as the whole policy having moved.
+    """
+    mapping = _POLICY_FIELDS.get(target_type, {})
+    return {
+        name: value for name, value in (member.get("attributes") or {}).items()
+        if name not in mapping and value is not None
     }
 
 

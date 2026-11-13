@@ -1137,3 +1137,32 @@ class TestKeysAreOnlyMadeWhenAsked:
             # The value is the one thing that cannot come across.
             assert obj["replaces"]["valueCarriedOver"] is False
             assert "value" not in obj and "primaryKey" not in obj
+
+
+class TestAttributesWithNoTargetField:
+    def test_they_are_recorded_on_the_object_rather_than_dropped(self, inventory, capabilities):
+        """The bugbash instance set an hourly quota beside the per-minute rate."""
+        import copy
+
+        quota = copy.deepcopy(inventory)
+        document = next(d for d in quota["policies"]
+                        if (d.get("scope") or {}).get("level") == "api")
+        document["elements"].append({
+            "section": "inbound", "path": "inbound/llm-token-limit[7]",
+            "name": "llm-token-limit", "family": "tokenLimit", "depth": 1,
+            "attributes": {"tokens-per-minute": "10000", "token-quota": "5000",
+                           "token-quota-period": "Hourly", "counter-key": "@(x)",
+                           "estimate-prompt-tokens": "true"},
+            "text": None, "expressionIds": ["expr:1"], "namedValueRefs": [], "childNames": [],
+        })
+        plan = build_plan(quota, capabilities)
+        item = next(i for i in plan["items"] if i.get("capabilityId") == "model.policy")
+        obj = next(o for o in item["target"]["objects"]
+                   if (o.get("unmappedAttributes") or {}).get("token-quota"))
+        assert obj["unmappedAttributes"]["token-quota"] == "5000"
+        assert obj["unmappedAttributes"]["token-quota-period"] == "Hourly"
+        assert obj["unmappedAttributes"]["estimate-prompt-tokens"] == "true"
+        # The two that do map are settings, not leftovers.
+        assert "tokens-per-minute" not in obj["unmappedAttributes"]
+        assert "counter-key" not in obj["unmappedAttributes"]
+        assert obj["settings"]["count"] == "10000"

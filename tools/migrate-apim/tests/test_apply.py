@@ -1287,3 +1287,44 @@ class TestATokenLimitReadsBackDifferentlyFromHowItIsWritten:
         desired = _DESIRED["policy.update"](executor, {"type": "requestRateLimit",
                                                        "settings": {"callsPerPeriod": "60"}})
         assert not _comparable(desired)
+
+
+class TestWhatDidNotTravelWithThePolicy:
+    """`verified` has to mean the policy, not the part of it that mapped.
+
+    A real `llm-token-limit` carried a 5000/Hourly quota and
+    `estimate-prompt-tokens` beside the per-minute rate. Only the rate has a
+    target field. The step applied it, said `verified`, and the quota was gone
+    with nothing anywhere saying so.
+    """
+
+    def _detail(self, settled, inventory, obj):
+        from migrate_apim.apply import Step
+
+        executor = Executor(settled, inventory, new_journal(settled),
+                            runner=_Runner(reads={"gpt-4o": {"properties": {"policies": [
+                                {"count": 10000, "counterKey": ["identity"],
+                                 "period": "minute", "scope": "resource", "type": "tokenLimit"},
+                            ]}}}),
+                            execute=True, skip_rehearsal=True)
+        step = Step(item_id="item:test", capability_id="model.policy", phase="policies",
+                    objects=[obj])
+        return executor.run_step(step).detail
+
+    def test_an_attribute_with_no_target_field_is_named_on_the_step(self, settled, inventory):
+        detail = self._detail(settled, inventory, {
+            "type": "tokenLimit", "modelName": "gpt-4o", "providerName": "aoai-east",
+            "settings": {"count": "10000"}, "decision": "identity",
+            "unmappedAttributes": {"token-quota": "5000", "token-quota-period": "Hourly"},
+        })
+        assert "token-quota=5000" in detail, detail
+        assert "token-quota-period=Hourly" in detail, detail
+        assert "no equivalent" in detail, detail
+
+    def test_a_policy_that_mapped_whole_says_nothing_extra(self, settled, inventory):
+        detail = self._detail(settled, inventory, {
+            "type": "tokenLimit", "modelName": "gpt-4o", "providerName": "aoai-east",
+            "settings": {"count": "10000"}, "decision": "identity",
+            "unmappedAttributes": {},
+        })
+        assert "no equivalent" not in detail, detail

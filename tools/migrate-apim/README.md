@@ -780,6 +780,23 @@ The counter itself comes from the settled decision: `identity`, `ipAddress`, `id
 or `pooled`, which is the absence of a dimension rather than a value for it. APIM partitions by an
 arbitrary expression and the target does not, which is why this is a decision and not a mapping.
 
+**What mapped is not what the policy said.** A source policy usually sets more than the target has
+fields for: the bugbash `llm-token-limit` carried `token-quota=5000` over `token-quota-period=
+Hourly` and `estimate-prompt-tokens=true` beside the per-minute rate, and only the rate has
+anywhere to go. Those land on the object as `unmappedAttributes` and are named by the step that
+applies it —
+
+```
+verified  item:policy/52c23f672ef3
+          3/3 objects: already present with the desired state; the source also set
+          estimate-prompt-tokens=true, token-quota=5000, token-quota-period=Hourly,
+          which the target has no equivalent for
+```
+
+— because `verified` otherwise reads as the whole policy having moved. A rate limit whose hourly
+quota stayed behind is a different policy from the one APIM was enforcing, and the operator is the
+one who has to decide whether that matters.
+
 **`keys` creates nothing unless asked.** `entra-rbac` — the proposal — creates no key at all, and
 only `gateway-key-per-consumer` shapes one gateway key per APIM subscription, carrying the name and
 not the value. No APIM key crosses: the service will not hand it over and the gateway will not take
@@ -906,14 +923,17 @@ The `policies` and `keys` builders — `model.policy`, `policy.update`, `key.cre
 gateway migrated from it, which produced three `model policy set` commands carrying each API's own
 ceiling. Every argv they build was checked against the installed extension's own parser.
 
-`model.policy` has been executed: the write landed, and the first run then reported *"the object
-exists but does not match the desired state"* for a policy that was correctly set. A token limit
-reads back from `model show` in a different shape from the one the command takes — `count` a
-number where the plan holds the source attribute's string, `counterKey` always an array, and a
-`scope` the service adds — so the translation is now pinned to that live response in
-`_model_policy_desired`. It is the same defect family as `_model_desired` and `_alias_desired`
-before it: a correct write, reported as a mismatch, by a comparison against a shape nobody had
-read.
+**`model.policy` is verified end to end.** Three token limits were written to the gateway migrated
+from `a365-bugbash-v2` and read back: 10000/minute on the two models of the API that set it, 1000
+on the model of the API that set that, each partitioned by `identity`. Re-running the phase
+rewrites nothing and reports them already present, so the reconcile path is exercised too.
+
+Two things only the live write could find. The first run wrote the policy correctly and reported
+*"the object exists but does not match the desired state"*, because a token limit reads back from
+`model show` in a different shape from the one the command takes — `count` a number where the plan
+holds the source attribute's string, `counterKey` always an array, and a `scope` the service adds.
+The same defect family as `_model_desired` and `_alias_desired` before it, and now pinned to that
+live response. The second is below: what the source set and the target has no field for.
 
 `policy.update`, `key.create` and `telemetry.create` have **not had their writes executed**. Keys
 and exporters verify on the name they were created under; the gateway-wide baseline compares
