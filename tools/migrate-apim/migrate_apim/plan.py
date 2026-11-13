@@ -1028,6 +1028,21 @@ class PlanBuilder:
                 cannot_accept=True,
             )
 
+    def _reports_telemetry(self) -> bool:
+        """Whether anything here was reporting telemetry that has to find a new home.
+
+        Either signal is enough and neither implies the other: a logger is the
+        service-wide sink, while an `emit-token-metric` policy is an API asking
+        for dimensions on it. An instance can carry one without the other.
+        """
+        telemetry = (self.inventory.get("shared") or {}).get("telemetry") or {}
+        if any(
+            str(logger.get("loggerType") or "").lower() in {"applicationinsights", "azuremonitor"}
+            for logger in telemetry.get("loggers") or []
+        ):
+            return True
+        return any(item.get("capabilityId") == "telemetry.create" for item in self.items)
+
     def _manual_prerequisites(self) -> None:
         """Steps the tool cannot perform, surfaced before anything is executed."""
         assets = self.inventory.get("assets") or {}
@@ -1075,6 +1090,28 @@ class PlanBuilder:
                         "The target's system-assigned identity is a new principal, so the source's "
                         "existing grants do not apply to it."
                     )
+                ),
+            })
+        if self._reports_telemetry():
+            self.prerequisites.append({
+                "id": "prereq:appinsights-otlp",
+                "owner": "azure-administrator",
+                "commands": [],
+                "summary": (
+                    "Enable the OTLP endpoint on the Application Insights resource APIM reports to"
+                ),
+                # The one fact that makes this mapping possible, and it is in
+                # neither product's inventory: APIM emits to Application
+                # Insights, the gateway exports OpenTelemetry, and the only
+                # surface the two share is App Insights' own OTLP endpoint.
+                "detail": (
+                    "APIM sends telemetry to Azure Application Insights; AI Gateway sends it "
+                    "through an OpenTelemetry exporter. The only surface both support is the OTLP "
+                    "endpoint on the Application Insights resource, which is off until someone "
+                    "turns it on. Enable it on the existing resource, or create one with it "
+                    "enabled, then settle the telemetry item on an OpenTelemetry exporter pointed "
+                    "at it. Without that endpoint there is no path at all, and the gateway's own "
+                    "metrics are the only telemetry the migration produces."
                 ),
             })
         self.prerequisites.append({
@@ -1423,13 +1460,19 @@ class PlanBuilder:
                 "what": "where the exporter sends",
                 # The field names are the service's own, from the validation it
                 # answers a wrong one with. A decision shaped to anything else
-                # reaches the phase and fails there.
+                # reaches the phase and fails there. The OTLP kind is named
+                # first because it is the only one an APIM logger can reach:
+                # see prereq:appinsights-otlp.
                 "how": (
-                    'Set `decision` to {"kind": "ApplicationInsights", "applicationInsights": '
-                    '{"connectionString": "..."}}, or {"kind": "OpenTelemetry", "openTelemetry": '
-                    '{"metricsEndpoint": "..."}} with at least one of metricsEndpoint, '
-                    "logsEndpoint or tracesEndpoint. A connection string is read at apply time, "
-                    "passed as a file, and never stored in the plan."
+                    'Set `decision` to {"kind": "OpenTelemetry", "openTelemetry": '
+                    '{"metricsEndpoint": "..."}}, with at least one of metricsEndpoint, '
+                    "logsEndpoint or tracesEndpoint. To keep reporting into the Application "
+                    "Insights resource APIM used, that endpoint is its OTLP endpoint, which has "
+                    "to be enabled on the resource first. A direct "
+                    '{"kind": "ApplicationInsights", "applicationInsights": {"connectionString": '
+                    '"..."}} exporter is accepted by the command but carries nothing across from '
+                    "APIM. Any credential is read at apply time, passed as a file, and never "
+                    "stored in the plan."
                 ),
             }
             item["rationale"] = (

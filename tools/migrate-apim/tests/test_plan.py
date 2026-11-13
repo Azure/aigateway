@@ -1166,3 +1166,69 @@ class TestAttributesWithNoTargetField:
         assert "tokens-per-minute" not in obj["unmappedAttributes"]
         assert "counter-key" not in obj["unmappedAttributes"]
         assert obj["settings"]["count"] == "10000"
+
+
+class TestTheOnlyTelemetryPathBetweenTheTwoProducts:
+    """APIM reports to Application Insights; the gateway exports OpenTelemetry.
+
+    The only surface both support is the OTLP endpoint on the Application
+    Insights resource, and it is off until an administrator turns it on. That
+    fact is in neither inventory -- an APIM logger records no destination the
+    gateway could consume -- so without it on the plan the mapping reads as
+    impossible rather than merely gated.
+    """
+
+    def test_an_apim_logger_raises_the_endpoint_as_a_prerequisite(self, plan):
+        prereq = next((p for p in plan["prerequisites"] if p["id"] == "prereq:appinsights-otlp"),
+                      None)
+        assert prereq, [p["id"] for p in plan["prerequisites"]]
+        assert prereq["owner"] == "azure-administrator"
+        assert "OTLP endpoint" in prereq["summary"]
+        assert "enabled" in prereq["detail"]
+
+    def test_a_service_wide_logger_raises_it_with_no_policy_at_all(self, inventory, capabilities):
+        """The real instance's shape: an azureMonitor logger, no emit policy."""
+        import copy
+
+        logged = copy.deepcopy(inventory)
+        logged["shared"]["telemetry"] = {
+            "loggers": [{"name": "azuremonitor", "loggerType": "azureMonitor",
+                         "resourceId": None, "isBuffered": True, "credentialsReferenced": []}],
+            "diagnostics": [],
+        }
+        for document in logged["policies"]:
+            document["elements"] = [e for e in document.get("elements") or []
+                                    if "emit-token-metric" not in e["name"]]
+        built = build_plan(logged, capabilities)
+        assert [p for p in built["prerequisites"] if p["id"] == "prereq:appinsights-otlp"]
+
+    def test_an_instance_reporting_nothing_is_not_told_to_enable_anything(
+        self, inventory, capabilities
+    ):
+        import copy
+
+        quiet = copy.deepcopy(inventory)
+        quiet["shared"]["telemetry"] = {"loggers": [], "diagnostics": []}
+        for document in quiet["policies"]:
+            document["elements"] = [e for e in document.get("elements") or []
+                                    if "emit-token-metric" not in e["name"]]
+        built = build_plan(quiet, capabilities)
+        assert not [p for p in built["prerequisites"] if p["id"] == "prereq:appinsights-otlp"]
+
+    def test_the_decision_guidance_leads_with_the_otlp_kind(self, inventory, capabilities):
+        """The ApplicationInsights kind is accepted by the command and carries
+        nothing across from APIM, so it cannot be the headline answer."""
+        import copy
+
+        first = build_plan(copy.deepcopy(inventory), capabilities)
+        item_id = next(i["id"] for i in first["items"]
+                       if i.get("capabilityId") == "telemetry.create")
+        for item in first["items"]:
+            if item["id"] == item_id:
+                item["status"] = "adapted"
+                item["decision"] = "compensate"
+        second = build_plan(copy.deepcopy(inventory), capabilities, previous=first)
+        how = next(i for i in second["items"] if i["id"] == item_id)["needsFact"]["how"]
+        assert how.index("OpenTelemetry") < how.index("ApplicationInsights")
+        assert "OTLP endpoint" in how
+        assert "carries nothing across from APIM" in how

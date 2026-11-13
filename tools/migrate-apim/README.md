@@ -799,6 +799,16 @@ verified  item:policy/52c23f672ef3
 quota stayed behind is a different policy from the one APIM was enforcing, and the operator is the
 one who has to decide whether that matters.
 
+**Telemetry has exactly one path between the two products, and it is gated.** APIM reports to
+Azure Application Insights; AI Gateway exports through OpenTelemetry. The only surface both
+support is the **OTLP endpoint on the Application Insights resource**, which is off until an
+administrator enables it — on the existing resource, or on a new one created with it enabled. So a
+plan whose source reports telemetry carries `prereq:appinsights-otlp`, and the decision guidance
+leads with the OpenTelemetry exporter kind pointed at that endpoint. The `ApplicationInsights`
+exporter kind is accepted by the command and carries nothing across from APIM, which is why it is
+not the proposal. Neither inventory states this: an APIM logger records no destination the gateway
+could consume, so without it on the plan the mapping reads as impossible rather than merely gated.
+
 **`keys` creates nothing unless asked.** `entra-rbac` — the proposal — creates no key at all, and
 only `gateway-key-per-consumer` shapes one gateway key per APIM subscription, carrying the name and
 not the value. No APIM key crosses: the service will not hand it over and the gateway will not take

@@ -141,6 +141,13 @@ An item carrying `needsFact` is settled on something the answer does not supply.
 metrics policy means "send them elsewhere" and APIM never says where, so no exporter is built and
 the phase reports nothing wrong. Go back to the operator for the fact, in the shape `how` names.
 
+For telemetry that fact is gated, and it is worth knowing before you ask. APIM reports to Azure
+Application Insights and the gateway exports OpenTelemetry; the only surface both support is the
+**OTLP endpoint on the Application Insights resource**, which an administrator has to enable — on
+the existing resource or on a new one. Put `prereq:appinsights-otlp` to them first, then settle the
+item on an OpenTelemetry exporter pointed at that endpoint. Do not propose the `ApplicationInsights`
+exporter kind: the command takes it and it carries nothing across from APIM.
+
 ## 3. Execute
 
 **Migration is additive.** Everything is provisioned into the gateway; nothing is removed from
