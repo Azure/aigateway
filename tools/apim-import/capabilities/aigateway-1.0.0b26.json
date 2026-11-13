@@ -66,5 +66,39 @@
     {"id": "connection.update", "command": ["network", "private-endpoint-connection", "approve"], "read": ["network", "private-endpoint-connection", "show"], "kind": "update", "options": ["description"], "required": ["description"], "approvalClass": "consequential", "behaviorTypes": ["service"], "limitations": ["Approval of one existing destination connection only; verify its selected peer and provisioning. No source connection copy, endpoint/DNS creation, rejection or deletion."]},
     {"id": "connection.verify", "command": ["network", "private-endpoint-connection", "show"], "read": ["network", "private-endpoint-connection", "show"], "kind": "verify", "options": [], "required": [], "approvalClass": "consequential", "behaviorTypes": ["service"], "limitations": ["Existing selected destination connection; behavior proof additionally requires connectivity verification."]}
   ],
-  "unsupported": ["subscription-key-copy", "products", "arbitrary-policy-xml", "workspace-creation", "bulk-provider-sync-apply", "source-sku-conversion", "client-cutover", "external-resource-provisioning", "automatic-foundry-rbac", "api-key-rename", "opaque-cost-overrides"]
+  "unsupported": ["subscription-key-copy", "products", "arbitrary-policy-xml", "workspace-creation", "bulk-provider-sync-apply", "source-sku-conversion", "client-cutover", "external-resource-provisioning", "automatic-foundry-rbac", "api-key-rename", "opaque-cost-overrides"],
+
+  "//serviceOnly": "Capabilities the gateway has and this CLI cannot author. Kept apart from `unsupported`, which means the target cannot do it at all: the difference decides whether a workload is migrated by hand or cannot move. Each is evidenced against a live control plane rather than taken from the CLI surface, because a missing flag is not a missing feature.",
+  "serviceOnly": [
+    {
+      "id": "alias-selection-order",
+      "property": "aliases.properties.selectionOrder",
+      "summary": "Order of the routing stages an alias applies.",
+      "values": ["priority", "autoModelSelection", "sessionBackendPreference"],
+      "cliGap": "az aigateway model-alias set exposes no --selection-order; it writes [\"priority\"].",
+      "evidence": "The control plane rejects an unknown stage with: 'selectionOrder requires priority and at most one of each autoModelSelection and sessionBackendPreference stage.' Probed against aigateways API 2026-09-01-preview.",
+      "authoring": "armOnly"
+    },
+    {
+      "id": "alias-session-affinity",
+      "property": "aliases.properties.sessionBackendPreference",
+      "summary": "Session affinity: keeps a session's requests on the backend that already holds its context.",
+      "shape": {"key": "<CEL expression>"},
+      "requires": "The sessionBackendPreference stage must appear in selectionOrder; the service rejects either one alone.",
+      "cliGap": "No flag on az aigateway model-alias set.",
+      "evidence": "The control plane requires the field and rejects a non-CEL key with 'key must be a CEL expression.' The exact CEL form for a request header is NOT established -- request.headers['session-id'] was rejected -- so nothing here is sufficient to author one.",
+      "authoring": "armOnly",
+      "incomplete": "key syntax unresolved"
+    },
+    {
+      "id": "alias-auto-model-selection",
+      "property": "aliases.properties.autoModelSelection",
+      "summary": "Picks the backend model per request by fit rather than by priority alone.",
+      "requires": "The autoModelSelection stage must appear in selectionOrder.",
+      "cliGap": "No flag on az aigateway model-alias set.",
+      "evidence": "Named by the same control-plane validation error as a permitted selectionOrder stage. Its configuration shape has not been probed.",
+      "authoring": "armOnly",
+      "incomplete": "configuration shape unknown"
+    }
+  ]
 }

@@ -1340,6 +1340,11 @@ class Collector:
                 "targets": targets,
                 "circuitBreaker": (backend_record or {}).get("circuitBreaker"),
                 "evidence": (backend_record or {}).get("id") or "serviceUrl",
+                # Pool behaviour the plan has to account for. Held only on the
+                # raw backend before, where nothing downstream could see it, so
+                # a pool pinning sessions to a backend migrated as if it did not.
+                "sessionAffinity": ((backend_record or {}).get("pool") or {}).get("sessionAffinity"),
+                "failureResponse": ((backend_record or {}).get("pool") or {}).get("failureResponse"),
                 # Several set-backend-service elements mean the upstream is
                 # picked at runtime. Naming them beats reporting no backend,
                 # which is what an unread policy used to look like.

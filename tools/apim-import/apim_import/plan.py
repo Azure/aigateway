@@ -356,6 +356,7 @@ class PlanBuilder:
         endpoints = model.get("endpoints") or {}
         surface = endpoints.get("surface") or {}
         models = model.get("models") or {}
+        self._pool_affinity(model)
 
         # Scope: how much of what this API publishes can move at all.
         if surface.get("status") == "unbounded":
@@ -444,6 +445,58 @@ class PlanBuilder:
                 evidence={"translation": translation},
                 blocking=True,
             )
+
+    def _pool_affinity(self, model: dict[str, Any]) -> None:
+        """Session affinity on an APIM pool, which this tool cannot reproduce.
+
+        The gateway does have it -- an alias takes a `sessionBackendPreference`
+        stage with a CEL key -- but `az aigateway model-alias set` exposes no
+        flag for it, so a migration cannot carry it over. That is a gap in the
+        tooling rather than in the target, and the difference matters: it is
+        work to do by hand afterwards, not a workload that has to stay on APIM.
+
+        Raised only when a pool actually uses it. Pools leave the field null by
+        default, and an item per pool would be a question about nothing.
+        """
+        routing = model.get("routing") or {}
+        affinity = routing.get("sessionAffinity")
+        if not affinity:
+            return
+        entry = self.caps.service_only_entry("alias-session-affinity") or {}
+        asset_id = model["id"]
+        # The catalogue writes its own sentences; this one is a clause inside
+        # someone else's.
+        gap = (entry.get("cliGap") or "the installed CLI cannot author it").rstrip(". ")
+        gap = gap[0].lower() + gap[1:] if gap else gap
+        self._add(
+            item_id=ids.item(asset_id, "sessionAffinity"),
+            source={"assetId": asset_id, "assetKind": "modelApi", "aspect": "sessionAffinity"},
+            kind="accept-loss",
+            verdict="gap",
+            capability_id="alias.create",
+            proposal="accept-loss",
+            rationale=(
+                "This API's backend pool pins a session to the backend that served it. The gateway "
+                "supports the same idea on an alias (a `sessionBackendPreference` stage with a CEL "
+                f"key), but {gap}, so this "
+                "run cannot configure it. Without it, each request is routed independently and a "
+                "session can move between backends mid-conversation."
+            ),
+            options=[
+                _opt("accept-loss", "Migrate without affinity, and configure it afterwards by hand."),
+                _opt("retain-in-apim", "Keep this API on APIM until affinity can be authored."),
+                _opt("block", "Stop the migration until it can be carried over."),
+            ],
+            evidence={
+                "apimSessionAffinity": affinity,
+                "targetProperty": entry.get("property"),
+                "authoring": entry.get("authoring"),
+                "note": entry.get("evidence"),
+                # Said plainly: the target has this, the tool cannot write it.
+                "targetSupports": True,
+            },
+            blocking=True,
+        )
 
     def _enumerate_models(
         self, model: dict[str, Any], models: dict[str, Any]

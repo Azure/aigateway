@@ -90,6 +90,12 @@ question: re-collect if the inventory is older than the tool, otherwise fix the 
 settle the named item some other way just to clear the gap; that discards the work rather than
 doing it.
 
+An item carrying `evidence.targetSupports: true` is a third thing again: the gateway *can* do this
+and the installed CLI cannot author it. Say so when you put it to the operator — "the gateway
+supports this, we cannot configure it from here" is a different decision from "the target cannot do
+this". These come from the catalogue's `serviceOnly` list, and the honest outcome is usually
+`accept-loss` plus a line in the final report telling the operator what to set by hand.
+
 ## 3. Execute
 
 **Migration is additive.** Everything is provisioned into the gateway; nothing is removed from

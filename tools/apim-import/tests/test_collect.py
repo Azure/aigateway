@@ -721,3 +721,16 @@ class TestOptions:
         document = Collector(FakeArmClient(), SERVICE, options(resolve_foundry=False)).run()
         provider = document["assets"]["modelProviders"][0]
         assert provider["models"]["status"] == "unresolved"
+
+
+class TestPoolBehaviourReachesTheAsset:
+    """Pool settings the plan must account for cannot stay on the raw backend."""
+
+    def test_session_affinity_and_failure_response_are_carried(self, inventory):
+        asset = next(m for m in inventory["assets"]["models"] if m["source"]["name"] == "aoai-api")
+        routing = asset["routing"]
+        assert routing["mode"] == "pool"
+        # Null on this fixture, but present: the planner reads the key, and an
+        # absent key is indistinguishable from a pool that does not use it.
+        assert "sessionAffinity" in routing
+        assert "failureResponse" in routing

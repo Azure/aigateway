@@ -87,6 +87,12 @@ class CapabilityMap:
                 limitations=list(raw.get("limitations") or []),
             )
         self.unsupported: list[str] = list(catalog.get("unsupported") or [])
+        # Capabilities the gateway has that this CLI cannot author. Apart from
+        # `unsupported` on purpose: one means the workload cannot move, the
+        # other that it moves by hand.
+        self.service_only: list[dict[str, Any]] = [
+            entry for entry in (catalog.get("serviceOnly") or []) if isinstance(entry, dict)
+        ]
         self.probed = False
 
     # ------------------------------------------------------------- loading
@@ -188,6 +194,13 @@ class CapabilityMap:
                     return rule
         return None
 
+    def service_only_entry(self, entry_id: str) -> dict[str, Any] | None:
+        """A capability the gateway has and the CLI cannot author."""
+        for entry in self.service_only:
+            if entry.get("id") == entry_id:
+                return entry
+        return None
+
     def publishable_routes(self) -> list[str]:
         return list(self.rules.get("publishableRoutes") or [])
 
@@ -198,6 +211,7 @@ class CapabilityMap:
             "probed": self.probed,
             "capabilities": {cid: cap.support for cid, cap in sorted(self.capabilities.items())},
             "unsupported": self.unsupported,
+            "serviceOnly": [entry.get("id") for entry in self.service_only],
         }
 
 

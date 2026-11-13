@@ -821,3 +821,67 @@ class TestPolicyRoutedBackend:
         record, candidates = _resolve_backend({}, {"east": {"id": "x"}}, {}, None, elements)
         assert record is None
         assert candidates == ["east", "west"]
+
+
+class TestServiceOnlyCapabilities:
+    """A missing CLI flag is not a missing feature.
+
+    The catalogue is built by probing `az aigateway`, so a capability the
+    gateway has and the CLI cannot author is structurally invisible to it --
+    which is how session affinity went unrecorded while the control plane
+    accepted it. `serviceOnly` holds those, apart from `unsupported`: one means
+    the workload cannot move, the other that it moves by hand afterwards.
+    """
+
+    def test_the_catalogue_separates_them(self, capabilities):
+        ids = {entry["id"] for entry in capabilities.service_only}
+        assert "alias-session-affinity" in ids
+        assert "alias-auto-model-selection" in ids
+        assert "alias-selection-order" in ids
+        # Not lumped in with things the target genuinely cannot do.
+        assert not ids & set(capabilities.unsupported)
+
+    def test_each_entry_says_how_it_was_established(self, capabilities):
+        for entry in capabilities.service_only:
+            assert entry.get("evidence"), entry["id"]
+            assert entry.get("cliGap"), entry["id"]
+            assert entry.get("authoring") == "armOnly", entry["id"]
+
+    def test_an_entry_we_cannot_author_says_so(self, capabilities):
+        # Recording a shape without a working example is the thing to avoid.
+        affinity = capabilities.service_only_entry("alias-session-affinity")
+        assert affinity["incomplete"] == "key syntax unresolved"
+        assert "NOT established" in affinity["evidence"]
+
+
+class TestPoolSessionAffinity:
+    def _with_affinity(self, inventory, value):
+        changed = copy.deepcopy(inventory)
+        asset = next(m for m in changed["assets"]["models"] if m["source"]["name"] == "aoai-api")
+        asset["routing"]["sessionAffinity"] = value
+        return changed
+
+    def test_a_pool_without_affinity_raises_nothing(self, plan):
+        assert not [i for i in plan["items"] if i["source"]["aspect"] == "sessionAffinity"]
+
+    def test_a_pool_using_affinity_is_reported_as_a_loss(self, inventory, capabilities):
+        changed = self._with_affinity(inventory, {"enabled": True})
+        built = build_plan(changed, capabilities)
+        item = next(i for i in built["items"] if i["source"]["aspect"] == "sessionAffinity")
+        assert item["kind"] == "accept-loss"
+        assert item["blocking"] is True
+        assert {o["value"] for o in item["options"]} == {"accept-loss", "retain-in-apim", "block"}
+
+    def test_it_says_the_target_can_do_it_and_the_tool_cannot(self, inventory, capabilities):
+        built = build_plan(self._with_affinity(inventory, {"enabled": True}), capabilities)
+        item = next(i for i in built["items"] if i["source"]["aspect"] == "sessionAffinity")
+        assert item["evidence"]["targetSupports"] is True
+        assert item["evidence"]["targetProperty"] == "aliases.properties.sessionBackendPreference"
+        # The consequence, not just the fact.
+        assert "move between backends" in item["rationale"]
+        assert ".," not in item["rationale"] and "but No flag" not in item["rationale"]
+
+    def test_the_apim_setting_is_carried_as_evidence(self, inventory, capabilities):
+        built = build_plan(self._with_affinity(inventory, {"enabled": True}), capabilities)
+        item = next(i for i in built["items"] if i["source"]["aspect"] == "sessionAffinity")
+        assert item["evidence"]["apimSessionAffinity"] == {"enabled": True}
