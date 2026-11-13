@@ -447,7 +447,9 @@ def _apply(args: argparse.Namespace) -> int:
         if entry not in journal["acknowledged"]:
             journal["acknowledged"].append(entry)
 
-    findings = preflight(plan, inventory)
+    from .apply import _run as _az
+
+    findings = preflight(plan, inventory, runner=_az)
     outstanding = [
         f for f in findings
         if f["blocking"] or f["code"] not in {"prerequisites"}

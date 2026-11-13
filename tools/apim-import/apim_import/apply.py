@@ -20,6 +20,7 @@ Three properties make a partial run recoverable without a transaction:
 from __future__ import annotations
 
 import datetime as _dt
+import hashlib
 import json
 import os
 import subprocess
@@ -185,6 +186,43 @@ def preflight(plan: dict[str, Any], inventory: dict[str, Any], *, runner: Runner
                 + ", ".join(missing[:3]),
                 "Re-collect the inventory.")
 
+    created = {
+        obj.get("name")
+        for item in plan.get("items") or []
+        if item.get("capabilityId") == "provider.create"
+        for obj in (item.get("target") or {}).get("objects") or []
+    }
+    dangling = sorted({
+        name
+        for item in plan.get("items") or []
+        if item.get("status") in {"ready", "adapted"}
+        for obj in (item.get("target") or {}).get("objects") or []
+        for name in [obj.get("providerName")]
+                    + [b.get("providerName") for b in obj.get("backendModels") or []]
+        if name and name not in created
+    })
+    if dangling:
+        finding(
+            "danglingProvider", True,
+            "Steps reference providers nothing in the plan creates: " + ", ".join(dangling),
+            "Re-plan from a current inventory, or settle the items that register those providers.",
+        )
+
+    unbuildable: dict[str, list[str]] = {}
+    for item in plan.get("items") or []:
+        capability_id = item.get("capabilityId")
+        if (item.get("status") in {"ready", "adapted"} and capability_id
+                and (item.get("target") or {}).get("objects")
+                and capability_id not in _BUILDERS):
+            unbuildable.setdefault(capability_id, []).append(item["id"])
+    if unbuildable:
+        finding(
+            "notExecutable", False,
+            "The plan contains work this tool cannot perform: "
+            + ", ".join(f"{cid} ({len(ids)})" for cid, ids in sorted(unbuildable.items())),
+            "Apply these by hand after the run, or they will simply be absent from the gateway.",
+        )
+
     prerequisites = plan.get("prerequisites") or []
     if prerequisites:
         finding("prerequisites", False,
@@ -273,7 +311,9 @@ def steps_for(plan: dict[str, Any]) -> list[Step]:
         if not capability_id or not target.get("objects"):
             continue
         phase = _PHASE_FOR_CAPABILITY.get(capability_id)
-        if not phase:
+        if not phase or capability_id not in _BUILDERS:
+            # Planned, but this tool cannot perform it. Surfaced by preflight as
+            # manual work rather than becoming a step that fails at execution.
             continue
         objects = [dict(obj) for obj in target["objects"]]
         if item.get("decision") is not None:
@@ -387,9 +427,14 @@ class Executor:
         two aliases -- so executing only the first would quietly under-provision.
         """
         previous = next((s for s in self.journal["steps"] if s["itemId"] == step.item_id), None)
+        digest = _objects_digest(step.objects)
         if previous and previous.get("status") == "verified":
-            step.status, step.detail = "verified", "already recorded as verified"
-            return step
+            if previous.get("objectsDigest") in (None, digest):
+                step.status, step.detail = "verified", "already recorded as verified"
+                return step
+            # The item kept its id but now asks for something else, so the old
+            # verification was of a different thing and proves nothing about this.
+            step.detail = "re-checking: the plan now asks for something different"
 
         outcomes: list[str] = []
         details: list[str] = []
@@ -543,6 +588,7 @@ class Executor:
     def _record(self, step: Step) -> None:
         entry = step.to_dict()
         entry["at"] = _now()
+        entry["objectsDigest"] = _objects_digest(step.objects)
         existing = next((s for s in self.journal["steps"] if s["itemId"] == step.item_id), None)
         if existing:
             self.journal["steps"][self.journal["steps"].index(existing)] = entry
@@ -740,6 +786,12 @@ def _run(argv: list[str], _payload: dict[str, Any] | None = None) -> CommandResu
     return CommandResult(proc.returncode, proc.stdout, proc.stderr)
 
 
+def _objects_digest(objects: list[dict[str, Any]]) -> str:
+    """What a step was verified against, so a later plan change re-checks it."""
+    canonical = json.dumps(objects, sort_keys=True, separators=(",", ":"), default=str)
+    return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:32]
+
+
 def _redact(argv: list[str]) -> list[str]:
     """Record what was run without recording what it carried."""
     return [part if not part.startswith("@/") else "@<tempfile>" for part in argv]
@@ -799,7 +851,22 @@ def _subset(desired: Any, observed: Any) -> bool:
                 return False
         return True
     if isinstance(desired, list):
-        return isinstance(observed, list) and len(observed) >= len(desired)
+        # Every wanted element must be satisfied by a distinct observed one.
+        # Comparing lengths made this a check in name only: an alias pointing at
+        # a completely different model verified cleanly.
+        if not isinstance(observed, list):
+            return False
+        remaining = list(observed)
+        for want in desired:
+            if write_only(want):
+                continue
+            for index, got in enumerate(remaining):
+                if _subset(want, got):
+                    remaining.pop(index)
+                    break
+            else:
+                return False
+        return True
     if isinstance(desired, str) and isinstance(observed, str):
         return desired.lower() == observed.lower()
     return desired == observed

@@ -384,3 +384,81 @@ class TestCredentialsAreReadLate:
                  if "meta-ai" in s.item_id and s.capability_id == "provider.create")
         )
         assert step.status == "verified"
+
+
+class TestVerificationIsRealNotNominal:
+    """Audit of one defect family: the tool asserting or demanding something it
+    cannot substantiate. These are the occurrences a review turned up."""
+
+    def test_lists_compare_contents_not_lengths(self):
+        from apim_import.apply import _subset
+
+        # An alias pointing at a different model used to verify cleanly, because
+        # list comparison only checked length.
+        assert not _subset(
+            {"backendModels": [{"resourceId": "/correct"}]},
+            {"backendModels": [{"resourceId": "/different"}]},
+        )
+        assert _subset(
+            {"backendModels": [{"resourceId": "/correct"}]},
+            {"backendModels": [{"resourceId": "/correct", "weight": 100}]},
+        )
+
+    def test_a_wanted_element_may_match_any_observed_one(self):
+        from apim_import.apply import _subset
+
+        assert _subset({"endpoints": [{"kind": "mcp"}]},
+                       {"endpoints": [{"kind": "openApi"}, {"kind": "mcp"}]})
+
+    def test_two_wanted_elements_need_two_distinct_matches(self):
+        from apim_import.apply import _subset
+
+        assert not _subset({"e": [{"k": "a"}, {"k": "a"}]}, {"e": [{"k": "a"}]})
+
+    def test_a_recorded_verification_belongs_to_what_it_verified(self, inventory, settled):
+        journal = new_journal(settled)
+        step = steps_for(settled)[0]
+        journal["steps"].append({
+            "itemId": step.item_id, "status": "verified", "detail": "",
+            "objectsDigest": "sha256:somethingelse",
+        })
+        runner = _Runner()
+        executor = Executor(settled, inventory, journal, runner=runner, execute=True,
+                            skip_rehearsal=True)
+        again = executor.run_step(step)
+        # The item kept its id but asks for something else now, so the old
+        # verification proves nothing about it.
+        assert again.status != "verified" or runner.calls
+
+    def test_work_the_tool_cannot_perform_is_reported_not_silently_dropped(self, inventory, settled):
+        import apim_import.apply as mod
+
+        builder = mod._BUILDERS.pop("provider.create")
+        try:
+            codes = {f["code"] for f in preflight(settled, inventory)}
+            assert "notExecutable" in codes
+            # And it does not become a step that fails later.
+            assert not [s for s in steps_for(settled) if s.capability_id == "provider.create"]
+        finally:
+            mod._BUILDERS["provider.create"] = builder
+
+    def test_a_step_referencing_an_uncreated_provider_blocks(self, inventory, settled):
+        import copy
+
+        broken = copy.deepcopy(settled)
+        for item in broken["items"]:
+            for obj in (item.get("target") or {}).get("objects") or []:
+                if obj.get("providerName"):
+                    obj["providerName"] = "a-provider-nothing-creates"
+        codes = {f["code"] for f in preflight(broken, inventory) if f["blocking"]}
+        assert "danglingProvider" in codes
+
+    def test_the_name_collision_check_actually_runs_from_the_cli(self):
+        import inspect
+
+        from apim_import import cli
+
+        # It is gated on a runner being supplied; the CLI once called preflight
+        # without one, so a documented blocking check silently never happened.
+        source = inspect.getsource(cli._apply)
+        assert "preflight(plan, inventory, runner=" in source

@@ -719,6 +719,30 @@ provider reported as mismatched however correctly it was configured. Verificatio
 what can be read and says what it could not: a step whose object carries a credential is verified
 with "its credential is write-only and was not read back".
 
+## One defect family, and the audit for it
+
+Four bugs found while driving a real deployment were all the same mistake: **the tool asserting or
+demanding something it cannot substantiate.** Providers configured against an identity nothing
+created; a rehearsal recorded as work done; a write with no read-back, blocking forever on
+verification the tool could not perform; a comparison against a field the API never returns.
+
+That is the rule this project already enforces on the inventory — *a failed inference must not read
+as a confident negative* — applied one level down and, at first, not applied at all. So the executor
+was reviewed for the whole family. Five more:
+
+| Occurrence | What it claimed | Why it was wrong |
+| --- | --- | --- |
+| List comparison checked length only | "verified" | An alias pointing at a **completely different model** verified cleanly. Verification in name only is worse than none, because it produces confidence |
+| The name-collision check was gated on a runner the CLI never passed | "preflight clean" | A documented blocking check silently never ran |
+| Four capabilities were mapped to phases with no command builder | a step that fails at execution | Work the tool cannot do, discovered after everything else was provisioned. Now reported by preflight as manual work |
+| A recorded `verified` was trusted across a changed plan | "already verified" | The item kept its id but asked for something else; the old verification proved nothing about the new ask. Steps now carry a digest of what they were verified against |
+| Nothing checked that a step's provider is one the plan creates | an executable plan | A model step naming a provider nothing registers fails mid-phase. Now a blocking preflight finding |
+
+The structural guards matter more than the individual fixes: completeness is derived rather than
+stored, every capability with a builder must have a reader (enforced by a test), write-only fields
+are skipped by construction, and work the tool cannot perform is surfaced before the first write
+rather than failing after the last.
+
 ## Development
 
 ```bash
