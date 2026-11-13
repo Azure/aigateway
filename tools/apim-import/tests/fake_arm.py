@@ -17,6 +17,10 @@ SERVICE = (
     f"/subscriptions/{SUB}/resourceGroups/rg-demo/providers/Microsoft.ApiManagement/service/apim-demo"
 )
 ACCOUNT = f"/subscriptions/{SUB}/resourceGroups/rg-demo/providers/Microsoft.CognitiveServices/accounts/aif"
+# The pool's second member. Load balancing is only expressible when the same
+# model is deployed in more than one account, so the fixture deploys `gpt-5`
+# in both and leaves `text-embedding-3-large` in one.
+ACCOUNT_WEST = f"/subscriptions/{SUB}/resourceGroups/rg-demo/providers/Microsoft.CognitiveServices/accounts/aif-west"
 WS = f"{SERVICE}/workspaces/finance"
 
 POOL_POLICY = """<policies>
@@ -128,6 +132,7 @@ BACKENDS = [
         "id": f"{SERVICE}/backends/aoai-west", "name": "aoai-west",
         "properties": {
             "type": "Single", "protocol": "http", "url": "https://aif-west.openai.azure.com/",
+            "resourceId": f"https://management.azure.com{ACCOUNT_WEST}",
             "credentials": {"header": {"api-key": ["{{aoai-key}}"]}},
         },
     },
@@ -282,7 +287,13 @@ ROUTES: dict[str, Any] = {
                         "endpoints": {"OpenAI": "https://aif.openai.azure.com/",
                                       "AI Foundry API": "https://aif.services.ai.azure.com/"},
                         "customSubDomainName": "aif", "disableLocalAuth": False,
-                        "publicNetworkAccess": "Enabled"}}
+                        "publicNetworkAccess": "Enabled"}},
+        {"id": ACCOUNT_WEST, "name": "aif-west", "location": "eastus2", "kind": "AIServices",
+         "sku": {"name": "S0"},
+         "properties": {"endpoint": "https://aif-west.cognitiveservices.azure.com/",
+                        "endpoints": {"OpenAI": "https://aif-west.openai.azure.com/"},
+                        "customSubDomainName": "aif-west", "disableLocalAuth": False,
+                        "publicNetworkAccess": "Enabled"}},
     ],
     # An account normally carries several deployments, and which routes each can
     # serve is declared in its capabilities map rather than inferred.
@@ -298,6 +309,13 @@ ROUTES: dict[str, Any] = {
                         "provisioningState": "Succeeded",
                         "capabilities": {"embeddings": "true"}},
          "sku": {"name": "Standard", "capacity": 120}},
+    ],
+    f"{ACCOUNT_WEST}/deployments": [
+        {"id": f"{ACCOUNT_WEST}/deployments/gpt-5", "name": "gpt-5",
+         "properties": {"model": {"format": "OpenAI", "name": "gpt-5.2", "version": "2025-12-11"},
+                        "provisioningState": "Succeeded",
+                        "capabilities": {"chatCompletion": "true", "responses": "true"}},
+         "sku": {"name": "GlobalStandard", "capacity": 8000}},
     ],
 }
 

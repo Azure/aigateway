@@ -754,7 +754,9 @@ class Collector:
             element_names = {element["name"] for element in api_scoped["elements"]}
             families = {element["family"] for element in api_scoped["elements"]}
 
-            backend_record = _resolve_backend(props, backends_by_name, backends_by_id, workspace)
+            backend_record, routing_candidates = _resolve_backend(
+                props, backends_by_name, backends_by_id, workspace, api_scoped["elements"]
+            )
             backend_urls = _backend_urls(backend_record, backends_by_id)
 
             api_type = (props.get("type") or "http").lower()
@@ -809,7 +811,8 @@ class Collector:
             elif classification.kind == "modelApi" and "models" in self.options.families:
                 assets["models"].append(
                     self._model_asset(
-                        common, raw, operations, backend_record, backends_by_id, classification, effective
+                        common, raw, operations, backend_record, backends_by_id, classification,
+                        effective, routing_candidates,
                     )
                 )
             else:
@@ -1128,7 +1131,7 @@ class Collector:
                     )
                     continue
                 source_props = source.get("properties") or {}
-                record = _resolve_backend(source_props, backends_by_name, backends_by_id, workspace)
+                record, _ = _resolve_backend(source_props, backends_by_name, backends_by_id, workspace)
                 for target in _routing_targets(record, backends_by_id, source_props.get("serviceUrl")):
                     upstream.append({**target, "viaApi": ids.api(source_name, workspace), "transport": "http"})
             asset["upstream"] = upstream
@@ -1186,6 +1189,7 @@ class Collector:
         backends_by_id: dict[str, dict[str, Any]],
         classification: detect.Classification,
         effective: dict[str, Any],
+        routing_candidates: list[str] | None = None,
     ) -> dict[str, Any]:
         props = raw.get("properties") or {}
         targets = _routing_targets(backend_record, backends_by_id, props.get("serviceUrl"))
@@ -1252,13 +1256,38 @@ class Collector:
             provider["kind"] = declarations[0].get("providerKind") or provider["kind"]
             provider["declaredByBackend"] = True
         elif self.foundry and detect.is_foundry(provider_rule):
+            # Every target, not just the first. A load-balanced API routes to a
+            # pool of accounts, and stopping at one reported its models as the
+            # API's whole catalogue while the other members -- and the weights
+            # that split traffic between them -- went missing entirely.
+            resolved: list[dict[str, Any]] = []
             account = None
             for target in targets:
-                account = self.foundry.by_resource_id(target.get("resourceIdRef")) or self.foundry.by_url(target.get("url"))
-                if account:
-                    break
+                member = (self.foundry.by_resource_id(target.get("resourceIdRef"))
+                          or self.foundry.by_url(target.get("url")))
+                if not member:
+                    continue
+                account = account or member
+                deployments = self.foundry.load_deployments(member)
+                for deployment in deployments:
+                    resolved.append({
+                        "deploymentName": deployment["name"],
+                        "modelName": deployment["modelName"],
+                        "modelVersion": deployment["modelVersion"],
+                        "modelFormat": deployment["modelFormat"],
+                        "sku": deployment["sku"],
+                        "raiPolicyName": deployment["raiPolicyName"],
+                        # Which member serves it, and on what share of traffic.
+                        # One alias fronts the same model across members, so the
+                        # registration has to say where each copy lives.
+                        "backendId": target.get("backendId"),
+                        "poolPriority": target.get("priority"),
+                        "poolWeight": target.get("weight"),
+                        "target": target_model_registration(member, deployment),
+                    })
+                if member.deployments_error:
+                    models["notes"].append(member.deployments_error)
             if account:
-                deployments = self.foundry.load_deployments(account)
                 provider["azure"] = {
                     "accountResourceId": account.resource_id,
                     "accountName": account.name,
@@ -1269,22 +1298,9 @@ class Collector:
                     "disableLocalAuth": account.disable_local_auth,
                     "publicNetworkAccess": account.public_network_access,
                 }
-                models["status"] = "resolved" if deployments else "empty"
+                models["status"] = "resolved" if resolved else "empty"
                 models["discoverySource"] = "armDeployments"
-                models["resolved"] = [
-                    {
-                        "deploymentName": deployment["name"],
-                        "modelName": deployment["modelName"],
-                        "modelVersion": deployment["modelVersion"],
-                        "modelFormat": deployment["modelFormat"],
-                        "sku": deployment["sku"],
-                        "raiPolicyName": deployment["raiPolicyName"],
-                        "target": target_model_registration(account, deployment),
-                    }
-                    for deployment in deployments
-                ]
-                if account.deployments_error:
-                    models["notes"].append(account.deployments_error)
+                models["resolved"] = resolved
             else:
                 models["notes"].append(
                     "Backend looks like an Azure AI Foundry endpoint but no matching Cognitive Services "
@@ -1316,10 +1332,18 @@ class Collector:
             "pattern": classification.pattern,
             "provider": provider,
             "routing": {
-                "mode": "pool" if (backend_record or {}).get("type") == "Pool" else ("single" if targets else "policy"),
+                "mode": (
+                    "pool" if (backend_record or {}).get("type") == "Pool"
+                    else "conditional" if routing_candidates
+                    else "single" if targets else "policy"
+                ),
                 "targets": targets,
                 "circuitBreaker": (backend_record or {}).get("circuitBreaker"),
                 "evidence": (backend_record or {}).get("id") or "serviceUrl",
+                # Several set-backend-service elements mean the upstream is
+                # picked at runtime. Naming them beats reporting no backend,
+                # which is what an unread policy used to look like.
+                "candidates": routing_candidates or [],
             },
             "models": models,
             "supportingBackends": _supporting_backends(effective, workspace=common["workspace"]),
@@ -1777,17 +1801,47 @@ def _asset_prefix(kind: str) -> str:
     return {"modelApi": "model", "mcpServer": "mcp", "agent": "agent"}.get(kind, "api")
 
 
+def policy_routed_backends(elements: list[dict[str, Any]] | None) -> list[str]:
+    """Backends a ``set-backend-service`` policy routes this API to.
+
+    An API can name its backend in ``properties.backendId`` or leave it to
+    policy. The import wizard writes both for a single upstream, so reading only
+    the property worked until an API load-balanced across accounts: its backend
+    is a pool, which ``properties.backendId`` never carries. Those APIs resolved
+    to no backend at all, so a pool of Foundry accounts read as an API with no
+    provider and no targets.
+    """
+    names: list[str] = []
+    for element in elements or []:
+        named = detect.backend_roles_from_element(element)
+        if named and named[1] == "routing" and named[0] not in names:
+            names.append(named[0])
+    return names
+
+
 def _resolve_backend(
     props: dict[str, Any],
     by_name: dict[str, dict[str, Any]],
     by_id: dict[str, dict[str, Any]],
     workspace: str | None,
-) -> dict[str, Any] | None:
+    elements: list[dict[str, Any]] | None = None,
+) -> tuple[dict[str, Any] | None, list[str]]:
+    """The backend this API routes to, and any candidates left unresolved.
+
+    Several ``set-backend-service`` elements mean the backend is chosen at
+    runtime -- inside a ``choose``, typically. Picking the first would state a
+    route nobody configured, so none is returned and all the candidates are
+    reported instead.
+    """
     backend_id = props.get("backendId")
-    if not backend_id:
-        return None
-    record = by_name.get(backend_id) or by_id.get(ids.backend(backend_id, workspace))
-    return record
+    if backend_id:
+        return by_name.get(backend_id) or by_id.get(ids.backend(backend_id, workspace)), []
+
+    candidates = policy_routed_backends(elements)
+    if len(candidates) != 1:
+        return None, candidates
+    name = candidates[0]
+    return by_name.get(name) or by_id.get(ids.backend(name, workspace)), []
 
 
 def _raw_backend(record: dict[str, Any] | None) -> dict[str, Any] | None:

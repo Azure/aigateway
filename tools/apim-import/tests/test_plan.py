@@ -732,3 +732,92 @@ class TestAProbeThatCouldNotRun:
     def test_a_command_the_cli_does_not_expose_is_still_unavailable(self, capabilities):
         probed = CapabilityMap.load().probe(probe=lambda _c: None, available=lambda: True)
         assert all(c.support == "unavailable" for c in probed.capabilities.values())
+
+
+class TestLoadBalancedPool:
+    """An APIM backend pool is what an AI Gateway alias was built for.
+
+    The target takes 1-30 backend models per alias with a priority and a
+    weight, which is exactly an APIM pool. Collapsing it to the first member
+    dropped the second upstream and the traffic split with it, and the result
+    read like an ordinary single-backend API.
+    """
+
+    def pooled(self, plan):
+        return next(i for i in plan["items"]
+                    if i["id"] == "item:model/aoai-api/aliasNames")
+
+    def test_the_api_routes_to_a_pool(self, inventory):
+        asset = next(m for m in inventory["assets"]["models"] if m["source"]["name"] == "aoai-api")
+        assert asset["routing"]["mode"] == "pool"
+        assert [t["weight"] for t in asset["routing"]["targets"]] == [80, 20]
+
+    def test_a_shared_model_becomes_one_alias_over_both_members(self, plan):
+        alias = next(o for o in self.pooled(plan)["target"]["objects"]
+                     if o["routingName"] == "gpt-5")
+        backends = alias["backendModels"]
+        assert len(backends) == 2, "the model is deployed in both accounts"
+        assert {b["providerName"] for b in backends} == {"aoai-east", "aoai-west"}
+
+    def test_the_pool_weights_survive(self, plan):
+        alias = next(o for o in self.pooled(plan)["target"]["objects"]
+                     if o["routingName"] == "gpt-5")
+        by_provider = {b["providerName"]: b for b in alias["backendModels"]}
+        assert (by_provider["aoai-east"]["priority"], by_provider["aoai-east"]["weight"]) == (1, 80)
+        assert (by_provider["aoai-west"]["priority"], by_provider["aoai-west"]["weight"]) == (2, 20)
+
+    def test_each_member_registers_its_own_copy_of_the_model(self, plan):
+        registrations = [
+            (i["target"]["objects"][0]["name"], i["target"]["objects"][0]["providerName"])
+            for i in plan["items"]
+            if i.get("capabilityId") == "model.create"
+            and i["source"]["assetId"] == "model:aoai-api"
+        ]
+        assert ("gpt-5", "aoai-east") in registrations
+        assert ("gpt-5", "aoai-west") in registrations
+        # Same gateway-visible name under two providers: only the item id differs.
+        assert len({r[1] for r in registrations}) == 2
+
+    def test_a_model_in_one_member_only_is_called_out(self, plan):
+        item = self.pooled(plan)
+        assert item["evidence"]["pooled"] is True
+        # text-embedding-3-large is deployed in the east account alone.
+        assert "text-embedding-3-large" in item["evidence"]["singleMemberModels"]
+        assert "only one member" in item["rationale"]
+
+    def test_an_unpooled_api_is_unchanged(self, plan):
+        for item in plan["items"]:
+            if item.get("kind") != "name" or item["source"]["assetId"] == "model:aoai-api":
+                continue
+            for obj in item["target"]["objects"]:
+                assert len(obj["backendModels"]) == 1
+                assert (obj["backendModels"][0]["priority"],
+                        obj["backendModels"][0]["weight"]) == (0, 100)
+
+
+class TestPolicyRoutedBackend:
+    """An API whose backend is named only by policy still has a backend."""
+
+    def test_a_single_set_backend_service_resolves(self):
+        from apim_import.collect import policy_routed_backends
+
+        elements = [{"name": "set-backend-service", "attributes": {"backend-id": "aoai-pool"}}]
+        assert policy_routed_backends(elements) == ["aoai-pool"]
+
+    def test_a_runtime_expression_is_not_a_backend_name(self):
+        from apim_import.collect import policy_routed_backends
+
+        elements = [{"name": "set-backend-service",
+                     "attributes": {"backend-id": "@(context.Variables[\"b\"])"}}]
+        assert policy_routed_backends(elements) == []
+
+    def test_several_candidates_are_reported_rather_than_guessed(self):
+        from apim_import.collect import _resolve_backend
+
+        elements = [
+            {"name": "set-backend-service", "attributes": {"backend-id": "east"}},
+            {"name": "set-backend-service", "attributes": {"backend-id": "west"}},
+        ]
+        record, candidates = _resolve_backend({}, {"east": {"id": "x"}}, {}, None, elements)
+        assert record is None
+        assert candidates == ["east", "west"]

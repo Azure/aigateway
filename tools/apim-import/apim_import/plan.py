@@ -576,10 +576,20 @@ class PlanBuilder:
         name = resolved.get("deploymentName") or resolved.get("modelName") or "model"
         target = resolved.get("target") or {}
         endpoints = target.get("supportedEndpoints") or []
-        provider_name = _provider_name(model)
+        # A pooled API has one registration per member that serves the model, so
+        # the provider is the member this copy lives in -- not the API's first
+        # target, which would file every member's models under one account.
+        provider_name = (_slug(resolved["backendId"]) if resolved.get("backendId")
+                         else _provider_name(model))
+        # A gateway model is named within its provider, so two members may both
+        # register `gpt-4o`. Only the plan item id has to tell them apart.
+        pooled = len({r.get("backendId")
+                      for r in (model.get("models") or {}).get("resolved") or []}) > 1
+        item_key = f"model/{name}@{provider_name}" if pooled else f"model/{name}"
         self._add(
-            item_id=ids.item(asset_id, f"model/{name}"),
-            source={"assetId": asset_id, "assetKind": "modelApi", "aspect": f"model:{name}"},
+            item_id=ids.item(asset_id, item_key),
+            source={"assetId": asset_id, "assetKind": "modelApi", "aspect": f"model:{name}"
+                    + (f"@{provider_name}" if pooled else "")},
             kind=None,
             verdict="native",
             capability_id="model.create",
@@ -613,16 +623,59 @@ class PlanBuilder:
         It is one decision with a per-model default that can be overridden.
         """
         asset_id = model["id"]
+        # One alias per callable name, fronting every pool member that serves it.
+        # A load-balanced API registers the same model once per account, and an
+        # alias per registration would have published the name twice, each
+        # pointing at one account -- the second quietly overwriting the first and
+        # the pool's traffic split lost with it.
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        for entry in registrations:
+            grouped.setdefault(
+                str(entry.get("deploymentName") or entry.get("modelName")), []
+            ).append(entry)
+
         members = [
             {
-                "modelName": entry.get("modelName"),
-                "proposedAliasName": entry.get("deploymentName") or entry.get("modelName"),
-                "supportedEndpoints": (entry.get("target") or {}).get("supportedEndpoints") or [],
+                "modelName": copies[0].get("modelName"),
+                "proposedAliasName": alias_name,
+                "supportedEndpoints": (copies[0].get("target") or {}).get("supportedEndpoints") or [],
+                "backends": [
+                    {
+                        "providerName": (_slug(copy["backendId"]) if copy.get("backendId")
+                                         else _provider_name(model)),
+                        # APIM pools weight 0-1000 and the target takes 1-100, so
+                        # a share is carried across only when it already fits.
+                        "priority": copy.get("poolPriority") if copy.get("poolPriority") is not None else 0,
+                        "weight": copy.get("poolWeight") if copy.get("poolWeight") is not None else 100,
+                    }
+                    for copy in copies
+                ],
             }
-            for entry in registrations
+            for alias_name, copies in grouped.items()
         ]
         sample = ", ".join(str(member["proposedAliasName"]) for member in members[:4])
         more = f" and {len(members) - 4} more" if len(members) > 4 else ""
+
+        # A pooled API balances across members, but only a model deployed in
+        # every member can actually be balanced. APIM splits traffic blind and
+        # fails on the members that lack it; the gateway routes to where the
+        # model is. That is better behaviour and a different one, so it is said
+        # rather than left for someone to notice in production.
+        pooled = max((len(m["backends"]) for m in members), default=1) > 1
+        partial = [m["proposedAliasName"] for m in members if len(m["backends"]) == 1] if pooled else []
+        balance = ""
+        if pooled:
+            balance = (
+                f" This API load-balances across {max(len(m['backends']) for m in members)} backends; "
+                "each alias carries the pool's priority and weight."
+            )
+            if partial:
+                balance += (
+                    f" {len(partial)} of them are deployed in only one member "
+                    f"({', '.join(str(name) for name in partial[:3])}"
+                    f"{'...' if len(partial) > 3 else ''}), so those route to that member alone "
+                    "instead of being split."
+                )
         self._add(
             item_id=ids.item(asset_id, "aliasNames"),
             source={"assetId": asset_id, "assetKind": "modelApi", "aspect": "aliasNames"},
@@ -633,12 +686,14 @@ class PlanBuilder:
             rationale=(
                 f"An alias publishes the route, and its routingName is what clients send as `model`. "
                 f"APIM does not store it. Proposed for {len(members)} model(s): {sample}{more}."
+                + balance
             ),
             options=[
                 _opt("use-model-names", "Publish each model under its own name."),
                 _opt("override", "Supply names per model; set them in this item's members."),
             ],
-            evidence={"members": members, "count": len(members)},
+            evidence={"members": members, "count": len(members),
+                      "pooled": pooled, "singleMemberModels": partial},
             target={
                 "capability": "alias.create",
                 "objects": [
@@ -648,11 +703,11 @@ class PlanBuilder:
                             "modelName": _slug(str(member["proposedAliasName"])),
                             # Resolved against the gateway during the aliases
                             # phase: a model's ARM id is a runtime fact.
-                            "providerName": _provider_name(model),
+                            "providerName": backend["providerName"],
                             "resourceId": None,
-                            "priority": 0,
-                            "weight": 100,
-                        }],
+                            "priority": backend["priority"],
+                            "weight": backend["weight"],
+                        } for backend in member["backends"]],
                         "supportedEndpoints": member["supportedEndpoints"],
                     }
                     for member in members

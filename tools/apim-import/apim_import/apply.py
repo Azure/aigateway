@@ -806,7 +806,11 @@ def _alias_set(executor: Executor, step: Step, obj: dict[str, Any]) -> tuple[lis
             # Space-free: this sits inside a shorthand object, where a space
             # ends the token and would make the rehearsed command unusable if
             # an operator pasted it.
-            resource_id = f"<resolved-at-apply-time:{backend.get('modelName')}>"
+            # Qualified by provider: a pooled alias fronts the same model name in
+            # several accounts, and an unqualified placeholder showed the
+            # operator what looked like the same backend listed twice.
+            resource_id = (f"<resolved-at-apply-time:{backend.get('providerName')}"
+                           f"/{backend.get('modelName')}>")
         if not resource_id:
             why = executor._lookup_failures.get(
                 (backend.get("providerName"), backend.get("modelName"))

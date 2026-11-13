@@ -554,7 +554,10 @@ class TestAliasVerification:
                 "name": _alias_key(o),
                 "properties": {
                     "aliasName": o["routingName"],
-                    "backendModels": [{"resourceId": resource_id}],
+                    # One per backend the alias fronts: a pooled alias carries
+                    # several, and a read showing fewer must not verify.
+                    "backendModels": [{"resourceId": resource_id}
+                                      for _ in o.get("backendModels") or [{}]],
                     "supportedEndpoints": o.get("supportedEndpoints") or [],
                     "gatewayEndpoints": [{"api": "v1/messages"}],
                     "selectionOrder": ["priority"],
