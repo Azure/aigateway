@@ -70,6 +70,7 @@ class PlanBuilder:
     def build(self) -> dict[str, Any]:
         assets = self.inventory.get("assets") or {}
         self._gateway()
+        self._identity()
         for provider in assets.get("modelProviders") or []:
             self._provider(provider)
         for model in assets.get("models") or []:
@@ -212,6 +213,67 @@ class PlanBuilder:
                 "capability": "gateway.create",
                 "objects": [{"name": self.target.rstrip("/").rsplit("/", 1)[-1],
                              "location": service.get("location")}],
+            },
+        )
+
+    def _identity(self) -> None:
+        """Give the gateway an identity when any provider authenticates as one.
+
+        Every Foundry provider is registered with ``authentication.kind:
+        ManagedIdentity``, so without this step the gateway would be configured
+        to authenticate as a principal that does not exist, and the RBAC
+        prerequisite would have nothing to grant to.
+
+        Which identity is a real decision. A user-assigned identity carried over
+        from the source already holds its grants on the backend accounts, so
+        reusing it turns the RBAC prerequisite into a no-op; a fresh
+        system-assigned identity is a new principal that must be granted access
+        before any model call succeeds.
+        """
+        providers = (self.inventory.get("assets") or {}).get("modelProviders") or []
+        needed = [p for p in providers if (p.get("auth") or {}).get("mode") == "managedIdentity"]
+        if not needed:
+            return
+        identity = (self.inventory.get("service") or {}).get("identity") or {}
+        assigned = identity.get("userAssignedIdentities") or []
+        options = [
+            _opt("system-assigned",
+                 "A new principal; every backend grant has to be made against it."),
+        ]
+        for entry in assigned:
+            options.append(_opt(
+                f"reuse:{entry['resourceId']}",
+                "Carries the grants this identity already holds on the backends.",
+            ))
+        proposal = f"reuse:{assigned[0]['resourceId']}" if assigned else "system-assigned"
+        self._add(
+            item_id=ids.item("identity", "assign"),
+            source={"assetId": None, "assetKind": "identity", "aspect": "gatewayIdentity"},
+            kind="translate" if assigned else None,
+            verdict="partial" if assigned else "native",
+            capability_id="identity.assign",
+            proposal=proposal,
+            rationale=(
+                f"{len(needed)} provider(s) authenticate as a managed identity, so the gateway needs "
+                "one. " + (
+                    "The source uses a user-assigned identity that already holds its backend grants; "
+                    "reusing it avoids making them again."
+                    if assigned else
+                    "The source uses a system-assigned identity, whose principal cannot be carried "
+                    "over, so the target gets its own and the backend grants must be made against it."
+                )
+            ),
+            options=options if assigned else [],
+            evidence={
+                "sourceIdentity": identity,
+                "providers": [p["id"] for p in needed],
+                "audiences": sorted({(p.get("auth") or {}).get("identity", {}).get("audience")
+                                     for p in needed if (p.get("auth") or {}).get("identity")}),
+            },
+            target={
+                "capability": "identity.assign",
+                "objects": [{"systemAssigned": not assigned,
+                             "userAssigned": [e["resourceId"] for e in assigned] or None}],
             },
         )
 
@@ -684,12 +746,23 @@ class PlanBuilder:
         assets = self.inventory.get("assets") or {}
         providers = assets.get("modelProviders") or []
         if any((provider.get("auth") or {}).get("mode") == "managedIdentity" for provider in providers):
+            identity = (self.inventory.get("service") or {}).get("identity") or {}
+            reusing = bool(identity.get("userAssignedIdentities"))
             self.prerequisites.append({
                 "id": "prereq:foundry-rbac",
                 "owner": "azure-administrator",
                 "summary": "Grant the gateway identity data-plane access on each Foundry account",
-                "detail": "A provider using ManagedIdentity needs a role assignment on the backend account. "
-                          "Role assignments are outside the gateway resource provider.",
+                "detail": (
+                    "A provider using ManagedIdentity needs a role assignment on the backend account, "
+                    "and role assignments are outside the gateway resource provider. "
+                    + (
+                        "If the plan reuses the source's user-assigned identity, its existing grants "
+                        "already cover this and nothing new is needed."
+                        if reusing else
+                        "The target's system-assigned identity is a new principal, so the source's "
+                        "existing grants do not apply to it."
+                    )
+                ),
             })
         self.prerequisites.append({
             "id": "prereq:caller-rbac",

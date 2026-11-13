@@ -441,3 +441,44 @@ class TestResume:
         again = build_plan(inventory, capabilities, previous=adapted)
         assert again["summary"]["byStatus"].get("needs-decision", 0) == 0
         assert again["orphanedDecisions"] == []
+
+
+class TestGatewayIdentity:
+    """Every Foundry provider registers with ManagedIdentity, so the gateway
+    needs one before any of them is created."""
+
+    def test_an_identity_step_is_emitted_for_managed_identity_providers(self, plan):
+        item = next(i for i in plan["items"] if i["capabilityId"] == "identity.assign")
+        assert item["target"]["objects"]
+        assert item["evidence"]["providers"]
+
+    def test_a_system_assigned_source_cannot_carry_its_principal_over(self, plan):
+        item = next(i for i in plan["items"] if i["capabilityId"] == "identity.assign")
+        assert item["proposal"] == "system-assigned"
+        assert "cannot be carried" in item["rationale"]
+
+    def test_a_user_assigned_source_proposes_reusing_it(self, inventory, capabilities):
+        import copy
+
+        changed = copy.deepcopy(inventory)
+        changed["service"]["identity"] = {
+            "type": "UserAssigned",
+            "userAssignedIdentities": [{"resourceId": "/subscriptions/s/uami/one", "clientId": "c"}],
+        }
+        document = build_plan(changed, capabilities)
+        item = next(i for i in document["items"] if i["capabilityId"] == "identity.assign")
+        # Reusing an identity that already holds its grants makes the RBAC
+        # prerequisite a no-op, which is a materially different outcome.
+        assert item["proposal"] == "reuse:/subscriptions/s/uami/one"
+        assert item["kind"] == "translate"
+        prereq = next(p for p in document["prerequisites"] if p["id"] == "prereq:foundry-rbac")
+        assert "already cover this" in prereq["detail"]
+
+    def test_no_identity_step_when_nothing_authenticates_as_one(self, inventory, capabilities):
+        import copy
+
+        changed = copy.deepcopy(inventory)
+        for provider in changed["assets"]["modelProviders"]:
+            provider["auth"]["mode"] = "apiKey"
+        document = build_plan(changed, capabilities)
+        assert not [i for i in document["items"] if i["capabilityId"] == "identity.assign"]

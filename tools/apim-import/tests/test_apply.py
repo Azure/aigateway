@@ -131,7 +131,19 @@ class TestPhases:
         journal = new_journal(settled)
         journal["phases"] = {"gateway": {"status": "complete"}}
         executor = Executor(settled, inventory, journal, runner=_Runner())
-        assert executor.next_phase() == "providers"
+        assert executor.next_phase() == "identity"
+
+    def test_a_gateway_whose_providers_use_an_identity_gets_one(self, settled):
+        # Regression: nothing emitted identity.assign, so the identity phase was
+        # always empty and Foundry providers were configured against a principal
+        # that did not exist.
+        identity = [s for s in steps_for(settled) if s.capability_id == "identity.assign"]
+        assert identity, "no identity step for providers that authenticate as one"
+        assert identity[0].phase == "identity"
+
+    def test_the_identity_is_assigned_before_any_provider(self, settled):
+        phases = [step.phase for step in steps_for(settled)]
+        assert phases.index("identity") < phases.index("providers")
 
 
 class TestRehearsal:

@@ -275,8 +275,14 @@ def steps_for(plan: dict[str, Any]) -> list[Step]:
         phase = _PHASE_FOR_CAPABILITY.get(capability_id)
         if not phase:
             continue
+        objects = [dict(obj) for obj in target["objects"]]
+        if item.get("decision") is not None:
+            # A step may need the decision itself, not just the objects it shaped
+            # at planning time -- which identity to assign, for instance.
+            for obj in objects:
+                obj.setdefault("decision", item["decision"])
         steps.append(Step(item_id=item["id"], capability_id=capability_id, phase=phase,
-                          objects=target["objects"]))
+                          objects=objects))
     return sorted(steps, key=lambda step: PHASES.index(step.phase))
 
 
@@ -514,10 +520,24 @@ def _gateway_create(executor: Executor, step: Step, obj: dict[str, Any]) -> tupl
 
 
 def _identity_assign(executor: Executor, step: Step, obj: dict[str, Any]) -> tuple[list[str], list[str]]:
-    return ([
+    """Assign the identity the providers will authenticate as.
+
+    Reusing the source's user-assigned identity carries its existing backend
+    grants; a system-assigned one is a new principal that must be granted.
+    """
+    argv = [
         "az", "aigateway", "identity", "assign", *executor.target.selectors,
-        "-n", executor.target.name, "--system-assigned", "true", "-o", "json",
-    ], [])
+        "-n", executor.target.name,
+    ]
+    user_assigned = obj.get("userAssigned") or []
+    decision = str(obj.get("decision") or "")
+    if decision.startswith("reuse:"):
+        user_assigned = [decision.split("reuse:", 1)[1]]
+    if user_assigned:
+        argv += ["--user-assigned", *user_assigned]
+    else:
+        argv += ["--system-assigned", "true"]
+    return argv + ["-o", "json"], []
 
 
 def _provider_create(executor: Executor, step: Step, obj: dict[str, Any]) -> tuple[list[str], list[str]]:
