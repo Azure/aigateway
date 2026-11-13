@@ -509,6 +509,29 @@ Resolving closes a question without opening new ones. A catalogue of fifty model
 model registrations and **one** naming decision, because the alias names batch with a per-model
 default.
 
+## Saving and resuming
+
+The plan file **is** the saved state. There is nothing else to persist: every decision lives on the
+item it settles, so a later session picks up by pointing at the same file.
+
+```bash
+apim-import plan --inventory inventory.json -o plan.json --target <gateway-resource-id>
+# ... days later, possibly a different session or machine ...
+apim-import plan --inventory inventory.json -o plan.json     # adaptations preserved, target remembered
+```
+
+`--target` records where the plan deploys to and is sticky, so a resumed session does not have to be
+told the destination again.
+
+Two things a resume must never do quietly, both of which it now reports:
+
+- **An item whose source facts changed** comes back as `stale`, keeping its prior decision and
+  saying what moved.
+- **A decision whose item no longer exists** — usually because a tool change altered an item's shape
+  — is listed under `orphanedDecisions` with its value, rather than disappearing and being re-asked
+  as though it had never been settled. This is not hypothetical: batching alias naming orphaned five
+  real decisions from a trial run, and the first version of the merge dropped them without a word.
+
 ## Listing an MCP server's tools
 
 APIM stores no tool names for a passthrough server -- it proxies `tools/list` to the upstream -- so

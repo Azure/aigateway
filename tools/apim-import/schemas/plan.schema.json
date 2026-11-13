@@ -35,7 +35,7 @@
       "required": ["capabilities", "publishableRoutes"],
       "properties": {
         "resourceId": {
-          "description": "Set when a destination gateway has been chosen. A plan can be proposed and adapted without one.",
+          "description": "The Microsoft.ApiManagement/aigateways resource this plan deploys to. A plan can be proposed and adapted without one; apply requires it.",
           "type": ["string", "null"]
         },
         "capabilities": {
@@ -81,6 +81,23 @@
           "owner": {"enum": ["azure-administrator", "operator", "apim-import"]},
           "summary": {"type": "string"},
           "detail": {"type": "string"}
+        }
+      }
+    },
+
+    "orphanedDecisions": {
+      "description": "Decisions settled against items that no longer exist, usually because the mapping rules changed an item's shape. Reported rather than dropped, so work is not silently lost across a tool change.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "decision", "note"],
+        "properties": {
+          "id": {"type": "string"},
+          "kind": {"type": ["string", "null"]},
+          "assetId": {"type": ["string", "null"]},
+          "aspect": {"type": ["string", "null"]},
+          "decision": {},
+          "note": {"type": "string"}
         }
       }
     },

@@ -390,3 +390,54 @@ class TestSecrets:
             auth = item["target"]["objects"][0]["custom"]["authentication"]
             value = auth["apiKey"]["value"]
             assert value is None or set(value) == {"$secretRef"}
+
+
+class TestResume:
+    """The plan file is the saved state. Picking it up later must not lose work."""
+
+    def test_a_decision_whose_item_vanished_is_reported_not_dropped(self, inventory, capabilities, plan):
+        import copy
+
+        adapted = copy.deepcopy(plan)
+        adapted["items"].append({
+            "id": "item:model/gone/alias/old-shape",
+            "source": {"assetId": "model:gone", "assetKind": "modelApi", "aspect": "alias:old"},
+            "status": "adapted", "decision": "keep-this", "kind": "name", "verdict": "partial",
+            "rationale": "", "options": [], "evidence": {}, "blocking": False,
+            "shapeDigest": "x", "memberDigests": {},
+        })
+        again = build_plan(inventory, capabilities, previous=adapted)
+        [orphan] = [o for o in again["orphanedDecisions"] if o["id"].endswith("old-shape")]
+        assert orphan["decision"] == "keep-this"
+        assert "no longer exists" in orphan["note"]
+        assert again["summary"]["orphanedDecisions"] == 1
+
+    def test_an_unresolved_orphan_is_carried_forward(self, inventory, capabilities, plan):
+        import copy
+
+        first = copy.deepcopy(plan)
+        first["orphanedDecisions"] = [
+            {"id": "item:model/gone/x", "decision": "v", "note": "n", "kind": "name"}
+        ]
+        again = build_plan(inventory, capabilities, previous=first)
+        assert [o["id"] for o in again["orphanedDecisions"]] == ["item:model/gone/x"]
+
+    def test_the_deployment_target_is_recorded_and_sticky(self, inventory, capabilities):
+        target = "/subscriptions/s/resourceGroups/rg/providers/Microsoft.ApiManagement/aigateways/gw"
+        first = build_plan(inventory, capabilities, target=target)
+        assert first["target"]["resourceId"] == target
+        # A later run without --target keeps the destination rather than forgetting it.
+        again = build_plan(inventory, capabilities, previous=first)
+        assert again["target"]["resourceId"] == target
+
+    def test_adapted_decisions_survive_a_plain_regeneration(self, inventory, capabilities, plan):
+        import copy
+
+        adapted = copy.deepcopy(plan)
+        for item in adapted["items"]:
+            if item["status"] == "needs-decision":
+                item["status"] = "adapted"
+                item["decision"] = item["proposal"] or "accept"
+        again = build_plan(inventory, capabilities, previous=adapted)
+        assert again["summary"]["byStatus"].get("needs-decision", 0) == 0
+        assert again["orphanedDecisions"] == []

@@ -104,6 +104,13 @@ def build_parser() -> argparse.ArgumentParser:
         "-o", "--output", default="plan.json",
         help="Plan path. An existing plan at this path is read first and its adapted items preserved",
     )
+    plan_cmd.add_argument(
+        "--target", metavar="GATEWAY_RESOURCE_ID",
+        help=(
+            "The Microsoft.ApiManagement/aigateways resource this plan deploys to. Recorded on the "
+            "plan, so a resumed session knows the destination; sticky once set"
+        ),
+    )
     plan_cmd.add_argument("--capabilities", help="Capability catalogue path (default: the bundled one)")
     plan_cmd.add_argument("--rules", help="Mapping rules path (default: the bundled one)")
     plan_cmd.add_argument(
@@ -280,7 +287,8 @@ def _plan(args: argparse.Namespace) -> int:
             print(f"error: existing plan at {args.output} is not valid JSON: {exc}", file=sys.stderr)
             return 1
 
-    document = build_plan(inventory, capabilities, previous=previous)
+    document = build_plan(inventory, capabilities, previous=previous, target=args.target)
+    orphans = document.get("orphanedDecisions") or []
     payload = json.dumps(document, indent=None if args.compact else 2, ensure_ascii=False)
     if args.output == "-":
         print(payload)
@@ -289,6 +297,15 @@ def _plan(args: argparse.Namespace) -> int:
         output.write_text(payload + "\n", encoding="utf-8")
     if not args.quiet:
         print(summary_mod.render_plan(document), file=sys.stderr)
+        if orphans:
+            print(
+                f"\n{len(orphans)} settled decision(s) no longer have an item to attach to:",
+                file=sys.stderr,
+            )
+            for entry in orphans:
+                print(f"  {entry['id']} = {json.dumps(entry['decision'])[:60]}", file=sys.stderr)
+            print("  Re-apply them to the items that replaced them, or confirm they are not needed.",
+                  file=sys.stderr)
         if args.output != "-":
             print(f"\nWrote {args.output} ({len(payload):,} bytes)", file=sys.stderr)
     return 0

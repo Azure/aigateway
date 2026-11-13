@@ -54,7 +54,11 @@ class PlanBuilder:
         capabilities: CapabilityMap,
         *,
         previous: dict[str, Any] | None = None,
+        target: str | None = None,
     ) -> None:
+        # Where this plan deploys to. Recorded on the plan so a resumed session
+        # knows the destination without being told again.
+        self.target = target or ((previous or {}).get("target") or {}).get("resourceId")
         self.inventory = inventory
         self.caps = capabilities
         self.previous = previous or {}
@@ -77,7 +81,7 @@ class PlanBuilder:
         self._structural()
         self._manual_prerequisites()
 
-        merged = self._merge_with_previous(self.items)
+        merged, orphaned = self._merge_with_previous(self.items)
         service = self.inventory.get("service") or {}
         return {
             "$schema": "https://github.com/Azure/aigateway/tools/apim-import/schemas/plan.schema.json",
@@ -91,12 +95,15 @@ class PlanBuilder:
                 "inventoryCapturedAt": (self.inventory.get("collection") or {}).get("completedAt"),
             },
             "target": {
-                "resourceId": None,
+                "resourceId": self.target,
                 "capabilities": self.caps.to_dict(),
                 "publishableRoutes": self.caps.publishable_routes(),
             },
-            "summary": _summarize(merged),
+            "summary": {**_summarize(merged), "orphanedDecisions": len(orphaned)},
             "prerequisites": self.prerequisites,
+            # Settled decisions whose item no longer exists. Dropping them quietly
+            # would lose work across a tool change and re-ask as if never asked.
+            "orphanedDecisions": orphaned,
             "items": merged,
         }
 
@@ -651,9 +658,12 @@ class PlanBuilder:
 
     # ------------------------------------------------------------- merge
 
-    def _merge_with_previous(self, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def _merge_with_previous(
+        self, items: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         prior = {item["id"]: item for item in (self.previous.get("items") or [])}
         merged: list[dict[str, Any]] = []
+        current_ids = {item["id"] for item in items}
         for item in items:
             item["shapeDigest"] = _shape_digest(item)
             item["memberDigests"] = _member_digests(item)
@@ -688,7 +698,28 @@ class PlanBuilder:
                     # Joining a settled batch inherits its decision; flag, do not re-open.
                     item["newMembers"] = new_members
             merged.append(item)
-        return merged
+
+        orphaned = [
+            {
+                "id": item["id"],
+                "kind": item.get("kind"),
+                "assetId": (item.get("source") or {}).get("assetId"),
+                "aspect": (item.get("source") or {}).get("aspect"),
+                "decision": item.get("decision"),
+                "note": (
+                    "This decision was settled against an item that no longer exists -- usually "
+                    "because the mapping rules changed its shape. Re-apply it to the item that "
+                    "replaced it, or confirm it is no longer needed."
+                ),
+            }
+            for item in (self.previous.get("items") or [])
+            if item.get("status") in {ADAPTED, STALE} and item["id"] not in current_ids
+        ]
+        # Carry forward anything a previous run already flagged and nobody resolved.
+        for entry in self.previous.get("orphanedDecisions") or []:
+            if entry["id"] not in current_ids and entry["id"] not in {o["id"] for o in orphaned}:
+                orphaned.append(entry)
+        return merged, orphaned
 
 
 # ---------------------------------------------------------------- helpers
@@ -889,5 +920,6 @@ def build_plan(
     capabilities: CapabilityMap,
     *,
     previous: dict[str, Any] | None = None,
+    target: str | None = None,
 ) -> dict[str, Any]:
-    return PlanBuilder(inventory, capabilities, previous=previous).build()
+    return PlanBuilder(inventory, capabilities, previous=previous, target=target).build()
