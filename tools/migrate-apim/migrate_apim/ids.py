@@ -112,6 +112,23 @@ def arm_name(resource_id: str) -> str:
     return (resource_id or "").rstrip("/").rsplit("/", 1)[-1]
 
 
+PORTAL = "https://ai.gateway.azure.com"
+
+
+def portal_url(resource_id: str | None, page: str = "overview") -> str | None:
+    """Deep link to a gateway in the AI Gateway portal.
+
+    An ARM id already starts with a slash, so it is appended to the host as it
+    stands -- joining the two with one produces `//subscriptions/...`, which is
+    a different path. Returns None for anything that is not an ARM id, so a
+    caller never prints a link built from a name or an empty target.
+    """
+    bare = (normalize_arm_id(resource_id) or "").strip().rstrip("/")
+    if not bare.startswith("/subscriptions/"):
+        return None
+    return f"{PORTAL}{bare}/{page}"
+
+
 def arm_segment(resource_id: str, segment: str) -> str | None:
     """Value following ``segment`` in an ARM id, case-insensitively."""
     parts = (resource_id or "").strip("/").split("/")

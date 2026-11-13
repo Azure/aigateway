@@ -380,6 +380,24 @@ def steps_for(plan: dict[str, Any]) -> list[Step]:
     return sorted(steps, key=lambda step: PHASES.index(step.phase))
 
 
+def unperformable_for(plan: dict[str, Any]) -> list[dict[str, str]]:
+    """Planned work this tool has no builder for, by phase.
+
+    These never become steps, so a phase holding nothing else has none at all --
+    `--next-phase` passes over it and its content silently never happens. Named
+    here so the phase checklist can still carry it.
+    """
+    out = []
+    for item in plan.get("items") or []:
+        capability_id = item.get("capabilityId") or ""
+        phase = _PHASE_FOR_CAPABILITY.get(capability_id)
+        if (phase and item.get("status") in {"ready", "adapted"}
+                and (item.get("target") or {}).get("objects")
+                and capability_id not in _BUILDERS):
+            out.append({"itemId": item["id"], "capabilityId": capability_id, "phase": phase})
+    return out
+
+
 # ------------------------------------------------------------------ executor
 
 
@@ -457,15 +475,8 @@ class Executor:
         and token-limit items in it will simply never happen. Named here so the
         phase can say what it is leaving behind.
         """
-        out = []
-        for item in self.plan.get("items") or []:
-            capability_id = item.get("capabilityId")
-            if (_PHASE_FOR_CAPABILITY.get(capability_id or "") == phase
-                    and item.get("status") in {"ready", "adapted"}
-                    and (item.get("target") or {}).get("objects")
-                    and capability_id not in _BUILDERS):
-                out.append({"itemId": item["id"], "capabilityId": capability_id})
-        return out
+        return [{"itemId": entry["itemId"], "capabilityId": entry["capabilityId"]}
+                for entry in unperformable_for(self.plan) if entry["phase"] == phase]
 
     def run_phase(self, phase: str) -> list[Step]:
         if phase not in PHASES:

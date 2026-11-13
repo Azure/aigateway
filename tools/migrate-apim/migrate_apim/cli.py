@@ -465,6 +465,10 @@ def _apply(args: argparse.Namespace) -> int:
                 print(f"          {finding['remedy']}", file=sys.stderr)
     blocking = [f for f in findings if f["blocking"]]
     if args.preflight:
+        # The whole run, before the first write: this is the list to work through.
+        print("\nPhases to run:", file=sys.stderr)
+        for line in summary_mod.render_phases(journal, steps_for(plan), plan=plan):
+            print(line, file=sys.stderr)
         _write_journal(journal, journal_path)
         return 1 if blocking else 0
     if blocking:
@@ -483,18 +487,23 @@ def _apply(args: argparse.Namespace) -> int:
         return 1
 
     if args.status:
-        print(summary_mod.render_journal(journal, steps_for(plan)), file=sys.stderr)
+        print(summary_mod.render_journal(journal, steps_for(plan), plan), file=sys.stderr)
         return 0
 
     phase = args.phase or (executor.next_phase() if args.next_phase else None)
     if not phase:
-        print(summary_mod.render_journal(journal, steps_for(plan)), file=sys.stderr)
+        print(summary_mod.render_journal(journal, steps_for(plan), plan), file=sys.stderr)
         if not args.phase and not args.next_phase:
             print("\nPass --next-phase to run the next one, or --phase <name>.", file=sys.stderr)
         return 0
 
     mode = "EXECUTING" if args.execute else "rehearsal (pass --execute to write)"
     print(f"Phase {phase} -- {mode}", file=sys.stderr)
+    # Where this phase sits in the run, printed before the phase does anything.
+    # One phase per turn only reads as progress against the other seven.
+    for line in summary_mod.render_phases(journal, steps_for(plan), plan=plan, current=phase):
+        print(line, file=sys.stderr)
+    print(file=sys.stderr)
     try:
         steps = executor.run_phase(phase)
     except ApplyError as exc:
@@ -523,6 +532,9 @@ def _apply(args: argparse.Namespace) -> int:
 
     stuck = [s for s in steps if s.status in {"failed", "mutationUnknown"}]
     if stuck:
+        print(file=sys.stderr)
+        for line in summary_mod.render_phases(journal, steps_for(plan), plan=plan, current=phase):
+            print(line, file=sys.stderr)
         print(f"\nStopped in {phase}. The source APIM is untouched; the gateway is partially built.",
               file=sys.stderr)
         return 1
@@ -532,8 +544,18 @@ def _apply(args: argparse.Namespace) -> int:
               "to apply it.", file=sys.stderr)
         return 0
     remaining = executor.next_phase()
+    # Again, now that the journal has moved: the phase just run is ticked off.
+    print(file=sys.stderr)
+    for line in summary_mod.render_phases(journal, steps_for(plan), plan=plan):
+        print(line, file=sys.stderr)
     print(f"\nPhase {phase} complete."
           + (f" Next: {remaining}." if remaining else " No phases remain."), file=sys.stderr)
+    if not remaining:
+        # The end of the run is exactly where "it was provisioned" stops being
+        # evidence, so the last thing printed is where to go and look.
+        print(file=sys.stderr)
+        for line in summary_mod.render_verify(journal, plan):
+            print(line, file=sys.stderr)
     return 0
 
 

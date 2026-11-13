@@ -13,7 +13,9 @@ from migrate_apim.apply import (
     new_journal,
     preflight,
     steps_for,
+    unperformable_for,
 )
+from migrate_apim import summary
 from migrate_apim.capability import CapabilityMap
 from migrate_apim.collect import Collector, CollectOptions
 from migrate_apim.plan import build_plan
@@ -791,3 +793,218 @@ class TestMcpEndpointContracts:
                 assert len(set(namespaces)) == len(namespaces), "namespaces must be unique"
                 seen += namespaces
         assert seen, "the fixture should plan at least one tool server"
+
+
+class TestThePhaseChecklist:
+    """The run says where it is, every time, without being asked.
+
+    One phase per turn only reads as progress against the other seven, and the
+    list has to come from the journal: a list kept by hand -- or by whatever is
+    driving the tool -- drifts from the run exactly when it matters.
+    """
+
+    def _journal(self, plan, statuses):
+        journal = new_journal(plan)
+        for step in steps_for(plan):
+            status = statuses.get(step.phase)
+            if status:
+                journal["steps"].append({"itemId": step.item_id, "status": status, "detail": ""})
+        return journal
+
+    def test_a_phase_of_nothing_but_manual_work_still_appears(self, settled):
+        # It has no steps, so --next-phase passes over it and nothing ever
+        # reports it. Left off the list too, the work simply disappears.
+        manual = {e["phase"] for e in unperformable_for(settled)}
+        assert manual, "the fixture should plan work this tool cannot perform"
+        listed = summary.render_phases(self._journal(settled, {}), steps_for(settled),
+                                       plan=settled)
+        for phase in manual:
+            line = next((l for l in listed if l.split()[0] == phase), None)
+            assert line, f"{phase} is missing from the checklist"
+            assert "by hand" in line, line
+
+    def test_written_but_unconfirmed_counts_as_done_and_says_so(self, settled, inventory):
+        journal = self._journal(settled, {"gateway": "unverified"})
+        line = next(l for l in summary.render_phases(journal, steps_for(settled), plan=settled)
+                    if l.split()[0] == "gateway")
+        assert "complete" in line and "unconfirmed" in line, line
+        # The checklist and the executor have to agree: calling it pending here
+        # would point at a phase --next-phase will never hand back.
+        executor = Executor(settled, inventory, journal, execute=False)
+        assert executor.next_phase() != "gateway"
+
+    def test_a_stuck_phase_reads_stopped(self, settled):
+        journal = self._journal(settled, {"gateway": "failed"})
+        line = next(l for l in summary.render_phases(journal, steps_for(settled), plan=settled)
+                    if l.split()[0] == "gateway")
+        assert "stopped" in line, line
+
+    def test_the_phase_being_run_is_marked(self, settled):
+        lines = summary.render_phases(self._journal(settled, {}), steps_for(settled),
+                                      plan=settled, current="models")
+        marked = [l for l in lines if l.startswith(">")]
+        assert len(marked) == 1 and marked[0].split()[1] == "models", lines
+
+    def test_running_a_phase_prints_the_checklist_without_being_asked(
+        self, settled, inventory, tmp_path, monkeypatch, capsys
+    ):
+        from migrate_apim import apply as apply_mod, cli
+
+        monkeypatch.setattr(apply_mod, "_run", lambda argv, payload=None: CommandResult(1, ""))
+        plan_path = tmp_path / "plan.json"
+        inventory_path = tmp_path / "inventory.json"
+        plan_path.write_text(json.dumps(settled))
+        inventory_path.write_text(json.dumps(inventory))
+
+        cli.main(["apply", "--plan", str(plan_path), "--inventory", str(inventory_path),
+                  "--journal", str(tmp_path / "journal.json"), "--next-phase"])
+
+        err = capsys.readouterr().err
+        assert "> gateway" in err, err
+        # Not just the phase it is in: the ones after it are the rest of the run.
+        for phase in ("identity", "providers", "models", "aliases", "toolServers"):
+            assert phase in err, err
+
+
+class TestTheClosingPortalCheck:
+    """A finished run ends by sending someone to look at the gateway.
+
+    Every check this tool makes is a management read-back, so the moment the
+    phases run out is the moment "it was provisioned" stops being evidence.
+    The link is printed built, because nobody assembles a URL out of a resource
+    id by hand.
+    """
+
+    def _cli(self, plan, inventory, tmp_path, monkeypatch, extra):
+        from migrate_apim import apply as apply_mod, cli
+
+        created: dict = {}
+
+        def fake_az(argv, payload=None):
+            if "resource" in argv[:2]:
+                return CommandResult(1, "")  # no name collision
+            if "show" in argv:
+                return CommandResult(0, json.dumps(created)) if created else CommandResult(1, "")
+            created.update({"name": "gw", "location": "West US 2"})
+            return CommandResult(0, json.dumps(created))
+
+        monkeypatch.setattr(apply_mod, "_run", fake_az)
+        plan_path, inventory_path = tmp_path / "plan.json", tmp_path / "inventory.json"
+        plan_path.write_text(json.dumps(plan))
+        inventory_path.write_text(json.dumps(inventory))
+        return cli.main(["apply", "--plan", str(plan_path), "--inventory", str(inventory_path),
+                         "--journal", str(tmp_path / "journal.json")] + extra)
+
+    def test_the_url_is_the_host_and_the_resource_id(self):
+        from migrate_apim.ids import portal_url
+
+        url = portal_url(TARGET)
+        # An ARM id already starts with a slash; joining with another gives
+        # `//subscriptions/...`, which is a different path.
+        assert url == f"https://ai.gateway.azure.com{TARGET}/overview"
+        assert "//subscriptions" not in url
+
+    def test_a_management_url_target_still_produces_one_link(self):
+        from migrate_apim.ids import portal_url
+
+        assert portal_url(f"https://management.azure.com{TARGET}") == \
+            f"https://ai.gateway.azure.com{TARGET}/overview"
+
+    def test_anything_that_is_not_a_resource_id_produces_no_link(self):
+        from migrate_apim.ids import portal_url
+
+        # Better to print the portal root than a link built from a bare name.
+        assert portal_url(None) is None
+        assert portal_url("") is None
+        assert portal_url("gw") is None
+
+    def test_the_last_phase_prints_where_to_verify(
+        self, settled, inventory, tmp_path, monkeypatch, capsys
+    ):
+        import copy
+
+        plan = copy.deepcopy(settled)
+        plan["items"] = [i for i in plan["items"] if i.get("capabilityId") == "gateway.create"]
+        self._cli(plan, inventory, tmp_path, monkeypatch, ["--next-phase"])
+        self._cli(plan, inventory, tmp_path, monkeypatch, ["--next-phase", "--execute"])
+
+        err = capsys.readouterr().err
+        assert "No phases remain." in err, err
+        assert f"https://ai.gateway.azure.com{TARGET}/overview" in err, err
+        # Directly under "Phase ... complete", a line of the form "X is not
+        # working" reads as a failed migration. The distinction being drawn is
+        # between provisioned and serving, so it is drawn in those words.
+        assert "These objects exist" in err, err
+        assert "not working" not in err, err
+
+    def test_a_phase_with_work_left_does_not_send_anyone_to_verify(
+        self, settled, inventory, tmp_path, monkeypatch, capsys
+    ):
+        self._cli(settled, inventory, tmp_path, monkeypatch, ["--next-phase"])
+        self._cli(settled, inventory, tmp_path, monkeypatch, ["--next-phase", "--execute"])
+
+        err = capsys.readouterr().err
+        # Mid-run, "go and check the gateway" reads as a finished migration.
+        assert "Next: identity." in err, err
+        assert "ai.gateway.azure.com" not in err, err
+
+    def test_status_on_a_finished_run_says_it_too(self, settled):
+        journal = new_journal(settled)
+        for step in steps_for(settled):
+            journal["steps"].append({"itemId": step.item_id, "status": "verified", "detail": ""})
+        rendered = summary.render_journal(journal, steps_for(settled), settled)
+        assert f"https://ai.gateway.azure.com{TARGET}/overview" in rendered, rendered
+
+    def test_an_untouched_run_does_not(self, settled):
+        rendered = summary.render_journal(new_journal(settled), steps_for(settled), settled)
+        assert "ai.gateway.azure.com" not in rendered, rendered
+
+    def test_the_closing_lines_name_work_nobody_applied(self, settled):
+        # `--next-phase` passes over a phase with no steps, so a plan whose
+        # policies and keys phases hold only manual items ends with "No phases
+        # remain" while none of it has happened. Said plainly, above the link.
+        journal = new_journal(settled)
+        for step in steps_for(settled):
+            journal["steps"].append({"itemId": step.item_id, "status": "verified", "detail": ""})
+        assert not summary.phases_remaining(journal, steps_for(settled))
+        outstanding = unperformable_for(settled)
+        assert outstanding, "the fixture should leave work this tool cannot apply"
+
+        closing = "\n".join(summary.render_verify(journal, settled))
+        assert f"{len(outstanding)} item(s)" in closing, closing
+        assert "were not applied" in closing, closing
+        for phase in {e["phase"] for e in outstanding}:
+            assert phase in closing, closing
+
+    def test_a_plan_this_tool_can_fully_apply_says_nothing_about_manual_work(self, settled):
+        import copy
+
+        plan = copy.deepcopy(settled)
+        manual = {e["itemId"] for e in unperformable_for(plan)}
+        plan["items"] = [i for i in plan["items"] if i["id"] not in manual]
+        closing = "\n".join(summary.render_verify(new_journal(plan), plan))
+        assert "not applied" not in closing, closing
+
+    def test_a_real_run_ending_with_manual_work_prints_the_whole_block(
+        self, settled, inventory, tmp_path, monkeypatch, capsys
+    ):
+        import copy
+
+        # The gateway step plus every by-hand item: the run finishes in the
+        # gateway phase while policies and keys hold work with no builder, which
+        # is the shape that made "No phases remain" misleading.
+        plan = copy.deepcopy(settled)
+        manual = {e["itemId"] for e in unperformable_for(plan)}
+        assert manual, "the fixture should leave work this tool cannot apply"
+        plan["items"] = [i for i in plan["items"]
+                         if i.get("capabilityId") == "gateway.create" or i["id"] in manual]
+
+        self._cli(plan, inventory, tmp_path, monkeypatch, ["--next-phase"])
+        self._cli(plan, inventory, tmp_path, monkeypatch, ["--next-phase", "--execute"])
+
+        err = capsys.readouterr().err
+        assert "No phases remain." in err, err
+        assert f"{len(manual)} item(s) in this plan have no builder here" in err, err
+        assert f"https://ai.gateway.azure.com{TARGET}/overview" in err, err
+        # The order matters: the link last is what the reader leaves with.
+        assert err.index("were not applied") < err.index("ai.gateway.azure.com"), err

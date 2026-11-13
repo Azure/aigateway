@@ -207,7 +207,131 @@ def _asset_detail(family: str, item: dict[str, Any]) -> str:
     return ""
 
 
-def render_journal(journal: dict[str, Any], steps: list[Any]) -> str:
+def phases_remaining(journal: dict[str, Any], steps: list[Any]) -> list[str]:
+    """Phases with steps still to run -- the question `--next-phase` asks.
+
+    Written-but-unconfirmed counts as run, matching `Executor.phase_complete`:
+    the tool will not hand that phase back, so calling it remaining would name
+    work nobody can do.
+    """
+    from .apply import PHASES
+
+    done_ids = {e["itemId"] for e in journal.get("steps") or []
+                if e.get("status") in {"verified", "unverified"}}
+    out = []
+    for name in PHASES:
+        ids = {getattr(step, "item_id", None) for step in steps
+               if getattr(step, "phase", None) == name}
+        if ids and not ids <= done_ids:
+            out.append(name)
+    return out
+
+
+def render_verify(journal: dict[str, Any], plan: dict[str, Any] | None = None) -> list[str]:
+    """What to do when the phases are done: go and look at it.
+
+    Every check this tool makes is a management read-back, so the end of a run
+    is the point where somebody has to open the gateway and see it. Printed
+    with the link already built, because the one thing an operator will not do
+    is assemble a URL out of a resource id by hand.
+
+    "No phases remain" is not "everything in the plan happened". A phase whose
+    content has no builder here has no steps, so the run passes over it and
+    ends -- with that work never applied by anyone. It is named here, above the
+    link, or the closing lines of a run read as a migration that finished.
+    """
+    from .apply import unperformable_for
+    from .ids import PORTAL, portal_url
+
+    lines: list[str] = []
+    manual = unperformable_for(plan) if plan else []
+    if manual:
+        by_phase: dict[str, int] = {}
+        for entry in manual:
+            by_phase[entry["phase"]] = by_phase.get(entry["phase"], 0) + 1
+        where = ", ".join(f"{phase} ({count})" for phase, count in by_phase.items())
+        lines += [
+            f"{len(manual)} item(s) in this plan have no builder here and were not applied: "
+            f"{where}.",
+            "They are absent from the gateway until someone configures them by hand.",
+            "",
+        ]
+    url = portal_url(journal.get("target"))
+    return lines + [
+        "These objects exist. Whether the gateway serves traffic is a separate question:",
+        "every check above is a management read-back, not a call through the gateway.",
+        "Open it and see what the run provisioned:",
+        f"  {url}" if url else f"  {PORTAL}   (then select the gateway in the top bar)",
+    ]
+
+
+def render_phases(
+    journal: dict[str, Any],
+    steps: list[Any],
+    *,
+    plan: dict[str, Any] | None = None,
+    current: str | None = None,
+    indent: str = "",
+) -> list[str]:
+    """The phase checklist: what is done, what is left, where the run is.
+
+    Every `apply` run prints this, not just `--status`, so the list exists in
+    the transcript whether or not whoever is driving the tool keeps one. It is
+    derived from the journal on each call, so it cannot drift from the run the
+    way a hand-kept list does.
+
+    "Done" matches `Executor.phase_complete` -- written-but-unconfirmed counts,
+    because `--next-phase` will not return that phase again. Saying `pending`
+    for a phase the tool refuses to re-run would point the reader at work they
+    cannot do. The unconfirmed part is marked rather than hidden.
+
+    Pass `plan` to count the work this tool has no builder for. Without it a
+    phase of nothing but manual items reads as absent from the migration, when
+    in fact it is the part nobody will run.
+    """
+    from .apply import PHASES, unperformable_for
+
+    by_hand: dict[str, int] = {}
+    for entry in unperformable_for(plan) if plan else []:
+        by_hand[entry["phase"]] = by_hand.get(entry["phase"], 0) + 1
+
+    entries = journal.get("steps") or []
+    remaining = set(phases_remaining(journal, steps))
+    unconfirmed_ids = {e["itemId"] for e in entries if e.get("status") == "unverified"}
+    stuck_ids = {e["itemId"] for e in entries
+                 if e.get("status") in {"failed", "mutationUnknown"}}
+
+    lines: list[str] = []
+    for name in PHASES:
+        planned = [step for step in steps if getattr(step, "phase", None) == name]
+        manual = by_hand.get(name, 0)
+        mark = "> " if name == current else "  "
+        count = f"({len(planned)} steps" + (f", {manual} by hand)" if manual else ")")
+        if not planned:
+            # A phase with nothing planned is not part of this migration, so it
+            # stays off the list -- unless it holds manual work, or is the one
+            # being run, where its emptiness is the outcome and "complete" would
+            # misread as work done.
+            if manual:
+                lines.append(f"{indent}{mark}{name:12} {'by hand':10} {count}")
+            elif name == current:
+                lines.append(f"{indent}{mark}{name:12} {'no steps':10} {count}")
+            continue
+        ids = {getattr(step, "item_id", None) for step in planned}
+        done = name not in remaining
+        state = "complete" if done else ("stopped" if ids & stuck_ids else "pending")
+        if done and ids & unconfirmed_ids:
+            suffix = " (unconfirmed)"
+        elif not done and name in (journal.get("rehearsals") or {}):
+            suffix = " (rehearsed)"
+        else:
+            suffix = ""
+        lines.append(f"{indent}{mark}{name:12} {state:10} {count}{suffix}")
+    return lines
+
+
+def render_journal(journal: dict[str, Any], steps: list[Any],
+                   plan: dict[str, Any] | None = None) -> str:
     """Where the run is: phases done, steps verified, anything stuck."""
     lines = ["Migration run"]
     lines.append(f"  target: {journal.get('target')}")
@@ -217,25 +341,7 @@ def render_journal(journal: dict[str, Any], steps: list[Any]) -> str:
     lines.append(f"  steps: {len(steps)} in the plan, "
                  + (", ".join(f"{count} {status}" for status, count in sorted(by_status.items()))
                     or "none executed"))
-    phases = journal.get("phases") or {}
-    for name in ("gateway", "identity", "providers", "models", "aliases", "toolServers",
-                 "policies", "keys"):
-        planned = [step for step in steps if getattr(step, "phase", None) == name]
-        if not planned:
-            continue
-        # Derived from verified steps, not from the stored flag. A rehearsal used
-        # to write "complete" here, and believing it skipped real work.
-        verified = {entry["itemId"] for entry in journal.get("steps") or []
-                    if entry.get("status") == "verified"}
-        done = all(getattr(step, "item_id", None) in verified for step in planned)
-        stuck = any(
-            entry["status"] in {"failed", "mutationUnknown"}
-            for entry in journal.get("steps") or []
-            if entry["itemId"] in {getattr(s, "item_id", None) for s in planned}
-        )
-        state = "complete" if done else ("stopped" if stuck else "pending")
-        rehearsed = " (rehearsed)" if name in (journal.get("rehearsals") or {}) else ""
-        lines.append(f"    {name:12} {state:10} ({len(planned)} steps){rehearsed}")
+    lines.extend(render_phases(journal, steps, plan=plan, indent="  "))
     unverified = [e for e in journal.get("steps") or [] if e["status"] == "unverified"]
     if unverified:
         lines.append("  written but not confirmed by this tool:")
@@ -249,4 +355,7 @@ def render_journal(journal: dict[str, Any], steps: list[Any]) -> str:
             lines.append(f"    {entry['status']}: {entry['itemId']} -- {entry.get('detail', '')[:120]}")
     if journal.get("acknowledged"):
         lines.append(f"  acknowledged: {', '.join(journal['acknowledged'])}")
+    if journal.get("steps") and not phases_remaining(journal, steps):
+        lines.append("")
+        lines.extend(render_verify(journal, plan))
     return "\n".join(lines)

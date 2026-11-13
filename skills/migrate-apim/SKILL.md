@@ -128,8 +128,14 @@ APIM. A failed run leaves a partially built gateway and a source still serving a
 anything from APIM is the operator's decision after they have validated the new gateway — do not
 do it, and do not offer to.
 
-Keep a visible TODO of the phases and say which one you are in. Work one phase at a time, report
-what it produced, and stop for the operator before starting the next.
+Every `apply` run prints the phase checklist — all eight, with `>` on the one being run. Mirror it
+into your host's TODO list, one entry per phase, and tick entries from what the tool printed rather
+than from memory: the checklist is derived from the journal, your list is not. Work one phase at a
+time, report what it produced, and stop for the operator before starting the next.
+
+A phase listed as `by hand` has work this tool has no builder for and no steps to run, so
+`--next-phase` passes over it. It is not done — carry it into the final report as configuration the
+operator applies themselves.
 
 Only once nothing is `needs-decision`, `stale`, or orphaned.
 
@@ -184,6 +190,12 @@ mode-`0600` file passed as `@path`.
 A management read-back proves saved configuration. It does not prove inference works, tools are
 exposed, policies are enforced, or telemetry is arriving. Keep **configured** and **working**
 separate, and say which you have.
+
+So end by sending the operator to look at the gateway themselves. When no phases remain, `apply`
+prints the link — `https://ai.gateway.azure.com<resourceId>/overview` — and it belongs in the final
+report alongside what to check there: the models, tool servers and policies the run provisioned,
+anything a phase left `unverified`, and anything listed as `by hand`. Suggest the check; their
+eyes on the portal is not something you can do for them or report as done.
 
 The migration is not finished when objects exist. Every caller changes host, path and auth header,
 and for a `split` decision some routes moved while others stayed on APIM. The cutover guide is part

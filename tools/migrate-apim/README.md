@@ -704,6 +704,45 @@ raised as notes and acknowledged with `--acknowledge <id>`.
 invocation so an operator always knows where the run is. A failed step stops its phase rather than
 building on an unestablished state.
 
+**Every `apply` run prints the whole checklist**, not just `--status`: `--preflight` prints it before
+the first write, a phase prints it on entry with `>` on the phase being run, and an executed phase
+prints it again once the journal has moved. One phase per invocation only reads as progress against
+the other seven, and an operator — or an agent driving the tool — should not have to keep that list
+by hand, because a hand-kept list drifts from the run exactly when it matters. It is derived from
+the journal on every call, so it cannot.
+
+```
+Phase models -- EXECUTING
+  gateway      complete   (1 steps)
+  identity     complete   (1 steps) (unconfirmed)
+  providers    complete   (4 steps)
+> models       pending    (4 steps) (rehearsed)
+  aliases      pending    (2 steps)
+  toolServers  pending    (2 steps)
+  policies     by hand    (0 steps, 3 by hand)
+  keys         by hand    (0 steps, 1 by hand)
+```
+
+`complete` matches what `--next-phase` will do rather than what was verified, so a phase it refuses
+to hand back is never listed as pending; the written-but-unconfirmed part is marked instead of
+hidden. A phase holding only work this tool has no builder for is listed as `by hand`: it has no
+steps, so `--next-phase` passes over it, and off the list it would be the part of the plan nobody
+ever runs.
+
+**The last phase ends by sending someone to the portal.** When no phases remain, `apply` — and
+`--status` on a finished run — prints the gateway's deep link,
+`https://ai.gateway.azure.com<resourceId>/overview`, under a reminder that everything above it is a
+management read-back. The ARM id already begins with a slash, so it is appended to the host as it
+stands; anything that is not an ARM id yields no link rather than a guessed one. Nothing prints
+while phases remain, because mid-run a "go and check the gateway" line reads as a finished
+migration.
+
+**"No phases remain" is not "everything in the plan happened".** A phase whose content has no
+builder here has no steps, so `--next-phase` passes over it and the run ends with that work applied
+by nobody. The closing lines say so above the link — `4 item(s) in this plan have no builder here
+and were not applied: policies (3), keys (1)` — because a closing paragraph that mentions only what
+was provisioned is how a quarter of a plan goes missing.
+
 Three properties make a partial run recoverable without a transaction:
 
 | Property | Why |

@@ -41,8 +41,9 @@ reporting a capability the target lacks.
 
 Run `apply --preflight` first and resolve everything blocking. Rehearse each phase before
 executing it, show the operator the actual commands, and get explicit agreement before
-`--execute` creates real Azure resources. Work one phase per turn, keep a visible TODO of
-where you are, and report what each phase produced before starting the next. Put the
+`--execute` creates real Azure resources. Work one phase per turn, mirror the phase
+checklist that every `apply` run prints into your host's TODO list, and report what each
+phase produced before starting the next. Put the
 manual prerequisites -- Foundry RBAC, caller role assignments, Entra consent, private
 endpoint approvals -- to the operator before the first write, and never acknowledge one
 on their behalf.
@@ -52,7 +53,9 @@ print one. The inventory carries retrieval recipes, not values.
 
 Report honestly. A management read-back proves configured, not working: do not claim the
 migration works, distinguish `unverified` from `verified`, name the work a phase could not
-perform, and separate what you provisioned from what still needs the operator.
+perform, and separate what you provisioned from what still needs the operator. Close by
+sending them to the gateway in the portal -- `apply` prints the link once no phases
+remain -- and say what to look at there.
 
 Migration request: {{args}}
 """
