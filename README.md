@@ -1,178 +1,150 @@
 # Azure AI Gateway
 
 **One gateway for every model and tool.**
-[Azure AI Gateway](https://learn.microsoft.com/azure/ai-gateway/overview) is a managed gateway for AI traffic: requests to AI models and
-Model Context Protocol (MCP) servers. It gives developers one familiar way to call model APIs and MCP tools, while
-platform teams enforce security, policy, networking, and observability.
 
-- **Govern model APIs** — Microsoft Foundry, OpenAI, Anthropic, Google Vertex, and more, while developers keep the SDKs they already use.
-- **Federate MCP tools** — combine MCP servers, OpenAPI APIs, and SaaS connectors behind one governed MCP endpoint.
-- **Enforce AI policies** — access, content safety, token, and rate controls, globally or per model and tool.
-- **Observe AI traffic** — token usage, latency, errors, and policy outcomes in dashboards and logs.
-- **Run on a trusted platform** — built on the Azure API Management gateway foundation, with Private Link, virtual network integration, and managed identity.
+[![Docs](https://img.shields.io/badge/docs-aka.ms%2Faigateway%2Fdocs-0078D4)](https://aka.ms/aigateway/docs)
+[![az aigateway](https://img.shields.io/badge/az_aigateway-public_preview-5C2D91)](cli/README.md)
+[![Labs](https://img.shields.io/badge/labs-26-107C10)](https://azure.github.io/aigateway/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-> See the **[AI Gateway documentation](https://aka.ms/aigateway/docs)** to get started.
+[Azure AI Gateway](https://learn.microsoft.com/azure/ai-gateway/overview) is a managed gateway for AI traffic:
+requests to AI models and Model Context Protocol (MCP) servers. Developers keep the SDKs they already use, while
+platform teams enforce security, policy, networking, and observability in one place.
 
----
+- **Govern model APIs** from Microsoft Foundry, OpenAI, Anthropic, Google Vertex, and more.
+- **Federate MCP tools** — MCP servers, OpenAPI APIs, and SaaS connectors behind one governed MCP endpoint.
+- **Enforce AI policies** for access, content safety, tokens, and rate limits, globally or per model and tool.
+- **Observe AI traffic**: token usage, latency, errors, and policy outcomes in dashboards and logs.
+- **Run on a trusted platform** — the Azure API Management gateway foundation, with Private Link, virtual
+  network integration, and managed identity.
 
-## Hands-on labs
+> [!TIP]
+> New to the service? Start with the **[AI Gateway documentation](https://aka.ms/aigateway/docs)**.
 
-**[Browse the labs → azure.github.io/aigateway](https://azure.github.io/aigateway/)**
+This repository holds the tooling around it:
 
-26 step-by-step labs for customers and field teams. They start with the core AI gateway use cases (publishing
-models behind aliases, priority and weighted model routing, federating MCP tools, token limits and cost budgets,
-content safety, keys and Entra ID, monitoring, and chargeback) and continue to emerging ones (streaming with accurate token counts, agent frameworks, Foundry hosted agents, coding agents,
-GitHub Copilot with your own models, Agent 365, private networking, and an enterprise reference architecture). Each lab has portal, Azure CLI, Bicep, or
-code tracks, so you can follow it in the way that fits how you work: on the labs site, directly on GitHub, or
-in a Jupyter notebook.
-
-**[Start the 5-minute quick start](labs/quickstart/README.md)** · **[Follow the labs on GitHub](labs/README.md)** ·
-**[Run the notebooks](labs/README.md#run-the-notebooks)** · **[Use them with a coding agent](labs/README.md#use-the-labs-with-a-coding-agent)** ·
-**[What's new](labs/RELEASE-NOTES.md)** · **[Contribute a lab](labs/AUTHORING.md)**
+| Component | What it is |
+| --------- | ---------- |
+| **[Azure CLI extension](#azure-cli)** | `az aigateway`: create and operate gateways from your shell. |
+| **[Coding-agent plugin](#coding-agent-plugin)** | `/aigateway:*` commands and skills for Claude Code, GitHub Copilot CLI, Cursor, and Gemini CLI. |
+| **[Hands-on labs](#labs-samples-and-support)** | 26 step-by-step labs, published as a site, on GitHub, and as notebooks. |
+| **[Samples catalog](samples/README.md)** | End-to-end samples and infrastructure built on AI Gateway. |
 
 ## Azure CLI
 
-Create and manage gateways, model registrations, MCP servers, and policies with
-`az aigateway`. Install the published Azure CLI extension using the
-**[installation guide and quickstart](cli/README.md)** for Bash or PowerShell,
-or browse the [searchable command reference](cli/command-reference.md).
-Use the latest published CLI, including preview releases, rather than a local
-source build or an installer copied from an older release.
+`az aigateway` (shorthand `az aig`) creates gateways and manages model providers, models and aliases, MCP
+servers, policies, identities, networking, and client keys. It ships as a published Azure CLI extension and is
+in **public preview**.
+
+Install [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) 2.75.0 or later, then:
+
+**Bash**
+
+```bash
+curl -fsSL https://aka.ms/aigateway-cli-install -o install.sh
+sh install.sh
+az aigateway version
+```
+
+**PowerShell**
+
+```powershell
+Invoke-WebRequest https://aka.ms/aigateway-cli-install-ps -OutFile install.ps1
+./install.ps1
+az aigateway version
+```
+
+The installers download a pinned wheel and verify its SHA-256 before installing. To install a newer preview
+release, or to download and check the wheel yourself, follow the
+**[installation guide](cli/README.md)** — and never substitute a source build or an installer copied from an
+older release.
+
+Create a gateway and confirm it provisioned:
+
+```bash
+az aigateway create --subscription "$SUBSCRIPTION" -g "$RG" -n "$GATEWAY" --location "$LOCATION"
+az aigateway show --subscription "$SUBSCRIPTION" -g "$RG" -n "$GATEWAY" -o json
+```
+
+Register providers and models, publish aliases, and add MCP servers: every command group has an example in the **[searchable command reference](cli/command-reference.md)**.
 
 ## Coding-agent plugin
 
-This repository hosts the official **plugin** for coding agents. It supports two
-personas:
+The official plugin for coding agents, for two personas:
 
-- **Administrators and platform engineers** can create and operate gateways
-  and configure their assets with the current `az aigateway` CLI.
-- **Developers** can discover the models and MCP tool servers in an existing
-  gateway and integrate them into an application.
-
-### What's inside
-
-| Component | Invoked as | Purpose |
-| --------- | ---------- | ------- |
-| Command `discover` | `/aigateway:discover` | Read-only: list a gateway's models and MCP tool servers and pick the ones that fit your use case. |
-| Command `build` | `/aigateway:build` | End-to-end: discover, retrieve a credential, and integrate the models/tools into your app. |
-| Command `create` | `/aigateway:create` | Create a gateway and verify that it is ready for configuration. |
-| Command `manage` | `/aigateway:manage` | Configure and operate a gateway and its assets. |
-| Command `migrate` | `/aigateway:migrate` | Migrate AI workloads from an API Management instance: inventory it, plan the move, adapt the plan with you, then provision phase by phase. |
-| Command `feedback` | `/aigateway:feedback` | Package one selected agent session into a local ZIP for user-controlled sharing; anonymization and review are mandatory for GitHub issues. |
-| Skill `use-ai-gateway` | `/aigateway:use-ai-gateway` | Use AI assets from Azure AI Gateway to build intelligent applications. |
-| Skill `manage-ai-gateway` | `/aigateway:manage-ai-gateway` | Full administrator workflow for creating, configuring, and operating a gateway. |
-| Skill `migrate-apim` | `/aigateway:migrate-apim` | Move model APIs, MCP servers, and A2A agents from APIM to a gateway, one settled decision at a time. |
+- **Developers** discover the models and MCP tool servers in an existing gateway and integrate them into an app.
+- **Administrators and platform engineers** create, configure, and operate gateways, and migrate AI workloads onto them.
 
 ### Install
 
-The plugin is hosted in this repository, so your coding agent can install it
-directly from Git — no manual file downloads. Pick the tab for your agent:
-
-**Claude Code / GitHub Copilot CLI** (plugin marketplace protocol):
+**Claude Code / GitHub Copilot CLI**
 
 ```
 /plugin marketplace add Azure/aigateway
 /plugin install aigateway@azure
 ```
 
-**Cursor** — add this repository as a team marketplace from **Dashboard → Plugins →
-Add Marketplace → Import from Repo** (`https://github.com/Azure/aigateway`), then
-install **aigateway** from **Customize**. For local testing, symlink the repo into
-`~/.cursor/plugins/local/aigateway` and reload the window.
-
-**Gemini CLI**:
+**Gemini CLI**
 
 ```
 gemini extensions install https://github.com/Azure/aigateway
 ```
 
-### Usage
+**Cursor** — add this repository as a team marketplace from **Dashboard → Plugins → Add Marketplace → Import
+from Repo** (`https://github.com/Azure/aigateway`), then install **aigateway** from **Customize**.
 
-Point the plugin at your gateway's **ARM resource id** (required to list its models and
-tools) and describe what you want to build:
+### Commands
 
-```
-/aigateway:build /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.ApiManagement/aigateways/<gateway> a service that summarizes support tickets
-```
+| Command | What it does | Skill |
+| ------- | ------------ | ----- |
+| `/aigateway:discover <gateway-resource-id>` | Read-only: list a gateway's model aliases and MCP tool servers. | [`use-ai-gateway`](skills/use-ai-gateway/SKILL.md) |
+| `/aigateway:build <gateway-resource-id> <use case>` | Discover, retrieve a credential, and wire the models and tools into your app. | [`use-ai-gateway`](skills/use-ai-gateway/SKILL.md) |
+| `/aigateway:create <gateway> <resource-group> <region>` | Create a gateway and verify that it is ready to configure. | [`manage-ai-gateway`](skills/manage-ai-gateway/SKILL.md) |
+| `/aigateway:manage <gateway> <resource-group> <operation>` | Configure and operate a gateway and its assets. | [`manage-ai-gateway`](skills/manage-ai-gateway/SKILL.md) |
+| `/aigateway:migrate <apim-name> <resource-group>` | Inventory an API Management instance, plan the move, settle it with you, then provision phase by phase. | [`migrate-apim`](skills/migrate-apim/SKILL.md) |
+| `/aigateway:feedback` | Package one agent session into a local ZIP that you choose how to share. | [`feedback-ai-gateway`](skills/feedback-ai-gateway/SKILL.md) |
 
-Or explore first, then integrate:
+A gateway's **ARM resource id** is what the developer commands need to list its models and tools:
 
 ```
 /aigateway:discover /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.ApiManagement/aigateways/<gateway>
+/aigateway:build    /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.ApiManagement/aigateways/<gateway> a service that summarizes support tickets
+/aigateway:create   my-gateway my-resource-group eastus2
+/aigateway:manage   my-gateway my-resource-group add a Foundry model provider
+/aigateway:migrate  my-apim-instance my-resource-group
 ```
 
-#### Manage
+## Labs, samples, and support
 
-Administrators can create a gateway or manage an existing one:
-
-```
-/aigateway:create my-gateway my-resource-group eastus2
-/aigateway:manage my-gateway my-resource-group add a Foundry model provider
-```
-
-Moving an existing API Management instance onto a gateway is its own workflow:
-
-```
-/aigateway:migrate my-apim-instance my-resource-group
-```
-
-It inventories the AI assets APIM holds, proposes a plan against what the installed
-`az aigateway` can actually do, settles everything that does not map one-to-one with
-you, then provisions phase by phase. Nothing is removed from APIM; retiring the source
-stays your decision. The [migration tool](tools/apim-import/README.md) also runs
-standalone.
-
-The [administrator skill](skills/manage-ai-gateway/SKILL.md) provides native CLI
-runbooks for gateway lifecycle, models and aliases, MCP sources, policies, keys,
-identities, networking, and telemetry. It manages only
-`Microsoft.ApiManagement/aigateways` and its own children; external resources
-must already exist, and role assignments the setup depends on are granted only
-after specific confirmation. Routine create/update intent authorizes the
-requested work; destructive, access-sensitive, and secret-related operations have
-specific confirmation gates. Portal activity coverage and CLI gaps
-are explicit rather than bypassed with REST or legacy resource types.
-
-#### Share feedback
-
-Send a coding-agent session for feedback to the product team:
-
-```
-/aigateway:feedback
-```
-
-The [feedback skill](skills/feedback-ai-gateway/SKILL.md) packages your selected
-session and approved diagnostics into a **local ZIP**. Nothing is uploaded
-automatically; you choose how to share it. Anonymization is optional for private
-sharing. Sharing through a [GitHub issue](https://github.com/Azure/aigateway/issues/new)
-requires anonymization, review of the ZIP and issue text, and your explicit approval.
-
-## Samples
-
-Looking for working examples? The [samples catalog](samples/README.md) curates end-to-end
-samples and infrastructure that build on Azure AI Gateway.
+- **[Hands-on labs](labs/README.md)** — 26 step-by-step labs for customers and field teams, from the core use
+  cases (aliases, priority and weighted routing, federated MCP tools, token limits and budgets, content safety,
+  keys and Entra ID, monitoring, chargeback) to emerging ones (streaming token counts, agent frameworks, coding
+  agents, Agent 365, private networking, an enterprise reference architecture). Each has portal, CLI, REST,
+  Bicep, or code tracks. Follow them on the **[labs site](https://azure.github.io/aigateway/)**, here on GitHub,
+  or as [Jupyter notebooks](labs/README.md#run-the-notebooks) — or
+  [with a coding agent](labs/README.md#use-the-labs-with-a-coding-agent).
+  Shortcuts: [5-minute quick start](labs/quickstart/README.md) ·
+  [what's new](labs/RELEASE-NOTES.md) · [contribute a lab](labs/AUTHORING.md).
+- **[Samples catalog](samples/README.md)** — end-to-end samples and infrastructure that build on AI Gateway.
+- **[Product documentation](https://aka.ms/aigateway/docs)** — concepts, how-to guides, and the release changelog.
+- **[Support](SUPPORT.md)** for questions and bugs. Report vulnerabilities through
+  [Security](SECURITY.md), never a public issue.
 
 ## Contributing
 
-This project welcomes contributions and suggestions. Most contributions require you
-to agree to a Contributor License Agreement (CLA) declaring that you have the right
-to, and actually do, grant us the rights to use your contribution. For details,
-visit [Contributor License Agreements](https://cla.opensource.microsoft.com).
+Contributions and suggestions are welcome. Most require you to agree to a
+[Contributor License Agreement](https://cla.opensource.microsoft.com); a CLA bot decorates your pull request
+with what to do, and you only do it once across all repositories that use it. Labs have their own
+[authoring guide](labs/AUTHORING.md), and coding agents working here should read [AGENTS.md](AGENTS.md).
 
-When you submit a pull request, a CLA bot will automatically determine whether you
-need to provide a CLA and decorate the PR appropriately (e.g., status check,
-comment). Simply follow the instructions provided by the bot. You will only need to
-do this once across all repos using our CLA.
-
-This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
-For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/)
-or contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any
-additional questions or comments.
+This project has adopted the [Microsoft Open Source Code of Conduct](CODE_OF_CONDUCT.md). See the
+[FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or contact
+[opencode@microsoft.com](mailto:opencode@microsoft.com) with any questions.
 
 ## Trademarks
 
-This project may contain trademarks or logos for projects, products, or services.
-Authorized use of Microsoft trademarks or logos is subject to and must follow
+This project may contain trademarks or logos for projects, products, or services. Authorized use of Microsoft
+trademarks or logos is subject to and must follow
 [Microsoft's Trademark & Brand Guidelines](https://www.microsoft.com/legal/intellectualproperty/trademarks/usage/general).
-Use of Microsoft trademarks or logos in modified versions of this project must not
-cause confusion or imply Microsoft sponsorship. Any use of third-party trademarks or
-logos are subject to those third-party's policies.
+Use of Microsoft trademarks or logos in modified versions of this project must not cause confusion or imply
+Microsoft sponsorship. Any use of third-party trademarks or logos are subject to those third-party's policies.
