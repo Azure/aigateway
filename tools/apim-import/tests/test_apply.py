@@ -127,11 +127,20 @@ class TestPhases:
             for step in steps_for(plan)
         )
 
-    def test_next_phase_skips_completed_ones(self, inventory, settled):
+    def test_next_phase_skips_phases_whose_steps_are_verified(self, inventory, settled):
+        journal = new_journal(settled)
+        gateway_steps = [s for s in steps_for(settled) if s.phase == "gateway"]
+        journal["steps"] = [{"itemId": s.item_id, "status": "verified"} for s in gateway_steps]
+        executor = Executor(settled, inventory, journal, runner=_Runner())
+        assert executor.next_phase() == "identity"
+
+    def test_a_phase_marked_complete_without_verified_steps_is_not_believed(self, inventory, settled):
+        # Regression: a rehearsal wrote status complete, and the execute pass then
+        # skipped the phase and built on a gateway that was never created.
         journal = new_journal(settled)
         journal["phases"] = {"gateway": {"status": "complete"}}
         executor = Executor(settled, inventory, journal, runner=_Runner())
-        assert executor.next_phase() == "identity"
+        assert executor.next_phase() == "gateway"
 
     def test_a_gateway_whose_providers_use_an_identity_gets_one(self, settled):
         # Regression: nothing emitted identity.assign, so the identity phase was
@@ -171,14 +180,16 @@ class TestExecution:
     def test_an_object_already_in_the_desired_state_is_not_written(self, inventory, settled):
         # Read before write is what makes a re-run safe after an ambiguous failure.
         runner = _Runner(reads={"gw": {"name": "gw", "location": "West US 2"}})
-        executor = Executor(settled, inventory, new_journal(settled), runner=runner, execute=True)
+        executor = Executor(settled, inventory, new_journal(settled), runner=runner, execute=True,
+                            skip_rehearsal=True)
         [step] = [s for s in executor.run_phase("gateway") if s.capability_id == "gateway.create"]
         assert step.status == "verified"
         assert not any("create" in argv for argv in runner.calls)
 
     def test_a_write_that_cannot_be_read_back_is_unknown_not_successful(self, inventory, settled):
         runner = _Runner(reads={})  # every read fails
-        executor = Executor(settled, inventory, new_journal(settled), runner=runner, execute=True)
+        executor = Executor(settled, inventory, new_journal(settled), runner=runner, execute=True,
+                            skip_rehearsal=True)
         [step] = [s for s in executor.run_phase("gateway") if s.capability_id == "gateway.create"]
         assert step.status == "mutationUnknown"
         assert "could not be read back" in step.detail
@@ -186,7 +197,8 @@ class TestExecution:
     def test_a_failed_write_stops_the_phase(self, inventory, settled):
         runner = _Runner(writes_ok=False)
         journal = new_journal(settled)
-        executor = Executor(settled, inventory, journal, runner=runner, execute=True)
+        executor = Executor(settled, inventory, journal, runner=runner, execute=True,
+                            skip_rehearsal=True)
         executor.run_phase("providers")
         assert journal["phases"]["providers"]["status"] == "stopped"
 
@@ -213,7 +225,8 @@ class TestJournal:
 
     def test_the_journal_records_every_attempt(self, inventory, settled):
         journal = new_journal(settled)
-        executor = Executor(settled, inventory, journal, runner=_Runner())
+        executor = Executor(settled, inventory, journal, runner=_Runner(), execute=True,
+                            skip_rehearsal=True)
         executor.run_phase("providers")
         assert journal["steps"]
         assert all("at" in entry for entry in journal["steps"])
@@ -222,3 +235,44 @@ class TestJournal:
         journal = new_journal(settled)
         assert journal["source"] == settled["source"]["resourceId"]
         assert journal["target"] == TARGET
+
+
+class TestRehearsalLeavesNoState:
+    """A rehearsal makes no history, so it cannot be mistaken for work done."""
+
+    def test_a_rehearsal_records_no_phase_status(self, inventory, settled):
+        journal = new_journal(settled)
+        Executor(settled, inventory, journal, runner=_Runner()).run_phase("gateway")
+        assert journal.get("phases") in (None, {})
+
+    def test_a_rehearsal_records_no_steps(self, inventory, settled):
+        journal = new_journal(settled)
+        Executor(settled, inventory, journal, runner=_Runner()).run_phase("gateway")
+        assert journal["steps"] == []
+
+    def test_a_rehearsal_does_not_advance_the_next_phase(self, inventory, settled):
+        journal = new_journal(settled)
+        executor = Executor(settled, inventory, journal, runner=_Runner())
+        first = executor.next_phase()
+        executor.run_phase(first)
+        assert executor.next_phase() == first
+
+    def test_a_rehearsal_is_recorded_as_having_happened(self, inventory, settled):
+        journal = new_journal(settled)
+        executor = Executor(settled, inventory, journal, runner=_Runner())
+        executor.run_phase("gateway")
+        assert "gateway" in journal["rehearsals"]
+        assert executor.rehearsed("gateway")
+
+    def test_executing_an_unrehearsed_phase_is_refused(self, inventory, settled):
+        executor = Executor(settled, inventory, new_journal(settled), runner=_Runner(), execute=True)
+        with pytest.raises(ApplyError, match="has not been rehearsed"):
+            executor.run_phase("gateway")
+
+    def test_rehearsing_first_allows_the_execute_pass(self, inventory, settled):
+        journal = new_journal(settled)
+        Executor(settled, inventory, journal, runner=_Runner()).run_phase("gateway")
+        runner = _Runner(reads={"gw": {"name": "gw", "location": "West US 2"}})
+        executor = Executor(settled, inventory, journal, runner=runner, execute=True)
+        [step] = executor.run_phase("gateway")
+        assert step.status == "verified"

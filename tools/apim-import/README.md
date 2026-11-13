@@ -664,6 +664,14 @@ this tool does not do it and will not offer to.
 step would run, with `@file` arguments redacted, so the whole sequence can be reviewed before
 anything is written.
 
+A rehearsal **makes no history**. It records only that it happened, and `--execute` refuses a phase
+that has not been rehearsed (`--skip-rehearsal` overrides). An earlier version recorded a rehearsed
+phase as `complete`, so the documented rehearse-then-execute workflow skipped the gateway phase and
+built on a gateway that was never created.
+
+Phase completeness is **derived from verified steps, never stored**. A claim that can be checked is
+checked, so a journal carrying a stale or wrong phase status repairs itself on the next read.
+
 ### Preflight
 
 There is no transaction across steps, so the cost of finding a problem halfway is a half-built

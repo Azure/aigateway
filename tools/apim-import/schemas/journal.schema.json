@@ -19,6 +19,11 @@
       "description": "Manual prerequisites an operator has confirmed are done.",
       "type": "array", "items": {"type": "string"}
     },
+    "rehearsals": {
+      "description": "When each phase was last rehearsed. A rehearsal makes no history, so it records only that it happened.",
+      "type": "object",
+      "additionalProperties": {"type": "string"}
+    },
     "phases": {
       "type": "object",
       "additionalProperties": {

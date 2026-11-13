@@ -299,6 +299,7 @@ class Executor:
         runner: Runner | None = None,
         arm_client: Any = None,
         execute: bool = False,
+        skip_rehearsal: bool = False,
     ) -> None:
         self.plan = plan
         self.inventory = inventory
@@ -308,36 +309,65 @@ class Executor:
         # Writes are consequential and there is no transaction, so a run is a
         # rehearsal unless asked otherwise.
         self.execute = execute
+        self.skip_rehearsal = skip_rehearsal
         self.target = Target.parse((plan.get("target") or {}).get("resourceId") or "")
         self.secrets = {entry["id"]: entry for entry in inventory.get("secrets") or []}
 
     # -- phases ---------------------------------------------------------
 
+    def verified(self) -> set[str]:
+        return {entry["itemId"] for entry in self.journal.get("steps") or []
+                if entry.get("status") == "verified"}
+
+    def phase_complete(self, phase: str) -> bool:
+        """Derived, never stored.
+
+        A phase is complete when every step in it has been verified. Trusting a
+        stored flag let a rehearsal -- which verifies nothing -- mark a phase
+        done, so the execute pass skipped it and built on a gateway that was
+        never created.
+        """
+        steps = [step for step in steps_for(self.plan) if step.phase == phase]
+        if not steps:
+            return True
+        done = self.verified()
+        return all(step.item_id in done for step in steps)
+
+    def rehearsed(self, phase: str) -> bool:
+        return phase in (self.journal.get("rehearsals") or {})
+
     def next_phase(self) -> str | None:
-        done = {name for name, record in (self.journal.get("phases") or {}).items()
-                if record.get("status") == "complete"}
         for phase in PHASES:
-            if phase in done:
-                continue
-            if any(step.phase == phase for step in steps_for(self.plan)):
+            steps = [step for step in steps_for(self.plan) if step.phase == phase]
+            if steps and not self.phase_complete(phase):
                 return phase
         return None
 
     def run_phase(self, phase: str) -> list[Step]:
         if phase not in PHASES:
             raise ApplyError(f"unknown phase {phase!r}; expected one of {', '.join(PHASES)}")
+        if self.execute and not self.rehearsed(phase) and not self.skip_rehearsal:
+            raise ApplyError(
+                f"phase {phase!r} has not been rehearsed. Run it without --execute first to see "
+                "the commands, or pass --skip-rehearsal to go straight to writing."
+            )
         steps = [step for step in steps_for(self.plan) if step.phase == phase]
-        self.journal.setdefault("phases", {})[phase] = {
-            "status": "running", "startedAt": _now(), "steps": len(steps),
-        }
         for step in steps:
             self.run_step(step)
             if step.status in {"failed", "mutationUnknown"}:
                 # Stop this phase rather than building on an unestablished state.
-                self.journal["phases"][phase].update({"status": "stopped", "stoppedAt": _now()})
-                self._save()
-                return steps
-        self.journal["phases"][phase].update({"status": "complete", "completedAt": _now()})
+                break
+
+        if not self.execute:
+            # A rehearsal made no history. It records only that it happened, so
+            # the execute pass can tell it was reviewed.
+            self.journal.setdefault("rehearsals", {})[phase] = _now()
+        else:
+            self.journal.setdefault("phases", {})[phase] = {
+                "status": "complete" if self.phase_complete(phase) else "stopped",
+                "at": _now(),
+                "steps": len(steps),
+            }
         self._save()
         return steps
 
@@ -375,7 +405,8 @@ class Executor:
         step.detail = "; ".join(dict.fromkeys(details))[:400]
         if len(step.objects) > 1:
             step.detail = f"{len(outcomes)}/{len(step.objects)} objects: {step.detail}"
-        self._record(step)
+        if self.execute:
+            self._record(step)
         return step
 
     def _run_object(self, step: Step, obj: dict[str, Any]) -> tuple[str, str, list[str]]:

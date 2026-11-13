@@ -168,6 +168,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Actually write. Without it the run is a rehearsal that prints the commands",
     )
     apply_cmd.add_argument(
+        "--skip-rehearsal", action="store_true",
+        help="Execute a phase that has not been rehearsed (refused by default)",
+    )
+    apply_cmd.add_argument(
         "--acknowledge", action="append", default=[], metavar="PREREQ_ID",
         help="Record that a manual prerequisite is done; repeatable",
     )
@@ -470,6 +474,7 @@ def _apply(args: argparse.Namespace) -> int:
             plan, inventory, journal,
             arm_client=ArmClient(subscription=args.subscription) if args.execute else None,
             execute=args.execute,
+            skip_rehearsal=args.skip_rehearsal,
         )
     except ApplyError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -503,11 +508,16 @@ def _apply(args: argparse.Namespace) -> int:
     _write_journal(journal, journal_path)
 
     stuck = [s for s in steps if s.status in {"failed", "mutationUnknown"}]
-    remaining = executor.next_phase()
     if stuck:
         print(f"\nStopped in {phase}. The source APIM is untouched; the gateway is partially built.",
               file=sys.stderr)
         return 1
+    if not args.execute:
+        # A rehearsal changed nothing, so saying "complete" would overstate it.
+        print(f"\nRehearsed {phase}. Nothing was written. Run the same phase with --execute "
+              "to apply it.", file=sys.stderr)
+        return 0
+    remaining = executor.next_phase()
     print(f"\nPhase {phase} complete."
           + (f" Next: {remaining}." if remaining else " No phases remain."), file=sys.stderr)
     return 0

@@ -197,17 +197,28 @@ def render_journal(journal: dict[str, Any], steps: list[Any]) -> str:
     by_status: dict[str, int] = {}
     for entry in journal.get("steps") or []:
         by_status[entry["status"]] = by_status.get(entry["status"], 0) + 1
-    lines.append(f"  steps: {len(steps)} planned, "
+    lines.append(f"  steps: {len(steps)} in the plan, "
                  + (", ".join(f"{count} {status}" for status, count in sorted(by_status.items()))
-                    or "none run"))
+                    or "none executed"))
     phases = journal.get("phases") or {}
     for name in ("gateway", "identity", "providers", "models", "aliases", "toolServers",
                  "policies", "keys"):
         planned = [step for step in steps if getattr(step, "phase", None) == name]
         if not planned:
             continue
-        record = phases.get(name) or {}
-        lines.append(f"    {name:12} {record.get('status', 'pending'):10} ({len(planned)} steps)")
+        # Derived from verified steps, not from the stored flag. A rehearsal used
+        # to write "complete" here, and believing it skipped real work.
+        verified = {entry["itemId"] for entry in journal.get("steps") or []
+                    if entry.get("status") == "verified"}
+        done = all(getattr(step, "item_id", None) in verified for step in planned)
+        stuck = any(
+            entry["status"] in {"failed", "mutationUnknown"}
+            for entry in journal.get("steps") or []
+            if entry["itemId"] in {getattr(s, "item_id", None) for s in planned}
+        )
+        state = "complete" if done else ("stopped" if stuck else "pending")
+        rehearsed = " (rehearsed)" if name in (journal.get("rehearsals") or {}) else ""
+        lines.append(f"    {name:12} {state:10} ({len(planned)} steps){rehearsed}")
     stuck = [e for e in journal.get("steps") or []
              if e["status"] in {"failed", "mutationUnknown"}]
     if stuck:

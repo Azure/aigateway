@@ -103,7 +103,8 @@ apim-import apply --plan plan.json --inventory inventory.json --next-phase --exe
 
 Start with `--preflight` and resolve everything blocking. Then **rehearse each phase before
 executing it** — a run without `--execute` prints the exact commands, which is what you show the
-operator. Phases are `gateway → identity → providers → models → aliases → toolServers → policies →
+operator. A rehearsal writes nothing and advances nothing, so rehearse the same phase you are about
+to execute; `--execute` refuses a phase you have not. Phases are `gateway → identity → providers → models → aliases → toolServers → policies →
 keys`; run one per turn, report what it produced, and stop before the next.
 
 If a step comes back `mutationUnknown`, the write was accepted but its outcome could not be
