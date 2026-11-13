@@ -209,6 +209,10 @@ class Collector:
             "publicNetworkAccess": props.get("publicNetworkAccess"),
             "publicIPAddresses": props.get("publicIPAddresses"),
             "privateIPAddresses": props.get("privateIPAddresses"),
+            # Reaching a backend depends on how the source reaches it today, so the
+            # target needs the same reachability -- not the same subnet, because the
+            # two resource types require different delegations.
+            "networking": self._networking(props),
             "hostnameConfigurations": hostnames,
             "identity": {
                 "type": identity.get("type"),
@@ -221,6 +225,55 @@ class Collector:
             },
             "tags": raw.get("tags") or {},
         }
+
+    def _networking(self, props: dict[str, Any]) -> dict[str, Any]:
+        """How the source reaches its backends, and what the target would need.
+
+        A VNet-integrated APIM reaches private backends through its own injected
+        subnet. The gateway cannot reuse that subnet: typed gateways require a
+        delegation to `Microsoft.App/environments`, where APIM uses its own. So
+        this records the requirement, never a subnet to copy.
+        """
+        vnet = props.get("virtualNetworkConfiguration") or {}
+        connections = self._list(
+            f"{self.service_id}/privateEndpointConnections", "privateEndpointConnections", "service",
+            quiet=True,
+        )
+        integrated = (props.get("virtualNetworkType") or "None") != "None"
+        record: dict[str, Any] = {
+            "virtualNetworkType": props.get("virtualNetworkType"),
+            "publicNetworkAccess": props.get("publicNetworkAccess"),
+            "vnetIntegrated": integrated,
+            "subnetResourceId": vnet.get("subnetResourceId"),
+            "vnetId": vnet.get("vnetid"),
+            "outboundPublicIPAddresses": props.get("outboundPublicIPAddresses"),
+            "natGatewayState": props.get("natGatewayState"),
+            "privateEndpointConnections": [
+                {
+                    "name": entry.get("name"),
+                    "state": ((entry.get("properties") or {}).get("privateLinkServiceConnectionState")
+                              or {}).get("status"),
+                }
+                for entry in connections
+            ],
+            "targetRequirement": None,
+        }
+        if integrated:
+            record["targetRequirement"] = {
+                "needsSubnet": True,
+                "delegation": "Microsoft.App/environments",
+                "note": (
+                    "The source reaches backends through an injected subnet. The gateway needs its "
+                    "own subnet in the same region delegated to Microsoft.App/environments -- APIM's "
+                    "subnet uses a different delegation and cannot be reused."
+                ),
+            }
+        elif (props.get("publicNetworkAccess") or "Enabled") == "Disabled":
+            record["targetRequirement"] = {
+                "needsSubnet": False,
+                "note": "Public ingress is disabled on the source; the target needs an equivalent private path.",
+            }
+        return record
 
     def _workspaces(self) -> list[dict[str, Any]]:
         raw = self._list(f"{self.service_id}/workspaces", "workspaces", "service")

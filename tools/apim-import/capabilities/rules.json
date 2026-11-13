@@ -454,6 +454,14 @@
   "structural": [
     {
       "match": {
+        "kind": "gateway"
+      },
+      "verdict": "native",
+      "capabilityId": "gateway.create",
+      "rationale": "The target gateway is created by apply when the plan names one that does not exist yet."
+    },
+    {
+      "match": {
         "kind": "workspace",
         "name": {
           "not": "default"

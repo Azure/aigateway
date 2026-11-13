@@ -598,6 +598,29 @@ class PlanBuilder:
                 evidence={"count": len(entries), "names": [entry.get("name") for entry in entries]},
             )
 
+        networking = (self.inventory.get("service") or {}).get("networking") or {}
+        requirement = networking.get("targetRequirement")
+        if requirement:
+            self._add(
+                item_id=ids.item("network", "reachability"),
+                source={"assetId": None, "assetKind": "networking", "aspect": "backendReachability"},
+                kind="translate",
+                verdict="partial",
+                capability_id="network.update",
+                proposal="new-delegated-subnet" if requirement.get("needsSubnet") else "private-ingress",
+                rationale=requirement.get("note", ""),
+                options=[
+                    _opt("new-delegated-subnet",
+                         "Provision a subnet delegated to Microsoft.App/environments and integrate the gateway."),
+                    _opt("public-egress",
+                         "Reach backends over public networking; only viable if they accept it."),
+                    _opt("retain-in-apim", "Keep workloads that need private backends on APIM."),
+                    _opt("block", "Stop until the network design is agreed."),
+                ],
+                evidence={"networking": networking},
+                blocking=True,
+            )
+
         # A failed read is unknown, not absent, and cannot be accepted as a loss.
         failures = [
             entry for entry in (self.inventory.get("collection") or {}).get("coverage") or []
@@ -648,6 +671,15 @@ class PlanBuilder:
                     "detail": "`mcp authorize` returns a login link; completion is interactive and the "
                               "command's success does not prove the connection works.",
                 })
+        if requirement_needed := ((self.inventory.get("service") or {}).get("networking") or {}).get(
+            "targetRequirement"
+        ):
+            self.prerequisites.append({
+                "id": "prereq:subnet",
+                "owner": "azure-administrator",
+                "summary": "Provide a subnet the gateway can integrate with",
+                "detail": requirement_needed.get("note", ""),
+            })
         self.prerequisites.append({
             "id": "prereq:name-collision",
             "owner": "apim-import",

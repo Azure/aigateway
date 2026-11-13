@@ -509,6 +509,18 @@ Resolving closes a question without opening new ones. A catalogue of fifty model
 model registrations and **one** naming decision, because the alias names batch with a per-model
 default.
 
+## Networking
+
+Reaching a backend depends on how the source reaches it today, so the inventory records the
+source's reachability: VNet type, public network access, the injected subnet, NAT gateway state,
+and private endpoint connections.
+
+What it deliberately does **not** do is offer that subnet for reuse. A typed gateway requires a
+subnet delegated to `Microsoft.App/environments`; APIM injects into a subnet with its own
+delegation, so the two cannot share one. A VNet-integrated source therefore produces a blocking
+`translate` item and a `prereq:subnet` entry asking an administrator for a new delegated subnet in
+the same region, rather than a plan that looks executable and fails at the first private backend.
+
 ## Saving and resuming
 
 The plan file **is** the saved state. There is nothing else to persist: every decision lives on the
@@ -649,12 +661,18 @@ read back and assert the desired state is a subset of observed, append to `journ
 reach `az` only as `@file` with mode `0600`, never as scalar flags, because scalar flags expose
 values in process arguments.
 
+**Migration is additive. Nothing is ever removed from APIM.** `apply` provisions into the gateway and
+never writes to the source, so a half-finished run leaves a partially built gateway and an APIM
+instance that is still serving exactly as before. Retiring anything from APIM is a separate decision
+the operator makes after validating the new gateway — this tool does not do it and will not offer to.
+
 Ordering is a DAG: gateway → identity → provider → model → alias, with MCP and telemetry as parallel
 branches and policies last. Re-entrancy is read-before-write, since only `model-alias set` is a
 documented upsert; four operations replace whole collections (alias backend pool, `--policies @file`,
 `mcp --endpoints`, gateway tags) and need read-merge-write preserving stable policy ids —
-`costLimit.id` especially, since changing it starts a new spend counter. No rollback exists, so a
-failed step stops its branch and reports for reconciliation rather than retrying blind.
+`costLimit.id` especially, since changing it starts a new spend counter. There is no transaction
+across steps, so a failed step stops its branch and reports for reconciliation rather than retrying
+blind; the fallback is always "finish or fix the new gateway", never "restore the old one".
 
 A name-collision preflight against `Microsoft.ApiManagement/service` is mandatory: several commands
 dispatch by name without `--ids`, and in a migration source and target plausibly share a name.

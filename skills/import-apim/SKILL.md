@@ -85,6 +85,14 @@ there.
 
 ## 3. Execute
 
+**Migration is additive.** Everything is provisioned into the gateway; nothing is removed from
+APIM. A failed run leaves a partially built gateway and a source still serving as before. Retiring
+anything from APIM is the operator's decision after they have validated the new gateway — do not
+do it, and do not offer to.
+
+Keep a visible TODO of the phases and say which one you are in. Work one phase at a time, report
+what it produced, and stop for the operator before starting the next.
+
 Only once nothing is `needs-decision` or `stale`. Work the plan one object at a time and narrate
 each one. Dependency order is fixed: gateway → identity → provider → model → alias, with MCP and
 telemetry as parallel branches and policies last.
