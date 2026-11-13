@@ -125,10 +125,10 @@ class PlanBuilder:
         ]
         service = self.inventory.get("service") or {}
         return {
-            "$schema": "https://github.com/Azure/aigateway/tools/apim-import/schemas/plan.schema.json",
+            "$schema": "https://github.com/Azure/aigateway/tools/migrate-apim/schemas/plan.schema.json",
             "schemaVersion": SCHEMA_VERSION,
             "kind": "apimMigrationPlan",
-            "generator": {"name": "apim-import", "version": GENERATOR_VERSION, "command": "plan"},
+            "generator": {"name": "migrate-apim", "version": GENERATOR_VERSION, "command": "plan"},
             "generatedAt": _now(),
             "source": {
                 "resourceId": service.get("resourceId"),
@@ -1096,7 +1096,7 @@ class PlanBuilder:
             })
         self.prerequisites.append({
             "id": "prereq:name-collision",
-            "owner": "apim-import",
+            "owner": "migrate-apim",
             "summary": "Preflight the target name against Microsoft.ApiManagement/service",
             "detail": "Several CLI commands dispatch by name without --ids, and in a migration the source "
                       "APIM and the target gateway plausibly share a name.",

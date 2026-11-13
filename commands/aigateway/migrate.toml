@@ -8,20 +8,20 @@ and, when given, the target gateway.
 
 The work has four steps and they do not collapse into one another:
 
-1. Inventory the APIM instance with `apim-import collect`. Facts only, no verdicts.
-2. Plan with `apim-import plan`, which matches that inventory against what the
+1. Inventory the APIM instance with `migrate-apim collect`. Facts only, no verdicts.
+2. Plan with `migrate-apim plan`, which matches that inventory against what the
    installed `az aigateway` can actually do.
 3. Adapt the plan with the operator. Everything that does not map one-to-one is an
    item to settle; record a decision by setting only `status` and `decision`, then
    re-run `plan`.
-4. Provision with `apim-import apply`, one phase at a time.
+4. Provision with `migrate-apim apply`, one phase at a time.
 
 Before step 1, make the tool runnable and say which way you did it. In order:
-`apim-import` already on `PATH`; otherwise the copy shipped with this extension under
-its own `tools/apim-import`; otherwise `tools/apim-import` in a clone of
+`migrate-apim` already on `PATH`; otherwise the copy shipped with this extension under
+its own `tools/migrate-apim`; otherwise `tools/migrate-apim` in a clone of
 `github.com/Azure/aigateway`. It is a dependency-free Python package needing 3.10 or
-later -- `pip install -e <path>` installs the `apim-import` command, and
-`python -m apim_import.cli` runs it from the directory without installing. If none of
+later -- `pip install -e <path>` installs the `migrate-apim` command, and
+`python -m migrate_apim.cli` runs it from the directory without installing. If none of
 those resolve, say so and stop rather than approximating the tool with `az` commands.
 
 Migration is additive. Everything is provisioned into the gateway and nothing is removed

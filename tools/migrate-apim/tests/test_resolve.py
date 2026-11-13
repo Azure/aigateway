@@ -3,11 +3,11 @@ import json
 
 import pytest
 
-from apim_import.arm import ArmResponse
-from apim_import.capability import CapabilityMap
-from apim_import.collect import Collector, CollectOptions
-from apim_import.plan import build_plan
-from apim_import.resolve import (
+from migrate_apim.arm import ArmResponse
+from migrate_apim.capability import CapabilityMap
+from migrate_apim.collect import Collector, CollectOptions
+from migrate_apim.plan import build_plan
+from migrate_apim.resolve import (
     ResolveError,
     auth_headers,
     catalogue_url,

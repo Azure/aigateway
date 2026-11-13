@@ -11,7 +11,7 @@ Guidance for coding agents (GitHub Copilot, Claude Code, Codex, Cursor, and othe
 | `docs/` | The generated labs site, ignored by git. On `main`, `.github/workflows/labs-pages.yml` builds it from `labs/` and publishes it to GitHub Pages | Never. `npm run build` writes it |
 | `skills/`, `commands/`, `.claude-plugin/`, `.cursor-plugin/`, `.github/plugin/`, `gemini-extension.json` | The coding-agent plugin: developer integration, gateway administration, migration from API Management, and local feedback packaging | Only when asked |
 | `cli/` | Installation guidance and the command reference for the published `az aigateway` CLI extension | Only when asked |
-| `tools/` | Standalone command line tools. `tools/apim-import/` inventories the AI assets of an Azure API Management instance for migration to AI Gateway | Only when asked. Read [`tools/apim-import/README.md`](tools/apim-import/README.md) first |
+| `tools/` | Standalone command line tools. `tools/migrate-apim/` inventories the AI assets of an Azure API Management instance for migration to AI Gateway | Only when asked. Read [`tools/migrate-apim/README.md`](tools/migrate-apim/README.md) first |
 | `samples/` | The samples catalog | Only when asked |
 
 ## Labs essentials

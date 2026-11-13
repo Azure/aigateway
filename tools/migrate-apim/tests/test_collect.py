@@ -2,8 +2,8 @@ import json
 
 import pytest
 
-from apim_import.cli import validate_inventory
-from apim_import.collect import Collector, CollectOptions
+from migrate_apim.cli import validate_inventory
+from migrate_apim.collect import Collector, CollectOptions
 from fake_arm import SERVICE, FakeArmClient
 
 
@@ -335,7 +335,7 @@ class TestUnifiedModelApi:
         assert model["endpoints"]["backendDialectsDeclared"] is False
 
     def test_unverified_format_is_marked_inferred(self):
-        from apim_import import detect
+        from migrate_apim import detect
 
         verified = detect.language_model_format("anthropic-messages")
         assert verified["resolution"] == "verified"
@@ -482,7 +482,7 @@ class TestInferenceIsMarked:
         assert upstream["transportBasis"]["status"] == "declared"
 
     def test_unreadable_mcp_transport_is_undetermined_not_null(self):
-        from apim_import.collect import _mcp_transport
+        from migrate_apim.collect import _mcp_transport
 
         assert _mcp_transport({"transportType": "streamable"})["status"] == "declared"
         assert _mcp_transport({"endpoints": [{"name": "mcp"}]})["status"] == "inferred"
@@ -671,7 +671,7 @@ class TestBackendRoles:
         assert all(s["role"] != "routing" for s in model["supportingBackends"])
 
     def test_expression_valued_backend_id_is_not_treated_as_a_name(self):
-        from apim_import import detect
+        from migrate_apim import detect
 
         assert detect.backend_roles_from_element(
             {"name": "llm-content-safety", "attributes": {"backend-id": "@(context.Variables[\"b\"])"}}

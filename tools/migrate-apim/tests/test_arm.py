@@ -8,7 +8,7 @@ import urllib.error
 
 import pytest
 
-from apim_import.arm import ArmClient, ArmError, _reason
+from migrate_apim.arm import ArmClient, ArmError, _reason
 
 
 class _Client(ArmClient):
@@ -44,12 +44,12 @@ class _Response:
 
 @pytest.fixture(autouse=True)
 def no_sleep(monkeypatch):
-    monkeypatch.setattr("apim_import.arm.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("migrate_apim.arm.time.sleep", lambda _seconds: None)
 
 
 def client(failures, **kwargs):
     instance = _Client(failures, **kwargs)
-    import apim_import.arm as arm
+    import migrate_apim.arm as arm
 
     # Route urlopen through the canned transport.
     original = arm.urllib.request.urlopen

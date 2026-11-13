@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "apim-import"
+name = "migrate-apim"
 version = "0.1.0"
 description = "Inventory the AI assets of an Azure API Management instance for migration to Azure AI Gateway"
 readme = "README.md"
@@ -12,19 +12,19 @@ license = { text = "MIT" }
 dependencies = []
 
 [project.optional-dependencies]
-# Only needed for strict schema validation; 'apim-import validate' falls back to
+# Only needed for strict schema validation; 'migrate-apim validate' falls back to
 # a structural check when jsonschema is absent.
 validate = ["jsonschema>=4.21"]
 dev = ["jsonschema>=4.21", "pytest>=8.0"]
 
 [project.scripts]
-apim-import = "apim_import.cli:main"
+migrate-apim = "migrate_apim.cli:main"
 
 [tool.setuptools]
-packages = ["apim_import"]
+packages = ["migrate_apim"]
 
 [tool.setuptools.package-data]
-apim_import = []
+migrate_apim = []
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

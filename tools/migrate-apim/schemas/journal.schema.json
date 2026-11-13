@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/Azure/aigateway/tools/apim-import/schemas/journal.schema.json",
+  "$id": "https://github.com/Azure/aigateway/tools/migrate-apim/schemas/journal.schema.json",
   "title": "APIM migration journal",
   "description": "What a migration run actually did. The plan is intent; this is history, so a failed run resumes instead of restarting.",
   "type": "object",

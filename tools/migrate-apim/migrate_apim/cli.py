@@ -27,13 +27,13 @@ NOT_IMPLEMENTED = {
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="apim-import",
+        prog="migrate-apim",
         description=(
             "Inventory the AI assets (models, MCP servers, A2A agents) of an Azure API "
             "Management instance, shaped for migration to Azure AI Gateway."
         ),
     )
-    parser.add_argument("--version", action="version", version=f"apim-import {GENERATOR_VERSION}")
+    parser.add_argument("--version", action="version", version=f"migrate-apim {GENERATOR_VERSION}")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     collect = subparsers.add_parser("collect", help="Read an APIM instance and write inventory.json")
@@ -198,7 +198,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command in NOT_IMPLEMENTED:
         print(
             f"'{args.command}' is not implemented yet.\n\n{NOT_IMPLEMENTED[args.command]}\n\n"
-            "See tools/apim-import/README.md for the contract this command will honour.",
+            "See tools/migrate-apim/README.md for the contract this command will honour.",
             file=sys.stderr,
         )
         return 2

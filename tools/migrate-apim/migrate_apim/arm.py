@@ -68,7 +68,7 @@ class ArmClient:
         endpoint: str = DEFAULT_ENDPOINT,
         timeout: int = 90,
         max_retries: int = 4,
-        user_agent: str = "apim-import/0.1",
+        user_agent: str = "migrate-apim/0.1",
     ) -> None:
         self.subscription = subscription
         self.endpoint = endpoint.rstrip("/")

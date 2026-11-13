@@ -12,24 +12,24 @@ third: work with the operator to adapt that plan, then execute it one object at 
 
 Resolve it in this order, and say which one you used:
 
-1. `apim-import` already on `PATH` — check with `apim-import --version`.
-2. The copy shipped with this plugin, under its root at `tools/apim-import`. In Claude Code that
+1. `migrate-apim` already on `PATH` — check with `migrate-apim --version`.
+2. The copy shipped with this plugin, under its root at `tools/migrate-apim`. In Claude Code that
    root is `${CLAUDE_PLUGIN_ROOT}`.
-3. `tools/apim-import` in a clone of `github.com/Azure/aigateway`.
+3. `tools/migrate-apim` in a clone of `github.com/Azure/aigateway`.
 
 It is a Python package with no runtime dependencies, needing 3.10 or later. `pip install -e <path>`
-installs the `apim-import` command; `python -m apim_import.cli` runs it from that directory without
+installs the `migrate-apim` command; `python -m migrate_apim.cli` runs it from that directory without
 installing anything. Ask before installing into the operator's environment.
 
 If none of those resolve, say so and stop. Do not approximate the tool with `az` commands: the
 inventory's value is that it is complete and says where it is not, which a hand-rolled read is not.
 
 ```
-apim-import collect  --apim <name> -g <rg> -o inventory.json
-apim-import plan     --inventory inventory.json -o plan.json
+migrate-apim collect  --apim <name> -g <rg> -o inventory.json
+migrate-apim plan     --inventory inventory.json -o plan.json
 # ... run resolve-models / discover-tools where the plan proposes them ...
 # ... adapt plan.json with the operator ...
-apim-import plan     --inventory inventory.json -o plan.json   # re-run; adaptations survive
+migrate-apim plan     --inventory inventory.json -o plan.json   # re-run; adaptations survive
 ```
 
 `plan.json` is the one living artifact. It is proposed by the tool, adapted in place, and executed.
@@ -90,7 +90,7 @@ re-opened only when the APIM facts *it* rested on changed, with `staleReason` sa
 > a caller's head. **If the answer is derivable from APIM configuration, it is a collector bug.**
 
 So: a provider you cannot identify, a dialect you cannot read, a tool list you did not fetch — these
-are engineering work on `apim-import`, not questions for the operator. An item carrying `rulesGap`
+are engineering work on `migrate-apim`, not questions for the operator. An item carrying `rulesGap`
 means the mapping rules are incomplete; fix `capabilities/rules.json` rather than asking with the
 generic options. Likewise an unrun verification is "not run", not "unknown".
 
@@ -100,7 +100,7 @@ there.
 
 The plan's `plannerGaps` is the same category and blocks `apply`. Each entry names work an item
 commits to that the plan does not produce — a required field nothing supplied, or a settled
-decision that yields no target object. Read it as a bug report against `apim-import`, not as a
+decision that yields no target object. Read it as a bug report against `migrate-apim`, not as a
 question: re-collect if the inventory is older than the tool, otherwise fix the planner. Never
 settle the named item some other way just to clear the gap; that discards the work rather than
 doing it.
@@ -124,9 +124,9 @@ what it produced, and stop for the operator before starting the next.
 Only once nothing is `needs-decision`, `stale`, or orphaned.
 
 ```bash
-apim-import apply --plan plan.json --inventory inventory.json --preflight
-apim-import apply --plan plan.json --inventory inventory.json --next-phase              # rehearsal
-apim-import apply --plan plan.json --inventory inventory.json --next-phase --execute
+migrate-apim apply --plan plan.json --inventory inventory.json --preflight
+migrate-apim apply --plan plan.json --inventory inventory.json --next-phase              # rehearsal
+migrate-apim apply --plan plan.json --inventory inventory.json --next-phase --execute
 ```
 
 Start with `--preflight` and resolve everything blocking. Then **rehearse each phase before

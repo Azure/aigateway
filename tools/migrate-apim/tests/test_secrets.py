@@ -1,4 +1,4 @@
-from apim_import import secrets
+from migrate_apim import secrets
 
 
 def registry() -> secrets.SecretRegistry:

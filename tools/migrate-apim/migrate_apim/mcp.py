@@ -128,7 +128,7 @@ def list_tools(url: str, headers: dict[str, str], *, timeout: int = 30) -> list[
         "params": {
             "protocolVersion": PROTOCOL_VERSION,
             "capabilities": {},
-            "clientInfo": {"name": "apim-import", "version": "0.1"},
+            "clientInfo": {"name": "migrate-apim", "version": "0.1"},
         },
     }, timeout=timeout)
 

@@ -1,4 +1,4 @@
-# apim-import
+# migrate-apim
 
 Inventory the AI assets of an Azure API Management instance, shaped for migration to
 [Azure AI Gateway](https://ai.gateway.azure.com) (`Microsoft.ApiManagement/aigateways`).
@@ -60,9 +60,9 @@ An unrelated change never disturbs settled work.
 Python 3.10+ and the Azure CLI, signed in (`az login`). No other dependencies.
 
 ```bash
-cd tools/apim-import
-python3 -m apim_import --help          # run from source
-pip install -e .                       # or install the 'apim-import' command
+cd tools/migrate-apim
+python3 -m migrate_apim --help          # run from source
+pip install -e .                       # or install the 'migrate-apim' command
 pip install -e '.[dev]'                # adds jsonschema (strict validate) and pytest
 ```
 
@@ -70,25 +70,25 @@ pip install -e '.[dev]'                # adds jsonschema (strict validate) and p
 
 ```bash
 # Inventory everything AI-related in one APIM instance
-apim-import collect --apim apim-gateway-demo -g a365-gateway-governance -o inventory.json
+migrate-apim collect --apim apim-gateway-demo -g a365-gateway-governance -o inventory.json
 
 # Propose a migration plan, then re-run it after adapting items in place
-apim-import plan --inventory inventory.json -o plan.json
-apim-import plan --inventory inventory.json -o plan.json --probe-cli   # check the installed az extension too
+migrate-apim plan --inventory inventory.json -o plan.json
+migrate-apim plan --inventory inventory.json -o plan.json --probe-cli   # check the installed az extension too
 
 # Fill in a provider's model list where it needs the backend credential
-apim-import resolve-models --inventory inventory.json --allow-secret-use all
+migrate-apim resolve-models --inventory inventory.json --allow-secret-use all
 
 # Narrow the scope
-apim-import collect --apim <name> -g <rg> --family mcp --family a2a
-apim-import collect --apim <name> -g <rg> --include-api 'aoai-*' --exclude-api 'legacy-*'
+migrate-apim collect --apim <name> -g <rg> --family mcp --family a2a
+migrate-apim collect --apim <name> -g <rg> --include-api 'aoai-*' --exclude-api 'legacy-*'
 
 # Foundry accounts in other subscriptions
-apim-import collect --apim <name> -g <rg> --foundry-subscription <sub-id>
+migrate-apim collect --apim <name> -g <rg> --foundry-subscription <sub-id>
 
 # Check and read
-apim-import validate inventory.json
-apim-import summary inventory.json --format markdown
+migrate-apim validate inventory.json
+migrate-apim summary inventory.json --format markdown
 ```
 
 `collect` is read-only. It issues `GET` requests only, and never calls a `list*` secret action.
@@ -447,7 +447,7 @@ of an unchanged service diffs cleanly. Ids are derived from ARM identity and are
 {
   "schemaVersion": "1.0",
   "kind": "apimAiInventory",
-  "generator":  { "name": "apim-import", "version": "0.1.0", "command": "collect" },
+  "generator":  { "name": "migrate-apim", "version": "0.1.0", "command": "collect" },
   "collection": { "apiVersions": {...}, "coverage": [...], "warnings": [...] },
   "service":    { "resourceId": "...", "sku": {...}, "identity": {...}, "virtualNetworkType": "..." },
   "workspaces": [ { "name": "finance", "serveOn": "workspaceAndDefault", "collected": true } ],
@@ -477,7 +477,7 @@ of an unchanged service diffs cleanly. Ids are derived from ARM identity and are
 error. Completeness is provable rather than assumed, which matters when a migration decision rests
 on "there are no other model APIs".
 
-The schema is [`schemas/inventory.schema.json`](schemas/inventory.schema.json). `apim-import
+The schema is [`schemas/inventory.schema.json`](schemas/inventory.schema.json). `migrate-apim
 validate` checks against it with `jsonschema` when installed, and falls back to a structural check
 otherwise.
 
@@ -490,8 +490,8 @@ endpoint comes back `unresolved`. `resolve-models` is the one step that touches 
 is why it is separate and opt-in:
 
 ```bash
-apim-import resolve-models --inventory inventory.json                       # reports what it would do
-apim-import resolve-models --inventory inventory.json --allow-secret-use all
+migrate-apim resolve-models --inventory inventory.json                       # reports what it would do
+migrate-apim resolve-models --inventory inventory.json --allow-secret-use all
 ```
 
 The credential is resolved in memory by replaying the retrieval recipe the inventory already
@@ -527,9 +527,9 @@ The plan file **is** the saved state. There is nothing else to persist: every de
 item it settles, so a later session picks up by pointing at the same file.
 
 ```bash
-apim-import plan --inventory inventory.json -o plan.json --target <gateway-resource-id>
+migrate-apim plan --inventory inventory.json -o plan.json --target <gateway-resource-id>
 # ... days later, possibly a different session or machine ...
-apim-import plan --inventory inventory.json -o plan.json     # adaptations preserved, target remembered
+migrate-apim plan --inventory inventory.json -o plan.json     # adaptations preserved, target remembered
 ```
 
 `--target` records where the plan deploys to and is sticky, so a resumed session does not have to be
@@ -551,8 +551,8 @@ the only way to know them is to ask at runtime. `discover-tools` is the MCP coun
 `resolve-models`: opt-in, credential-aware, and explicit about which route it took.
 
 ```bash
-apim-import discover-tools --inventory inventory.json                        # reports what it would do
-apim-import discover-tools --inventory inventory.json --allow-secret-use all
+migrate-apim discover-tools --inventory inventory.json                        # reports what it would do
+migrate-apim discover-tools --inventory inventory.json --allow-secret-use all
 ```
 
 **The route changes the answer**, so it is recorded rather than assumed:
@@ -649,10 +649,10 @@ can move** — and `split` keeps the rest on APIM rather than dropping it.
 ## Applying the plan
 
 ```bash
-apim-import apply --plan plan.json --inventory inventory.json --preflight
-apim-import apply --plan plan.json --inventory inventory.json --next-phase            # rehearsal
-apim-import apply --plan plan.json --inventory inventory.json --next-phase --execute  # writes
-apim-import apply --plan plan.json --inventory inventory.json --status
+migrate-apim apply --plan plan.json --inventory inventory.json --preflight
+migrate-apim apply --plan plan.json --inventory inventory.json --next-phase            # rehearsal
+migrate-apim apply --plan plan.json --inventory inventory.json --next-phase --execute  # writes
+migrate-apim apply --plan plan.json --inventory inventory.json --status
 ```
 
 **Migration is additive. Nothing is ever removed from APIM.** Every operation provisions into the
@@ -746,7 +746,7 @@ rather than failing after the last.
 ## Development
 
 ```bash
-cd tools/apim-import
+cd tools/migrate-apim
 uv venv .venv && uv pip install --python .venv/bin/python pytest jsonschema
 .venv/bin/python -m pytest -q
 ```

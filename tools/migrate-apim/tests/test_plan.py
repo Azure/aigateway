@@ -3,10 +3,10 @@ import json
 
 import pytest
 
-from apim_import.capability import CapabilityMap
-from apim_import.cli import validate_document
-from apim_import.collect import Collector, CollectOptions
-from apim_import.plan import build_plan
+from migrate_apim.capability import CapabilityMap
+from migrate_apim.cli import validate_document
+from migrate_apim.collect import Collector, CollectOptions
+from migrate_apim.plan import build_plan
 from fake_arm import SERVICE, FakeArmClient
 
 
@@ -93,7 +93,7 @@ class TestDocument:
         # Regression: a capability the installed extension does not expose flipped
         # the item to accept-loss with no options, which then tripped the rulesGap
         # fallback -- sending the reader to fix a rules file that is fine.
-        from apim_import.capability import CapabilityMap
+        from migrate_apim.capability import CapabilityMap
 
         caps = CapabilityMap.load().probe(
             lambda command: None if command == ["mcp", "create"] else {"x"},
@@ -635,8 +635,8 @@ class TestUnbuildableObjects:
     def test_required_fields_mirror_the_apply_builders(self):
         # The planner can only vouch for what apply actually demands; drift
         # between the two tables would quietly stop checking something.
-        from apim_import.apply import _REQUIRED_FLAGS
-        from apim_import.plan import _REQUIRED_FIELDS
+        from migrate_apim.apply import _REQUIRED_FLAGS
+        from migrate_apim.plan import _REQUIRED_FIELDS
 
         assert set(_REQUIRED_FIELDS) == set(_REQUIRED_FLAGS)
         for capability_id, flags in _REQUIRED_FLAGS.items():
@@ -647,7 +647,7 @@ class TestBatchMembersAreTrackedIndividually:
     """A batch keeps one digest per member, under a name that identifies it."""
 
     def test_each_model_member_gets_its_own_key(self, plan):
-        from apim_import.plan import _member_digests
+        from migrate_apim.plan import _member_digests
 
         aliases = next(i for i in plan["items"] if i["id"].endswith("/aliasNames")
                        and len(i["evidence"]["members"]) > 1)
@@ -677,7 +677,7 @@ class TestBatchMembersAreTrackedIndividually:
         assert first in item["staleReason"]
 
     def test_the_stale_reason_names_the_member(self, plan):
-        from apim_import.plan import _member_digests
+        from migrate_apim.plan import _member_digests
 
         policies = [i for i in plan["items"] if i["id"].startswith("item:policy/")
                     and i.get("evidence", {}).get("members")]
@@ -689,7 +689,7 @@ class TestTheSummaryShowsBadNews:
     """A view that omits what will not happen reads as a clean bill of health."""
 
     def test_planner_gaps_appear_in_the_rendered_plan(self, plan):
-        from apim_import.summary import render_plan
+        from migrate_apim.summary import render_plan
 
         gapped = copy.deepcopy(plan)
         gapped["plannerGaps"] = [{"id": "item:model/x/models", "gap": "names no models"}]
@@ -698,7 +698,7 @@ class TestTheSummaryShowsBadNews:
         assert "names no models" in rendered
 
     def test_orphaned_decisions_appear_in_the_rendered_plan(self, plan):
-        from apim_import.summary import render_plan
+        from migrate_apim.summary import render_plan
 
         orphaned = copy.deepcopy(plan)
         orphaned["orphanedDecisions"] = [{"id": "item:gone", "decision": "split", "note": "n"}]
@@ -707,7 +707,7 @@ class TestTheSummaryShowsBadNews:
         assert "item:gone" in rendered
 
     def test_a_clean_plan_says_neither(self, plan):
-        from apim_import.summary import render_plan
+        from migrate_apim.summary import render_plan
 
         rendered = render_plan(plan)
         assert "Will not happen as planned" not in rendered
@@ -719,7 +719,7 @@ class TestAProbeThatCouldNotRun:
 
     def test_a_timeout_raises_rather_than_demoting_the_catalogue(self):
         import subprocess
-        from apim_import.capability import CapabilityError, az_option_probe
+        from migrate_apim.capability import CapabilityError, az_option_probe
 
         def _boom(*_a, **_k):
             raise subprocess.TimeoutExpired(cmd="az", timeout=30)
@@ -799,20 +799,20 @@ class TestPolicyRoutedBackend:
     """An API whose backend is named only by policy still has a backend."""
 
     def test_a_single_set_backend_service_resolves(self):
-        from apim_import.collect import policy_routed_backends
+        from migrate_apim.collect import policy_routed_backends
 
         elements = [{"name": "set-backend-service", "attributes": {"backend-id": "aoai-pool"}}]
         assert policy_routed_backends(elements) == ["aoai-pool"]
 
     def test_a_runtime_expression_is_not_a_backend_name(self):
-        from apim_import.collect import policy_routed_backends
+        from migrate_apim.collect import policy_routed_backends
 
         elements = [{"name": "set-backend-service",
                      "attributes": {"backend-id": "@(context.Variables[\"b\"])"}}]
         assert policy_routed_backends(elements) == []
 
     def test_several_candidates_are_reported_rather_than_guessed(self):
-        from apim_import.collect import _resolve_backend
+        from migrate_apim.collect import _resolve_backend
 
         elements = [
             {"name": "set-backend-service", "attributes": {"backend-id": "east"}},

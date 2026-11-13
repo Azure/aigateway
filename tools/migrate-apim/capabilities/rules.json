@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1.0",
   "targetCapabilities": "aigateway-1.0.0b26",
-  "description": "How APIM shapes land on Azure AI Gateway. Source shape -> target capability -> verdict -> the plan item kind to raise when the mapping is not direct. Prose form lives in tools/apim-import/README.md; this is the executable form, so a new AI Gateway release is a data change.",
+  "description": "How APIM shapes land on Azure AI Gateway. Source shape -> target capability -> verdict -> the plan item kind to raise when the mapping is not direct. Prose form lives in tools/migrate-apim/README.md; this is the executable form, so a new AI Gateway release is a data change.",
   "verdicts": {
     "native": "Direct equivalent. The item is ready and carries pre-shaped target objects.",
     "partial": "Maps, but the semantics differ. Raises an item so the difference is chosen, not assumed.",

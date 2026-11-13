@@ -1,6 +1,6 @@
 import pytest
 
-from apim_import.capability import CapabilityError, CapabilityMap
+from migrate_apim.capability import CapabilityError, CapabilityMap
 
 
 @pytest.fixture(scope="module")

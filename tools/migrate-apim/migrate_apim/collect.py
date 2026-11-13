@@ -124,11 +124,11 @@ class Collector:
             excluded.extend(scope_excluded)
 
         document = {
-            "$schema": "https://github.com/Azure/aigateway/tools/apim-import/schemas/inventory.schema.json",
+            "$schema": "https://github.com/Azure/aigateway/tools/migrate-apim/schemas/inventory.schema.json",
             "schemaVersion": SCHEMA_VERSION,
             "kind": "apimAiInventory",
             "generator": {
-                "name": "apim-import",
+                "name": "migrate-apim",
                 "version": GENERATOR_VERSION,
                 "command": "collect",
             },
@@ -1028,7 +1028,7 @@ class Collector:
                     )
             elif record["models"]["discoverySource"] == "modelsEndpoint":
                 record["models"]["notes"].append(
-                    f"Run 'apim-import resolve-models' to list models from {record['endpoint']}/v1/models "
+                    f"Run 'migrate-apim resolve-models' to list models from {record['endpoint']}/v1/models "
                     "using the referenced credential, resolved in memory only."
                 )
             elif rule:
@@ -1311,7 +1311,7 @@ class Collector:
             models["notes"].append(
                 f"{provider.get('label') or provider.get('kind')} speaks the OpenAI protocol, so its "
                 f"model list is one GET away at {endpoint or '<endpoint>'}/v1/models with the backend "
-                "credential. Run 'apim-import resolve-models' to fetch it without persisting the key."
+                "credential. Run 'migrate-apim resolve-models' to fetch it without persisting the key."
             )
         elif provider_rule:
             models["notes"].append(

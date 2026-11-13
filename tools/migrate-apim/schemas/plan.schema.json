@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/Azure/aigateway/tools/apim-import/schemas/plan.schema.json",
+  "$id": "https://github.com/Azure/aigateway/tools/migrate-apim/schemas/plan.schema.json",
   "title": "APIM migration plan",
   "description": "The one living artifact of a migration: proposed by the tool, adapted in place by the agent and the user, then executed one object at a time.",
   "type": "object",
@@ -13,7 +13,7 @@
       "type": "object",
       "required": ["name", "version", "command"],
       "properties": {
-        "name": {"const": "apim-import"},
+        "name": {"const": "migrate-apim"},
         "version": {"type": "string"},
         "command": {"const": "plan"}
       }
@@ -92,7 +92,7 @@
         "required": ["id", "owner", "summary"],
         "properties": {
           "id": {"type": "string"},
-          "owner": {"enum": ["azure-administrator", "operator", "apim-import"]},
+          "owner": {"enum": ["azure-administrator", "operator", "migrate-apim"]},
           "summary": {"type": "string"},
           "detail": {"type": "string"},
           "commands": {

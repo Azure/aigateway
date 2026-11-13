@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from apim_import.apply import (
+from migrate_apim.apply import (
     _PHASE_FOR_CAPABILITY,
     ApplyError,
     CommandResult,
@@ -14,13 +14,13 @@ from apim_import.apply import (
     preflight,
     steps_for,
 )
-from apim_import.capability import CapabilityMap
-from apim_import.collect import Collector, CollectOptions
-from apim_import.plan import build_plan
+from migrate_apim.capability import CapabilityMap
+from migrate_apim.collect import Collector, CollectOptions
+from migrate_apim.plan import build_plan
 from fake_arm import SERVICE, FakeArmClient
 
 def _alias_key(obj):
-    from apim_import.apply import _alias_name
+    from migrate_apim.apply import _alias_name
     return _alias_name(obj)
 
 
@@ -289,13 +289,13 @@ class TestEveryWriteCanBeChecked:
     because completeness is derived from what has been confirmed."""
 
     def test_every_builder_has_a_reader(self):
-        from apim_import.apply import _BUILDERS, _READERS
+        from migrate_apim.apply import _BUILDERS, _READERS
 
         missing = sorted(set(_BUILDERS) - set(_READERS))
         assert missing == [], f"no read-back for: {', '.join(missing)}"
 
     def test_the_identity_read_shape_matches_what_is_planned(self):
-        from apim_import.apply import _DESIRED, _subset
+        from migrate_apim.apply import _DESIRED, _subset
 
         desired = _DESIRED["identity.assign"](None, {"systemAssigned": True, "userAssigned": None})
         observed = {"principalId": "p", "tenantId": "t", "type": "SystemAssigned"}
@@ -304,14 +304,14 @@ class TestEveryWriteCanBeChecked:
         assert _subset(desired, observed)
 
     def test_reusing_a_user_assigned_identity_expects_that_type(self):
-        from apim_import.apply import _DESIRED, _subset
+        from migrate_apim.apply import _DESIRED, _subset
 
         desired = _DESIRED["identity.assign"](None, {"decision": "reuse:/subscriptions/s/uami/one"})
         assert _subset(desired, {"type": "UserAssigned"})
         assert not _subset(desired, {"type": "SystemAssigned"})
 
     def test_an_unreadable_capability_does_not_block_the_run(self, inventory, settled):
-        import apim_import.apply as mod
+        import migrate_apim.apply as mod
 
         reader = mod._READERS.pop("identity.assign")
         try:
@@ -332,7 +332,7 @@ class TestWriteOnlyFields:
     comparing one against a read-back can only ever fail."""
 
     def test_a_secret_placeholder_is_not_compared(self):
-        from apim_import.apply import _subset
+        from migrate_apim.apply import _subset
 
         desired = {"authentication": {"kind": "ApiKey", "apiKey": {
             "headerName": "Authorization", "value": {"$secretRef": "secret:namedValue/k"}}}}
@@ -340,13 +340,13 @@ class TestWriteOnlyFields:
         assert _subset(desired, observed)
 
     def test_the_fields_around_it_are_still_compared(self):
-        from apim_import.apply import _subset
+        from migrate_apim.apply import _subset
 
         desired = {"apiKey": {"headerName": "Authorization", "value": {"$secretRef": "x"}}}
         assert not _subset(desired, {"apiKey": {"headerName": "api-key"}})
 
     def test_a_rehearsal_placeholder_is_also_write_only(self):
-        from apim_import.apply import write_only
+        from migrate_apim.apply import write_only
 
         assert write_only("<resolved at apply time>")
         assert write_only({"$secretRef": "secret:namedValue/k"})
@@ -397,7 +397,7 @@ class TestVerificationIsRealNotNominal:
     cannot substantiate. These are the occurrences a review turned up."""
 
     def test_lists_compare_contents_not_lengths(self):
-        from apim_import.apply import _subset
+        from migrate_apim.apply import _subset
 
         # An alias pointing at a different model used to verify cleanly, because
         # list comparison only checked length.
@@ -411,13 +411,13 @@ class TestVerificationIsRealNotNominal:
         )
 
     def test_a_wanted_element_may_match_any_observed_one(self):
-        from apim_import.apply import _subset
+        from migrate_apim.apply import _subset
 
         assert _subset({"endpoints": [{"kind": "mcp"}]},
                        {"endpoints": [{"kind": "openApi"}, {"kind": "mcp"}]})
 
     def test_two_wanted_elements_need_two_distinct_matches(self):
-        from apim_import.apply import _subset
+        from migrate_apim.apply import _subset
 
         assert not _subset({"e": [{"k": "a"}, {"k": "a"}]}, {"e": [{"k": "a"}]})
 
@@ -437,7 +437,7 @@ class TestVerificationIsRealNotNominal:
         assert again.status != "verified" or runner.calls
 
     def test_work_the_tool_cannot_perform_is_reported_not_silently_dropped(self, inventory, settled):
-        import apim_import.apply as mod
+        import migrate_apim.apply as mod
 
         builder = mod._BUILDERS.pop("provider.create")
         try:
@@ -462,7 +462,7 @@ class TestVerificationIsRealNotNominal:
     def test_the_name_collision_check_actually_runs_from_the_cli(self):
         import inspect
 
-        from apim_import import cli
+        from migrate_apim import cli
 
         # It is gated on a runner being supplied; the CLI once called preflight
         # without one, so a documented blocking check silently never happened.
@@ -592,7 +592,7 @@ class TestAliasVerification:
 
     def test_an_unresolvable_backend_cannot_verify_silently(self, settled, inventory):
         # A shorter desired list would compare clean against anything.
-        from apim_import.apply import _alias_desired
+        from migrate_apim.apply import _alias_desired
 
         class _NoModels:
             def _model_resource_id(self, *_a, **_k):
@@ -667,7 +667,7 @@ class TestAFailedCheckIsNotACleanCheck:
 
 class TestVerificationThatChecksNothing:
     def test_an_empty_desired_shape_is_not_comparable(self):
-        from apim_import.apply import _comparable
+        from migrate_apim.apply import _comparable
 
         assert _comparable({"a": 1}) is True
         assert _comparable({}) is False
@@ -678,7 +678,7 @@ class TestVerificationThatChecksNothing:
     def test_a_write_with_nothing_checkable_is_unverified_not_verified(self, settled, inventory):
         # _subset is satisfied by anything here, so "verified" would be a claim
         # about configuration that no read established.
-        from apim_import.apply import _DESIRED
+        from migrate_apim.apply import _DESIRED
 
         obj = next(
             o
@@ -696,7 +696,7 @@ class TestVerificationThatChecksNothing:
             assert "nothing in it could be compared" in steps[0].detail
             assert not any(s.status == "verified" for s in steps)
         finally:
-            from apim_import.apply import _model_desired
+            from migrate_apim.apply import _model_desired
             _DESIRED["model.create"] = _model_desired
 
 
@@ -709,7 +709,7 @@ class TestAPhaseDeclaresWhatItLeavesBehind:
             if i.get("status") in {"ready", "adapted"} and i.get("capabilityId")
             and (i.get("target") or {}).get("objects")
         }
-        from apim_import.apply import _BUILDERS
+        from migrate_apim.apply import _BUILDERS
         assert named == {c for c in planned if c not in _BUILDERS}
 
     def test_a_model_lookup_failure_is_not_reported_as_an_absent_model(self, settled, inventory):

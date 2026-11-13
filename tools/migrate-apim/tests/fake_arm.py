@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import urlsplit
 
-from apim_import.arm import ArmResponse
+from migrate_apim.arm import ArmResponse
 
 SUB = "00000000-0000-0000-0000-000000000000"
 SERVICE = (

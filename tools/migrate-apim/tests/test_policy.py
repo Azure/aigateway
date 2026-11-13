@@ -1,4 +1,4 @@
-from apim_import import policy, secrets
+from migrate_apim import policy, secrets
 
 SCOPE_URL = "/subscriptions/s/resourceGroups/rg/providers/Microsoft.ApiManagement/service/apim/apis/a"
 

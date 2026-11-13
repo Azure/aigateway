@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/Azure/aigateway/tools/apim-import/schemas/inventory.schema.json",
+  "$id": "https://github.com/Azure/aigateway/tools/migrate-apim/schemas/inventory.schema.json",
   "title": "APIM AI inventory",
   "description": "A faithful, secret-free capture of the AI assets of an Azure API Management instance, decomposed the way Azure AI Gateway building blocks are shaped.",
   "type": "object",
@@ -14,7 +14,7 @@
       "type": "object",
       "required": ["name", "version", "command"],
       "properties": {
-        "name": {"const": "apim-import"},
+        "name": {"const": "migrate-apim"},
         "version": {"type": "string"},
         "command": {"type": "string"}
       }

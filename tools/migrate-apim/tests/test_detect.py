@@ -1,4 +1,4 @@
-from apim_import import detect
+from migrate_apim import detect
 
 
 def api(name="x", **props):
