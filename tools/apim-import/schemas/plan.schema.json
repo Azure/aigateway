@@ -80,7 +80,22 @@
           "id": {"type": "string"},
           "owner": {"enum": ["azure-administrator", "operator", "apim-import"]},
           "summary": {"type": "string"},
-          "detail": {"type": "string"}
+          "detail": {"type": "string"},
+          "commands": {
+            "description": "The exact invocation that satisfies this prerequisite, so whoever runs it runs the one the plan specified rather than improvising a role name or scope.",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["command"],
+              "properties": {
+                "command": {"type": "string"},
+                "roleDefinitionId": {"type": "string"},
+                "scope": {"type": ["string", "null"]},
+                "principalFrom": {"type": "string"},
+                "note": {"type": "string"}
+              }
+            }
+          }
         }
       }
     },

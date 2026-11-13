@@ -109,10 +109,25 @@ keys`; run one per turn, report what it produced, and stop before the next.
 If a step comes back `mutationUnknown`, the write was accepted but its outcome could not be
 established. Do not retry it. Re-running the phase reconciles it by reading the target.
 
-Before the first write, put the `prerequisites` list to the operator. Those are steps the tool
-cannot perform — Foundry RBAC grants, caller `AI Gateway Models User` / `Tools User` roles, Entra
-consent, `mcp authorize` completion, private endpoint approvals. A plan that executes without them
-produces a gateway that reads as configured and does not serve traffic.
+Before the first write, put the `prerequisites` list to the operator. These are outside the
+gateway's resource provider — Foundry RBAC grants, caller `AI Gateway Models User` / `Tools User`
+roles, Entra consent, `mcp authorize` completion, private endpoint approvals. A plan that executes
+without them produces a gateway that reads as configured and does not serve traffic.
+
+**You may offer to run the ones that are commands, and you should.** A prerequisite carrying a
+`commands` array has the exact invocation the plan specified; run that, not one you compose
+yourself — the role name, its definition id and the scope are all decided there. The rules:
+
+- Show the command and say what it changes: which principal gets which role on which scope.
+- Get explicit agreement first. A role assignment is a privilege change, not a step in a checklist.
+- Never acknowledge a prerequisite to get past preflight. `--acknowledge` records that the work is
+  *done*, so acknowledging it yourself asserts something you have not established.
+- Say when it failed and why. Lacking the permission to grant a role is a normal outcome and the
+  operator needs to hear it, not a retry.
+- A grant made is part of the migration record: report it alongside what `apply` provisioned.
+
+Some prerequisites are not commands at all — Entra consent and private endpoint approval are
+decisions someone makes in a portal. Do not simulate those.
 
 Never pass a secret as a scalar CLI flag; process arguments are visible. A `{"$secretRef": "..."}`
 placeholder is resolved from the inventory's retrieval recipe at apply time and written to a

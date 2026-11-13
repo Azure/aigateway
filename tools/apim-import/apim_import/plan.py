@@ -748,9 +748,35 @@ class PlanBuilder:
         if any((provider.get("auth") or {}).get("mode") == "managedIdentity" for provider in providers):
             identity = (self.inventory.get("service") or {}).get("identity") or {}
             reusing = bool(identity.get("userAssignedIdentities"))
+            accounts = sorted({
+                (provider.get("azure") or {}).get("accountResourceId")
+                for provider in providers
+                if (provider.get("auth") or {}).get("mode") == "managedIdentity"
+                and (provider.get("azure") or {}).get("accountResourceId")
+            })
             self.prerequisites.append({
                 "id": "prereq:foundry-rbac",
                 "owner": "azure-administrator",
+                # The exact grant, so whoever runs it -- operator or agent -- runs
+                # the one the plan specified rather than improvising a role name.
+                # The principal only exists once the identity phase has run.
+                "commands": [
+                    {
+                        "command": (
+                            "az role assignment create --role 'Foundry User' "
+                            "--assignee-object-id <gateway-principal-id> "
+                            "--assignee-principal-type ServicePrincipal "
+                            f"--scope {account}"
+                        ),
+                        "roleDefinitionId": "53ca6127-db72-4b80-b1b0-d745d6d5456d",
+                        "scope": account,
+                        "principalFrom": (
+                            "az aigateway show ... --query identity.principalId -o tsv, "
+                            "after the identity phase"
+                        ),
+                    }
+                    for account in accounts
+                ],
                 "summary": "Grant the gateway identity data-plane access on each Foundry account",
                 "detail": (
                     "A provider using ManagedIdentity needs a role assignment on the backend account, "
@@ -767,6 +793,16 @@ class PlanBuilder:
         self.prerequisites.append({
             "id": "prereq:caller-rbac",
             "owner": "azure-administrator",
+            "commands": [
+                {
+                    "command": (
+                        "az role assignment create --role 'AI Gateway Models User' "
+                        "--assignee <caller-principal> --scope <gateway-resource-id>"
+                    ),
+                    "roleDefinitionId": "a6b68e3d-a1f0-4c60-8678-237c050cf4ea",
+                    "note": "Use 'AI Gateway Tools User' for MCP callers, or 'AI Gateway User' for both.",
+                },
+            ],
             "summary": "Assign callers AI Gateway Models User / Tools User at the right scope",
             "detail": "A management role such as Contributor does not imply runtime invocation access.",
         })

@@ -482,3 +482,34 @@ class TestGatewayIdentity:
             provider["auth"]["mode"] = "apiKey"
         document = build_plan(changed, capabilities)
         assert not [i for i in document["items"] if i["capabilityId"] == "identity.assign"]
+
+
+class TestPrerequisiteCommands:
+    """A prerequisite the plan can express as a command carries that command, so
+    whoever runs it is not improvising a role name or a scope."""
+
+    def test_the_foundry_grant_names_the_role_and_every_account(self, plan):
+        prereq = next(p for p in plan["prerequisites"] if p["id"] == "prereq:foundry-rbac")
+        assert prereq["commands"]
+        for entry in prereq["commands"]:
+            assert "Foundry User" in entry["command"]
+            # The definition id pins the role even if the display name moves.
+            assert entry["roleDefinitionId"] == "53ca6127-db72-4b80-b1b0-d745d6d5456d"
+            assert "/providers/Microsoft.CognitiveServices/accounts/" in entry["scope"]
+
+    def test_the_principal_is_late_bound(self, plan):
+        prereq = next(p for p in plan["prerequisites"] if p["id"] == "prereq:foundry-rbac")
+        entry = prereq["commands"][0]
+        # It does not exist until the identity phase has run.
+        assert "<gateway-principal-id>" in entry["command"]
+        assert "identity phase" in entry["principalFrom"]
+
+    def test_the_caller_grant_names_a_real_role(self, plan):
+        prereq = next(p for p in plan["prerequisites"] if p["id"] == "prereq:caller-rbac")
+        assert prereq["commands"][0]["roleDefinitionId"] == "a6b68e3d-a1f0-4c60-8678-237c050cf4ea"
+
+    def test_a_prerequisite_without_a_command_claims_none(self, plan):
+        # Name collision is a check, not a grant; inventing a command would be worse
+        # than leaving it to a human.
+        prereq = next(p for p in plan["prerequisites"] if p["id"] == "prereq:name-collision")
+        assert "commands" not in prereq
