@@ -709,7 +709,15 @@ until the models phase has created it, so aliases bind it at run time rather tha
 planning time. `model-alias set` is used because it is the one documented create-or-update.
 
 Secrets reach `az` only as `@file` with mode `0600`, never as scalar flags, because scalar flags
-expose values in process arguments. The recorded `argv` redacts those paths.
+expose values in process arguments. The recorded `argv` redacts those paths. A step reads its target
+*before* building the command, so a step already in the desired state — the commonest case on a
+re-run — resolves no credential at all.
+
+**A write-only field is skipped, not compared.** The control plane accepts `apiKey.value` on write
+and omits it from every read, by design. Comparing the two can only ever fail, so an API-key
+provider reported as mismatched however correctly it was configured. Verification now establishes
+what can be read and says what it could not: a step whose object carries a credential is verified
+with "its credential is write-only and was not read back".
 
 ## Development
 

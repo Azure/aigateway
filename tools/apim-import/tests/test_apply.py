@@ -319,3 +319,68 @@ class TestEveryWriteCanBeChecked:
             assert executor.phase_complete("identity")
         finally:
             mod._READERS["identity.assign"] = reader
+
+
+class TestWriteOnlyFields:
+    """The control plane takes a credential on write and never returns it, so
+    comparing one against a read-back can only ever fail."""
+
+    def test_a_secret_placeholder_is_not_compared(self):
+        from apim_import.apply import _subset
+
+        desired = {"authentication": {"kind": "ApiKey", "apiKey": {
+            "headerName": "Authorization", "value": {"$secretRef": "secret:namedValue/k"}}}}
+        observed = {"authentication": {"kind": "ApiKey", "apiKey": {"headerName": "Authorization"}}}
+        assert _subset(desired, observed)
+
+    def test_the_fields_around_it_are_still_compared(self):
+        from apim_import.apply import _subset
+
+        desired = {"apiKey": {"headerName": "Authorization", "value": {"$secretRef": "x"}}}
+        assert not _subset(desired, {"apiKey": {"headerName": "api-key"}})
+
+    def test_a_rehearsal_placeholder_is_also_write_only(self):
+        from apim_import.apply import write_only
+
+        assert write_only("<resolved at apply time>")
+        assert write_only({"$secretRef": "secret:namedValue/k"})
+        assert not write_only({"headerName": "Authorization"})
+
+    def test_an_api_key_provider_verifies_against_a_real_read_back(self, inventory, settled):
+        observed = {
+            "name": "meta-ai-openai-endpoint",
+            "properties": {"kind": "Custom", "custom": {
+                "endpoint": "https://api.meta.ai",
+                "authentication": {"kind": "ApiKey", "apiKey": {"headerName": "Authorization"}}}},
+        }
+        runner = _Runner(reads={"meta-ai-openai-endpoint": observed})
+        executor = Executor(settled, inventory, new_journal(settled), runner=runner,
+                            execute=True, skip_rehearsal=True)
+        # No ARM client: a step satisfied by the read must never need a credential.
+        step = executor.run_step(
+            next(s for s in steps_for(settled) if "meta-ai" in s.item_id
+                 and s.capability_id == "provider.create")
+        )
+        # Every readable field matched; the credential is simply not readable.
+        assert step.status == "verified"
+        assert "write-only" in step.detail
+
+
+class TestCredentialsAreReadLate:
+    def test_a_step_already_in_the_desired_state_reads_no_credential(self, inventory, settled):
+        # Building resolves credentials, so building before reading would fetch a
+        # secret for a step that needs no write -- the commonest case on a re-run.
+        observed = {
+            "name": "meta-ai-openai-endpoint",
+            "properties": {"kind": "Custom", "custom": {
+                "endpoint": "https://api.meta.ai",
+                "authentication": {"kind": "ApiKey", "apiKey": {"headerName": "Authorization"}}}},
+        }
+        executor = Executor(settled, inventory, new_journal(settled),
+                            runner=_Runner(reads={"meta-ai-openai-endpoint": observed}),
+                            execute=True, skip_rehearsal=True, arm_client=None)
+        step = executor.run_step(
+            next(s for s in steps_for(settled)
+                 if "meta-ai" in s.item_id and s.capability_id == "provider.create")
+        )
+        assert step.status == "verified"

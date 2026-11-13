@@ -417,18 +417,25 @@ class Executor:
         return step
 
     def _run_object(self, step: Step, obj: dict[str, Any]) -> tuple[str, str, list[str]]:
+        desired = _DESIRED.get(step.capability_id, lambda o: o)(obj)
+        note = "; its credential is write-only and was not read back" if _has_write_only(obj) else ""
+
+        # Read first, and build second. Building resolves credentials, so doing it
+        # up front would read a secret for a step that turns out to need no write
+        # at all -- the commonest case on a re-run.
+        try:
+            observed = self._read(step, obj)
+        except (ApplyError, ResolveError) as exc:
+            return "failed", str(exc), []
+        if observed is not None and _subset(desired, observed):
+            return "verified", "already present with the desired state" + note, []
+
         try:
             argv, files = self._build(step, obj)
         except (ApplyError, ResolveError) as exc:
             return "failed", str(exc), []
         redacted = _redact(argv)
         try:
-            # Read before write: an object already in the desired state is not
-            # written again, which is what makes a re-run safe.
-            desired = _DESIRED.get(step.capability_id, lambda o: o)(obj)
-            observed = self._read(step, obj)
-            if observed is not None and _subset(desired, observed):
-                return "verified", "already present with the desired state", redacted
             if not self.execute:
                 return "planned", "dry run; not executed", redacted
 
@@ -448,7 +455,7 @@ class Executor:
                         "the write returned success but the object could not be read back",
                         redacted)
             if _subset(desired, observed):
-                return "verified", "created and read back", redacted
+                return "verified", "created and read back" + note, redacted
             return "failed", "the object exists but does not match the desired state", redacted
         finally:
             for path in files:
@@ -738,8 +745,37 @@ def _redact(argv: list[str]) -> list[str]:
     return [part if not part.startswith("@/") else "@<tempfile>" for part in argv]
 
 
+def _has_write_only(value: Any) -> bool:
+    """Whether anything in this object is a field a read can never confirm."""
+    if write_only(value):
+        return True
+    if isinstance(value, dict):
+        return any(_has_write_only(item) for item in value.values())
+    if isinstance(value, list):
+        return any(_has_write_only(item) for item in value)
+    return False
+
+
+def write_only(value: Any) -> bool:
+    """A field the control plane accepts but never returns.
+
+    A credential is the obvious case: the API takes `apiKey.value` on write and
+    omits it on every read, by design. Comparing it against a read-back can only
+    ever fail, so a correctly configured provider reported as mismatched.
+    """
+    if isinstance(value, dict) and set(value) == {"$secretRef"}:
+        return True
+    return value == "<resolved at apply time>"
+
+
 def _subset(desired: Any, observed: Any) -> bool:
-    """Whether every field asked for is present with that value."""
+    """Whether every field asked for is present with that value.
+
+    Write-only fields are skipped rather than compared: verification establishes
+    what can be read, and a secret is deliberately not among it.
+    """
+    if write_only(desired):
+        return True
     if isinstance(desired, dict):
         if not isinstance(observed, dict):
             return False
@@ -747,6 +783,11 @@ def _subset(desired: Any, observed: Any) -> bool:
         properties = lowered.get("properties")
         for key, value in desired.items():
             key_l = str(key).lower()
+            if write_only(value):
+                # Absent from the read because the API never returns it, which is
+                # not the same as missing. Checking for its key would fail every
+                # correctly configured credential.
+                continue
             if key_l in lowered:
                 if not _subset(value, lowered[key_l]):
                     return False
