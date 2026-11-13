@@ -66,7 +66,21 @@
         "byStatus": {"type": "object"},
         "unsettled": {"type": "integer", "minimum": 0},
         "blocking": {"type": "integer", "minimum": 0},
-        "byKind": {"type": "object"}
+        "byKind": {"type": "object"},
+        "plannerGaps": {"type": "integer", "minimum": 0}
+      }
+    },
+
+    "plannerGaps": {
+      "description": "Work an item commits to that the plan cannot produce: a required field no source supplied, or a settled decision that yields no target object. These are defects in this tool rather than decisions for the operator, and they block apply, so work that will not happen is visible before the first write instead of being discovered when a phase produces nothing.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "gap"],
+        "properties": {
+          "id": {"type": "string"},
+          "gap": {"type": "string"}
+        }
       }
     },
 

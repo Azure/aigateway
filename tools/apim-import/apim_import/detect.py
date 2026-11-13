@@ -113,6 +113,48 @@ def language_model_format(api_format: str | None) -> dict[str, Any]:
             return {**record, **mapping, "resolution": "inferred"}
     return record
 
+
+# The target apiFormat and inference route a caller dialect maps to.
+#
+# A passthrough provider's catalogue says which models exist but not what each
+# one can serve -- the OpenAI `/v1/models` response carries no capabilities --
+# so a model named by an operator has no per-model route to read. What is
+# readable is the protocol the provider speaks, and each protocol has exactly
+# one inference route. Both pairs below are confirmed against a live gateway: a
+# Custom Anthropic model publishes `/v1/messages`, an OpenAI-compatible one
+# `/openai/v1/chat/completions`. Routes beyond the first -- `/responses`,
+# `/embeddings` -- depend on the individual model, so they are never assumed.
+DIALECT_TARGETS: dict[str, dict[str, Any]] = {
+    "openAIChatCompletions": {
+        "apiFormat": "OpenAIChatCompletions",
+        "supportedEndpoints": ["/openai/v1/chat/completions"],
+    },
+    "azureOpenAI": {
+        "apiFormat": "OpenAIChatCompletions",
+        "supportedEndpoints": ["/openai/v1/chat/completions"],
+    },
+    "anthropicMessages": {
+        "apiFormat": "AnthropicMessages",
+        "supportedEndpoints": ["/v1/messages"],
+    },
+    "responses": {
+        "apiFormat": "ResponsesApi",
+        "supportedEndpoints": ["/openai/v1/responses"],
+    },
+}
+
+
+def dialect_target(dialect: str | None) -> dict[str, Any] | None:
+    """What a caller dialect becomes on the target, or None if it is unknown.
+
+    None means "this cannot be answered from configuration" and has to stay
+    distinguishable from a dialect that maps to no routes: returning an empty
+    default here would register models against routes nobody established.
+    """
+    entry = DIALECT_TARGETS.get(str(dialect or ""))
+    return dict(entry) if entry else None
+
+
 # Inference-shaped request paths, strongest first.
 _INFERENCE_PATHS: tuple[tuple[str, str], ...] = (
     (r"/chat/completions", "openAIChatCompletions"),

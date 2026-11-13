@@ -6,7 +6,7 @@
   "modelOperations": {
     "OpenAIChatCompletions": ["/openai/v1/chat/completions", "/openai/v1/responses", "/openai/v1/completions", "/openai/v1/embeddings", "/openai/v1/images/generations"],
     "ResponsesApi": ["/openai/v1/responses"],
-    "AnthropicMessages": ["/anthropic/v1/messages"]
+    "AnthropicMessages": ["/v1/messages"]
   },
   "cliEvidence": {
     "revision": "b2204cf4a32f2d69e07fc475cee7c6056a28e711",

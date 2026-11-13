@@ -83,6 +83,13 @@ An item with `cannotAccept: true` is an unknown — a control-plane read that fa
 closed by accepting a loss; re-collect with the right access, or have the operator state what is
 there.
 
+The plan's `plannerGaps` is the same category and blocks `apply`. Each entry names work an item
+commits to that the plan does not produce — a required field nothing supplied, or a settled
+decision that yields no target object. Read it as a bug report against `apim-import`, not as a
+question: re-collect if the inventory is older than the tool, otherwise fix the planner. Never
+settle the named item some other way just to clear the gap; that discards the work rather than
+doing it.
+
 ## 3. Execute
 
 **Migration is additive.** Everything is provisioned into the gateway; nothing is removed from

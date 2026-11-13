@@ -19,6 +19,7 @@ from typing import Any
 
 from . import ids
 from .capability import CapabilityMap
+from .detect import dialect_target
 
 SCHEMA_VERSION = "1.0"
 GENERATOR_VERSION = "0.1.0"
@@ -64,6 +65,32 @@ class PlanBuilder:
         self.previous = previous or {}
         self.items: list[dict[str, Any]] = []
         self.prerequisites: list[dict[str, Any]] = []
+        # A model API names the backend it routes to; the provider asset built
+        # from that backend is what knows the protocol it speaks.
+        self._provider_by_backend: dict[str, dict[str, Any]] = {
+            (provider.get("origin") or {}).get("backendId"): provider
+            for provider in (inventory.get("assets") or {}).get("modelProviders") or []
+            if (provider.get("origin") or {}).get("backendId")
+        }
+
+    def _settled(self, item_id: str) -> dict[str, Any] | None:
+        """The decision a previous run settled for this item, as a mapping.
+
+        Generation reads settled decisions, not just the merge step, because
+        some of them carry the facts the target objects are built from. A
+        `list-models` decision names models that exist nowhere in APIM; reading
+        it only at merge time preserved the answer and built nothing from it.
+        """
+        for prior in self.previous.get("items") or []:
+            if prior.get("id") != item_id:
+                continue
+            if prior.get("status") not in {ADAPTED, STALE}:
+                return None
+            decision = prior.get("decision")
+            if decision is None:
+                return None
+            return decision if isinstance(decision, dict) else {"value": decision}
+        return None
 
     # ------------------------------------------------------------- build
 
@@ -84,6 +111,18 @@ class PlanBuilder:
         self._manual_prerequisites()
 
         merged, orphaned = self._merge_with_previous(self.items)
+        self._check_buildable(merged)
+        self._check_produces(merged)
+        # Defects in this tool, not decisions for the operator. They are carried
+        # on the plan so that whoever reads it sees work that will not happen,
+        # rather than discovering it when a phase produces nothing.
+        planner_gaps = [
+            {"id": item["id"], "gap": item["plannerGap"]}
+            for item in merged if item.get("plannerGap")
+        ] + [
+            {"id": item["id"], "gap": item["unbuildable"]["note"]}
+            for item in merged if item.get("unbuildable")
+        ]
         service = self.inventory.get("service") or {}
         return {
             "$schema": "https://github.com/Azure/aigateway/tools/apim-import/schemas/plan.schema.json",
@@ -101,8 +140,13 @@ class PlanBuilder:
                 "capabilities": self.caps.to_dict(),
                 "publishableRoutes": self.caps.publishable_routes(),
             },
-            "summary": {**_summarize(merged), "orphanedDecisions": len(orphaned)},
+            "summary": {
+                **_summarize(merged),
+                "orphanedDecisions": len(orphaned),
+                "plannerGaps": len(planner_gaps),
+            },
             "prerequisites": self.prerequisites,
+            "plannerGaps": planner_gaps,
             # Settled decisions whose item no longer exists. Dropping them quietly
             # would lose work across a tool change and re-ask as if never asked.
             "orphanedDecisions": orphaned,
@@ -358,31 +402,13 @@ class PlanBuilder:
 
         # Models: a registration needs a model name.
         if models.get("status") in {"unresolved", "empty"}:
-            self._add(
-                item_id=ids.item(asset_id, "models"),
-                source={"assetId": asset_id, "assetKind": "modelApi", "aspect": "modelCatalogue"},
-                kind="enumerate",
-                verdict="partial",
-                capability_id="model.create",
-                # A provider with a catalogue endpoint has an actionable default:
-                # fetch it rather than ask someone to type model names.
-                proposal="resolve-models" if models.get("discoverySource") == "modelsEndpoint"
-                else "list-models",
-                rationale=" ".join(models.get("notes") or []) or "The model catalogue could not be resolved.",
-                options=[
-                    _opt("resolve-models", "Read the provider's catalogue with its credential."),
-                    _opt("list-models", "Name the models to register."),
-                    _opt("retain-in-apim", "Do not migrate this API."),
-                ],
-                evidence={"discoverySource": models.get("discoverySource"), "notes": models.get("notes")},
-                blocking=True,
-            )
+            registrations = self._enumerate_models(model, models)
         else:
             registrations = models.get("resolved") or []
-            for resolved in registrations:
-                self._model_registration(model, resolved)
-            if registrations:
-                self._alias_naming(model, registrations)
+        for resolved in registrations:
+            self._model_registration(model, resolved)
+        if registrations:
+            self._alias_naming(model, registrations)
 
         # Dialect translation.
         translation = endpoints.get("translation") or {}
@@ -419,6 +445,101 @@ class PlanBuilder:
                 blocking=True,
             )
 
+    def _enumerate_models(
+        self, model: dict[str, Any], models: dict[str, Any]
+    ) -> list[dict[str, Any]]:
+        """Ask which models a passthrough API exposes, and build them once answered.
+
+        APIM does not record the catalogue behind a passthrough backend, so the
+        models have to come from the provider's own catalogue endpoint or from
+        the operator. Either way the answer lands in this item's decision, and
+        generation has to read it back: nothing else in the inventory knows
+        those models exist. Raising the question and ignoring the answer left a
+        settled item that registered nothing, under a provider that published
+        no models at all.
+        """
+        asset_id = model["id"]
+        item = self._add(
+            item_id=ids.item(asset_id, "models"),
+            source={"assetId": asset_id, "assetKind": "modelApi", "aspect": "modelCatalogue"},
+            kind="enumerate",
+            verdict="partial",
+            capability_id="model.create",
+            # A provider with a catalogue endpoint has an actionable default:
+            # fetch it rather than ask someone to type model names.
+            proposal="resolve-models" if models.get("discoverySource") == "modelsEndpoint"
+            else "list-models",
+            rationale=" ".join(models.get("notes") or []) or "The model catalogue could not be resolved.",
+            options=[
+                _opt("resolve-models", "Read the provider's catalogue with its credential."),
+                _opt("list-models", "Name the models to register."),
+                _opt("retain-in-apim", "Do not migrate this API."),
+            ],
+            evidence={"discoverySource": models.get("discoverySource"), "notes": models.get("notes")},
+            blocking=True,
+        )
+
+        decision = self._settled(item["id"])
+        if not decision or decision.get("value") in {"retain-in-apim", "block", None}:
+            return []
+        names = [str(name).strip() for name in decision.get("models") or [] if str(name).strip()]
+        if not names:
+            # The decision settled on migrating but named nothing to migrate.
+            # Silently registering nothing would read as a completed decision.
+            item["plannerGap"] = (
+                f"This item is settled as `{decision.get('value')}` but names no models, so "
+                "nothing can be registered. Set `decision.models` to the model names, or "
+                "choose `retain-in-apim`."
+            )
+            return []
+
+        # Which routes each model serves is not in the decision, and a catalogue
+        # does not carry it either -- the OpenAI `/v1/models` response has no
+        # capabilities field. The provider's protocol is readable, and it fixes
+        # the inference route; anything beyond that is per-model and left alone.
+        provider = self._provider_by_backend.get(_backend_id(model)) or {}
+        mapped = dialect_target(provider.get("apiDialect"))
+        if not mapped:
+            item["plannerGap"] = (
+                f"{len(names)} model(s) were named, but the protocol of provider "
+                f"`{provider.get('id') or _provider_name(model)}` could not be resolved "
+                f"(apiDialect={provider.get('apiDialect')!r}), so neither apiFormat nor a route "
+                "can be derived for them. This is a collector gap: the provider's dialect should "
+                "be readable from its backend."
+            )
+            return []
+
+        per_model = decision.get("endpoints") or {}
+        item["derived"] = {
+            "modelCount": len(names),
+            "apiFormat": mapped["apiFormat"],
+            "defaultEndpoints": mapped["supportedEndpoints"],
+            "basis": (
+                f"Protocol of {provider.get('id')} ({provider.get('apiDialect')}). Per-model route "
+                "support is not readable from a catalogue; override in `decision.endpoints` "
+                "keyed by model name."
+            ),
+        }
+        return [
+            {
+                "modelName": name,
+                "deploymentName": name,
+                "enumerated": True,
+                "target": {
+                    "supportedEndpoints": [
+                        str(route) for route in (per_model.get(name) or mapped["supportedEndpoints"])
+                    ],
+                    "apiFormat": mapped["apiFormat"],
+                    # A Custom provider has no backing ARM deployment, so a
+                    # registration carries the model name alone. Confirmed against
+                    # a live gateway, whose Custom models read back as
+                    # `deployment: {modelName: ...}` with no resourceId.
+                    "deployment": {"modelName": name},
+                },
+            }
+            for name in names
+        ]
+
     def _model_registration(self, model: dict[str, Any], resolved: dict[str, Any]) -> None:
         asset_id = model["id"]
         name = resolved.get("deploymentName") or resolved.get("modelName") or "model"
@@ -431,14 +552,21 @@ class PlanBuilder:
             kind=None,
             verdict="native",
             capability_id="model.create",
-            rationale=f"Registers {resolved.get('modelName')} from a resolved deployment.",
+            rationale=(
+                f"Registers {resolved.get('modelName')} named in this API's model catalogue decision."
+                if resolved.get("enumerated")
+                else f"Registers {resolved.get('modelName')} from a resolved deployment."
+            ),
             evidence={"modelName": resolved.get("modelName"), "modelVersion": resolved.get("modelVersion")},
             target={
                 "capability": "model.create",
                 "objects": [{
                     "name": _slug(name),
                     "providerName": provider_name,
-                    "apiFormat": _api_format(endpoints),
+                    # A resolved deployment implies its format from the routes it
+                    # serves; an enumerated model carries the one its provider's
+                    # protocol fixes, which the routes alone cannot distinguish.
+                    "apiFormat": target.get("apiFormat") or _api_format(endpoints),
                     "deploymentConfig": target.get("deployment") or {},
                     "supportedEndpoints": endpoints,
                 }],
@@ -837,6 +965,70 @@ class PlanBuilder:
 
     # ------------------------------------------------------------- merge
 
+    def _check_buildable(self, items: list[dict[str, Any]]) -> None:
+        """Flag target objects that no command could be built from.
+
+        A missing required field used to travel all the way to the phase that
+        runs it, where the only signal was a refusal to build. The plan is where
+        it can still be answered, so it is reported here, on the item that is
+        short of it.
+        """
+        for item in items:
+            fields = _REQUIRED_FIELDS.get(item.get("capabilityId") or "")
+            objects = (item.get("target") or {}).get("objects") or []
+            if not fields or not objects:
+                continue
+            missing = sorted({
+                flag
+                for flag, key in fields.items()
+                for obj in objects
+                if isinstance(obj, dict) and not _supplied(obj.get(key))
+            })
+            if missing:
+                item["unbuildable"] = {
+                    "capabilityId": item["capabilityId"],
+                    "missing": missing,
+                    "note": (
+                        f"`az aigateway {item['capabilityId'].split('.')[0]} create` requires "
+                        f"{', '.join('--' + flag for flag in missing)}, and the inventory supplied "
+                        "no value for it. Re-collect against the source, or settle the item that "
+                        "establishes it."
+                    ),
+                }
+
+    def _check_produces(self, items: list[dict[str, Any]]) -> None:
+        """Flag an asset that is settled for migration and yet creates nothing.
+
+        Settling an item reads as disposing of it, so an asset whose every
+        decision is made and whose target is empty looks handled while being
+        silently dropped. Assets that deliberately create nothing -- retained,
+        blocked, or an accepted loss -- are the expected case and are left
+        alone.
+        """
+        by_asset: dict[str, list[dict[str, Any]]] = {}
+        for item in items:
+            asset_id = (item.get("source") or {}).get("assetId")
+            if asset_id:
+                by_asset.setdefault(asset_id, []).append(item)
+
+        for asset_id, group in by_asset.items():
+            kinds = {(item.get("source") or {}).get("assetKind") for item in group}
+            if not kinds & {"modelApi", "mcpServer"}:
+                continue
+            settled = [item for item in group if item.get("status") in {ADAPTED, READY}]
+            if not settled or len(settled) != len(group):
+                continue
+            if any(_retains(item) for item in group):
+                continue
+            if any((item.get("target") or {}).get("objects") for item in group):
+                continue
+            settled[0]["plannerGap"] = (
+                f"Every item for {asset_id} is settled on migrating it, but the plan creates no "
+                "object for it, so running every phase would leave it unmigrated. Either the "
+                "decision carries facts the planner does not build from, or the asset should be "
+                "settled as `retain-in-apim`."
+            )
+
     def _merge_with_previous(
         self, items: list[dict[str, Any]]
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -902,6 +1094,50 @@ class PlanBuilder:
 
 
 # ---------------------------------------------------------------- helpers
+
+
+# Which object field supplies each flag the catalogue marks required. This
+# mirrors the builders in apply.py so that an object which cannot be built
+# surfaces while the plan is being adapted rather than when the phase runs --
+# the difference between a question the operator can still answer and a stalled
+# migration. test_plan asserts the two tables stay in step.
+_REQUIRED_FIELDS: dict[str, dict[str, str]] = {
+    "gateway.create": {"location": "location"},
+    "provider.create": {"kind": "kind"},
+    "model.create": {
+        "deployment-config": "deploymentConfig",
+        "api-format": "apiFormat",
+        "supported-endpoints": "supportedEndpoints",
+    },
+    "alias.create": {"routing-name": "routingName", "backend-model": "backendModels"},
+    "mcp.create": {"endpoints": "endpoints"},
+}
+
+
+def _supplied(value: Any) -> bool:
+    """Whether a field carries something a command could actually send."""
+    if value is None or isinstance(value, bool):
+        return value is True
+    if isinstance(value, (str, list, dict)):
+        return bool(value)
+    return True
+
+
+def _retains(item: dict[str, Any]) -> bool:
+    """Whether this item's outcome is deliberately to create nothing."""
+    if item.get("kind") == "accept-loss":
+        return True
+    decision = item.get("decision")
+    value = decision.get("value") if isinstance(decision, dict) else decision
+    return value in {"retain-in-apim", "block"}
+
+
+def _backend_id(model: dict[str, Any]) -> str:
+    """The backend this API routes to, which identifies its provider asset."""
+    for target in (model.get("routing") or {}).get("targets") or []:
+        if target.get("backendId"):
+            return str(target["backendId"])
+    return ""
 
 
 def _provider_name(model: dict[str, Any]) -> str | None:
@@ -1091,14 +1327,27 @@ def _shape_digest(item: dict[str, Any]) -> str:
     })
 
 
+def _member_key(member: dict[str, Any]) -> str:
+    """A stable, readable name for one member of a batched item.
+
+    Batches identify their members differently -- a policy by id and path, a
+    model by name -- so the key comes from whichever identity the member
+    actually carries. Assuming the policy shape named every model member
+    `None#None`: they collapsed onto one key, each digest overwrote the last,
+    and a change to any member but the final one went unnoticed.
+    """
+    for keys in (("policyId", "path"), ("modelName",), ("name",), ("id",)):
+        values = [member.get(key) for key in keys]
+        if all(value is not None for value in values):
+            return "#".join(str(value) for value in values)
+    return digest(member)
+
+
 def _member_digests(item: dict[str, Any]) -> dict[str, str]:
     """Per-member source facts, so one changed member does not unsettle the rest."""
     members = (item.get("evidence") or {}).get("members")
     if isinstance(members, list) and members:
-        return {
-            f"{member.get('policyId')}#{member.get('path')}": digest(member)
-            for member in members
-        }
+        return {_member_key(member): digest(member) for member in members}
     return {item["source"].get("assetId") or item["id"]: digest(item.get("evidence") or {})}
 
 

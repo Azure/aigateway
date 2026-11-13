@@ -18,6 +18,11 @@ from apim_import.collect import Collector, CollectOptions
 from apim_import.plan import build_plan
 from fake_arm import SERVICE, FakeArmClient
 
+def _alias_key(obj):
+    from apim_import.apply import _alias_name
+    return _alias_name(obj)
+
+
 TARGET = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-demo/providers/Microsoft.ApiManagement/aigateways/gw"
 
 
@@ -291,7 +296,7 @@ class TestEveryWriteCanBeChecked:
     def test_the_identity_read_shape_matches_what_is_planned(self):
         from apim_import.apply import _DESIRED, _subset
 
-        desired = _DESIRED["identity.assign"]({"systemAssigned": True, "userAssigned": None})
+        desired = _DESIRED["identity.assign"](None, {"systemAssigned": True, "userAssigned": None})
         observed = {"principalId": "p", "tenantId": "t", "type": "SystemAssigned"}
         # The planned object and the read are different shapes; comparing them
         # directly never matched, so the step could never be verified.
@@ -300,7 +305,7 @@ class TestEveryWriteCanBeChecked:
     def test_reusing_a_user_assigned_identity_expects_that_type(self):
         from apim_import.apply import _DESIRED, _subset
 
-        desired = _DESIRED["identity.assign"]({"decision": "reuse:/subscriptions/s/uami/one"})
+        desired = _DESIRED["identity.assign"](None, {"decision": "reuse:/subscriptions/s/uami/one"})
         assert _subset(desired, {"type": "UserAssigned"})
         assert not _subset(desired, {"type": "SystemAssigned"})
 
@@ -462,3 +467,157 @@ class TestVerificationIsRealNotNominal:
         # without one, so a documented blocking check silently never happened.
         source = inspect.getsource(cli._apply)
         assert "preflight(plan, inventory, runner=" in source
+
+
+class TestFieldsAReadCannotCarry:
+    """Verification establishes what a read returns, and says what it skipped.
+
+    `model create` accepts --api-format and `model show` never returns it. Held
+    against the read-back, a correctly created model fails to match its own
+    plan, and the phase reports a migration that in fact worked as broken.
+    """
+
+    def _model_step(self, settled, inventory, reads):
+        runner = _Runner(reads=reads)
+        executor = Executor(settled, inventory, new_journal(settled), runner=runner,
+                            execute=True, skip_rehearsal=True)
+        steps = [s for s in executor.run_phase("models") if s.capability_id == "model.create"]
+        assert steps, "the fixture should plan at least one model"
+        return steps
+
+    def test_a_model_verifies_without_its_api_format_coming_back(self, settled, inventory):
+        obj = next(
+            o
+            for item in settled["items"] if item.get("capabilityId") == "model.create"
+            for o in (item.get("target") or {}).get("objects") or []
+        )
+        # Exactly what a live gateway returns: no apiFormat anywhere in it.
+        read_back = {
+            "name": obj["name"],
+            "properties": {
+                "deployment": obj["deploymentConfig"],
+                "supportedEndpoints": obj["supportedEndpoints"],
+                "providerKind": "Custom",
+            },
+        }
+        steps = self._model_step(settled, inventory, {obj["name"]: read_back})
+        step = next(s for s in steps if s.objects and s.objects[0]["name"] == obj["name"])
+        assert step.status == "verified", step.detail
+        assert "apiFormat is not returned by a read" in step.detail
+
+    def test_a_field_the_read_does_carry_is_still_compared(self, settled, inventory):
+        obj = next(
+            o
+            for item in settled["items"] if item.get("capabilityId") == "model.create"
+            for o in (item.get("target") or {}).get("objects") or []
+        )
+        wrong = {
+            "name": obj["name"],
+            "properties": {
+                "deployment": obj["deploymentConfig"],
+                "supportedEndpoints": ["/openai/v1/completely-different"],
+                "providerKind": "Custom",
+            },
+        }
+        steps = self._model_step(settled, inventory, {obj["name"]: wrong})
+        step = next(s for s in steps if s.objects and s.objects[0]["name"] == obj["name"])
+        assert step.status == "failed"
+
+
+class TestPlannerGapsStopPreflight:
+    def test_a_gap_blocks_before_anything_is_written(self, settled, inventory):
+        settled["plannerGaps"] = [{"id": "item:model/x/models", "gap": "names no models"}]
+        findings = preflight(settled, inventory, runner=_Runner())
+        gap = next(f for f in findings if f["code"] == "plannerGap")
+        assert gap["blocking"] is True
+
+
+class TestAliasVerification:
+    """An alias read back reports a different shape from the one it was sent."""
+
+    def _alias_objs(self, settled):
+        return [
+            o
+            for item in settled["items"] if item.get("capabilityId") == "alias.create"
+            for o in (item.get("target") or {}).get("objects") or []
+            if o.get("routingName")
+        ]
+
+    def _alias_obj(self, settled):
+        return self._alias_objs(settled)[0]
+
+    def _reads(self, settled, resource_id):
+        """A read-back for every alias the phase will touch."""
+        return {
+            _alias_key(o): {
+                "name": _alias_key(o),
+                "properties": {
+                    "aliasName": o["routingName"],
+                    "backendModels": [{"resourceId": resource_id}],
+                    "supportedEndpoints": o.get("supportedEndpoints") or [],
+                    "gatewayEndpoints": [{"api": "v1/messages"}],
+                    "selectionOrder": ["priority"],
+                },
+            }
+            for o in self._alias_objs(settled)
+        }
+
+    def test_an_alias_verifies_against_the_shape_a_read_returns(self, settled, inventory):
+        obj = self._alias_obj(settled)
+        # Exactly what a live gateway returns: an id and nothing else.
+        model_id = "/subscriptions/s/resourceGroups/rg/providers/Microsoft.ApiManagement/aigateways/gw/workspaces/default/modelProviders/p/models/m"
+        runner = _Runner(reads=self._reads(settled, model_id))
+        executor = Executor(settled, inventory, new_journal(settled), runner=runner,
+                            execute=True, skip_rehearsal=True)
+        executor._model_resource_id = lambda *_a, **_k: model_id
+
+        steps = [s for s in executor.run_phase("aliases") if s.capability_id == "alias.create"]
+        step = next(s for s in steps if s.objects and s.objects[0].get("routingName") == obj["routingName"])
+        assert step.status == "verified", step.detail
+
+    def test_an_alias_pointing_at_another_model_does_not_verify(self, settled, inventory):
+        obj = self._alias_obj(settled)
+        runner = _Runner(reads=self._reads(settled, "/subscriptions/s/.../models/somebody-else"))
+        executor = Executor(settled, inventory, new_journal(settled), runner=runner,
+                            execute=True, skip_rehearsal=True)
+        executor._model_resource_id = lambda *_a, **_k: "/subscriptions/s/.../models/the-right-one"
+
+        steps = [s for s in executor.run_phase("aliases") if s.capability_id == "alias.create"]
+        step = next(s for s in steps if s.objects and s.objects[0].get("routingName") == obj["routingName"])
+        assert step.status == "failed"
+
+    def test_an_unresolvable_backend_cannot_verify_silently(self, settled, inventory):
+        # A shorter desired list would compare clean against anything.
+        from apim_import.apply import _alias_desired
+
+        class _NoModels:
+            def _model_resource_id(self, *_a, **_k):
+                return None
+
+        desired = _alias_desired(_NoModels(), self._alias_obj(settled))
+        assert desired["backendModels"]
+        assert "unresolved" in desired["backendModels"][0]["resourceId"]
+
+
+class TestRehearsalShowsEveryCommand:
+    """The rehearsal is the gate a phase is approved from, so it hides nothing."""
+
+    def test_a_multi_object_step_shows_one_command_per_object(self, settled, inventory):
+        executor = Executor(settled, inventory, new_journal(settled), runner=_Runner())
+        multi = [
+            s for s in executor.run_phase("aliases")
+            if len(s.objects) > 1 and s.capability_id == "alias.create"
+        ]
+        assert multi, "the fixture should batch several aliases under one item"
+        for step in multi:
+            assert len(step.commands) == len(step.objects), step.item_id
+
+    def test_the_journal_records_them_all(self, settled, inventory):
+        journal = new_journal(settled)
+        executor = Executor(settled, inventory, journal, runner=_Runner(), execute=True,
+                            skip_rehearsal=True)
+        steps = executor.run_phase("models")
+        recorded = {s["itemId"]: s for s in journal["steps"]}
+        for step in steps:
+            if step.item_id in recorded and step.commands:
+                assert len(recorded[step.item_id]["commands"]) == len(step.commands)

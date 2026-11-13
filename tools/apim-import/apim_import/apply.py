@@ -112,6 +112,11 @@ class Step:
     status: str = "pending"
     detail: str = ""
     argv: list[str] = field(default_factory=list)
+    # Every command the step would run, not just the first. A rehearsal is the
+    # gate an operator approves a phase from, and one item routinely covers
+    # many objects -- seven aliases under a single naming decision. Showing one
+    # command asked them to approve six they never saw.
+    commands: list[list[str]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -121,6 +126,7 @@ class Step:
             "status": self.status,
             "detail": self.detail,
             "argv": self.argv,
+            "commands": self.commands,
         }
 
 
@@ -157,6 +163,19 @@ def preflight(plan: dict[str, Any], inventory: dict[str, Any], *, runner: Runner
             f"{len(unsettled)} item(s) still need a decision: "
             + ", ".join(i["id"] for i in unsettled[:5]) + ("..." if len(unsettled) > 5 else ""),
             "Adapt them, then re-run plan.",
+        )
+
+    # Work the plan knows it cannot carry out. Stopping here rather than at the
+    # phase that hits it means the operator finds out while the plan can still
+    # be fixed, instead of part-way through a migration that cannot finish.
+    gaps = plan.get("plannerGaps") or []
+    if gaps:
+        finding(
+            "plannerGap", True,
+            f"{len(gaps)} item(s) describe work the plan cannot produce: "
+            + "; ".join(f"{g['id']}: {g['gap']}" for g in gaps[:3])
+            + ("..." if len(gaps) > 3 else ""),
+            "Re-collect the inventory and re-run plan, or settle the items named above.",
         )
 
     orphans = plan.get("orphanedDecisions") or []
@@ -441,8 +460,10 @@ class Executor:
         for obj in step.objects:
             status, detail, argv = self._run_object(step, obj)
             outcomes.append(status)
-            if argv and not step.argv:
-                step.argv = argv
+            if argv:
+                step.commands.append(argv)
+                if not step.argv:
+                    step.argv = argv
             if detail:
                 details.append(detail)
             if status in {"failed", "mutationUnknown"}:
@@ -462,8 +483,18 @@ class Executor:
         return step
 
     def _run_object(self, step: Step, obj: dict[str, Any]) -> tuple[str, str, list[str]]:
-        desired = _DESIRED.get(step.capability_id, lambda o: o)(obj)
+        desired = _DESIRED.get(step.capability_id, lambda _e, o: o)(self, obj)
         note = "; its credential is write-only and was not read back" if _has_write_only(obj) else ""
+
+        # Verification establishes what a read can carry, and says which fields
+        # that excludes rather than quietly narrowing what "verified" covers.
+        unreadable = [
+            field for field in _NOT_RETURNED.get(step.capability_id, ())
+            if isinstance(desired, dict) and field in desired
+        ]
+        if unreadable:
+            desired = {k: v for k, v in desired.items() if k not in unreadable}
+            note += f"; {', '.join(unreadable)} is not returned by a read and was not compared"
 
         # Read first, and build second. Building resolves credentials, so doing it
         # up front would read a secret for a step that turns out to need no write
@@ -713,7 +744,7 @@ def _identity_choice(obj: dict[str, Any]) -> list[str]:
     return list(obj.get("userAssigned") or [])
 
 
-def _identity_desired(obj: dict[str, Any]) -> dict[str, Any]:
+def _identity_desired(executor: Executor, obj: dict[str, Any]) -> dict[str, Any]:
     """What `identity show` should report once this step has run.
 
     The planned object says what to assign; verification needs what the read
@@ -721,6 +752,50 @@ def _identity_desired(obj: dict[str, Any]) -> dict[str, Any]:
     verified however many times it succeeded.
     """
     return {"type": "UserAssigned" if _identity_choice(obj) else "SystemAssigned"}
+
+
+def _model_desired(executor: Executor, obj: dict[str, Any]) -> dict[str, Any]:
+    """A model registration as `model show` returns it.
+
+    The command takes --deployment-config and --provider-name; the read reports
+    the first as `deployment` and the second only in the resource path, which
+    the reader already selects on. Comparing the sent shape against the
+    returned one failed on both for every model, however correctly created.
+    """
+    return {
+        "name": obj["name"],
+        "deployment": obj.get("deploymentConfig") or {},
+        "supportedEndpoints": obj.get("supportedEndpoints") or [],
+        "apiFormat": obj.get("apiFormat"),
+    }
+
+
+def _alias_desired(executor: Executor, obj: dict[str, Any]) -> dict[str, Any]:
+    """An alias as `model-alias show` returns it.
+
+    The read reports `aliasName` for what was sent as --routing-name, and each
+    backend model as a bare resourceId -- never the modelName, providerName,
+    priority or weight the command carried. The id is what establishes that the
+    alias points at the intended model, so an unresolved one is held as a value
+    that cannot match rather than dropped: a shorter list would compare clean
+    and verify nothing.
+    """
+    backends = []
+    for backend in obj.get("backendModels") or []:
+        resource_id = backend.get("resourceId") or executor._model_resource_id(
+            backend.get("providerName"), backend.get("modelName")
+        )
+        backends.append({
+            "resourceId": resource_id
+            or f"<unresolved model {backend.get('modelName')!r}>"
+        })
+    desired: dict[str, Any] = {
+        "aliasName": obj["routingName"],
+        "supportedEndpoints": obj.get("supportedEndpoints") or [],
+    }
+    if backends:
+        desired["backendModels"] = backends
+    return desired
 
 
 def _alias_name(spec: dict[str, Any]) -> str:
@@ -738,8 +813,22 @@ _BUILDERS: dict[str, Callable[[Executor, Step, dict[str, Any]], tuple[list[str],
 
 # Where the object a step plans and the object its read returns are different
 # shapes, this translates one into the other for verification.
-_DESIRED: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
+_DESIRED: dict[str, Callable[[Executor, dict[str, Any]], dict[str, Any]]] = {
     "identity.assign": _identity_desired,
+    "model.create": _model_desired,
+    "alias.create": _alias_desired,
+}
+
+# Fields the control plane accepts on write and never returns on read. They are
+# dropped before comparison for the same reason a credential is: the read cannot
+# carry them, so comparing can only fail, and a correctly created object would
+# be reported as not matching its plan.
+#
+# `model show` on a live gateway returns deployment, displayName, endpoints,
+# providerKind and supportedEndpoints -- apiFormat is accepted by `model create`
+# and absent from every read.
+_NOT_RETURNED: dict[str, tuple[str, ...]] = {
+    "model.create": ("apiFormat",),
 }
 
 # Options the catalogue marks required, checked before a command is run.

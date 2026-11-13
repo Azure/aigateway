@@ -505,8 +505,10 @@ def _apply(args: argparse.Namespace) -> int:
         print(f"  {step.status:16} {step.item_id}", file=sys.stderr)
         if step.detail:
             print(f"                   {step.detail}", file=sys.stderr)
-        if not args.execute and step.argv:
-            print(f"                   $ {' '.join(step.argv)}", file=sys.stderr)
+        if not args.execute:
+            # Every command, because this is the gate the phase is approved from.
+            for argv in step.commands or ([step.argv] if step.argv else []):
+                print(f"                   $ {' '.join(argv)}", file=sys.stderr)
     _write_journal(journal, journal_path)
 
     stuck = [s for s in steps if s.status in {"failed", "mutationUnknown"}]

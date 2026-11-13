@@ -513,3 +513,173 @@ class TestPrerequisiteCommands:
         # than leaving it to a human.
         prereq = next(p for p in plan["prerequisites"] if p["id"] == "prereq:name-collision")
         assert "commands" not in prereq
+
+
+def settle_models(plan, *, models, value="list-models"):
+    """Settle the meta-ai catalogue item the way an agent would."""
+    adapted = copy.deepcopy(plan)
+    item = item_for(adapted, "model:meta-ai", "modelCatalogue")
+    item["status"] = "adapted"
+    item["decision"] = {"value": value, "models": models}
+    return adapted
+
+
+class TestSettledEnumeration:
+    """A decision that names models has to turn into models.
+
+    The question is only worth asking if the answer is built from. Raising it
+    and then ignoring what came back left a provider that published nothing,
+    with every item reading as settled.
+    """
+
+    def test_named_models_become_registrations(self, inventory, capabilities, plan):
+        adapted = settle_models(plan, models=["muse-spark-1.1", "muse-ember-1.0"])
+
+        again = build_plan(inventory, capabilities, previous=adapted)
+        objects = [
+            obj
+            for item in again["items"] if item["source"].get("assetId") == "model:meta-ai"
+            for obj in (item.get("target") or {}).get("objects") or []
+            if item["capabilityId"] == "model.create"
+        ]
+        assert [obj["name"] for obj in objects] == ["muse-spark-1.1", "muse-ember-1.0"]
+        assert {obj["apiFormat"] for obj in objects} == {"OpenAIChatCompletions"}
+        # A Custom provider has no backing ARM deployment; the model name is all
+        # a registration carries, as a live gateway reads one back.
+        assert objects[0]["deploymentConfig"] == {"modelName": "muse-spark-1.1"}
+        assert objects[0]["supportedEndpoints"] == ["/openai/v1/chat/completions"]
+
+    def test_named_models_become_callable_aliases(self, inventory, capabilities, plan):
+        adapted = settle_models(plan, models=["muse-spark-1.1"])
+
+        again = build_plan(inventory, capabilities, previous=adapted)
+        aliases = item_for(again, "model:meta-ai", "aliasNames")
+        assert [obj["routingName"] for obj in aliases["target"]["objects"]] == ["muse-spark-1.1"]
+
+    def test_registrations_are_buildable(self, inventory, capabilities, plan):
+        adapted = settle_models(plan, models=["muse-spark-1.1"])
+
+        again = build_plan(inventory, capabilities, previous=adapted)
+        assert again["summary"]["plannerGaps"] == 0
+
+    def test_a_per_model_route_override_is_honoured(self, inventory, capabilities, plan):
+        adapted = settle_models(plan, models=["muse-embed-1.0"])
+        item = item_for(adapted, "model:meta-ai", "modelCatalogue")
+        item["decision"]["endpoints"] = {"muse-embed-1.0": ["/openai/v1/embeddings"]}
+
+        again = build_plan(inventory, capabilities, previous=adapted)
+        model = item_for(again, "model:meta-ai", "model:muse-embed-1.0")
+        assert model["target"]["objects"][0]["supportedEndpoints"] == ["/openai/v1/embeddings"]
+
+    def test_retaining_the_api_creates_nothing_and_is_not_a_gap(
+        self, inventory, capabilities, plan
+    ):
+        adapted = settle_models(plan, models=[], value="retain-in-apim")
+        for item in adapted["items"]:
+            if item["source"].get("assetId") == "model:meta-ai":
+                item["status"], item["decision"] = "adapted", "retain-in-apim"
+
+        again = build_plan(inventory, capabilities, previous=adapted)
+        assert not [
+            i for i in again["items"]
+            if i["source"].get("assetId") == "model:meta-ai"
+            and (i.get("target") or {}).get("objects")
+        ]
+        assert again["plannerGaps"] == []
+
+    def test_migrating_while_naming_nothing_is_a_gap(self, inventory, capabilities, plan):
+        adapted = settle_models(plan, models=[])
+
+        again = build_plan(inventory, capabilities, previous=adapted)
+        item = item_for(again, "model:meta-ai", "modelCatalogue")
+        assert "names no models" in item["plannerGap"]
+        assert again["summary"]["plannerGaps"] >= 1
+
+    def test_an_unreadable_protocol_is_a_gap_not_a_guess(self, inventory, capabilities, plan):
+        # Defaulting the routes here would publish models against a protocol
+        # nobody established.
+        blinded = copy.deepcopy(inventory)
+        for provider in blinded["assets"]["modelProviders"]:
+            if "meta-ai" in provider["id"]:
+                provider["apiDialect"] = None
+        adapted = settle_models(plan, models=["muse-spark-1.1"])
+
+        again = build_plan(blinded, capabilities, previous=adapted)
+        item = item_for(again, "model:meta-ai", "modelCatalogue")
+        assert "could not be resolved" in item["plannerGap"]
+        assert not [
+            obj
+            for i in again["items"] if i["source"].get("assetId") == "model:meta-ai"
+            for obj in (i.get("target") or {}).get("objects") or []
+        ]
+
+
+class TestUnbuildableObjects:
+    """An object short of a required flag is caught while it can still be fixed."""
+
+    def test_a_model_without_its_required_fields_is_reported(self, inventory, capabilities):
+        blinded = copy.deepcopy(inventory)
+        for model in blinded["assets"]["models"]:
+            for resolved in (model.get("models") or {}).get("resolved") or []:
+                resolved.get("target", {})["supportedEndpoints"] = []
+
+        again = build_plan(blinded, capabilities)
+        offenders = [i for i in again["items"] if i.get("unbuildable")]
+        assert offenders, "a model with no routes cannot be created and must say so"
+        assert "--supported-endpoints" in offenders[0]["unbuildable"]["note"]
+        assert again["summary"]["plannerGaps"] >= len(offenders)
+
+    def test_a_complete_plan_reports_no_gaps(self, plan):
+        assert plan["summary"]["plannerGaps"] == 0
+
+    def test_required_fields_mirror_the_apply_builders(self):
+        # The planner can only vouch for what apply actually demands; drift
+        # between the two tables would quietly stop checking something.
+        from apim_import.apply import _REQUIRED_FLAGS
+        from apim_import.plan import _REQUIRED_FIELDS
+
+        assert set(_REQUIRED_FIELDS) == set(_REQUIRED_FLAGS)
+        for capability_id, flags in _REQUIRED_FLAGS.items():
+            assert set(_REQUIRED_FIELDS[capability_id]) == set(flags), capability_id
+
+
+class TestBatchMembersAreTrackedIndividually:
+    """A batch keeps one digest per member, under a name that identifies it."""
+
+    def test_each_model_member_gets_its_own_key(self, plan):
+        from apim_import.plan import _member_digests
+
+        aliases = next(i for i in plan["items"] if i["id"].endswith("/aliasNames")
+                       and len(i["evidence"]["members"]) > 1)
+        digests = _member_digests(aliases)
+        assert len(digests) == len(aliases["evidence"]["members"])
+        assert "None#None" not in digests
+        assert set(digests) == {m["modelName"] for m in aliases["evidence"]["members"]}
+
+    def test_a_change_to_any_member_is_noticed(self, inventory, capabilities, plan):
+        # Every member used to share one key, so only the last one was compared
+        # and a change to any other was invisible.
+        adapted = copy.deepcopy(plan)
+        target = next(i for i in adapted["items"] if i["id"].endswith("/aliasNames")
+                      and len(i["evidence"]["members"]) > 1)
+        target["status"], target["decision"] = "adapted", "use-model-names"
+
+        changed = copy.deepcopy(inventory)
+        first = target["evidence"]["members"][0]["modelName"]
+        for model in changed["assets"]["models"]:
+            for resolved in (model.get("models") or {}).get("resolved") or []:
+                if resolved.get("modelName") == first:
+                    resolved["target"]["supportedEndpoints"] = ["/openai/v1/embeddings"]
+
+        again = build_plan(changed, capabilities, previous=adapted)
+        item = next(i for i in again["items"] if i["id"] == target["id"])
+        assert item["status"] == "stale"
+        assert first in item["staleReason"]
+
+    def test_the_stale_reason_names_the_member(self, plan):
+        from apim_import.plan import _member_digests
+
+        policies = [i for i in plan["items"] if i["id"].startswith("item:policy/")
+                    and i.get("evidence", {}).get("members")]
+        for item in policies:
+            assert all("#" in key for key in _member_digests(item)), item["id"]
