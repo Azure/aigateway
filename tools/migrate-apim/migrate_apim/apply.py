@@ -914,6 +914,28 @@ def _counter_dimensions(obj: dict[str, Any]) -> list[str]:
     return []
 
 
+# APIM says allow or forbid; the gateway's CLI takes Allow or Deny. Capitalising
+# the source word produced `Forbid`, which the CLI rejects -- the one value an
+# IP filter is most likely to carry, since an allow-list is rarer than a block.
+_IP_FILTER_ACTIONS = {"allow": "Allow", "forbid": "Deny", "deny": "Deny"}
+
+# An OTLP exporter sends one or more signals, each to its own endpoint. The
+# service requires at least one and says so only when the write is attempted:
+# "OpenTelemetry requires at least one of metricsEndpoint, logsEndpoint, or
+# tracesEndpoint".
+_OTLP_ENDPOINTS = ("metricsEndpoint", "logsEndpoint", "tracesEndpoint")
+
+
+def _ip_filter_action(action: Any) -> str:
+    key = str(action or "allow").strip().lower()
+    if key not in _IP_FILTER_ACTIONS:
+        raise ApplyError(
+            f"{action!r} is not an IP filter action this tool can translate; APIM writes `allow` "
+            "or `forbid`."
+        )
+    return _IP_FILTER_ACTIONS[key]
+
+
 def _model_policy_set(executor: Executor, step: Step, obj: dict[str, Any]) -> tuple[list[str], list[str]]:
     """One model's token limit.
 
@@ -982,8 +1004,7 @@ def _policy_set(executor: Executor, step: Step, obj: dict[str, Any]) -> tuple[li
                 "an IP filter with no addresses would allow or deny nothing; the plan carries no "
                 "ranges for it. Re-collect the inventory, or apply this one by hand."
             )
-        return command("set-ip-filter", "--action",
-                       str(settings.get("action") or "allow").capitalize(),
+        return command("set-ip-filter", "--action", _ip_filter_action(settings.get("action")),
                        "--allowed-ips", *[str(entry) for entry in ranges])
     raise ApplyError(f"no gateway-wide mapping for a {kind!r} policy")
 
@@ -1025,6 +1046,22 @@ def _telemetry_exporter_create(
         raise ApplyError(
             "this exporter has no destination. APIM's metric policy names no sink, so the "
             "connection string or OTLP endpoint has to be settled on the item first."
+        )
+    # What each kind requires, in the service's own words. Checked here because
+    # the alternative is a phase that stops on a ValidationError naming fields
+    # the operator never saw in the plan.
+    if kind == "OpenTelemetry" and not any(
+        settings.get(field) for field in _OTLP_ENDPOINTS
+    ):
+        raise ApplyError(
+            "an OpenTelemetry exporter needs at least one of "
+            + ", ".join(_OTLP_ENDPOINTS)
+            + f"; this one carries {', '.join(sorted(settings)) or 'nothing'}."
+        )
+    if kind == "ApplicationInsights" and not settings.get("connectionString"):
+        raise ApplyError(
+            "an Application Insights exporter needs a connectionString; this one carries "
+            + (", ".join(sorted(settings)) or "nothing")
         )
     flag = "--application-insights" if kind == "ApplicationInsights" else "--open-telemetry"
     # Through a file: a connection string carries an instrumentation key, and a
@@ -1107,6 +1144,52 @@ def _model_policy_desired(executor: Executor, obj: dict[str, Any]) -> dict[str, 
     return {"policies": [policy]}
 
 
+def _baseline_desired(executor: Executor, obj: dict[str, Any]) -> Any:
+    """A gateway-wide baseline as `policy list` returns it.
+
+    Read from a live gateway after the first write: the array holds
+
+        {"callsPerPeriod": 100000, "counterKey": ["identity"],
+         "periodSeconds": 60, "scope": "workspace", "type": "requestRateLimit"}
+
+    so the numbers come back as numbers where the plan holds the source
+    attribute's string, and `scope` is the service's. A list, because the read
+    is the whole baseline and this step wrote one entry of it.
+    """
+    kind = obj.get("type")
+    settings = obj.get("settings") or {}
+    policy: dict[str, Any] = {"type": kind}
+
+    def number(field: str, key: str) -> None:
+        value = settings.get(key)
+        if value is None:
+            return
+        try:
+            policy[field] = int(str(value))
+        except ValueError:
+            policy[field] = value
+
+    if kind == "requestRateLimit":
+        number("callsPerPeriod", "callsPerPeriod")
+        number("periodSeconds", "periodSeconds")
+        dimensions = _counter_dimensions(obj)
+        if dimensions:
+            policy["counterKey"] = dimensions
+    elif kind == "ipFilter":
+        # Read back as {"action": "deny", "cidrRanges": [...], "scope":
+        # "resource"}: the action lowercased, and the ranges under a name the
+        # command does not use. Comparing the type alone -- all this could do
+        # before one had ever been written -- passed any filter at all, however
+        # wrong its addresses.
+        policy["action"] = _ip_filter_action(settings.get("action"))
+        if settings.get("ranges"):
+            policy["cidrRanges"] = [str(entry) for entry in settings["ranges"]]
+    else:
+        # A gateway-wide token limit has never been written from here.
+        return {}
+    return [policy]
+
+
 def _named_object_desired(executor: Executor, obj: dict[str, Any]) -> dict[str, Any]:
     """What a read establishes for an object this tool creates by name.
 
@@ -1179,11 +1262,7 @@ _DESIRED: dict[str, Callable[[Executor, dict[str, Any]], dict[str, Any]]] = {
     "model.policy": _model_policy_desired,
     "key.create": _named_object_desired,
     "telemetry.create": _named_object_desired,
-    # No entry for policy.update: `policy list` returns the baseline array and
-    # the planned object is not in that shape, so comparing them would fail a
-    # correct write. Until someone reads one back, the step reports `unverified`
-    # -- written, not confirmed -- which is what is actually known.
-    "policy.update": lambda _executor, _obj: {},
+    "policy.update": _baseline_desired,
 }
 
 # Fields the control plane accepts on write and never returns on read. They are

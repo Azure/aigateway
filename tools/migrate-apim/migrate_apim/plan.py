@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import hashlib
+import ipaddress
 import json
 from typing import Any
 
@@ -1231,7 +1232,10 @@ class PlanBuilder:
             return []
         shaped = [(member, _policy_settings(target_type, member)) for member in members]
         strictest, settings = min(shaped, key=lambda pair: _strictness(target_type, pair[1]))
-        ranges = self._address_ranges(strictest) if target_type in _POLICY_NEEDS_CHILDREN else []
+        ranges: list[str] = []
+        unconvertible: list[str] = []
+        if target_type in _POLICY_NEEDS_CHILDREN:
+            ranges, unconvertible = self._address_ranges(strictest)
         if ranges:
             settings = {**settings, "ranges": ranges}
         variants = [
@@ -1252,7 +1256,16 @@ class PlanBuilder:
             "fullConfigurationAt": {
                 "policyId": strictest.get("policyId"), "path": strictest.get("path")},
         }
-        if not complete and target_type in _POLICY_NEEDS_CHILDREN:
+        if unconvertible:
+            # Named, not dropped: an address the target cannot express is a hole
+            # in a filter, and a filter with a hole reads as a filter.
+            obj["unconvertibleAddresses"] = unconvertible
+            obj["configurationComplete"] = complete = False
+            obj["incompleteReason"] = (
+                "These addresses are not expressible as CIDR, which is all the target takes: "
+                + ", ".join(unconvertible)
+            )
+        elif not complete and target_type in _POLICY_NEEDS_CHILDREN:
             obj["incompleteReason"] = (
                 f"`{strictest.get('element')}` keeps its addresses in child elements and none were "
                 "collected, so the baseline would be written with no ranges in it."
@@ -1304,31 +1317,43 @@ class PlanBuilder:
             return set()
         return set()
 
-    def _address_ranges(self, member: dict[str, Any]) -> list[str]:
-        """CIDR ranges from the `<address-range>` children of an ip-filter.
+    def _address_ranges(self, member: dict[str, Any]) -> tuple[list[str], list[str]]:
+        """The ip-filter's addresses, as CIDR, and whatever would not convert.
 
-        The walker records children as elements of their own, so the ranges are
-        in the inventory -- under the parent's path, not on its attributes.
+        The walker records children as elements of their own, so the addresses
+        are in the inventory under the parent's path rather than on its
+        attributes. They need translating as well as finding: APIM writes an
+        arbitrary `from`-`to` range and the gateway takes CIDR only, which it
+        says by rejecting the write -- *"ipFilter.cidrRanges entries must be
+        valid CIDR ranges"*. An arbitrary range is not one CIDR block but a set
+        of them, so each is expanded into the exact cover; 192.0.2.1-192.0.2.254
+        is fourteen blocks and no addresses more or fewer than the source let
+        through.
         """
         document = next(
             (doc for doc in self.inventory.get("policies") or []
              if doc.get("id") == member.get("policyId")), None
         )
         if not document:
-            return []
+            return [], []
         prefix = f"{member.get('path')}/"
         ranges: list[str] = []
+        unconvertible: list[str] = []
         for element in document.get("elements") or []:
             if not (element.get("path") or "").startswith(prefix):
                 continue
             attributes = element.get("attributes") or {}
             if element.get("name") == "address-range":
                 start, end = attributes.get("from"), attributes.get("to")
-                if start and end:
-                    ranges.append(f"{start}-{end}" if start != end else str(start))
+                if not start or not end:
+                    continue
+                blocks = _cidr_cover(start, end)
+                (ranges if blocks else unconvertible).extend(blocks or [f"{start}-{end}"])
             elif element.get("name") == "address" and element.get("text"):
-                ranges.append(str(element["text"]))
-        return ranges
+                blocks = _cidr_cover(element["text"], element["text"])
+                (ranges if blocks else unconvertible).extend(
+                    blocks or [str(element["text"])])
+        return ranges, unconvertible
 
     def _mark_by_hand(self, items: list[dict[str, Any]]) -> None:
         """Say which settled work `apply` will leave for the operator.
@@ -1396,11 +1421,15 @@ class PlanBuilder:
                 continue
             item["needsFact"] = {
                 "what": "where the exporter sends",
+                # The field names are the service's own, from the validation it
+                # answers a wrong one with. A decision shaped to anything else
+                # reaches the phase and fails there.
                 "how": (
                     'Set `decision` to {"kind": "ApplicationInsights", "applicationInsights": '
-                    '{"connectionString": "..."}} or {"kind": "OpenTelemetry", "openTelemetry": '
-                    '{"endpoint": "..."}}. The connection string is read at apply time and never '
-                    "stored in the plan."
+                    '{"connectionString": "..."}}, or {"kind": "OpenTelemetry", "openTelemetry": '
+                    '{"metricsEndpoint": "..."}} with at least one of metricsEndpoint, '
+                    "logsEndpoint or tracesEndpoint. A connection string is read at apply time, "
+                    "passed as a file, and never stored in the plan."
                 ),
             }
             item["rationale"] = (
@@ -1735,6 +1764,20 @@ _POLICY_FIELDS: dict[str, dict[str, str]] = {
 # Target policies whose configuration lives in child elements, so attributes
 # alone cannot complete the object.
 _POLICY_NEEDS_CHILDREN = {"ipFilter"}
+
+
+def _cidr_cover(start: Any, end: Any) -> list[str]:
+    """The exact set of CIDR blocks covering an inclusive address range.
+
+    Empty when either end is not an address, or they are of different families,
+    so the caller reports what it could not convert rather than writing a filter
+    that lets through what the source blocked.
+    """
+    try:
+        first, last = ipaddress.ip_address(str(start).strip()), ipaddress.ip_address(str(end).strip())
+        return [str(network) for network in ipaddress.summarize_address_range(first, last)]
+    except (ValueError, TypeError):
+        return []
 
 
 def _key_objects(subscriptions: list[dict[str, Any]]) -> list[dict[str, Any]]:

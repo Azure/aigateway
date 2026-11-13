@@ -771,7 +771,9 @@ different ceilings; each member keeps its own. On a real instance that was 10000
 and 1000 on another, and shaping only the first member applied one ceiling to both.
 
 A rate limit or an IP filter has no per-model equivalent: `az aigateway policy set-*` writes the
-default workspace, of which there is one. Several source policies therefore collapse into a single
+default workspace, of which there is one. An IP filter is also re-expressed on the way: APIM's
+`allow`/`forbid` becomes the target's `Allow`/`Deny`, and its arbitrary `from`–`to` ranges become
+the exact set of CIDR blocks covering them, which is all the gateway accepts. Several source policies therefore collapse into a single
 baseline, and the **strictest** is proposed — never more permissive than anything the source
 enforced — with every variant recorded in `collapsedFrom` on the object. Taking the first one was
 as likely to pick the loosest as the tightest.
@@ -935,11 +937,36 @@ holds the source attribute's string, `counterKey` always an array, and a `scope`
 The same defect family as `_model_desired` and `_alias_desired` before it, and now pinned to that
 live response. The second is below: what the source set and the target has no field for.
 
-`policy.update`, `key.create` and `telemetry.create` have **not had their writes executed**. Keys
-and exporters verify on the name they were created under; the gateway-wide baseline compares
-nothing, because `policy list`'s shape is unobserved and a guess at its field names would fail a
-correct write. Those steps report `unverified` — written, not confirmed — which is what is actually
-known, and pinning their read-backs is the first thing to do with a live gateway.
+**`policy.update` and `key.create` are verified end to end**, by adding a `rate-limit-by-key`, an
+`ip-filter` and an `llm-emit-token-metric` to a live APIM API, re-collecting, re-planning and
+applying them to the gateway. Both source-side and gateway-side state were restored afterwards.
+That round trip found two more defects a rehearsal could not:
+
+- APIM writes `action="forbid"`; the CLI takes `Allow` or `Deny`. Capitalising the source word
+  produced `Forbid`, which is rejected — on the commoner of the two actions, since a block list is
+  likelier than an allow list.
+- APIM writes arbitrary `from`–`to` address ranges and the gateway takes **CIDR only**, which it
+  says by refusing the write: *"ipFilter.cidrRanges entries must be valid CIDR ranges"*. An
+  arbitrary range is not one CIDR block but a set of them, so each is expanded into the exact
+  cover — `192.0.2.1-192.0.2.254` is fourteen blocks, and no address more or fewer than the source
+  let through. Anything that will not convert is named on the object rather than dropped, because a
+  filter with a hole still reads as a filter.
+
+Their read-backs are pinned to live responses too: the baseline comes back as an array of
+`{"callsPerPeriod": 100000, "counterKey": ["identity"], "periodSeconds": 60, "scope": "workspace"}`
+and `{"action": "deny", "cidrRanges": [...], "scope": "resource"}` — numbers where the plan holds
+the source's strings, the action lowercased, and the ranges under a name the command never uses.
+Until the filter had been written, that check could only compare the type, which passed any filter
+at all however wrong its addresses.
+
+**`telemetry.create` has not completed a write.** Its payload is verified as far as the service's
+own validator, which rejected two invented shapes and named the real fields: an OpenTelemetry
+exporter needs at least one of `metricsEndpoint`, `logsEndpoint` or `tracesEndpoint`, and an
+Application Insights one a `connectionString`. Both are now checked before the command runs, and
+the `needsFact` guidance names them. Past validation, `telemetry-exporter create` returns
+`InternalServerError` on the gateway it was tried against — for both kinds, invoked directly from
+the CLI with payloads the validator accepted, so it is the service rather than this tool. The
+builder is therefore unconfirmed beyond its argv, and its read-back shape is still unobserved.
 
 Not otherwise exercised against live configuration, and therefore the next things to re-check:
 self-hosted gateways, backend pools in production shapes, workspace-scoped products and

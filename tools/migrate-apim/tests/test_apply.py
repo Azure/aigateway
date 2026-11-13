@@ -1163,6 +1163,23 @@ class TestPolicyAndKeyBuilders:
         assert argv[argv.index("--allowed-ips") + 1:argv.index("-o")] == \
             ["10.0.0.0-10.0.0.255", "192.168.1.1"]
 
+    def test_apims_forbid_becomes_the_targets_deny(self, settled, inventory):
+        """The two vocabularies differ on the commoner of the two actions.
+
+        APIM writes `forbid`; the CLI takes Allow or Deny. Capitalising the
+        source word gave `Forbid`, which the CLI rejects -- and a block list is
+        the likelier thing for an instance to be carrying.
+        """
+        argv = self._build(settled, inventory, "policy.update",
+                           {"type": "ipFilter",
+                            "settings": {"action": "forbid", "ranges": ["192.0.2.1-192.0.2.254"]}})
+        assert argv[argv.index("--action") + 1] == "Deny"
+
+    def test_an_action_from_neither_vocabulary_is_refused(self, settled, inventory):
+        with pytest.raises(ApplyError, match="not an IP filter action"):
+            self._build(settled, inventory, "policy.update",
+                        {"type": "ipFilter", "settings": {"action": "block", "ranges": ["10.0.0.1"]}})
+
     def test_an_ip_filter_with_no_ranges_refuses_rather_than_allowing_nothing(
         self, settled, inventory
     ):
@@ -1279,14 +1296,98 @@ class TestATokenLimitReadsBackDifferentlyFromHowItIsWritten:
                    "settings": {"count": "10000"}, "decision": "pooled"}
         assert "counterKey" not in self._desired(settled, inventory, planned)["policies"][0]
 
-    def test_a_baseline_policy_claims_nothing_it_has_not_seen(self, settled, inventory):
-        """`policy list`'s shape is unobserved, so the step says unverified."""
+    def test_a_gateway_wide_limit_nobody_has_written_claims_nothing(self, settled, inventory):
+        """A tokenLimit baseline has never been written from here, so its
+        read-back shape is a guess, and a guess fails correct writes."""
         from migrate_apim.apply import _DESIRED, _comparable
 
         executor = Executor(settled, inventory, new_journal(settled), runner=_Runner())
-        desired = _DESIRED["policy.update"](executor, {"type": "requestRateLimit",
-                                                       "settings": {"callsPerPeriod": "60"}})
+        desired = _DESIRED["policy.update"](executor, {"type": "tokenLimit",
+                                                       "settings": {"count": "60"}})
         assert not _comparable(desired)
+
+
+class TestTheGatewayWideBaselineReadsBackAsAnArray:
+    """The shape `policy list` returned, pinned.
+
+    Verified against aigw-moved-apim on 2026-11-13, after the first
+    `set-rate-limit` write: the read is the whole baseline array, the numbers
+    come back as numbers where the plan holds the source attribute's strings,
+    and `scope` is the service's own.
+    """
+
+    LIVE_READ = [{
+        "callsPerPeriod": 100000,
+        "counterKey": ["identity"],
+        "periodSeconds": 60,
+        "scope": "workspace",
+        "type": "requestRateLimit",
+    }]
+
+    def _desired(self, settled, inventory, obj):
+        from migrate_apim.apply import _DESIRED
+
+        executor = Executor(settled, inventory, new_journal(settled), runner=_Runner())
+        return _DESIRED["policy.update"](executor, obj)
+
+    def _planned(self, **settings):
+        return {"type": "requestRateLimit", "decision": "identity",
+                "settings": {"callsPerPeriod": "100000", "periodSeconds": "60", **settings}}
+
+    def test_the_planned_object_matches_what_the_gateway_returned(self, settled, inventory):
+        from migrate_apim.apply import _subset
+
+        assert _subset(self._desired(settled, inventory, self._planned()), self.LIVE_READ)
+
+    def test_a_different_ceiling_is_not_accepted(self, settled, inventory):
+        from migrate_apim.apply import _subset
+
+        assert not _subset(self._desired(settled, inventory, self._planned(callsPerPeriod="5")),
+                           self.LIVE_READ)
+
+    def test_a_different_period_is_not_accepted(self, settled, inventory):
+        from migrate_apim.apply import _subset
+
+        assert not _subset(self._desired(settled, inventory, self._planned(periodSeconds="1")),
+                           self.LIVE_READ)
+
+    def test_the_service_added_scope_is_not_compared(self, settled, inventory):
+        assert "scope" not in self._desired(settled, inventory, self._planned())[0]
+
+    IP_FILTER_READ = [{
+        "action": "deny",
+        "cidrRanges": ["192.0.2.1/32", "192.0.2.2/31", "192.0.2.254/32"],
+        "scope": "resource",
+        "type": "ipFilter",
+    }]
+
+    def _filter(self, **settings):
+        return {"type": "ipFilter",
+                "settings": {"action": "forbid",
+                             "ranges": ["192.0.2.1/32", "192.0.2.2/31", "192.0.2.254/32"],
+                             **settings}}
+
+    def test_an_ip_filter_matches_the_addresses_it_wrote(self, settled, inventory):
+        from migrate_apim.apply import _subset
+
+        # The read lowercases the action and files the ranges under a name the
+        # command never used: cidrRanges, not --allowed-ips.
+        assert _subset(self._desired(settled, inventory, self._filter()), self.IP_FILTER_READ)
+
+    def test_a_filter_with_different_addresses_is_not_accepted(self, settled, inventory):
+        """Comparing the type alone passed any filter at all, however wrong."""
+        from migrate_apim.apply import _subset
+
+        assert not _subset(
+            self._desired(settled, inventory, self._filter(ranges=["10.0.0.0/8"])),
+            self.IP_FILTER_READ,
+        )
+
+    def test_a_filter_that_allows_where_the_source_denied_is_not_accepted(self, settled, inventory):
+        from migrate_apim.apply import _subset
+
+        assert not _subset(self._desired(settled, inventory, self._filter(action="allow")),
+                           self.IP_FILTER_READ)
 
 
 class TestWhatDidNotTravelWithThePolicy:
@@ -1328,3 +1429,50 @@ class TestWhatDidNotTravelWithThePolicy:
             "unmappedAttributes": {},
         })
         assert "no equivalent" not in detail, detail
+
+
+class TestAnExporterNeedsWhatTheServiceRequires:
+    """Field names the service answered a wrong write with.
+
+    `telemetry-exporter create` validates server-side: an OpenTelemetry
+    exporter needs at least one of metricsEndpoint, logsEndpoint or
+    tracesEndpoint, and an Application Insights one needs a connectionString.
+    Learned from aigw-moved-apim rejecting both, and checked here so the phase
+    stops with the field names in the message instead of a ValidationError for
+    a shape the operator never saw in the plan.
+    """
+
+    def _build(self, settled, inventory, obj):
+        from migrate_apim.apply import Step
+
+        executor = Executor(settled, inventory, new_journal(settled), runner=_Runner())
+        argv, files = executor._build(
+            Step(item_id="item:test", capability_id="telemetry.create", phase="keys",
+                 objects=[obj]), obj)
+        for path in files:
+            import os
+            os.unlink(path)
+        return argv
+
+    def test_an_otlp_exporter_with_no_signal_endpoint_is_refused(self, settled, inventory):
+        with pytest.raises(ApplyError, match="metricsEndpoint, logsEndpoint, tracesEndpoint"):
+            self._build(settled, inventory, {
+                "name": "otlp", "kind": "OpenTelemetry",
+                # The shape this tool first invented, which the service rejects.
+                "settings": {"endpoint": "https://otlp.example:4317"},
+            })
+
+    def test_any_one_of_the_three_signals_is_enough(self, settled, inventory):
+        for field in ("metricsEndpoint", "logsEndpoint", "tracesEndpoint"):
+            argv = self._build(settled, inventory, {
+                "name": "otlp", "kind": "OpenTelemetry",
+                "settings": {field: "https://otlp.example:4317/v1"},
+            })
+            assert "--open-telemetry" in argv
+
+    def test_app_insights_without_a_connection_string_is_refused(self, settled, inventory):
+        with pytest.raises(ApplyError, match="connectionString"):
+            self._build(settled, inventory, {
+                "name": "appinsights", "kind": "ApplicationInsights",
+                "settings": {"instrumentationKey": "00000000"},
+            })
