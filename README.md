@@ -114,6 +114,11 @@ A gateway's **ARM resource id** is what the developer commands need to list its 
 /aigateway:migrate  my-apim-instance my-resource-group
 ```
 
+Everything the commands need ships with the plugin, including the
+[`migrate-apim`](tools/migrate-apim/README.md) tool behind `/aigateway:migrate` — there is no
+second install step. That command is the only one with a local prerequisite: Python 3.10 or
+later, alongside a signed-in Azure CLI.
+
 ## Labs, samples, and support
 
 - **[Hands-on labs](labs/README.md)** — 26 step-by-step labs for customers and field teams, from the core use

@@ -20,13 +20,15 @@ The work has four steps and they do not collapse into one another:
    re-run `plan`.
 4. **Provision** with `migrate-apim apply`, one phase at a time.
 
-Before step 1, make the tool runnable and say which way you did it. In order: `migrate-apim`
-already on `PATH`; otherwise the copy shipped with this plugin at
+Before step 1, make the tool runnable and say which way you did it. The plugin ships it, so
+there is nothing separate to install. In order: the copy at
 `${CLAUDE_PLUGIN_ROOT}/tools/migrate-apim`; otherwise `tools/migrate-apim` in a clone of
-`github.com/Azure/aigateway`. It is a dependency-free Python package needing 3.10 or later —
-`pip install -e <path>` installs the `migrate-apim` command, and `python -m migrate_apim.cli`
-runs it from the directory without installing. If none of those resolve, say so and stop
-rather than approximating the tool with `az` commands.
+`github.com/Azure/aigateway`; otherwise `migrate-apim` already on `PATH`, which holds only if
+someone installed it earlier. It is a dependency-free Python package needing 3.10 or later, so
+`PYTHONPATH=<tool-dir> python3 -m migrate_apim.cli` runs it in place. `pip install -e <path>`
+installs the real command, but only from a clone — the plugin copy sits under a commit-pinned
+path that moves when the plugin updates. If none of those resolve, say so and stop rather than
+approximating the tool with `az` commands.
 
 **Migration is additive.** Everything is provisioned into the gateway and nothing is removed
 from APIM. A failed run leaves a partially built gateway and a source still serving as

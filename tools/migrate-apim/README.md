@@ -55,16 +55,33 @@ An unrelated change never disturbs settled work.
 
 ---
 
-## Installation
+## Running it
 
-Python 3.10+ and the Azure CLI, signed in (`az login`). No other dependencies.
+Python 3.10+ and the Azure CLI, signed in (`az login`). No other dependencies, so there is
+nothing to install — the package runs from wherever it already is:
+
+```bash
+PYTHONPATH=<tool-dir> python3 -m migrate_apim.cli --help
+```
+
+`<tool-dir>` is this directory. The [coding-agent plugin](../../README.md#coding-agent-plugin)
+ships it, so installing the plugin already put a copy on disk — under
+`${CLAUDE_PLUGIN_ROOT}/tools/migrate-apim` in Claude Code. A clone of the repository works the
+same way.
+
+Installing the `migrate-apim` command is a convenience for working from a clone:
 
 ```bash
 cd tools/migrate-apim
-python3 -m migrate_apim --help          # run from source
-pip install -e .                       # or install the 'migrate-apim' command
+pip install -e .                       # installs the 'migrate-apim' command
 pip install -e '.[dev]'                # adds jsonschema (strict validate) and pytest
 ```
+
+Do not point `pip install -e` at the plugin's copy. That path is pinned to one commit, so the
+editable install breaks the next time the plugin updates.
+
+Every example below writes `migrate-apim`. Without the installed command, that is
+`PYTHONPATH=<tool-dir> python3 -m migrate_apim.cli`.
 
 ## Usage
 

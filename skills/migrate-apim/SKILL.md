@@ -10,16 +10,26 @@ third: work with the operator to adapt that plan, then execute it one object at 
 
 ## Make the tool runnable first
 
-Resolve it in this order, and say which one you used:
+Nothing separate to install: the tool ships inside this plugin. Resolve it in this order, and say
+which one you used:
 
-1. `migrate-apim` already on `PATH` — check with `migrate-apim --version`.
-2. The copy shipped with this plugin, under its root at `tools/migrate-apim`. In Claude Code that
+1. The copy shipped with this plugin, under its root at `tools/migrate-apim`. In Claude Code that
    root is `${CLAUDE_PLUGIN_ROOT}`.
-3. `tools/migrate-apim` in a clone of `github.com/Azure/aigateway`.
+2. `tools/migrate-apim` in a clone of `github.com/Azure/aigateway`.
+3. `migrate-apim` already on `PATH` — check with `migrate-apim --version`. This holds only if
+   someone installed it earlier; nothing publishes the command.
 
-It is a Python package with no runtime dependencies, needing 3.10 or later. `pip install -e <path>`
-installs the `migrate-apim` command; `python -m migrate_apim.cli` runs it from that directory without
-installing anything. Ask before installing into the operator's environment.
+It is a Python package with no runtime dependencies, needing 3.10 or later, so it runs from wherever
+it already sits:
+
+```
+PYTHONPATH=<tool-dir> python3 -m migrate_apim.cli --version
+```
+
+The examples below write `migrate-apim` for brevity — read that as whichever invocation you
+resolved. `pip install -e <path>` installs the real command, but only ever from a clone: the plugin
+copy lives under a path pinned to one commit, so an editable install against it breaks the next time
+the plugin updates. Ask before installing anything into the operator's environment.
 
 If none of those resolve, say so and stop. Do not approximate the tool with `az` commands: the
 inventory's value is that it is complete and says where it is not, which a hand-rolled read is not.
