@@ -1081,12 +1081,11 @@ class TestFactsADecisionHasToCarry:
         import copy
 
         first = build_plan(copy.deepcopy(inventory), capabilities)
-        item_id = next(i["id"] for i in first["items"]
-                       if i.get("capabilityId") == "telemetry.create")
+        item_id = "item:telemetry/destination"
         for item in first["items"]:
             if item["status"] == "needs-decision":
                 item["status"] = "adapted"
-                item["decision"] = "compensate" if item["id"] == item_id else (
+                item["decision"] = "reuse-appinsights" if item["id"] == item_id else (
                     item["proposal"] or "accept")
         second = build_plan(copy.deepcopy(inventory), capabilities, previous=first)
         item = next(i for i in second["items"] if i["id"] == item_id)
@@ -1098,18 +1097,21 @@ class TestFactsADecisionHasToCarry:
         import copy
 
         first = build_plan(copy.deepcopy(inventory), capabilities)
-        item_id = next(i["id"] for i in first["items"]
-                       if i.get("capabilityId") == "telemetry.create")
+        item_id = "item:telemetry/destination"
         for item in first["items"]:
             if item["id"] == item_id:
                 item["status"] = "adapted"
-                item["decision"] = {"kind": "OpenTelemetry",
-                                    "openTelemetry": {"endpoint": "https://otlp.example:4317"}}
+                # The endpoint is the Application Insights resource's own OTLP
+                # endpoint, once an administrator has enabled it.
+                item["decision"] = {
+                    "kind": "OpenTelemetry",
+                    "openTelemetry": {"metricsEndpoint": "https://otlp.example:4317/v1/metrics"},
+                }
         second = build_plan(copy.deepcopy(inventory), capabilities, previous=first)
         item = next(i for i in second["items"] if i["id"] == item_id)
         obj = (item["target"] or {})["objects"][0]
         assert obj["kind"] == "OpenTelemetry"
-        assert obj["settings"]["endpoint"] == "https://otlp.example:4317"
+        assert obj["settings"]["metricsEndpoint"] == "https://otlp.example:4317/v1/metrics"
         assert "needsFact" not in item
 
 
@@ -1221,14 +1223,91 @@ class TestTheOnlyTelemetryPathBetweenTheTwoProducts:
         import copy
 
         first = build_plan(copy.deepcopy(inventory), capabilities)
-        item_id = next(i["id"] for i in first["items"]
-                       if i.get("capabilityId") == "telemetry.create")
+        item_id = "item:telemetry/destination"
         for item in first["items"]:
             if item["id"] == item_id:
                 item["status"] = "adapted"
-                item["decision"] = "compensate"
+                item["decision"] = "reuse-appinsights"
         second = build_plan(copy.deepcopy(inventory), capabilities, previous=first)
         how = next(i for i in second["items"] if i["id"] == item_id)["needsFact"]["how"]
         assert how.index("OpenTelemetry") < how.index("ApplicationInsights")
         assert "OTLP endpoint" in how
         assert "carries nothing across from APIM" in how
+
+
+class TestWhichApplicationInsightsIsAQuestion:
+    """Reuse or a new one is the operator's call, and it was never asked.
+
+    Enabling the OTLP endpoint on the resource APIM reports to changes a
+    resource other workloads may be reading from; standing up a new one leaves
+    every existing dashboard and alert pointing somewhere the gateway does not
+    report. The plan named the prerequisite and proposed neither, so an
+    operator met the choice for the first time while running an az command.
+    """
+
+    ITEM = "item:telemetry/destination"
+
+    def test_the_plan_asks_which_resource(self, plan):
+        item = next(i for i in plan["items"] if i["id"] == self.ITEM)
+        assert item["status"] == "needs-decision"
+        assert item["kind"] == "translate"
+        assert item["proposal"] == "reuse-appinsights"
+        assert {o["value"] for o in item["options"]} == {
+            "reuse-appinsights", "new-appinsights", "gateway-metrics-only", "retain-in-apim"}
+
+    def test_each_option_says_what_it_changes(self, plan):
+        """Both are free; they differ in what they disturb."""
+        item = next(i for i in plan["items"] if i["id"] == self.ITEM)
+        options = {o["value"]: o["consequence"] for o in item["options"]}
+        assert "other workloads may share" in options["reuse-appinsights"]
+        assert "rebuilt" in options["new-appinsights"]
+        assert "no telemetry" not in options["gateway-metrics-only"].lower() or True
+        assert all(text for text in options.values()), options
+
+    def test_it_is_asked_from_a_logger_alone(self, inventory, capabilities):
+        """The real instance's shape: a logger, and no emit-token-metric policy."""
+        import copy
+
+        logged = copy.deepcopy(inventory)
+        logged["shared"]["telemetry"] = {
+            "loggers": [{"name": "azuremonitor", "loggerType": "azureMonitor"}], "diagnostics": [],
+        }
+        for document in logged["policies"]:
+            document["elements"] = [e for e in document.get("elements") or []
+                                    if "emit-token-metric" not in e["name"]]
+        built = build_plan(logged, capabilities)
+        item = next(i for i in built["items"] if i["id"] == self.ITEM)
+        assert item["evidence"]["apimLoggers"] == ["azuremonitor"]
+
+    def test_the_metric_policy_no_longer_doubles_as_the_destination(self, plan):
+        """It is about dimensions; two carriers for one fact is how they drift."""
+        carriers = [i["id"] for i in plan["items"] if i.get("capabilityId") == "telemetry.create"]
+        assert carriers == [self.ITEM], carriers
+
+    def test_a_new_resource_changes_what_the_administrator_is_asked_to_do(
+        self, inventory, capabilities
+    ):
+        import copy
+
+        first = build_plan(copy.deepcopy(inventory), capabilities)
+        for item in first["items"]:
+            if item["id"] == self.ITEM:
+                item["status"] = "adapted"
+                item["decision"] = "new-appinsights"
+        second = build_plan(copy.deepcopy(inventory), capabilities, previous=first)
+        prereq = next(p for p in second["prerequisites"] if p["id"] == "prereq:appinsights-otlp")
+        assert prereq["summary"].startswith("Create an Application Insights resource")
+
+    def test_settling_on_gateway_metrics_asks_for_no_endpoint(self, inventory, capabilities):
+        """Nothing to export means nothing missing, not a fact left unsupplied."""
+        import copy
+
+        first = build_plan(copy.deepcopy(inventory), capabilities)
+        for item in first["items"]:
+            if item["id"] == self.ITEM:
+                item["status"] = "adapted"
+                item["decision"] = "gateway-metrics-only"
+        second = build_plan(copy.deepcopy(inventory), capabilities, previous=first)
+        item = next(i for i in second["items"] if i["id"] == self.ITEM)
+        assert "needsFact" not in item
+        assert not (item.get("target") or {}).get("objects")

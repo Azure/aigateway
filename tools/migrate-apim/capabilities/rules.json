@@ -304,8 +304,6 @@
         ]
       },
       "verdict": "partial",
-      "capabilityId": "telemetry.create",
-      "target": "telemetryExporter",
       "itemKind": "accept-loss",
       "options": [
         "accept",
@@ -313,7 +311,7 @@
         "retain-in-apim"
       ],
       "proposal": "accept",
-      "rationale": "Token metrics are emitted by the gateway, but custom dimensions do not carry over one for one."
+      "rationale": "Token metrics are emitted by the gateway, but custom dimensions do not carry over one for one. Where the telemetry goes is a separate decision, on the telemetry destination item."
     },
     {
       "match": {
@@ -541,6 +539,21 @@
       "blocking": true,
       "cannotAccept": true,
       "rationale": "A control-plane read failed, so this is unknown rather than absent. Unknown coverage cannot be accepted as an acceptable loss."
+    },
+    {
+      "match": {
+        "kind": "telemetry"
+      },
+      "itemKind": "translate",
+      "capabilityId": "telemetry.create",
+      "options": [
+        "reuse-appinsights",
+        "new-appinsights",
+        "gateway-metrics-only",
+        "retain-in-apim"
+      ],
+      "proposal": "reuse-appinsights",
+      "rationale": "APIM reports to Azure Application Insights and the gateway exports OpenTelemetry. The only surface both support is the OTLP endpoint on an Application Insights resource, which an administrator has to enable. So the question is which resource that is: the one APIM already reports to, or a new one for the gateway alone."
     }
   ]
 }

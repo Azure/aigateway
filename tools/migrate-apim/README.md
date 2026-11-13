@@ -801,13 +801,26 @@ one who has to decide whether that matters.
 
 **Telemetry has exactly one path between the two products, and it is gated.** APIM reports to
 Azure Application Insights; AI Gateway exports through OpenTelemetry. The only surface both
-support is the **OTLP endpoint on the Application Insights resource**, which is off until an
-administrator enables it — on the existing resource, or on a new one created with it enabled. So a
-plan whose source reports telemetry carries `prereq:appinsights-otlp`, and the decision guidance
-leads with the OpenTelemetry exporter kind pointed at that endpoint. The `ApplicationInsights`
-exporter kind is accepted by the command and carries nothing across from APIM, which is why it is
-not the proposal. Neither inventory states this: an APIM logger records no destination the gateway
-could consume, so without it on the plan the mapping reads as impossible rather than merely gated.
+support is the **OTLP endpoint on an Application Insights resource**, which is off until an
+administrator enables it. The `ApplicationInsights` exporter kind is accepted by the command and
+carries nothing across from APIM, which is why it is never the proposal. Neither inventory states
+any of this: an APIM logger records no destination the gateway could consume, so without it on the
+plan the mapping reads as impossible rather than merely gated.
+
+**Which resource is a question, not a prerequisite.** `item:telemetry/destination` asks it of any
+source that reports telemetry — a logger, an `emit-token-metric` policy, or both — because the two
+answers differ in what they disturb rather than in what they cost. Reusing the resource APIM
+reports to keeps both products' telemetry in one place and changes a resource other workloads may
+be reading; a new one leaves everything shared alone and every existing dashboard and alert
+pointing where the gateway does not report. `gateway-metrics-only` and `retain-in-apim` are the
+other two. The answer decides what `prereq:appinsights-otlp` then asks the administrator to do —
+enable the endpoint, or create a resource with it enabled — and the exporter is built from the
+OTLP endpoint the settled decision carries.
+
+The `emit-token-metric` policy item is about its **dimensions**, which do not carry over one for
+one, and nothing else: it stopped doubling as the destination's carrier, because an instance with
+a logger and no such policy had nothing to settle at all, and two carriers for one fact is how
+they drift apart.
 
 **`keys` creates nothing unless asked.** `entra-rbac` — the proposal — creates no key at all, and
 only `gateway-key-per-consumer` shapes one gateway key per APIM subscription, carrying the name and

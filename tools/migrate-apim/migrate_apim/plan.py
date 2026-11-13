@@ -28,6 +28,9 @@ GENERATOR_VERSION = "0.1.0"
 READY = "ready"
 NEEDS_DECISION = "needs-decision"
 ADAPTED = "adapted"
+
+# The one item that decides where gateway telemetry reports.
+_TELEMETRY_ITEM = "item:telemetry/destination"
 EXCLUDED = "excluded"
 STALE = "stale"
 
@@ -970,6 +973,45 @@ class PlanBuilder:
                 blocking=True,
             )
 
+        if self._reports_telemetry():
+            rule = rules.get("telemetry") or {}
+            loggers = [
+                logger.get("name") for logger in
+                ((self.inventory.get("shared") or {}).get("telemetry") or {}).get("loggers") or []
+            ]
+            self._add(
+                item_id=_TELEMETRY_ITEM,
+                source={"assetId": None, "assetKind": "telemetry", "aspect": "destination"},
+                kind=rule.get("itemKind", "translate"),
+                verdict="partial",
+                capability_id="telemetry.create",
+                proposal=rule.get("proposal", "reuse-appinsights"),
+                rationale=rule.get("rationale", ""),
+                # Spelled out, because the two differ in what they change rather
+                # than in what they cost: one touches a resource other workloads
+                # may be reading, the other leaves every existing dashboard
+                # pointing at a gateway that no longer reports to it.
+                options=[
+                    _opt("reuse-appinsights",
+                         "Enable the OTLP endpoint on the Application Insights resource APIM "
+                         "already reports to. Both products' telemetry stays in one place, and "
+                         "enabling it changes a resource other workloads may share."),
+                    _opt("new-appinsights",
+                         "Create an Application Insights resource with the OTLP endpoint enabled, "
+                         "for the gateway alone. Nothing shared changes; existing dashboards and "
+                         "alerts do not cover the gateway until they are rebuilt."),
+                    _opt("gateway-metrics-only",
+                         "No exporter. The gateway's own metrics are the only telemetry, and "
+                         "nothing reports into Application Insights."),
+                    _opt("retain-in-apim",
+                         "Keep this workload on APIM, reporting as it does now."),
+                ],
+                evidence={"apimLoggers": loggers},
+                target=_objects_or_none("telemetry.create",
+                                        self._telemetry_objects(_TELEMETRY_ITEM)),
+                blocking=False,
+            )
+
         for name, kind in (("certificates", "certificates"), ("credentialProviders", "credentialProviders")):
             entries = shared.get(name) or []
             if not entries:
@@ -1041,7 +1083,14 @@ class PlanBuilder:
             for logger in telemetry.get("loggers") or []
         ):
             return True
-        return any(item.get("capabilityId") == "telemetry.create" for item in self.items)
+        # Read from the source rather than from the items built so far: the item
+        # this answers for is one of them, and asking about itself decided it
+        # would not exist.
+        return any(
+            "emit-token-metric" in (element.get("name") or "")
+            for document in self.inventory.get("policies") or []
+            for element in document.get("elements") or []
+        )
 
     def _manual_prerequisites(self) -> None:
         """Steps the tool cannot perform, surfaced before anything is executed."""
@@ -1098,6 +1147,8 @@ class PlanBuilder:
                 "owner": "azure-administrator",
                 "commands": [],
                 "summary": (
+                    "Create an Application Insights resource with the OTLP endpoint enabled"
+                    if self._settled_value(_TELEMETRY_ITEM) == "new-appinsights" else
                     "Enable the OTLP endpoint on the Application Insights resource APIM reports to"
                 ),
                 # The one fact that makes this mapping possible, and it is in
@@ -1168,9 +1219,9 @@ class PlanBuilder:
     ) -> dict[str, Any]:
         """Shape the objects a policy item is applied from.
 
-        Three target shapes, because the gateway has three: a per-model policy,
-        one gateway-wide baseline on the default workspace, and a telemetry
-        exporter whose destination is in neither the policy nor the gateway.
+        Two shapes, because the gateway holds policy in two places: on a model
+        registration, and as one baseline on the default workspace. Telemetry is
+        neither -- where it reports is its own decision, on its own item.
         """
         target_type = rule.get("target")
         if not target_type or rule["verdict"] == "gap":
@@ -1178,19 +1229,18 @@ class PlanBuilder:
         capability_id = rule.get("capabilityId")
         if capability_id == "model.policy":
             objects = self._per_model_objects(target_type, members)
-        elif capability_id == "telemetry.create":
-            objects = self._telemetry_objects(item_id)
         else:
             objects = self._baseline_object(target_type, members)
-        return {"capability": capability_id, "objects": objects} if objects else {}
+        return _objects_or_none(capability_id, objects)
 
     def _telemetry_objects(self, item_id: str) -> list[dict[str, Any]]:
-        """An exporter, once the operator has said where it sends.
+        """An exporter, once the operator has named the resource and its endpoint.
 
-        `emit-token-metric` names dimensions, not a destination -- APIM's own
-        sink is a logger on the service, which does not come with the policy.
-        So there is nothing to build until the decision carries one, and
-        `accept` means the gateway's own telemetry is enough: no exporter at all.
+        Two things have to be settled and only one of them is a choice: which
+        Application Insights resource gateway telemetry reports to, and the OTLP
+        endpoint it exposes once an administrator has enabled it. Neither is in
+        APIM -- its logger records a sink the gateway cannot consume -- so there
+        is nothing to build until the decision carries the endpoint itself.
         """
         decision = self._settled(item_id) or {}
         kind = decision.get("kind")
@@ -1446,7 +1496,7 @@ class PlanBuilder:
         never created and the phase reports nothing amiss.
         """
         for item in items:
-            if item.get("capabilityId") != "telemetry.create":
+            if item["id"] != _TELEMETRY_ITEM:
                 continue
             if item.get("status") not in {READY, ADAPTED}:
                 continue
@@ -1454,7 +1504,7 @@ class PlanBuilder:
                 continue
             decision = item.get("decision")
             value = decision.get("value") if isinstance(decision, dict) else decision
-            if value != "compensate":
+            if value not in {"reuse-appinsights", "new-appinsights"}:
                 continue
             item["needsFact"] = {
                 "what": "where the exporter sends",
@@ -1847,6 +1897,11 @@ def _key_objects(subscriptions: list[dict[str, Any]]) -> list[dict[str, Any]]:
             },
         })
     return objects
+
+
+def _objects_or_none(capability_id: str | None, objects: list[dict[str, Any]]) -> dict[str, Any]:
+    """A target, or nothing at all when there is no object to apply."""
+    return {"capability": capability_id, "objects": objects} if objects else {}
 
 
 def _api_of(asset_id: str) -> str:
