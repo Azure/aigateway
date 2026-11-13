@@ -1,7 +1,7 @@
 {
   "name": "aigateway",
   "description": "Create, configure, manage, and build applications on Azure AI Gateway. Includes read-only developer integration, gateway administration, and local feedback packaging.",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "author": {
     "name": "Microsoft",
     "url": "https://www.microsoft.com"
@@ -11,11 +11,13 @@
     "./commands/build.md",
     "./commands/create.md",
     "./commands/manage.md",
+    "./commands/import.md",
     "./commands/feedback.md"
   ],
   "skills": [
     "./skills/use-ai-gateway/",
     "./skills/manage-ai-gateway/",
+    "./skills/import-apim/",
     "./skills/feedback-ai-gateway/"
   ]
 }

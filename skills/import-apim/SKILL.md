@@ -5,9 +5,24 @@ description: Migrate AI workloads from Azure API Management to Azure AI Gateway.
 
 # Migrate APIM AI workloads to Azure AI Gateway
 
-The tool is `tools/apim-import`. It does two jobs: inventory an APIM instance, and propose a
-migration plan. Your job is the third: work with the operator to adapt that plan, then execute it
-one object at a time.
+The tool does two jobs: inventory an APIM instance, and propose a migration plan. Your job is the
+third: work with the operator to adapt that plan, then execute it one object at a time.
+
+## Make the tool runnable first
+
+Resolve it in this order, and say which one you used:
+
+1. `apim-import` already on `PATH` — check with `apim-import --version`.
+2. The copy shipped with this plugin, under its root at `tools/apim-import`. In Claude Code that
+   root is `${CLAUDE_PLUGIN_ROOT}`.
+3. `tools/apim-import` in a clone of `github.com/Azure/aigateway`.
+
+It is a Python package with no runtime dependencies, needing 3.10 or later. `pip install -e <path>`
+installs the `apim-import` command; `python -m apim_import.cli` runs it from that directory without
+installing anything. Ask before installing into the operator's environment.
+
+If none of those resolve, say so and stop. Do not approximate the tool with `az` commands: the
+inventory's value is that it is complete and says where it is not, which a hand-rolled read is not.
 
 ```
 apim-import collect  --apim <name> -g <rg> -o inventory.json

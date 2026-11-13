@@ -10,9 +10,9 @@
       "name": "aigateway",
       "source": "./",
       "description": "Create, configure, and operate Azure AI Gateway resources, and discover and integrate their models and MCP tools.",
-      "version": "3.0.0",
+      "version": "3.1.0",
       "category": "development",
-      "keywords": ["ai-gateway", "agents", "mcp", "models", "azure", "integration", "management"],
+      "keywords": ["ai-gateway", "agents", "mcp", "models", "azure", "integration", "management", "migration", "apim"],
       "author": {
         "name": "Microsoft",
         "url": "https://www.microsoft.com"

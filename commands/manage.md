@@ -21,7 +21,8 @@ authorizes routine creates and updates. Follow the skill's specific confirmation
 gates for destructive/access changes, secret retrieval, OAuth initiation, and
 sensitive payload capture. Report unsupported CLI activities explicitly.
 
-Migrating an existing APIM workload is outside this plugin's scope. If the
-request is to assess, plan, or execute such a migration, say so instead of
-improvising one: do not read or convert `Microsoft.ApiManagement/service`
-configuration, and do not use management commands as a substitute.
+Migrating an existing APIM workload is a different job with its own command. If
+the request is to assess, plan, or execute such a migration, hand it to
+`/aigateway:import` rather than improvising one here: do not read or convert
+`Microsoft.ApiManagement/service` configuration, and do not use management
+commands as a substitute for the migration workflow.
