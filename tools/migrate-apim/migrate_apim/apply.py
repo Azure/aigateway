@@ -227,7 +227,11 @@ def preflight(plan: dict[str, Any], inventory: dict[str, Any], *, runner: Runner
     dangling = sorted({
         name
         for item in plan.get("items") or []
+        # Only what will become a step. A blocking finding about an item no
+        # phase will run stops a whole migration over work the operator was
+        # going to apply themselves anyway.
         if item.get("status") in {"ready", "adapted"}
+        and item.get("capabilityId") in AUTHORED_HERE
         for obj in (item.get("target") or {}).get("objects") or []
         for name in [obj.get("providerName")]
                     + [b.get("providerName") for b in obj.get("backendModels") or []]
@@ -245,7 +249,7 @@ def preflight(plan: dict[str, Any], inventory: dict[str, Any], *, runner: Runner
         capability_id = item.get("capabilityId")
         if (item.get("status") in {"ready", "adapted"} and capability_id
                 and (item.get("target") or {}).get("objects")
-                and capability_id not in _BUILDERS):
+                and capability_id not in AUTHORED_HERE):
             unbuildable.setdefault(capability_id, []).append(item["id"])
     if unbuildable:
         finding(
@@ -366,7 +370,7 @@ def steps_for(plan: dict[str, Any]) -> list[Step]:
         if not capability_id or not target.get("objects"):
             continue
         phase = PHASE_FOR_CAPABILITY.get(capability_id)
-        if not phase or capability_id not in _BUILDERS:
+        if not phase or capability_id not in AUTHORED_HERE:
             # Planned, but this tool cannot perform it. Surfaced by preflight as
             # manual work rather than becoming a step that fails at execution.
             continue
@@ -870,6 +874,160 @@ def _mcp_create(executor: Executor, step: Step, obj: dict[str, Any]) -> tuple[li
     ], [path])
 
 
+# What the counter decision means in the target's own terms. APIM partitions by
+# an arbitrary expression; the gateway partitions by these dimensions, or by
+# nothing at all -- one pooled counter for every caller.
+_COUNTER_DIMENSIONS: dict[str, list[str]] = {
+    "identity": ["identity"],
+    "ipaddress": ["ipAddress"],
+    "identity+ipaddress": ["identity", "ipAddress"],
+    "pooled": [],
+}
+
+
+def _counter_dimensions(obj: dict[str, Any]) -> list[str]:
+    """The counter dimensions this policy is applied with.
+
+    The decision governs. Without one the source counter key was a literal
+    rather than an expression, which is one counter for everyone -- pooled.
+    """
+    decision = str(obj.get("decision") or "").strip().lower()
+    if decision in _COUNTER_DIMENSIONS:
+        return _COUNTER_DIMENSIONS[decision]
+    if decision:
+        raise ApplyError(
+            f"{decision!r} is not a counter the target can partition by; expected one of "
+            + ", ".join(sorted(_COUNTER_DIMENSIONS))
+        )
+    return []
+
+
+def _model_policy_set(executor: Executor, step: Step, obj: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """One model's token limit.
+
+    The gateway holds this on a model registration, so the plan has already
+    expanded the source scope -- an API, a product, the service -- into one
+    object per model it covered.
+    """
+    if not obj.get("modelName") or not obj.get("providerName"):
+        raise ApplyError(
+            "this policy names no model registration to attach to. The plan expands a policy's "
+            "scope into the models it covers; re-plan from a current inventory."
+        )
+    if obj.get("type") != "tokenLimit":
+        raise ApplyError(
+            f"no model-policy mapping for a {obj.get('type')!r} policy; only tokenLimit is built here."
+        )
+    settings = obj.get("settings") or {}
+    count = settings.get("count")
+    if not count:
+        raise ApplyError("the plan supplies no token count for this policy")
+    argv = [
+        "az", "aigateway", "model", "policy", "set", *executor.target.selectors,
+        "--gateway-name", executor.target.name,
+        "-n", obj["modelName"], "--provider-name", obj["providerName"],
+        "--token-limit", str(count),
+        "--token-period", str(settings.get("period") or "minute"),
+    ]
+    dimensions = _counter_dimensions(obj)
+    if dimensions:
+        argv += ["--token-counter-key", *dimensions]
+    return argv + ["-o", "json"], []
+
+
+def _policy_set(executor: Executor, step: Step, obj: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """The gateway-wide baseline on the default workspace."""
+    settings = obj.get("settings") or {}
+    kind = obj.get("type")
+    scope = [*executor.target.selectors, "--gateway-name", executor.target.name]
+
+    def command(verb: str, *flags: str) -> tuple[list[str], list[str]]:
+        return ["az", "aigateway", "policy", verb, *scope, *flags, "-o", "json"], []
+
+    if kind == "requestRateLimit":
+        calls = settings.get("callsPerPeriod")
+        if not calls:
+            raise ApplyError("the plan supplies no call count for this rate limit")
+        flags = ["--calls-per-period", str(calls)]
+        if settings.get("periodSeconds"):
+            flags += ["--period-seconds", str(settings["periodSeconds"])]
+        for dimension in _counter_dimensions(obj):
+            flags += ["--rate-counter-key", dimension]
+        return command("set-rate-limit", *flags)
+    if kind == "tokenLimit":
+        count = settings.get("count")
+        if not count:
+            raise ApplyError("the plan supplies no token count for this policy")
+        flags = ["--token-limit", str(count),
+                 "--token-period", str(settings.get("period") or "minute")]
+        for dimension in _counter_dimensions(obj):
+            flags += ["--token-counter-key", dimension]
+        return command("set-token-limit", *flags)
+    if kind == "ipFilter":
+        ranges = settings.get("ranges") or []
+        if not ranges:
+            raise ApplyError(
+                "an IP filter with no addresses would allow or deny nothing; the plan carries no "
+                "ranges for it. Re-collect the inventory, or apply this one by hand."
+            )
+        return command("set-ip-filter", "--action",
+                       str(settings.get("action") or "allow").capitalize(),
+                       "--allowed-ips", *[str(entry) for entry in ranges])
+    raise ApplyError(f"no gateway-wide mapping for a {kind!r} policy")
+
+
+def _api_key_create(executor: Executor, step: Step, obj: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """A gateway data-plane key.
+
+    No value is imported or printed: APIM's key cannot move, so this creates a
+    new one and the caller is re-keyed from `api-key list-secrets`, which only
+    the operator runs.
+    """
+    if not obj.get("name"):
+        raise ApplyError("the plan supplies no name for this key")
+    argv = [
+        "az", "aigateway", "api-key", "create", *executor.target.selectors,
+        "--gateway-name", executor.target.name, "-n", obj["name"],
+    ]
+    if obj.get("displayName"):
+        argv += ["--display-name", str(obj["displayName"])]
+    return argv + ["-o", "json"], []
+
+
+def _telemetry_exporter_create(
+    executor: Executor, step: Step, obj: dict[str, Any]
+) -> tuple[list[str], list[str]]:
+    """A telemetry exporter on the default workspace.
+
+    The destination is never in APIM -- an `emit-token-metric` policy names
+    dimensions, not where they go -- so it comes from the settled decision.
+    """
+    kind = obj.get("kind")
+    if kind not in {"ApplicationInsights", "OpenTelemetry"}:
+        raise ApplyError(
+            f"{kind!r} is not a telemetry exporter kind; the decision must name "
+            "ApplicationInsights or OpenTelemetry and where it sends to."
+        )
+    settings = obj.get("settings") or {}
+    if not settings:
+        raise ApplyError(
+            "this exporter has no destination. APIM's metric policy names no sink, so the "
+            "connection string or OTLP endpoint has to be settled on the item first."
+        )
+    flag = "--application-insights" if kind == "ApplicationInsights" else "--open-telemetry"
+    # Through a file: a connection string carries an instrumentation key, and a
+    # scalar flag would put it in this machine's process list.
+    path = executor._json_file(settings)
+    argv = [
+        "az", "aigateway", "telemetry-exporter", "create", *executor.target.selectors,
+        "--gateway-name", executor.target.name, "-n", obj.get("name") or "appinsights",
+        "--kind", kind, flag, f"@{path}",
+    ]
+    if obj.get("payloadCapture") is not None:
+        argv += ["--payload-capture", "true" if obj["payloadCapture"] else "false"]
+    return argv + ["-o", "json"], [path]
+
+
 def _identity_choice(obj: dict[str, Any]) -> list[str]:
     """Which identity this step assigns, honouring a settled reuse decision."""
     decision = str(obj.get("decision") or "")
@@ -943,6 +1101,10 @@ _BUILDERS: dict[str, Callable[[Executor, Step, dict[str, Any]], tuple[list[str],
     "model.create": _model_create,
     "alias.create": _alias_set,
     "mcp.create": _mcp_create,
+    "model.policy": _model_policy_set,
+    "policy.update": _policy_set,
+    "key.create": _api_key_create,
+    "telemetry.create": _telemetry_exporter_create,
 }
 
 # What this tool can author, as opposed to what it knows a phase for. The
@@ -998,6 +1160,19 @@ _READERS: dict[str, Callable[[Executor, Step, dict[str, Any]], list[str]]] = {
     "mcp.create": lambda e, s, o: ["az", "aigateway", "mcp", "show", *e.target.selectors,
                                  "--gateway-name", e.target.name, "-n", o["name"],
                                  "-o", "json"],
+    # A model policy reads back on the model it was set on.
+    "model.policy": lambda e, s, o: ["az", "aigateway", "model", "show", *e.target.selectors,
+                                     "--gateway-name", e.target.name,
+                                     "--provider-name", o.get("providerName", ""),
+                                     "-n", o.get("modelName", ""), "-o", "json"],
+    "policy.update": lambda e, s, o: ["az", "aigateway", "policy", "list", *e.target.selectors,
+                                      "--gateway-name", e.target.name, "-o", "json"],
+    "key.create": lambda e, s, o: ["az", "aigateway", "api-key", "show", *e.target.selectors,
+                                   "--gateway-name", e.target.name, "-n", o["name"], "-o", "json"],
+    "telemetry.create": lambda e, s, o: [
+        "az", "aigateway", "telemetry-exporter", "show", *e.target.selectors,
+        "--gateway-name", e.target.name, "-n", o.get("name") or "appinsights", "-o", "json",
+    ],
 }
 
 

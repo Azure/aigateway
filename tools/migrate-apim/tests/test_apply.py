@@ -49,6 +49,26 @@ def settled(inventory):
     return plan
 
 
+@pytest.fixture
+def no_builder_for(monkeypatch):
+    """Simulate a capability this tool has no builder for.
+
+    Every capability the planner maps now has one, so the mechanism that
+    reports unbuilt work -- by-hand phases, the closing block, the plan's
+    `appliedByHand` -- has no natural instance left to exercise it. It still
+    has to work for the next capability the target grows before this tool
+    catches up.
+    """
+    from migrate_apim import apply as apply_mod
+
+    def drop(*capability_ids):
+        monkeypatch.setattr(
+            apply_mod, "AUTHORED_HERE",
+            frozenset(apply_mod.AUTHORED_HERE - set(capability_ids)),
+        )
+    return drop
+
+
 class _Runner:
     """A canned az. Records every argv and serves scripted replies."""
 
@@ -438,17 +458,14 @@ class TestVerificationIsRealNotNominal:
         # verification proves nothing about it.
         assert again.status != "verified" or runner.calls
 
-    def test_work_the_tool_cannot_perform_is_reported_not_silently_dropped(self, inventory, settled):
-        import migrate_apim.apply as mod
-
-        builder = mod._BUILDERS.pop("provider.create")
-        try:
-            codes = {f["code"] for f in preflight(settled, inventory)}
-            assert "notExecutable" in codes
-            # And it does not become a step that fails later.
-            assert not [s for s in steps_for(settled) if s.capability_id == "provider.create"]
-        finally:
-            mod._BUILDERS["provider.create"] = builder
+    def test_work_the_tool_cannot_perform_is_reported_not_silently_dropped(
+        self, inventory, settled, no_builder_for
+    ):
+        no_builder_for("provider.create")
+        codes = {f["code"] for f in preflight(settled, inventory)}
+        assert "notExecutable" in codes
+        # And it does not become a step that fails later.
+        assert not [s for s in steps_for(settled) if s.capability_id == "provider.create"]
 
     def test_a_step_referencing_an_uncreated_provider_blocks(self, inventory, settled):
         import copy
@@ -703,7 +720,12 @@ class TestVerificationThatChecksNothing:
 
 
 class TestAPhaseDeclaresWhatItLeavesBehind:
-    def test_work_with_no_builder_is_named_by_its_phase(self, settled, inventory):
+    def test_work_with_no_builder_is_named_by_its_phase(self, settled, inventory, no_builder_for):
+        # Read through the module: the fixture rebinds the attribute, so a name
+        # imported before it ran still points at the unpatched set.
+        from migrate_apim import apply as apply_mod
+
+        no_builder_for("model.policy", "policy.update")
         executor = Executor(settled, inventory, new_journal(settled), runner=_Runner())
         named = {e["capabilityId"] for phase in PHASES for e in executor.unperformable(phase)}
         planned = {
@@ -711,8 +733,8 @@ class TestAPhaseDeclaresWhatItLeavesBehind:
             if i.get("status") in {"ready", "adapted"} and i.get("capabilityId")
             and (i.get("target") or {}).get("objects")
         }
-        from migrate_apim.apply import _BUILDERS
-        assert named == {c for c in planned if c not in _BUILDERS}
+        assert named == {c for c in planned if c not in apply_mod.AUTHORED_HERE}
+        assert named, "the patched gap should leave something unperformable"
 
     def test_a_model_lookup_failure_is_not_reported_as_an_absent_model(self, settled, inventory):
         class _Denied:
@@ -811,9 +833,10 @@ class TestThePhaseChecklist:
                 journal["steps"].append({"itemId": step.item_id, "status": status, "detail": ""})
         return journal
 
-    def test_a_phase_of_nothing_but_manual_work_still_appears(self, settled):
+    def test_a_phase_of_nothing_but_manual_work_still_appears(self, settled, no_builder_for):
         # It has no steps, so --next-phase passes over it and nothing ever
         # reports it. Left off the list too, the work simply disappears.
+        no_builder_for("model.policy", "policy.update")
         manual = {e["phase"] for e in unperformable_for(settled)}
         assert manual, "the fixture should plan work this tool cannot perform"
         listed = summary.render_phases(self._journal(settled, {}), steps_for(settled),
@@ -959,10 +982,11 @@ class TestTheClosingPortalCheck:
         rendered = summary.render_journal(new_journal(settled), steps_for(settled), settled)
         assert "ai.gateway.azure.com" not in rendered, rendered
 
-    def test_the_closing_lines_name_work_nobody_applied(self, settled):
+    def test_the_closing_lines_name_work_nobody_applied(self, settled, no_builder_for):
         # `--next-phase` passes over a phase with no steps, so a plan whose
         # policies and keys phases hold only manual items ends with "No phases
         # remain" while none of it has happened. Said plainly, above the link.
+        no_builder_for("model.policy", "policy.update")
         journal = new_journal(settled)
         for step in steps_for(settled):
             journal["steps"].append({"itemId": step.item_id, "status": "verified", "detail": ""})
@@ -986,9 +1010,11 @@ class TestTheClosingPortalCheck:
         assert "not applied" not in closing, closing
 
     def test_a_real_run_ending_with_manual_work_prints_the_whole_block(
-        self, settled, inventory, tmp_path, monkeypatch, capsys
+        self, settled, inventory, tmp_path, monkeypatch, capsys, no_builder_for
     ):
         import copy
+
+        no_builder_for("model.policy", "policy.update")
 
         # The gateway step plus every by-hand item: the run finishes in the
         # gateway phase while policies and keys hold work with no builder, which
@@ -1053,3 +1079,126 @@ class TestPreflightAsksForTheList:
         cli.main(["apply", "--plan", str(plan_path), "--inventory", str(inventory_path),
                   "--journal", str(tmp_path / "journal.json"), "--next-phase"])
         assert "task list" not in capsys.readouterr().err
+
+
+class TestPolicyAndKeyBuilders:
+    """The phases that used to run no steps at all.
+
+    A migration reported "No phases remain" with the token limits never set,
+    because `policies` and `keys` held items nothing could build. These are the
+    argv shapes those builders produce.
+    """
+
+    def _build(self, settled, inventory, capability, obj, decision=None):
+        from migrate_apim.apply import Step
+
+        executor = Executor(settled, inventory, new_journal(settled), runner=_Runner())
+        step = Step(item_id="item:test", capability_id=capability,
+                    phase=PHASE_FOR_CAPABILITY[capability], objects=[obj])
+        argv, files = executor._build(step, {**obj, **({"decision": decision} if decision else {})})
+        for path in files:
+            import os
+            os.unlink(path)
+        return argv
+
+    # -- model policy ---------------------------------------------------
+
+    def _token_limit(self, **overrides):
+        return {"type": "tokenLimit", "modelName": "gpt-4o", "providerName": "aoai-east",
+                "settings": {"count": "10000"}, **overrides}
+
+    def test_a_token_limit_is_set_on_one_model_of_one_provider(self, settled, inventory):
+        argv = self._build(settled, inventory, "model.policy", self._token_limit(),
+                           decision="identity")
+        assert argv[:5] == ["az", "aigateway", "model", "policy", "set"]
+        assert argv[argv.index("-n") + 1] == "gpt-4o"
+        assert argv[argv.index("--provider-name") + 1] == "aoai-east"
+        assert argv[argv.index("--token-limit") + 1] == "10000"
+        # APIM's attribute is tokens-per-minute, so the period is not a guess.
+        assert argv[argv.index("--token-period") + 1] == "minute"
+
+    def test_the_counter_comes_from_the_settled_decision(self, settled, inventory):
+        argv = self._build(settled, inventory, "model.policy", self._token_limit(),
+                           decision="identity+ipAddress")
+        dimensions = argv[argv.index("--token-counter-key") + 1:]
+        assert dimensions[:2] == ["identity", "ipAddress"], argv
+        # One flag, many values: repeating it keeps only the last.
+        assert argv.count("--token-counter-key") == 1, argv
+
+    def test_pooled_sends_no_counter_at_all(self, settled, inventory):
+        """One counter for everyone is the absence of a dimension, not a value."""
+        argv = self._build(settled, inventory, "model.policy", self._token_limit(),
+                           decision="pooled")
+        assert "--token-counter-key" not in argv, argv
+
+    def test_a_counter_the_target_cannot_partition_by_is_refused(self, settled, inventory):
+        with pytest.raises(ApplyError, match="not a counter"):
+            self._build(settled, inventory, "model.policy", self._token_limit(),
+                        decision="@(context.Subscription.Id)")
+
+    def test_a_policy_with_no_model_is_refused_rather_than_guessed(self, settled, inventory):
+        obj = self._token_limit()
+        obj.pop("modelName")
+        with pytest.raises(ApplyError, match="no model registration"):
+            self._build(settled, inventory, "model.policy", obj, decision="identity")
+
+    # -- gateway-wide baseline ------------------------------------------
+
+    def test_a_rate_limit_becomes_the_gateway_baseline(self, settled, inventory):
+        argv = self._build(settled, inventory, "policy.update",
+                           {"type": "requestRateLimit",
+                            "settings": {"callsPerPeriod": "60", "periodSeconds": "60"}},
+                           decision="identity")
+        assert argv[:4] == ["az", "aigateway", "policy", "set-rate-limit"]
+        assert argv[argv.index("--calls-per-period") + 1] == "60"
+        assert argv[argv.index("--period-seconds") + 1] == "60"
+
+    def test_an_ip_filter_carries_its_ranges(self, settled, inventory):
+        argv = self._build(settled, inventory, "policy.update",
+                           {"type": "ipFilter",
+                            "settings": {"action": "allow",
+                                         "ranges": ["10.0.0.0-10.0.0.255", "192.168.1.1"]}})
+        assert argv[:4] == ["az", "aigateway", "policy", "set-ip-filter"]
+        assert argv[argv.index("--action") + 1] == "Allow"
+        assert argv[argv.index("--allowed-ips") + 1:argv.index("-o")] == \
+            ["10.0.0.0-10.0.0.255", "192.168.1.1"]
+
+    def test_an_ip_filter_with_no_ranges_refuses_rather_than_allowing_nothing(
+        self, settled, inventory
+    ):
+        """An empty allow-list is not a filter; it is an outage."""
+        with pytest.raises(ApplyError, match="no addresses"):
+            self._build(settled, inventory, "policy.update",
+                        {"type": "ipFilter", "settings": {"action": "allow"}})
+
+    # -- keys and telemetry ---------------------------------------------
+
+    def test_a_key_is_created_by_name_and_never_carries_a_value(self, settled, inventory):
+        argv = self._build(settled, inventory, "key.create",
+                           {"name": "developers", "displayName": "All APIs subscription"})
+        assert argv[:4] == ["az", "aigateway", "api-key", "create"]
+        assert argv[argv.index("-n") + 1] == "developers"
+        # APIM's key cannot move. Anything that looked like one being carried
+        # across would be a value this tool invented.
+        assert not any(flag in argv for flag in ("--value", "--primary-key", "--secondary-key"))
+
+    def test_a_telemetry_exporter_sends_its_destination_through_a_file(self, settled, inventory):
+        argv = self._build(settled, inventory, "telemetry.create",
+                           {"name": "appinsights", "kind": "ApplicationInsights",
+                            "settings": {"connectionString": "InstrumentationKey=00000000"}})
+        assert argv[:4] == ["az", "aigateway", "telemetry-exporter", "create"]
+        value = argv[argv.index("--application-insights") + 1]
+        # A connection string carries an instrumentation key, so it goes the way
+        # every other credential does: a 0600 file, never a scalar flag.
+        assert value.startswith("@"), argv
+        assert "InstrumentationKey" not in " ".join(argv)
+
+    def test_an_exporter_with_nowhere_to_send_is_refused(self, settled, inventory):
+        with pytest.raises(ApplyError, match="no destination"):
+            self._build(settled, inventory, "telemetry.create",
+                        {"name": "appinsights", "kind": "ApplicationInsights", "settings": {}})
+
+    def test_every_builder_has_a_reader(self):
+        from migrate_apim.apply import _BUILDERS, _READERS
+
+        assert sorted(set(_BUILDERS) - set(_READERS)) == []

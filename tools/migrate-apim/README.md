@@ -648,13 +648,20 @@ phase it would have belonged to and the command that does it:
 }
 ```
 
-Today that is `model.policy`, `policy.update`, `key.create` and `telemetry.create` — the `policies`
-and `keys` phases in full. It is said on the item, in the plan summary under **Applied by hand**
-rather than counted as ready to execute, on an unsettled item's rationale while the decision is
-still open (choosing counter semantics for a policy nobody will author is wasted work), and again
-by `apply` as a `by hand` phase. One predicate produces all four, because the plan counting an item
-as ready while a phase ran no step for it is exactly how this went unnoticed: the migration ended,
-the policies were not there, and nothing in the run had said so.
+Nothing carries it today — every capability the planner maps is built — and the machinery stays
+because the target grows faster than this tool does. When something does, it is said on the item,
+in the plan summary under **Applied by hand** rather than counted as ready to execute, on an
+unsettled item's rationale while the decision is still open (choosing counter semantics for a
+policy nobody will author is wasted work), and again by `apply` as a `by hand` phase. One predicate
+produces all four, because the plan counting an item as ready while a phase ran no step for it is
+exactly how this went unnoticed once: the migration ended, the policies were not there, and nothing
+in the run had said so.
+
+**A fourth case, and the quietest.** A decision can commit to work whose facts the answer does not
+carry — `compensate` on a metrics policy means "send them elsewhere", and nowhere in APIM says
+where, because its own sink is a logger on the service rather than part of the policy. Settled and
+left at that, no exporter is created and the phase reports nothing amiss. That is `needsFact` on
+the item, naming what is missing and the shape of the answer.
 
 There is deliberately no `identify` kind. If a provider or protocol cannot be identified, that is a
 collector gap to fix — see the governing rule below.
@@ -750,9 +757,33 @@ Phase models -- EXECUTING
 > models       pending    (4 steps) (rehearsed)
   aliases      pending    (2 steps)
   toolServers  pending    (2 steps)
-  policies     by hand    (0 steps, 3 by hand)
-  keys         by hand    (0 steps, 1 by hand)
+  policies     pending    (3 steps)
+  keys         pending    (0 steps)
 ```
+
+### What the last two phases apply
+
+**`policies` writes two different things**, because the gateway holds policy in two places. A token
+limit lives on a *model registration*, so an APIM policy scoped to an API, a product or the service
+is expanded at planning time into one object per model it covered — one object is one
+`az aigateway model policy set`. Policies batch by counter key, so a batch can hold two limits with
+different ceilings; each member keeps its own. On a real instance that was 10000/minute on one API
+and 1000 on another, and shaping only the first member applied one ceiling to both.
+
+A rate limit or an IP filter has no per-model equivalent: `az aigateway policy set-*` writes the
+default workspace, of which there is one. Several source policies therefore collapse into a single
+baseline, and the **strictest** is proposed — never more permissive than anything the source
+enforced — with every variant recorded in `collapsedFrom` on the object. Taking the first one was
+as likely to pick the loosest as the tightest.
+
+The counter itself comes from the settled decision: `identity`, `ipAddress`, `identity+ipAddress`,
+or `pooled`, which is the absence of a dimension rather than a value for it. APIM partitions by an
+arbitrary expression and the target does not, which is why this is a decision and not a mapping.
+
+**`keys` creates nothing unless asked.** `entra-rbac` — the proposal — creates no key at all, and
+only `gateway-key-per-consumer` shapes one gateway key per APIM subscription, carrying the name and
+not the value. No APIM key crosses: the service will not hand it over and the gateway will not take
+one, so every caller is re-keyed from `api-key list-secrets`, which only the operator runs.
 
 **`--preflight` also asks for a list to be kept**, once, under the phases it just printed: one entry
 per phase, ticked from what a run prints. A migration runs one phase per invocation over as many
@@ -870,7 +901,15 @@ The emitted OpenAPI export recipe was executed to confirm it returns a usable do
 Gateway target shapes were read from live `Microsoft.ApiManagement/aigateways` resources at API
 version `2026-09-01-preview`.
 
-Not yet exercised against live configuration, and therefore the first things to re-check:
+The `policies` and `keys` builders — `model.policy`, `policy.update`, `key.create`,
+`telemetry.create` — were planned and rehearsed end to end against `a365-bugbash-v2` and the
+gateway migrated from it, which produced three `model policy set` commands carrying each API's own
+ceiling. Every argv they build was checked against the installed extension's own parser. **None of
+the four has had its write executed against a live gateway yet**, so the read-back shapes their
+verification compares against are the first thing to re-check: a step that writes correctly and
+cannot be read back reports `unverified`, not `failed`.
+
+Not otherwise exercised against live configuration, and therefore the next things to re-check:
 self-hosted gateways, backend pools in production shapes, workspace-scoped products and
 subscriptions, an A2A agent hosted outside Foundry, `apiFormat` values other than
 `anthropic-messages`, and non-Azure providers whose model catalogue needs `resolve-models`.

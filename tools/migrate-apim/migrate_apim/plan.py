@@ -92,6 +92,11 @@ class PlanBuilder:
             return decision if isinstance(decision, dict) else {"value": decision}
         return None
 
+    def _settled_value(self, item_id: str) -> Any:
+        """The scalar a previous run settled, for an item answered with one."""
+        settled = self._settled(item_id)
+        return settled.get("value") if settled else None
+
     # ------------------------------------------------------------- build
 
     def build(self) -> dict[str, Any]:
@@ -113,6 +118,7 @@ class PlanBuilder:
         merged, orphaned = self._merge_with_previous(self.items)
         self._check_buildable(merged)
         self._check_produces(merged)
+        self._check_supplied(merged)
         self._mark_by_hand(merged)
         # Defects in this tool, not decisions for the operator. They are carried
         # on the plan so that whoever reads it sees work that will not happen,
@@ -874,6 +880,9 @@ class PlanBuilder:
                 batch["members"].append({
                     "policyId": document["id"],
                     "scope": document.get("scope", {}).get("level"),
+                    # The level alone cannot say which models a policy covers:
+                    # an api-scoped limit on one API is not a limit on the rest.
+                    "scopeName": document.get("scope", {}).get("name"),
                     "path": element["path"],
                     "element": element["name"],
                     "attributes": element.get("attributes") or {},
@@ -908,7 +917,8 @@ class PlanBuilder:
                     "occurrences": len(members),
                     "members": members,
                 },
-                target=_policy_target(rule, members),
+                target=self._policy_target(
+                    rule, members, item_id=ids.item("policy", signature)),
                 blocking=rule["verdict"] == "gap",
             )
 
@@ -948,6 +958,14 @@ class PlanBuilder:
                 rationale=rule.get("rationale", ""),
                 options=[_opt(value, "") for value in rule.get("options") or []],
                 evidence={"count": len(subscriptions), "scopeLevels": scopes},
+                # Only one of the options makes keys. Settled on Entra RBAC or on
+                # staying in APIM, this item is a decision with nothing to build,
+                # and objects shaped for it would be keys nobody asked for.
+                target=(
+                    {"capability": "key.create", "objects": _key_objects(subscriptions)}
+                    if self._settled_value(ids.item("access", "subscriptions"))
+                    == "gateway-key-per-consumer" else {}
+                ),
                 blocking=True,
             )
 
@@ -1105,6 +1123,210 @@ class PlanBuilder:
 
     # ------------------------------------------------------------- merge
 
+    # ------------------------------------------------------- policy targets
+
+    def _policy_target(
+        self, rule: dict[str, Any], members: list[dict[str, Any]], *, item_id: str
+    ) -> dict[str, Any]:
+        """Shape the objects a policy item is applied from.
+
+        Three target shapes, because the gateway has three: a per-model policy,
+        one gateway-wide baseline on the default workspace, and a telemetry
+        exporter whose destination is in neither the policy nor the gateway.
+        """
+        target_type = rule.get("target")
+        if not target_type or rule["verdict"] == "gap":
+            return {}
+        capability_id = rule.get("capabilityId")
+        if capability_id == "model.policy":
+            objects = self._per_model_objects(target_type, members)
+        elif capability_id == "telemetry.create":
+            objects = self._telemetry_objects(item_id)
+        else:
+            objects = self._baseline_object(target_type, members)
+        return {"capability": capability_id, "objects": objects} if objects else {}
+
+    def _telemetry_objects(self, item_id: str) -> list[dict[str, Any]]:
+        """An exporter, once the operator has said where it sends.
+
+        `emit-token-metric` names dimensions, not a destination -- APIM's own
+        sink is a logger on the service, which does not come with the policy.
+        So there is nothing to build until the decision carries one, and
+        `accept` means the gateway's own telemetry is enough: no exporter at all.
+        """
+        decision = self._settled(item_id) or {}
+        kind = decision.get("kind")
+        settings = decision.get("applicationInsights") or decision.get("openTelemetry") or {}
+        if kind not in {"ApplicationInsights", "OpenTelemetry"} or not settings:
+            return []
+        return [{
+            "name": decision.get("name") or "appinsights",
+            "kind": kind,
+            "settings": settings,
+            "payloadCapture": decision.get("payloadCapture"),
+        }]
+
+    def _per_model_objects(
+        self, target_type: str, members: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """One object per model the source policy covers.
+
+        A token limit in APIM sits on an API, a product or the service; in the
+        gateway it sits on a model registration. So the scope has to be expanded
+        into the registrations this plan creates, and each gets its own object:
+        one object is one `model policy set`.
+
+        Batching is by counter key, so a batch can hold two limits with
+        different ceilings. Shaping only `members[0]` -- as this did -- applied
+        the first API's ceiling and silently dropped the rest.
+        """
+        objects: list[dict[str, Any]] = []
+        for member in members:
+            settings = _policy_settings(target_type, member)
+            registrations = self._registrations_in_scope(member)
+            scope = {"level": member.get("scope"), "name": member.get("scopeName")}
+            if not registrations:
+                # Nothing to attach it to. Recorded as an object that cannot be
+                # applied rather than dropped, so the item still says the policy
+                # existed and what became of it.
+                objects.append({
+                    "type": target_type, "settings": settings, "scope": scope,
+                    "configurationComplete": False,
+                    "incompleteReason": (
+                        f"No model registration in this plan falls under {scope['level']} "
+                        f"{scope['name']!r}, so there is nothing to carry the policy."
+                    ),
+                    "fullConfigurationAt": {
+                        "policyId": member.get("policyId"), "path": member.get("path")},
+                })
+                continue
+            for registration in registrations:
+                objects.append({
+                    "type": target_type,
+                    "modelName": registration["modelName"],
+                    "providerName": registration["providerName"],
+                    "settings": settings,
+                    "scope": scope,
+                    "configurationComplete": bool(settings),
+                    "fullConfigurationAt": {
+                        "policyId": member.get("policyId"), "path": member.get("path")},
+                })
+        return objects
+
+    def _baseline_object(
+        self, target_type: str, members: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """The one gateway-wide baseline several source policies have to become.
+
+        `az aigateway policy set-*` writes the default workspace, of which there
+        is one. Three APIs rate-limited separately in APIM cannot each keep
+        their own, so the strictest is proposed -- never more permissive than
+        anything the source enforced -- and every variant is recorded on the
+        object. Picking `members[0]` quietly made the first API's limit the
+        gateway's, which is as likely to be the loosest as the tightest.
+        """
+        if not members:
+            return []
+        shaped = [(member, _policy_settings(target_type, member)) for member in members]
+        strictest, settings = min(shaped, key=lambda pair: _strictness(target_type, pair[1]))
+        ranges = self._address_ranges(strictest) if target_type in _POLICY_NEEDS_CHILDREN else []
+        if ranges:
+            settings = {**settings, "ranges": ranges}
+        variants = [
+            {
+                "scope": {"level": member.get("scope"), "name": member.get("scopeName")},
+                "settings": member_settings,
+                "policyId": member.get("policyId"),
+            }
+            for member, member_settings in shaped
+        ]
+        complete = bool(settings) and (target_type not in _POLICY_NEEDS_CHILDREN or bool(ranges))
+        obj = {
+            "type": target_type,
+            "settings": settings,
+            "configurationComplete": complete,
+            "scope": {"level": "gateway", "name": "default"},
+            "fullConfigurationAt": {
+                "policyId": strictest.get("policyId"), "path": strictest.get("path")},
+        }
+        if not complete and target_type in _POLICY_NEEDS_CHILDREN:
+            obj["incompleteReason"] = (
+                f"`{strictest.get('element')}` keeps its addresses in child elements and none were "
+                "collected, so the baseline would be written with no ranges in it."
+            )
+        if len({json.dumps(v["settings"], sort_keys=True) for v in variants}) > 1:
+            # Said on the object, because this is the one place the collapse is
+            # visible: by the time it is a command it looks like one policy.
+            obj["collapsedFrom"] = variants
+            obj["collapseNote"] = (
+                f"{len(variants)} source policies at different scopes become one gateway-wide "
+                "baseline. The strictest is proposed; the others are recorded here."
+            )
+        return [obj]
+
+    def _registrations_in_scope(self, member: dict[str, Any]) -> list[dict[str, Any]]:
+        """The model registrations this plan creates under a policy's scope."""
+        level, name = member.get("scope"), member.get("scopeName")
+        apis = self._apis_in_scope(level, name)
+        out: list[dict[str, Any]] = []
+        for item in self.items:
+            if item.get("capabilityId") != "model.create":
+                continue
+            asset_id = (item.get("source") or {}).get("assetId") or ""
+            if apis is not None and _api_of(asset_id) not in apis:
+                continue
+            for obj in (item.get("target") or {}).get("objects") or []:
+                if obj.get("name"):
+                    out.append({"modelName": obj["name"], "providerName": obj.get("providerName")})
+        return out
+
+    def _apis_in_scope(self, level: str | None, name: str | None) -> set[str] | None:
+        """Which source APIs a policy scope covers, or None for all of them."""
+        if level in {"global", "service", None}:
+            return None
+        if level == "api":
+            return {name or ""}
+        if level == "workspace":
+            return {
+                _api_of((item.get("source") or {}).get("assetId") or "")
+                for item in self.items
+                if item.get("capabilityId") == "model.create"
+                and ((item.get("source") or {}).get("assetId") or "").split(":", 1)[-1]
+                .startswith(f"{name}/")
+            }
+        if level == "product":
+            for product in (self.inventory.get("shared") or {}).get("products") or []:
+                if product.get("name") == name or product.get("id") == name:
+                    return {ids.arm_name(api_id) for api_id in product.get("apiIds") or []}
+            return set()
+        return set()
+
+    def _address_ranges(self, member: dict[str, Any]) -> list[str]:
+        """CIDR ranges from the `<address-range>` children of an ip-filter.
+
+        The walker records children as elements of their own, so the ranges are
+        in the inventory -- under the parent's path, not on its attributes.
+        """
+        document = next(
+            (doc for doc in self.inventory.get("policies") or []
+             if doc.get("id") == member.get("policyId")), None
+        )
+        if not document:
+            return []
+        prefix = f"{member.get('path')}/"
+        ranges: list[str] = []
+        for element in document.get("elements") or []:
+            if not (element.get("path") or "").startswith(prefix):
+                continue
+            attributes = element.get("attributes") or {}
+            if element.get("name") == "address-range":
+                start, end = attributes.get("from"), attributes.get("to")
+                if start and end:
+                    ranges.append(f"{start}-{end}" if start != end else str(start))
+            elif element.get("name") == "address" and element.get("text"):
+                ranges.append(str(element["text"]))
+        return ranges
+
     def _mark_by_hand(self, items: list[dict[str, Any]]) -> None:
         """Say which settled work `apply` will leave for the operator.
 
@@ -1148,6 +1370,39 @@ class PlanBuilder:
                 + (f"`{command}` exists" if command else "the installed CLI exposes it")
                 + f", but `apply` has no builder, so the {phase} phase will run no step for it "
                 "and the operator applies it themselves."
+            )
+
+    def _check_supplied(self, items: list[dict[str, Any]]) -> None:
+        """A decision that commits to work the answer does not carry the facts for.
+
+        `compensate` on a metrics policy means "send them somewhere else", and
+        nowhere in APIM says where: its own sink is a logger on the service, not
+        part of the policy. Settled and left at that, the exporter is simply
+        never created and the phase reports nothing amiss.
+        """
+        for item in items:
+            if item.get("capabilityId") != "telemetry.create":
+                continue
+            if item.get("status") not in {READY, ADAPTED}:
+                continue
+            if (item.get("target") or {}).get("objects"):
+                continue
+            decision = item.get("decision")
+            value = decision.get("value") if isinstance(decision, dict) else decision
+            if value != "compensate":
+                continue
+            item["needsFact"] = {
+                "what": "where the exporter sends",
+                "how": (
+                    'Set `decision` to {"kind": "ApplicationInsights", "applicationInsights": '
+                    '{"connectionString": "..."}} or {"kind": "OpenTelemetry", "openTelemetry": '
+                    '{"endpoint": "..."}}. The connection string is read at apply time and never '
+                    "stored in the plan."
+                ),
+            }
+            item["rationale"] = (
+                f"{item['rationale']} Settled as `compensate`, but no destination was given, so "
+                "no exporter is created. The decision has to carry one."
             )
 
     def _check_buildable(self, items: list[dict[str, Any]]) -> None:
@@ -1479,32 +1734,64 @@ _POLICY_FIELDS: dict[str, dict[str, str]] = {
 _POLICY_NEEDS_CHILDREN = {"ipFilter"}
 
 
-def _policy_target(rule: dict[str, Any], members: list[dict[str, Any]]) -> dict[str, Any]:
-    """Shape the target policy object, and say when it is not complete.
+def _key_objects(subscriptions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One gateway key per APIM subscription that was carrying callers.
 
-    ipFilter keeps its CIDR ranges in ``<address-range>`` children, so the
-    attributes alone do not finish the object. Saying so beats emitting a
-    plausible-looking policy with no ranges in it.
+    The key *value* never crosses: APIM will not hand it over and the gateway
+    will not take one. So these are new keys with the old names, and every
+    caller is re-keyed from `api-key list-secrets`, which only the operator runs.
     """
-    target_type = rule.get("target")
-    if not target_type or rule["verdict"] == "gap":
-        return {}
+    objects = []
+    for entry in subscriptions:
+        name = _slug(entry.get("name") or "")
+        if not name:
+            continue
+        objects.append({
+            "name": name,
+            "displayName": entry.get("displayName") or entry.get("name"),
+            "replaces": {
+                "subscriptionId": entry.get("id"),
+                "scope": entry.get("scope"),
+                # Said on the object so it reaches the report: a key that is
+                # created is not a caller that still works.
+                "valueCarriedOver": False,
+            },
+        })
+    return objects
+
+
+def _api_of(asset_id: str) -> str:
+    """The source API name in a model asset id, workspace prefix removed."""
+    return (asset_id.split(":", 1)[-1]).rsplit("/", 1)[-1]
+
+
+# How strict one policy is against another of the same type, lowest first. Only
+# used to choose which of several source policies becomes the one gateway-wide
+# baseline, where the conservative choice is the one no source exceeded.
+def _strictness(target_type: str, settings: dict[str, Any]) -> tuple[float, float]:
+    def number(value: Any, default: float) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
+    if target_type == "tokenLimit":
+        return (number(settings.get("count"), float("inf")), 0.0)
+    if target_type == "requestRateLimit":
+        calls = number(settings.get("callsPerPeriod"), float("inf"))
+        period = number(settings.get("periodSeconds"), 1.0) or 1.0
+        # Calls per second, so 60/minute and 1/second rank as the same limit.
+        return (calls / period, calls)
+    return (0.0, 0.0)
+
+
+def _policy_settings(target_type: str, member: dict[str, Any]) -> dict[str, Any]:
     mapping = _POLICY_FIELDS.get(target_type, {})
-    first = members[0] if members else {}
-    settings = {
-        field: first.get("attributes", {}).get(attribute)
-        for attribute, field in mapping.items()
-        if first.get("attributes", {}).get(attribute) is not None
-    }
-    complete = bool(settings) and target_type not in _POLICY_NEEDS_CHILDREN
+    attributes = member.get("attributes") or {}
     return {
-        "capability": rule.get("capabilityId"),
-        "objects": [{
-            "type": target_type,
-            "settings": settings,
-            "configurationComplete": complete,
-            "fullConfigurationAt": {"policyId": first.get("policyId"), "path": first.get("path")},
-        }],
+        field: attributes.get(attribute)
+        for attribute, field in mapping.items()
+        if attributes.get(attribute) is not None
     }
 
 

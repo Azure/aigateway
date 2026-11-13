@@ -130,13 +130,16 @@ this". These come from the catalogue's `serviceOnly` list, and the honest outcom
 `accept-loss` plus a line in the final report telling the operator what to set by hand.
 
 An item carrying `appliedByHand` is a fourth: the gateway supports it, `az aigateway` exposes the
-command, and **this tool has no builder**, so `apply` will run no step for it. Today that is every
-`model.policy`, `policy.update`, `key.create` and `telemetry.create` item — the `policies` and
-`keys` phases entire. Say it while the item is still being settled, not afterwards: the decision is
-still worth recording, but the operator is choosing how *they* will configure it. Carry the
-`command` into the final report. Never report such an item as migrated, and do not quietly run the
-command yourself in its place — if the operator asks you to, that is a new agreement about writes,
-made with the commands in front of them.
+command, and **this tool has no builder**, so `apply` will run no step for it. Nothing carries it
+today, but the target grows faster than the tool does. Say it while the item is still being
+settled, not afterwards: the decision is still worth recording, but the operator is choosing how
+*they* will configure it. Carry the `command` into the final report, never report such an item as
+migrated, and do not quietly run the command yourself in its place — if the operator asks you to,
+that is a new agreement about writes, made with the commands in front of them.
+
+An item carrying `needsFact` is settled on something the answer does not supply. `compensate` on a
+metrics policy means "send them elsewhere" and APIM never says where, so no exporter is built and
+the phase reports nothing wrong. Go back to the operator for the fact, in the shape `how` names.
 
 ## 3. Execute
 
@@ -172,6 +175,14 @@ executing it** — a run without `--execute` prints the exact commands, which is
 operator. A rehearsal writes nothing and advances nothing, so rehearse the same phase you are about
 to execute; `--execute` refuses a phase you have not. Phases are `gateway → identity → providers → models → aliases → toolServers → policies →
 keys`; run one per turn, report what it produced, and stop before the next.
+
+**The `policies` phase writes two different things.** A token limit lands on each model
+registration the source policy's scope covered, one `model policy set` per model, each keeping its
+own ceiling. A rate limit or IP filter has no per-model form: the gateway holds one baseline on the
+default workspace, so several source policies collapse into one and the strictest is applied — say
+that when you report it, and name the variants in `collapsedFrom` that did not win. **`keys`
+creates nothing** unless the access item was settled on `gateway-key-per-consumer`, and even then
+no APIM key value crosses: every caller is re-keyed, which is a cutover task, not a migration step.
 
 If a step comes back `mutationUnknown`, the write was accepted but its outcome could not be
 established. Do not retry it. Re-running the phase reconciles it by reading the target.

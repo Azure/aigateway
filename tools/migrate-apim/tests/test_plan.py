@@ -894,12 +894,22 @@ class TestWorkThisToolCannotAuthor:
     to find out: the plan proposed `model.policy`, the operator settled it, the
     summary counted it ready, and the phase that was supposed to carry it ran no
     steps. The gateway supports it and so does the installed CLI -- only this
-    tool does not, and that is the plan's fact to state, not apply's to discover.
+    tool did not, and that is the plan's fact to state, not apply's to discover.
+
+    Every capability the planner maps is now built, so the gap here is a
+    simulated one. It is the next capability the target grows that this
+    protects, not a current hole.
     """
 
     @pytest.fixture
-    def settled(self, inventory, capabilities):
-        """A plan taken through the documented loop: settle, then re-run `plan`."""
+    def settled(self, inventory, capabilities, monkeypatch):
+        """A plan taken through the documented loop, with one builder removed."""
+        from migrate_apim import apply as apply_mod
+
+        monkeypatch.setattr(
+            apply_mod, "AUTHORED_HERE",
+            frozenset(apply_mod.AUTHORED_HERE - {"model.policy"}),
+        )
         first = build_plan(copy.deepcopy(inventory), capabilities)
         for item in first["items"]:
             if item["status"] == "needs-decision":
@@ -908,15 +918,15 @@ class TestWorkThisToolCannotAuthor:
         return build_plan(copy.deepcopy(inventory), capabilities, previous=first)
 
     def test_settled_work_with_no_builder_says_so_on_the_item(self, settled):
-        from migrate_apim.apply import AUTHORED_HERE, PHASE_FOR_CAPABILITY
+        from migrate_apim import apply as apply_mod
 
         unbuildable = [
             item for item in settled["items"]
-            if item.get("capabilityId") in PHASE_FOR_CAPABILITY
-            and item["capabilityId"] not in AUTHORED_HERE
+            if item.get("capabilityId") in apply_mod.PHASE_FOR_CAPABILITY
+            and item["capabilityId"] not in apply_mod.AUTHORED_HERE
             and (item.get("target") or {}).get("objects")
         ]
-        assert unbuildable, "the fixture should settle work this tool has no builder for"
+        assert unbuildable, "the fixture should settle work with no builder"
         for item in unbuildable:
             assert item.get("appliedByHand"), item["id"]
             assert "no builder" in item["appliedByHand"]["reason"]
@@ -929,15 +939,6 @@ class TestWorkThisToolCannotAuthor:
         # whoever reads this plan the reconstruction, not to guess at flags.
         assert item["appliedByHand"]["command"] == "az aigateway model policy set"
         assert item["appliedByHand"]["phase"] == "policies"
-
-    def test_an_unsettled_item_says_it_while_the_decision_is_still_open(self, plan):
-        """Choosing counter semantics for a policy nobody will author is wasted work."""
-        item = next(i for i in plan["items"]
-                    if i.get("capabilityId") == "model.policy"
-                    and i["status"] == "needs-decision")
-        assert "However this is settled" in item["rationale"], item["rationale"]
-        # Not the settled marker: which way it goes is still open.
-        assert "appliedByHand" not in item
 
     def test_an_item_this_tool_can_build_is_not_marked(self, settled):
         item = next(i for i in settled["items"] if i.get("capabilityId") == "model.create")
@@ -965,3 +966,174 @@ class TestWorkThisToolCannotAuthor:
 
         assert {e["itemId"] for e in unperformable_for(settled)} == \
             {i["id"] for i in settled["items"] if i.get("appliedByHand")}
+
+    def test_a_fully_buildable_plan_marks_nothing(self, inventory, capabilities):
+        """The state the tool is actually in today: nothing left for the operator."""
+        plan = build_plan(copy.deepcopy(inventory), capabilities)
+        for item in plan["items"]:
+            if item["status"] == "needs-decision":
+                item["status"] = "adapted"
+                item["decision"] = item["proposal"] or "accept"
+        rebuilt = build_plan(copy.deepcopy(inventory), capabilities, previous=plan)
+        assert [i["id"] for i in rebuilt["items"] if i.get("appliedByHand")] == []
+
+
+class TestPolicyTargetsAreApplied:
+    """Shaping a policy into something `apply` can actually run.
+
+    A real instance settled it: two `llm-token-limit` policies, one per API,
+    10000 and 1000. They batch into one item -- one decision about counter
+    semantics -- and shaping only the first member applied 10000 to everything
+    the second covered, or dropped it, depending on which came first.
+    """
+
+    @pytest.fixture
+    def policy_item(self, plan):
+        return next(i for i in plan["items"] if i.get("capabilityId") == "model.policy")
+
+    def test_a_token_limit_lands_on_each_model_its_scope_covered(self, policy_item):
+        objects = (policy_item.get("target") or {}).get("objects") or []
+        assert objects, "the fixture should plan a per-model token limit"
+        for obj in objects:
+            # One object is one `model policy set`, so each needs the model and
+            # the provider it is registered under.
+            assert obj["modelName"] and obj["providerName"], obj
+            assert obj["scope"]["level"] == "api"
+
+    def test_every_member_keeps_its_own_ceiling(self, inventory, capabilities):
+        """The bug: a batch of two limits applied one of them, twice."""
+        import copy
+
+        doubled = copy.deepcopy(inventory)
+        api_policies = [d for d in doubled["policies"]
+                        if (d.get("scope") or {}).get("level") == "api"]
+        assert len(api_policies) >= 2, "need two API-scoped policies to batch"
+        for index, document in enumerate(api_policies[:2]):
+            document["elements"].append({
+                "section": "inbound", "path": f"inbound/azure-openai-token-limit[{index + 1}]",
+                "name": "azure-openai-token-limit", "family": "tokenLimit", "depth": 1,
+                "attributes": {"tokens-per-minute": str(1000 * (index + 1)),
+                               "counter-key": "@(context.Subscription.Id)"},
+                "text": None, "expressionIds": ["expr:1"], "namedValueRefs": [], "childNames": [],
+            })
+        plan = build_plan(doubled, capabilities)
+        item = next(i for i in plan["items"] if i.get("capabilityId") == "model.policy")
+        counts = {obj["settings"]["count"] for obj in (item["target"] or {})["objects"]}
+        # Both injected ceilings, alongside the one the fixture already had.
+        assert {"1000", "2000"} <= counts, counts
+
+    def test_a_scope_with_no_models_says_so_instead_of_vanishing(self, inventory, capabilities):
+        import copy
+
+        orphaned = copy.deepcopy(inventory)
+        document = next(d for d in orphaned["policies"]
+                        if (d.get("scope") or {}).get("level") == "api")
+        document["scope"] = {"level": "api", "name": "an-api-that-registers-no-model"}
+        document["elements"].append({
+            "section": "inbound", "path": "inbound/azure-openai-token-limit[9]",
+            "name": "azure-openai-token-limit", "family": "tokenLimit", "depth": 1,
+            "attributes": {"tokens-per-minute": "50", "counter-key": "@(x)"},
+            "text": None, "expressionIds": ["expr:1"], "namedValueRefs": [], "childNames": [],
+        })
+        plan = build_plan(orphaned, capabilities)
+        item = next(i for i in plan["items"] if i.get("capabilityId") == "model.policy")
+        stranded = [o for o in (item["target"] or {})["objects"] if not o.get("modelName")]
+        assert stranded, "a policy covering nothing should still be in the plan"
+        assert stranded[0]["configurationComplete"] is False
+        assert "nothing to carry" in stranded[0]["incompleteReason"]
+
+
+class TestTheGatewayWideBaseline:
+    """One baseline, however many source policies.
+
+    `az aigateway policy set-*` writes the default workspace, of which there is
+    one. Several rate limits at several scopes cannot each keep their own.
+    """
+
+    def test_several_rate_limits_collapse_to_the_strictest(self, inventory, capabilities):
+        import copy
+
+        doubled = copy.deepcopy(inventory)
+        api_policies = [d for d in doubled["policies"]
+                        if (d.get("scope") or {}).get("level") == "api"]
+        for index, document in enumerate(api_policies[:2]):
+            document["elements"].append({
+                "section": "inbound", "path": f"inbound/rate-limit-by-key[{index + 5}]",
+                "name": "rate-limit-by-key", "family": "rateLimit", "depth": 1,
+                "attributes": {"calls": "600" if index else "60", "renewal-period": "60",
+                               "counter-key": "@(context.Subscription.Id)"},
+                "text": None, "expressionIds": ["expr:1"], "namedValueRefs": [], "childNames": [],
+            })
+        plan = build_plan(doubled, capabilities)
+        item = next(i for i in plan["items"] if i.get("capabilityId") == "policy.update"
+                    and (i["target"] or {}).get("objects", [{}])[0].get("type") == "requestRateLimit")
+        obj = item["target"]["objects"][0]
+        assert len(item["target"]["objects"]) == 1, "the gateway holds one baseline"
+        # Never more permissive than anything the source enforced.
+        assert obj["settings"]["callsPerPeriod"] == "60", obj
+        assert obj["collapsedFrom"], "the variants that lost have to be recorded"
+        assert "strictest is proposed" in obj["collapseNote"]
+
+
+class TestFactsADecisionHasToCarry:
+    def test_compensating_for_metrics_without_a_destination_says_so(self, inventory, capabilities):
+        """Settled and silently unbuildable is how a phase reports nothing amiss."""
+        import copy
+
+        first = build_plan(copy.deepcopy(inventory), capabilities)
+        item_id = next(i["id"] for i in first["items"]
+                       if i.get("capabilityId") == "telemetry.create")
+        for item in first["items"]:
+            if item["status"] == "needs-decision":
+                item["status"] = "adapted"
+                item["decision"] = "compensate" if item["id"] == item_id else (
+                    item["proposal"] or "accept")
+        second = build_plan(copy.deepcopy(inventory), capabilities, previous=first)
+        item = next(i for i in second["items"] if i["id"] == item_id)
+        assert item["needsFact"]["what"] == "where the exporter sends"
+        assert "connectionString" in item["needsFact"]["how"]
+        assert validate_document(second) == []
+
+    def test_a_destination_in_the_decision_builds_an_exporter(self, inventory, capabilities):
+        import copy
+
+        first = build_plan(copy.deepcopy(inventory), capabilities)
+        item_id = next(i["id"] for i in first["items"]
+                       if i.get("capabilityId") == "telemetry.create")
+        for item in first["items"]:
+            if item["id"] == item_id:
+                item["status"] = "adapted"
+                item["decision"] = {"kind": "OpenTelemetry",
+                                    "openTelemetry": {"endpoint": "https://otlp.example:4317"}}
+        second = build_plan(copy.deepcopy(inventory), capabilities, previous=first)
+        item = next(i for i in second["items"] if i["id"] == item_id)
+        obj = (item["target"] or {})["objects"][0]
+        assert obj["kind"] == "OpenTelemetry"
+        assert obj["settings"]["endpoint"] == "https://otlp.example:4317"
+        assert "needsFact" not in item
+
+
+class TestKeysAreOnlyMadeWhenAsked:
+    def test_entra_rbac_creates_no_keys(self, plan):
+        item = next(i for i in plan["items"] if i.get("capabilityId") == "key.create")
+        assert item["proposal"] == "entra-rbac"
+        assert not (item.get("target") or {}).get("objects")
+
+    def test_a_key_per_consumer_shapes_one_key_per_subscription(self, inventory, capabilities):
+        import copy
+
+        first = build_plan(copy.deepcopy(inventory), capabilities)
+        item_id = next(i["id"] for i in first["items"] if i.get("capabilityId") == "key.create")
+        for item in first["items"]:
+            if item["id"] == item_id:
+                item["status"] = "adapted"
+                item["decision"] = "gateway-key-per-consumer"
+        second = build_plan(copy.deepcopy(inventory), capabilities, previous=first)
+        item = next(i for i in second["items"] if i["id"] == item_id)
+        objects = (item["target"] or {})["objects"]
+        subscriptions = inventory["shared"]["subscriptions"]
+        assert len(objects) == len(subscriptions)
+        for obj in objects:
+            # The value is the one thing that cannot come across.
+            assert obj["replaces"]["valueCarriedOver"] is False
+            assert "value" not in obj and "primaryKey" not in obj

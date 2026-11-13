@@ -180,6 +180,14 @@ def render_plan(document: dict[str, Any], *, fmt: str = "text") -> str:
             lines.append(f"{bullet}{entry.get('id')}: {entry.get('gap')}")
         lines.append("")
 
+    unsupplied = [item for item in document.get("items") or [] if item.get("needsFact")]
+    if unsupplied:
+        lines.append(f"{heading}Settled, but missing a fact ({len(unsupplied)})")
+        for item in unsupplied:
+            fact = item["needsFact"]
+            lines.append(f"{bullet}{item['id']}: {fact['what']} -- {fact['how']}")
+        lines.append("")
+
     orphaned = document.get("orphanedDecisions") or []
     if orphaned:
         lines.append(f"{heading}Settled decisions with no item ({len(orphaned)})")
