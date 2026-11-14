@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1.0",
-  "targetCapabilities": "aigateway-1.0.0b26",
+  "targetCapabilities": "aigateway-1.0.0b30",
   "description": "How APIM shapes land on Azure AI Gateway. Source shape -> target capability -> verdict -> the plan item kind to raise when the mapping is not direct. Prose form lives in tools/migrate-apim/README.md; this is the executable form, so a new AI Gateway release is a data change.",
   "verdicts": {
     "native": "Direct equivalent. The item is ready and carries pre-shaped target objects.",
@@ -18,7 +18,8 @@
   "assets": [
     {
       "match": {
-        "family": "modelProviders"
+        "family": "modelProviders",
+        "kind": "custom"
       },
       "verdict": "native",
       "capabilityId": "provider.create",
@@ -28,6 +29,23 @@
         ],
         "note": "Custom provider auth is ApiKey only; arbitrary header maps are not native authoring."
       }
+    },
+    {
+      "match": {
+        "family": "modelProviders",
+        "kind": "foundry"
+      },
+      "verdict": "partial",
+      "itemKind": "enumerate",
+      "capabilityId": "provider.import",
+      "rationale": "Foundry provider with potential bulk deployment. Choose between bulk import (all deployments at once with automatic identity setup) or granular registration.",
+      "options": [
+        "bulk-import",
+        "create-only",
+        "create-with-import-models"
+      ],
+      "proposal": "bulk-import",
+      "note": "Use provider.import for bulk import of all Foundry deployments; use provider.create --foundry for registration only; use provider.create --foundry --import-models for both in one operation."
     },
     {
       "match": {
@@ -136,6 +154,22 @@
       "itemKind": "enumerate",
       "capabilityId": "alias.create",
       "rationale": "The operations expose no recognizable inference route, so the dialect callers use could not be read from configuration."
+    },
+    {
+      "match": {
+        "family": "mcpServers",
+        "isPartOfBulkImportable": true
+      },
+      "verdict": "partial",
+      "itemKind": "enumerate",
+      "capabilityId": "mcp.import",
+      "rationale": "Multiple MCP servers available for bulk import. Choose between bulk import (register all at once) or individual registration.",
+      "options": [
+        "bulk-import",
+        "individual"
+      ],
+      "proposal": "bulk-import",
+      "note": "Use mcp.import for bulk registration from a manifest; use mcp.create for individual server configuration."
     },
     {
       "match": {
