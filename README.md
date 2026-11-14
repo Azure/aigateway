@@ -100,7 +100,7 @@ from Repo** (`https://github.com/Azure/aigateway`), then install **aigateway** f
 | `/aigateway:discover <gateway-resource-id>` | Read-only: list a gateway's model aliases and MCP tool servers. | [`use-ai-gateway`](skills/use-ai-gateway/SKILL.md) |
 | `/aigateway:build <gateway-resource-id> <use case>` | Discover, retrieve a credential, and wire the models and tools into your app. | [`use-ai-gateway`](skills/use-ai-gateway/SKILL.md) |
 | `/aigateway:create <gateway> <resource-group> <region>` | Create a gateway and verify that it is ready to configure. | [`manage-ai-gateway`](skills/manage-ai-gateway/SKILL.md) |
-| `/aigateway:manage <gateway> <resource-group> <operation>` | Configure and operate a gateway and its assets. | [`manage-ai-gateway`](skills/manage-ai-gateway/SKILL.md) |
+| `/aigateway:manage <gateway> <resource-group>` | Configure and operate a gateway and its assets. | [`manage-ai-gateway`](skills/manage-ai-gateway/SKILL.md) |
 | `/aigateway:migrate <apim-name> <resource-group>` | Inventory an API Management instance, plan the move, settle it with you, then provision phase by phase. | [`migrate-apim`](skills/migrate-apim/SKILL.md) |
 | `/aigateway:feedback` | Package one agent session into a local ZIP that you choose how to share. | [`feedback-ai-gateway`](skills/feedback-ai-gateway/SKILL.md) |
 
@@ -113,11 +113,6 @@ A gateway's **ARM resource id** is what the developer commands need to list its 
 /aigateway:manage   my-gateway my-resource-group add a Foundry model provider
 /aigateway:migrate  my-apim-instance my-resource-group
 ```
-
-Everything the commands need ships with the plugin, including the
-[`migrate-apim`](tools/migrate-apim/README.md) tool behind `/aigateway:migrate` — there is no
-second install step. That command is the only one with a local prerequisite: Python 3.10 or
-later, alongside a signed-in Azure CLI.
 
 ## Labs, samples, and support
 
