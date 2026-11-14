@@ -153,7 +153,7 @@ multidict==7.1.0
     # via
     #   aiohttp
     #   yarl
-oauthlib==4.0.0
+oauthlib==4.0.1
     # via requests-oauthlib
 openai==3.29.0
     # via agent-framework-openai
