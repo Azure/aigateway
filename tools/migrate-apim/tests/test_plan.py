@@ -51,7 +51,7 @@ class TestDocument:
 
     def test_records_which_capability_catalogue_it_planned_against(self, plan):
         caps = plan["target"]["capabilities"]
-        assert caps["cliVersion"] == "1.0.0b26"
+        assert caps["cliVersion"] == "1.0.0b30"
         # Nothing is claimed about the installed CLI unless it was probed.
         assert caps["probed"] is False
 

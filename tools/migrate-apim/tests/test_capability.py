@@ -10,7 +10,7 @@ def caps():
 
 class TestCatalogue:
     def test_loads_the_pinned_catalogue(self, caps):
-        assert caps.cli_version == "1.0.0b26"
+        assert caps.cli_version == "1.0.0b30"
         assert len(caps.capabilities) == 30
 
     def test_declares_what_the_target_cannot_do(self, caps):
