@@ -2,8 +2,11 @@
 
 **Secure, observe, and control AI apps and agents from one place. Build and deploy with confidence.**
 
-**https://ai.gateway.azure.com**
-
+[![Portal](https://img.shields.io/badge/portal-ai.gateway.azure.com-0078D4)](https://ai.gateway.azure.com)
+[![Docs](https://img.shields.io/badge/docs-aka.ms%2Faigateway%2Fdocs-0078D4)](https://aka.ms/aigateway/docs)
+[![az aigateway](https://img.shields.io/badge/az_aigateway-public_preview-5C2D91)](cli/README.md)
+[![Labs](https://img.shields.io/badge/labs-26-107C10)](https://azure.github.io/aigateway/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 ![Azure AI Gateway engineering architecture](assets/ai-gateway-architecture.png)
 
