@@ -58,7 +58,9 @@
       "verdict": "partial",
       "itemKind": "enumerate",
       "capabilityId": "model.create",
-      "rationale": "A model registration needs a model name. The catalogue could not be resolved from configuration."
+      "rationale": "A model registration needs a model name. The catalogue could not be resolved from configuration.",
+      "note": "When the item proposes 'resolve-models', it is not a question for the operator. Run migrate-apim resolve-models automatically using the credential the inventory recorded. The operator should not be asked to type model names the tool can fetch.",
+      "autoResolvable": "resolve-models"
     },
     {
       "match": {
@@ -204,7 +206,14 @@
         "retain-in-apim"
       ],
       "proposal": "accept-all",
-      "rationale": "APIM stores no tool names for a passthrough server, and the CLI cannot author allowList/blocked in this baseline regardless."
+      "rationale": "APIM stores no tool names for a passthrough server, and the CLI cannot author allowList/blocked in this baseline regardless.",
+      "toolDiscoveryGuidance": {
+        "preferredRoute": "gateway",
+        "preferredReason": "Lists what callers actually see with APIM's policies applied",
+        "fallbackRoute": "upstream",
+        "fallbackMeaning": "Policies were bypassed; the upstream list may be broader than what the gateway exposes today",
+        "communicateWhen": "If discovery falls back to upstream, tell the operator that APIM may currently be withholding some of these tools because the API's policies did not pass at the gateway, and federating all of them would widen what callers can reach. The list from the gateway is authoritative for what the gateway will serve."
+      }
     },
     {
       "match": {

@@ -87,20 +87,15 @@ things — three identical rate limits are one item. Do not unbatch them.
 
 | Kind | What you are asking |
 | --- | --- |
-| `reduce-surface` | AI Gateway publishes four inference routes. Which part of this API moves, and what happens to the rest? |
+| `reduce-surface` | See the rule: what part of this API moves? See `capabilities/rules.json` for the publishable routes. |
 | `translate` | It maps, but the semantics differ. Which target semantics? |
 | `accept-loss` | No equivalent. Accept, compensate, retain in APIM, or block? |
 | `enumerate` | A fact that only exists at runtime or in the operator's head. |
 
-An `enumerate` item about an MCP server's tools is **not** a question either: run
-`discover-tools`, which calls `tools/list` for you. Prefer the gateway route -- that is the list
-callers actually see. If it falls back to the upstream, the API's policies did not run, so say so
-when you put the list to the operator rather than presenting it as what the gateway exposes.
+Two `enumerate` items are **not** questions:
+- **MCP tool discovery** — Run `discover-tools`, not `ask`. See `capabilities/rules.json` under the MCP `runtimeOnly` rule for guidance on which route to prefer, and what the result means if it falls back.
+- **resolve-models** — Run it, not ask. The rule metadata in `capabilities/rules.json` explains why; see the models rule for `unresolved` status.
 
-An `enumerate` item proposing `resolve-models` is **not** a question. Run it — the tool fetches the
-catalogue using the credential the inventory already knows how to retrieve, and re-planning closes
-the item. Asking the operator to type model names the tool can fetch is the governing rule being
-broken in the other direction.
 | `name` | What clients send as `model`. A default is proposed; confirm or replace. |
 | `scope` | How gateway-wide keys and Entra RBAC replace per-product subscription keys. |
 | `collapse` | Only the `default` workspace exists on the target. |
