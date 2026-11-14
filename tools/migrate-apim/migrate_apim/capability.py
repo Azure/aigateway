@@ -109,8 +109,8 @@ class CapabilityMap:
         catalog_path = catalog_path or CAPABILITIES_DIR / DEFAULT_CATALOG
         rules_path = rules_path or CAPABILITIES_DIR / "rules.json"
         try:
-            catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
-            rules = json.loads(rules_path.read_text(encoding="utf-8"))
+            catalog = json.loads(catalog_path.read_text(encoding="utf-8-sig"))
+            rules = json.loads(rules_path.read_text(encoding="utf-8-sig"))
         except OSError as exc:
             raise CapabilityError(f"capability data unavailable: {exc}") from exc
         except json.JSONDecodeError as exc:

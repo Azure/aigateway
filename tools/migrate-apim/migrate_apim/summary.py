@@ -281,6 +281,38 @@ def render_verify(journal: dict[str, Any], plan: dict[str, Any] | None = None) -
     from .ids import PORTAL, portal_url
 
     lines: list[str] = []
+
+    # A decision that named work the plan could not shape. The phase ran, had
+    # nothing to do, and said so only by being quiet -- which is how a run ends
+    # with "no phases remain" and no telemetry exporter anywhere.
+    unsupplied = [item for item in (plan or {}).get("items") or [] if item.get("needsFact")]
+    if unsupplied:
+        lines.append(
+            f"{len(unsupplied)} item(s) were settled without the fact needed to apply them, so "
+            "nothing was created for them:"
+        )
+        for item in unsupplied:
+            lines.append(f"  {item['id']}: {item['needsFact']['what']}")
+        lines += ["Settle the fact on the item and re-run the phase.", ""]
+
+    # Grants outside this resource provider. The gateway builds cleanly without
+    # them and then serves nothing, so an unacknowledged one belongs in the
+    # closing lines rather than only in the preflight somebody read first.
+    outstanding = [
+        entry for entry in (plan or {}).get("prerequisites") or []
+        if entry["id"] not in (journal.get("acknowledged") or [])
+    ]
+    if outstanding:
+        lines.append(
+            f"{len(outstanding)} prerequisite(s) outside this tool were never acknowledged:"
+        )
+        for entry in outstanding:
+            lines.append(f"  [{entry.get('owner')}] {entry['id']}: {entry.get('summary')}")
+        lines += [
+            "Until they are done the gateway reads as configured and does not serve traffic.",
+            "",
+        ]
+
     manual = unperformable_for(plan) if plan else []
     if manual:
         by_phase: dict[str, int] = {}

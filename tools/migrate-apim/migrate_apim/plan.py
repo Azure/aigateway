@@ -123,6 +123,7 @@ class PlanBuilder:
         self._check_buildable(merged)
         self._check_produces(merged)
         self._check_supplied(merged)
+        self._note_unmapped(merged)
         self._mark_by_hand(merged)
         # Defects in this tool, not decisions for the operator. They are carried
         # on the plan so that whoever reads it sees work that will not happen,
@@ -1528,6 +1529,28 @@ class PlanBuilder:
             item["rationale"] = (
                 f"{item['rationale']} Settled as `compensate`, but no destination was given, so "
                 "no exporter is created. The decision has to carry one."
+            )
+
+    def _note_unmapped(self, items: list[dict[str, Any]]) -> None:
+        """Put what will not travel in front of whoever settles the item.
+
+        It is recorded on the object and named again by the step that applies
+        it, which is after every decision has been made. An hourly token quota
+        that the target has no field for is worth knowing while the item is
+        still a question.
+        """
+        for item in items:
+            dropped = sorted({
+                name
+                for obj in (item.get("target") or {}).get("objects") or []
+                for name in (obj.get("unmappedAttributes") or {})
+            })
+            if not dropped:
+                continue
+            item["unmappedAttributes"] = dropped
+            item["rationale"] = (
+                f"{item['rationale']} The source also sets {', '.join(dropped)}, which the target "
+                "has no field for: applying this carries the rest and leaves those behind."
             )
 
     def _check_buildable(self, items: list[dict[str, Any]]) -> None:

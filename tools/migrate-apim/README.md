@@ -116,6 +116,15 @@ migrate-apim validate inventory.json
 migrate-apim summary inventory.json --format markdown
 ```
 
+**Artifacts are read BOM-tolerantly and written without one.** The plan is meant to be edited, and
+PowerShell's `Set-Content -Encoding utf8` writes a byte-order mark that `json.loads` rejects — so a
+round trip through the shell this tool is most often driven from used to come back as a corrupt
+plan.
+
+**Exit codes.** `0` is a clean run, including a rehearsal that wrote nothing; `1` is a blocking
+preflight finding, a failed step, or an unreadable artifact; `2` is a bad invocation. Everything
+readable goes to stderr either way.
+
 `collect` is read-only. It issues `GET` requests only, and never calls a `list*` secret action.
 Running it needs `Reader` on the APIM instance, plus `Reader` on any Cognitive Services account
 you want resolved. It prints a heartbeat per collection to stderr, because a run is dozens of
@@ -852,6 +861,18 @@ builder here has no steps, so `--next-phase` passes over it and the run ends wit
 by nobody. The closing lines say so above the link — `4 item(s) in this plan have no builder here
 and were not applied: policies (3), keys (1)` — because a closing paragraph that mentions only what
 was provisioned is how a quarter of a plan goes missing.
+
+**A prerequisite is checked, not taken on trust.** `prereq:foundry-rbac` names a grant outside this
+resource provider, acknowledged by hand — and a migration ran to the end with the gateway identity
+holding no access to any Foundry account, every management read passing, nothing to distinguish it
+from a finished job. The grant is readable, so preflight reads it: once the gateway exists, each
+scope is checked against the role the prerequisite asks for, and `foundryRoleMissing` names the
+accounts without it. A read that fails is not a missing grant and is not reported as one.
+
+**The closing lines name what is still outstanding**, not only what ran: items settled without the
+fact needed to apply them (nothing was created for them), prerequisites never acknowledged (the
+gateway reads as configured and does not serve traffic), and work no builder here can do. A run
+that ends on "no phases remain" and leaves all three unsaid reads as a migration that finished.
 
 Three properties make a partial run recoverable without a transaction:
 

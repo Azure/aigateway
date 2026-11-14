@@ -1311,3 +1311,56 @@ class TestWhichApplicationInsightsIsAQuestion:
         item = next(i for i in second["items"] if i["id"] == self.ITEM)
         assert "needsFact" not in item
         assert not (item.get("target") or {}).get("objects")
+
+
+class TestWhatWillNotTravelIsSaidWhileItIsStillAQuestion:
+    def test_the_item_names_the_attributes_with_no_target_field(self, inventory, capabilities):
+        """It was recorded on the object and named by the step that applied it,
+        which is after every decision has already been made."""
+        import copy
+
+        quota = copy.deepcopy(inventory)
+        document = next(d for d in quota["policies"]
+                        if (d.get("scope") or {}).get("level") == "api")
+        document["elements"].append({
+            "section": "inbound", "path": "inbound/llm-token-limit[8]",
+            "name": "llm-token-limit", "family": "tokenLimit", "depth": 1,
+            "attributes": {"tokens-per-minute": "10000", "token-quota": "5000",
+                           "token-quota-period": "Hourly", "counter-key": "@(x)"},
+            "text": None, "expressionIds": ["expr:1"], "namedValueRefs": [], "childNames": [],
+        })
+        plan = build_plan(quota, capabilities)
+        item = next(i for i in plan["items"] if i.get("capabilityId") == "model.policy")
+        assert "token-quota" in item["unmappedAttributes"]
+        assert "token-quota-period" in item["unmappedAttributes"]
+        assert "no field for" in item["rationale"], item["rationale"]
+        assert validate_document(plan) == []
+
+    def test_an_item_that_maps_whole_says_nothing_extra(self, plan):
+        item = next(i for i in plan["items"] if i.get("capabilityId") == "model.create")
+        assert "unmappedAttributes" not in item
+        assert "no field for" not in item["rationale"]
+
+
+class TestAPlanWithNowhereToGoSaysSo:
+    def test_planning_without_a_target_warns_where_it_can_be_fixed(self, tmp_path, inventory,
+                                                                   capsys):
+        from migrate_apim.cli import main
+
+        path = tmp_path / "inventory.json"
+        path.write_text(json.dumps(inventory))
+        main(["plan", "--inventory", str(path), "-o", str(tmp_path / "plan.json"), "--quiet"])
+        err = capsys.readouterr().err
+        assert "says nothing about where it deploys" in err, err
+        # The shape of the id, because that is the part nobody has to hand.
+        assert "Microsoft.ApiManagement/aigateways" in err, err
+
+    def test_planning_with_one_does_not(self, tmp_path, inventory, capsys):
+        from migrate_apim.cli import main
+
+        path = tmp_path / "inventory.json"
+        path.write_text(json.dumps(inventory))
+        main(["plan", "--inventory", str(path), "-o", str(tmp_path / "plan.json"), "--quiet",
+              "--target", "/subscriptions/s/resourceGroups/rg/providers"
+                          "/Microsoft.ApiManagement/aigateways/gw"])
+        assert "says nothing about where it deploys" not in capsys.readouterr().err

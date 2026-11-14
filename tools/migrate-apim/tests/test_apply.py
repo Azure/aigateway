@@ -1476,3 +1476,172 @@ class TestAnExporterNeedsWhatTheServiceRequires:
                 "name": "appinsights", "kind": "ApplicationInsights",
                 "settings": {"instrumentationKey": "00000000"},
             })
+
+
+class TestAGrantIsCheckedNotTakenOnTrust:
+    """A run finished with the identity holding no access to any account.
+
+    Role assignments are outside this resource provider, so they were raised as
+    a prerequisite and acknowledged by hand -- "recorded, not checked". Every
+    management read passed, the gateway was configured, and nothing in the run
+    distinguished that from one that could serve traffic. The grant is readable,
+    so it is read.
+    """
+
+    ACCOUNT = ("/subscriptions/s/resourceGroups/rg/providers/Microsoft.CognitiveServices"
+               "/accounts/aif")
+    ROLE = "53ca6127-db72-4b80-b1b0-d745d6d5456d"
+
+    def _plan(self, settled):
+        import copy
+
+        plan = copy.deepcopy(settled)
+        plan["prerequisites"] = [{
+            "id": "prereq:foundry-rbac", "owner": "azure-administrator",
+            "summary": "Grant the gateway identity data-plane access",
+            "commands": [{"command": "az role assignment create ...",
+                          "roleDefinitionId": self.ROLE, "scope": self.ACCOUNT}],
+        }]
+        return plan
+
+    class _Gateway:
+        """An az that knows the gateway's principal and what it is granted."""
+
+        def __init__(self, assigned):
+            self.assigned = assigned
+            self.calls = []
+
+        def __call__(self, argv, _payload=None):
+            self.calls.append(argv)
+            if argv[:3] == ["az", "aigateway", "show"]:
+                return CommandResult(0, "11111111-2222-3333-4444-555555555555\n")
+            if argv[:4] == ["az", "role", "assignment", "list"]:
+                return CommandResult(0, json.dumps(self.assigned))
+            return CommandResult(1, "")
+
+    def test_a_missing_grant_is_reported_before_the_run(self, settled, inventory):
+        runner = self._Gateway(assigned=[])
+        codes = {f["code"] for f in preflight(self._plan(settled), inventory, runner=runner)}
+        assert "foundryRoleMissing" in codes
+
+    def test_a_grant_that_is_there_is_not_reported(self, settled, inventory):
+        runner = self._Gateway(assigned=[f"/subscriptions/s/providers/Microsoft.Authorization"
+                                         f"/roleDefinitions/{self.ROLE}"])
+        codes = {f["code"] for f in preflight(self._plan(settled), inventory, runner=runner)}
+        assert "foundryRoleMissing" not in codes
+
+    def test_a_different_role_does_not_count(self, settled, inventory):
+        runner = self._Gateway(assigned=["/subscriptions/s/providers/Microsoft.Authorization"
+                                         "/roleDefinitions/00000000-0000-0000-0000-000000000000"])
+        finding = next(f for f in preflight(self._plan(settled), inventory, runner=runner)
+                       if f["code"] == "foundryRoleMissing")
+        assert "aif" in finding["message"]
+        assert "fails at runtime" in finding["remedy"]
+
+    def test_no_gateway_yet_is_not_a_missing_grant(self, settled, inventory):
+        """Before the identity phase there is no principal to grant anything to."""
+        class _Absent:
+            def __call__(self, argv, _payload=None):
+                return CommandResult(1, "")
+
+        codes = {f["code"] for f in preflight(self._plan(settled), inventory, runner=_Absent())}
+        assert "foundryRoleMissing" not in codes
+
+    def test_a_read_that_failed_is_not_a_missing_grant(self, settled, inventory):
+        """Reporting it as absent sends someone to re-create a grant that is there."""
+        class _Denied(self._Gateway):
+            def __call__(self, argv, _payload=None):
+                if argv[:4] == ["az", "role", "assignment", "list"]:
+                    return CommandResult(1, "", "AuthorizationFailed")
+                return super().__call__(argv, _payload)
+
+        codes = {f["code"] for f in preflight(self._plan(settled), inventory,
+                                              runner=_Denied(assigned=[]))}
+        assert "foundryRoleMissing" not in codes
+
+
+class TestTheClosingLinesNameWhatIsStillOutstanding:
+    """"No phases remain" has to stop reading as "the migration is done"."""
+
+    def test_an_unacknowledged_prerequisite_is_named(self, settled):
+        journal = new_journal(settled)
+        closing = "\n".join(summary.render_verify(journal, settled))
+        assert "never acknowledged" in closing, closing
+        assert "does not serve traffic" in closing, closing
+        for entry in settled["prerequisites"]:
+            assert entry["id"] in closing
+
+    def test_an_acknowledged_one_is_not(self, settled):
+        journal = new_journal(settled)
+        journal["acknowledged"] = [p["id"] for p in settled["prerequisites"]]
+        closing = "\n".join(summary.render_verify(journal, settled))
+        assert "never acknowledged" not in closing, closing
+
+    def test_an_item_missing_a_fact_is_named(self, settled):
+        import copy
+
+        plan = copy.deepcopy(settled)
+        plan["items"][0]["needsFact"] = {"what": "where the exporter sends", "how": "..."}
+        closing = "\n".join(summary.render_verify(new_journal(plan), plan))
+        assert "settled without the fact" in closing, closing
+        assert "where the exporter sends" in closing, closing
+        assert plan["items"][0]["id"] in closing
+
+
+class TestAStepSaysWhichObjectItMeans:
+    """"2/2 objects: already present" above one create command named neither.
+
+    A step runs every object of its item, and their outcomes differ: one key
+    already existed, the other was created. Joining the details and dropping
+    duplicates left a line that could not be matched to either.
+    """
+
+    def test_each_outcome_carries_the_object_it_belongs_to(self, settled, inventory):
+        from migrate_apim.apply import Step
+
+        existing = {"developers": None, "master": {"name": "master"}}
+        runner = _Runner(reads=existing)
+        executor = Executor(settled, inventory, new_journal(settled), runner=runner,
+                            execute=True, skip_rehearsal=True)
+        step = executor.run_step(Step(
+            item_id="item:access/subscriptions", capability_id="key.create", phase="keys",
+            objects=[{"name": "master"}, {"name": "developers"}],
+        ))
+        assert "master: already present with the desired state" in step.detail, step.detail
+        assert "developers:" in step.detail, step.detail
+
+    def test_a_single_object_step_is_not_labelled_needlessly(self, settled, inventory):
+        from migrate_apim.apply import _object_label
+
+        assert _object_label({"modelName": "gpt-4o"}) == "gpt-4o"
+        assert _object_label({"type": "ipFilter"}) == "ipFilter"
+        assert _object_label({}) == ""
+
+
+class TestAByteOrderMarkIsNotACorruptPlan:
+    """PowerShell's `Set-Content -Encoding utf8` writes one.
+
+    The plan is meant to be edited and the editor is whatever the operator has,
+    so a round trip through the shell this tool is most often driven from came
+    back rejected: "Unexpected UTF-8 BOM".
+    """
+
+    def test_a_plan_written_with_a_bom_still_loads(self, settled, tmp_path):
+        from migrate_apim.cli import read_json
+
+        path = tmp_path / "plan.json"
+        path.write_text(json.dumps(settled), encoding="utf-8-sig")
+        assert path.read_bytes()[:3] == b"\xef\xbb\xbf"
+        assert read_json(path)["kind"] == "apimMigrationPlan"
+
+    def test_what_this_tool_writes_still_has_none(self, settled, inventory, tmp_path, monkeypatch):
+        from migrate_apim import apply as apply_mod, cli
+
+        monkeypatch.setattr(apply_mod, "_run", lambda argv, payload=None: CommandResult(1, ""))
+        plan_path, inventory_path = tmp_path / "plan.json", tmp_path / "inventory.json"
+        journal_path = tmp_path / "journal.json"
+        plan_path.write_text(json.dumps(settled))
+        inventory_path.write_text(json.dumps(inventory))
+        cli.main(["apply", "--plan", str(plan_path), "--inventory", str(inventory_path),
+                  "--journal", str(journal_path), "--preflight"])
+        assert not journal_path.read_bytes().startswith(b"\xef\xbb\xbf")

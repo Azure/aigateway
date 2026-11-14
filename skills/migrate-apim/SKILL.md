@@ -40,11 +40,21 @@ the first line of the error. Ask the operator to log in rather than wrapping or 
 
 ```
 migrate-apim collect  --apim <name> -g <rg> -o inventory.json
-migrate-apim plan     --inventory inventory.json -o plan.json
+migrate-apim plan     --inventory inventory.json -o plan.json --target <gateway-resource-id>
 # ... run resolve-models / discover-tools where the plan proposes them ...
 # ... adapt plan.json with the operator ...
 migrate-apim plan     --inventory inventory.json -o plan.json   # re-run; adaptations survive
 ```
+
+`--target` is the gateway the plan deploys to, as a full ARM id —
+`/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.ApiManagement/aigateways/<name>`. It
+does not have to exist yet; the first phase creates it. Without it every `apply` refuses, so settle
+the name and resource group with the operator before planning rather than at the point of writing.
+
+**Exit codes.** `0` is a clean run, including a rehearsal that wrote nothing. `1` means a blocking
+preflight finding, a failed step, or an unreadable artifact; `2` is a bad invocation. Progress and
+summaries go to stderr in every case — a shell that renders stderr as failure is not the tool
+reporting one.
 
 `plan.json` is the one living artifact. It is proposed by the tool, adapted in place, and executed.
 Do not keep decisions in the conversation — the plan is the record.
@@ -98,9 +108,24 @@ broken in the other direction.
 Lead with `blocking: true` items, and put the consequence in the question — "assistants, threads and
 vector-store callers stop working" is the decision, not "44 operations are unpublishable".
 
-To record an answer, set **only** `status: "adapted"` and `decision: "<chosen value>"` on the item.
-The generator handles the rest. Then re-run `plan`: adapted items are preserved, and an item is
-re-opened only when the APIM facts *it* rested on changed, with `staleReason` saying what moved.
+To record an answer, set **only** `status: "adapted"` and `decision` on the item. The generator
+handles the rest. Then re-run `plan`: adapted items are preserved, and an item is re-opened only
+when the APIM facts *it* rested on changed, with `staleReason` saying what moved.
+
+**A decision is the chosen value, or an object carrying it plus the facts that option needs.** Most
+are the bare string. Where the option commits to something APIM cannot supply, put the value under
+`value` and the facts beside it — the item says which in `needsFact.how`, and a settled item that
+produces no object is the plan telling you one is still missing:
+
+```jsonc
+"decision": "split"                                    // most items
+"decision": {"value": "list-models", "models": ["gpt-4o", "gpt-5"]}   // names the catalogue
+"decision": {"kind": "OpenTelemetry",                  // where telemetry reports
+             "openTelemetry": {"metricsEndpoint": "https://<app-insights-otlp>/v1/metrics"}}
+```
+
+**Write the file as UTF-8 without a BOM.** `plan` reads one if it is there, but PowerShell's
+`Set-Content -Encoding utf8` writes it and older tooling will not take it back.
 
 ### What is not a question
 

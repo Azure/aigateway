@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
+from . import ids
 from .azcli import CLI_MISSING, az_argv
 from .resolve import ResolveError, resolve_secret
 
@@ -265,14 +266,78 @@ def preflight(plan: dict[str, Any], inventory: dict[str, Any], *, runner: Runner
                 f"{len(prerequisites)} step(s) only an administrator can do: "
                 + ", ".join(p["id"] for p in prerequisites),
                 "Acknowledge each with --acknowledge <id> once it is done. Acknowledgement is "
-                "recorded, not checked, and does not gate writing: these are external grants this "
-                "tool cannot see, and a gateway builds cleanly without them while failing to "
-                "serve traffic.")
+                "recorded and does not gate writing. Where the grant is readable it is checked "
+                "as well -- see foundryRoleMissing -- but a gateway builds cleanly without any of "
+                "them while failing to serve traffic.")
 
     if runner and target_id:
         findings.extend(_name_collision_check(Target.parse(target_id), runner))
+        findings.extend(_role_grant_check(plan, Target.parse(target_id), runner))
 
     return findings
+
+
+def _role_grant_check(
+    plan: dict[str, Any], target: Target, runner: Runner
+) -> list[dict[str, Any]]:
+    """Whether the grants a prerequisite asks for are actually there.
+
+    "Acknowledgement is recorded, not checked" was true and is the wrong
+    bargain: a migration ran to the end with the gateway's identity holding no
+    access to any Foundry account, every management read passing, and nothing
+    to distinguish that from a finished job. The grant is readable, so it is
+    read. Only once the gateway exists -- before the identity phase there is no
+    principal, which is not the same as a missing grant.
+    """
+    scopes = [
+        command["scope"]
+        for entry in plan.get("prerequisites") or []
+        if entry["id"] == "prereq:foundry-rbac"
+        for command in entry.get("commands") or []
+        if command.get("scope") and command.get("roleDefinitionId")
+    ]
+    if not scopes:
+        return []
+    roles = {
+        command["roleDefinitionId"]
+        for entry in plan.get("prerequisites") or []
+        if entry["id"] == "prereq:foundry-rbac"
+        for command in entry.get("commands") or []
+        if command.get("roleDefinitionId")
+    }
+    shown = runner(["az", "aigateway", "show", *target.selectors, "-n", target.name,
+                    "--query", "identity.principalId", "-o", "tsv"], None)
+    principal = (shown.stdout or "").strip()
+    if not shown.ok or not principal:
+        return []
+
+    ungranted: list[str] = []
+    for scope in scopes:
+        listed = runner([
+            "az", "role", "assignment", "list", "--assignee", principal, "--scope", scope,
+            "--include-inherited", "--query", "[].roleDefinitionId", "-o", "json",
+        ], None)
+        if not listed.ok:
+            # A read that failed says nothing about the grant, and reporting it
+            # as missing would send someone to re-create one that is there.
+            continue
+        assigned = listed.json() or []
+        if not any(str(entry).rsplit("/", 1)[-1] in roles for entry in assigned):
+            ungranted.append(scope)
+    if ungranted:
+        return [{
+            "code": "foundryRoleMissing",
+            "blocking": False,
+            "message": (
+                f"The gateway identity has no matching role on {len(ungranted)} account(s): "
+                + ", ".join(ids.arm_name(scope) for scope in ungranted)
+            ),
+            "remedy": (
+                "Run the commands on prereq:foundry-rbac. Until then the gateway is configured "
+                "and cannot reach those accounts, and inference through it fails at runtime."
+            ),
+        }]
+    return []
 
 
 def _needed_secret_refs(plan: dict[str, Any]) -> list[str]:
@@ -427,6 +492,7 @@ class Executor:
         journal: dict[str, Any],
         *,
         runner: Runner | None = None,
+        progress: Callable[[str], None] | None = None,
         arm_client: Any = None,
         execute: bool = False,
         skip_rehearsal: bool = False,
@@ -435,6 +501,7 @@ class Executor:
         self.inventory = inventory
         self.journal = journal
         self.runner = runner or _run
+        self.progress: Callable[[str], None] = progress or (lambda _message: None)
         self.arm = arm_client
         # Writes are consequential and there is no transaction, so a run is a
         # rehearsal unless asked otherwise.
@@ -505,8 +572,12 @@ class Executor:
                 "the commands, or pass --skip-rehearsal to go straight to writing."
             )
         steps = [step for step in steps_for(self.plan) if step.phase == phase]
-        for step in steps:
+        for index, step in enumerate(steps, 1):
+            # Every object is a serial round trip, and a phase of a dozen takes
+            # minutes. Silence for that long is indistinguishable from a hang.
+            self.progress(f"{phase} {index}/{len(steps)}: {step.item_id}")
             self.run_step(step)
+            self.progress(f"{phase} {index}/{len(steps)}: {step.item_id} -- {step.status}")
             if step.status in {"failed", "mutationUnknown"}:
                 # Stop this phase rather than building on an unestablished state.
                 break
@@ -552,7 +623,11 @@ class Executor:
                 if not step.argv:
                     step.argv = argv
             if detail:
-                details.append(detail)
+                # Named, because the outcomes differ per object: "2/2 objects:
+                # already present" printed above a create command left nobody
+                # able to say which object the command was for.
+                label = _object_label(obj)
+                details.append(f"{label}: {detail}" if label else detail)
             if status in {"failed", "mutationUnknown"}:
                 break
 
@@ -1334,6 +1409,16 @@ def _run(argv: list[str], _payload: dict[str, Any] | None = None) -> CommandResu
         # Unestablished, not failed: the service may have accepted the write.
         return CommandResult(124, "", "the command timed out before reporting an outcome")
     return CommandResult(proc.returncode, proc.stdout, proc.stderr)
+
+
+def _object_label(obj: dict[str, Any]) -> str:
+    """How to refer to one object of a step, in the words the plan used."""
+    for key in ("modelName", "name", "aliasName", "routingName"):
+        if obj.get(key):
+            return str(obj[key])
+    if obj.get("type"):
+        return str(obj["type"])
+    return ""
 
 
 def _objects_digest(objects: list[dict[str, Any]]) -> str:

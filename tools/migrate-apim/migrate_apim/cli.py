@@ -177,6 +177,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Record that a manual prerequisite is done; repeatable",
     )
     apply_cmd.add_argument("--subscription", help="Subscription for credential reads")
+    apply_cmd.add_argument("--quiet", action="store_true",
+                           help="Suppress the per-step progress on stderr")
 
     validate = subparsers.add_parser("validate", help="Check an artifact against its JSON Schema")
     validate.add_argument("file", help="Path to inventory.json")
@@ -286,7 +288,7 @@ def _plan(args: argparse.Namespace) -> int:
     from .plan import build_plan
 
     try:
-        inventory = json.loads(Path(args.inventory).read_text(encoding="utf-8"))
+        inventory = read_json(Path(args.inventory))
     except (OSError, json.JSONDecodeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -315,12 +317,21 @@ def _plan(args: argparse.Namespace) -> int:
     output = Path(args.output)
     if args.output != "-" and output.exists():
         try:
-            previous = json.loads(output.read_text(encoding="utf-8"))
+            previous = read_json(output)
         except json.JSONDecodeError as exc:
             print(f"error: existing plan at {args.output} is not valid JSON: {exc}", file=sys.stderr)
             return 1
 
     document = build_plan(inventory, capabilities, previous=previous, target=args.target)
+    if not (document.get("target") or {}).get("resourceId"):
+        # Said here rather than discovered at preflight: every phase needs it,
+        # and the id is not something to guess at the point of writing.
+        print(
+            "note: this plan says nothing about where it deploys, and `apply` refuses without "
+            "it.\n      Re-run with --target /subscriptions/<sub>/resourceGroups/<rg>/providers"
+            "/Microsoft.ApiManagement/aigateways/<gateway>",
+            file=sys.stderr,
+        )
     orphans = document.get("orphanedDecisions") or []
     payload = json.dumps(document, indent=None if args.compact else 2, ensure_ascii=False)
     if args.output == "-":
@@ -349,7 +360,7 @@ def _resolve_models(args: argparse.Namespace) -> int:
 
     path = Path(args.inventory)
     try:
-        inventory = json.loads(path.read_text(encoding="utf-8"))
+        inventory = read_json(path)
     except (OSError, json.JSONDecodeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -395,7 +406,7 @@ def _discover_tools(args: argparse.Namespace) -> int:
 
     path = Path(args.inventory)
     try:
-        inventory = json.loads(path.read_text(encoding="utf-8"))
+        inventory = read_json(path)
     except (OSError, json.JSONDecodeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -438,8 +449,8 @@ def _apply(args: argparse.Namespace) -> int:
     from .apply import ApplyError, Executor, new_journal, preflight, steps_for
 
     try:
-        plan = json.loads(Path(args.plan).read_text(encoding="utf-8"))
-        inventory = json.loads(Path(args.inventory).read_text(encoding="utf-8"))
+        plan = read_json(Path(args.plan))
+        inventory = read_json(Path(args.inventory))
     except (OSError, json.JSONDecodeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -449,7 +460,7 @@ def _apply(args: argparse.Namespace) -> int:
 
     journal_path = Path(args.journal)
     journal = (
-        json.loads(journal_path.read_text(encoding="utf-8"))
+        read_json(journal_path)
         if journal_path.exists() else new_journal(plan)
     )
     journal["_path"] = str(journal_path)
@@ -500,6 +511,8 @@ def _apply(args: argparse.Namespace) -> int:
             arm_client=ArmClient(subscription=args.subscription) if args.execute else None,
             execute=args.execute,
             skip_rehearsal=args.skip_rehearsal,
+            progress=(lambda message: None) if args.quiet else
+            (lambda message: print(f"  ... {message}", file=sys.stderr, flush=True)),
         )
     except ApplyError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -587,7 +600,7 @@ def _write_journal(journal: dict, path: Path) -> None:
 def _validate(args: argparse.Namespace) -> int:
     path = Path(args.file)
     try:
-        document = json.loads(path.read_text(encoding="utf-8"))
+        document = read_json(path)
     except (OSError, json.JSONDecodeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -602,7 +615,7 @@ def _validate(args: argparse.Namespace) -> int:
 
 def _summary(args: argparse.Namespace) -> int:
     try:
-        document = json.loads(Path(args.file).read_text(encoding="utf-8"))
+        document = read_json(Path(args.file))
     except (OSError, json.JSONDecodeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -611,6 +624,18 @@ def _summary(args: argparse.Namespace) -> int:
 
 
 # ------------------------------------------------------------------ helpers
+
+
+def read_json(path: Path) -> Any:
+    """Read a JSON artifact, BOM and all.
+
+    The plan is meant to be edited, and an editor is whatever the operator has.
+    PowerShell's `Set-Content -Encoding utf8` writes a byte-order mark, which
+    `json.loads` rejects outright -- so a round trip through the shell this tool
+    is most often driven from broke the artifact it had just written. `utf-8-sig`
+    reads both, and everything written here is still written without one.
+    """
+    return json.loads(path.read_text(encoding="utf-8-sig"))
 
 
 def _resolve_service_id(args: argparse.Namespace) -> tuple[str, str | None]:
@@ -674,7 +699,7 @@ def validate_inventory(document: Any) -> list[str]:
     except ImportError:
         return _structural_errors(document)
     try:
-        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        schema = read_json(schema_path)
     except OSError as exc:  # pragma: no cover
         return [f"schema unavailable: {exc}"]
     validator = jsonschema.Draft202012Validator(schema)
@@ -691,7 +716,7 @@ def _validate_against(document: Any, schema_name: str) -> list[str]:
     except ImportError:
         return _structural_errors(document) if schema_name == "inventory.schema.json" else []
     try:
-        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        schema = read_json(schema_path)
     except OSError as exc:  # pragma: no cover
         return [f"schema unavailable: {exc}"]
     validator = jsonschema.Draft202012Validator(schema)
