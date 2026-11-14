@@ -1,7 +1,7 @@
 ---
 name: feedback-ai-gateway
 version: 2.0.0
-description: Anonymizes session transcript summaries for Azure AI Gateway product feedback. Use when users invoke /aigateway:feedback with a summary file containing friction points, completed tasks, and outcome details. Applies automated scrubbing and returns an anonymized copy. No zipping, archiving, or upload flows.
+description: Collect Azure AI Gateway session feedback on friction points and completed work. Process session summaries to extract insights: where users struggled, what was accomplished, and outcomes. Scrub sensitive identifiers and return a clean file ready for product feedback or bug reports. No zipping, archiving, or upload flows.
 ---
 
 # Anonymize Azure AI Gateway session feedback

@@ -1,5 +1,5 @@
 ---
-description: Anonymize a session transcript summary for product feedback. Returns an anonymized file; no uploads or GitHub publishing.
+description: Collect session feedback on friction points and completed work for Azure AI Gateway insights. Process and anonymize a session summary, returning a clean file ready for sharing.
 argument-hint: [summary-file-path] [output-directory]
 ---
 
