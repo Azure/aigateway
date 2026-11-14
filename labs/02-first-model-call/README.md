@@ -385,7 +385,7 @@ To publish more deployments, repeat this step and the next one for each name tha
 returns.
 
 > [!TIP]
-> `az aigateway model-provider create -g "$RG" --gateway-name "$GATEWAY" -n "$PROVIDER" --foundry-resource-id "$FOUNDRY_ID"`
+> `az aigateway model-provider import -g "$RG" --gateway-name "$GATEWAY" -n "$PROVIDER" --foundry-resource-id "$FOUNDRY_ID"`
 > does the last three steps in one command for every deployment in the account, like the portal import: it grants
 > the gateway's identity **Foundry User** on the account, creates the provider, and registers each deployment. You
 > can run it again safely. It doesn't publish an alias, so you still run the next step. The

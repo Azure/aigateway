@@ -4,7 +4,7 @@ Use `az aigateway` (or the `az aig` shorthand) to create gateways and manage
 model aliases, providers, MCP servers, policies, identities, networking, and
 client keys.
 The CLI is in **public preview**. This guide and the
-[searchable command reference](command-reference.md) cover release **1.0.0b26**.
+[searchable command reference](command-reference.md) cover release **1.0.0b30**.
 The CLI implementation is distributed as a released Azure CLI extension,
 not built from this plugin checkout.
 
@@ -23,7 +23,7 @@ use the pinned installer scripts ([`install.sh`](install.sh) /
 `https://aka.ms/aigateway-cli-install` and
 `https://aka.ms/aigateway-cli-install-ps`) which verify the SHA-256 digest
 automatically before installing.
-The following examples install the reviewed `1.0.0b26` release. If a newer
+The following examples install the reviewed `1.0.0b30` release. If a newer
 release is available, use its wheel URL and its own published digest instead;
 do not reuse this checksum for another version.
 An agent must obtain approval before installing or upgrading a tool.
@@ -31,11 +31,11 @@ An agent must obtain approval before installing or upgrading a tool.
 **Bash**
 
 ```bash
-WHEEL="aigateway-1.0.0b26-py3-none-any.whl"
+WHEEL="aigateway-1.0.0b30-py3-none-any.whl"
 curl -fL --output "$WHEEL" \
-  "https://github.com/Azure/aigateway/releases/download/cli-v1.0.0b26/$WHEEL" || exit 1
+  "https://github.com/Azure/aigateway/releases/download/cli-v1.0.0b30/$WHEEL" || exit 1
 printf '%s  %s\n' \
-  '6cc6a91a3345f558896a2a3f127451faf88096d4456d5c88e81630ce35840e25' "$WHEEL" \
+  '3f984df96bf6fe82f7b92e5e4ce88b067e347af9b0032b59c00716fd56d4b5af' "$WHEEL" \
   | sha256sum --check || exit 1
 az extension add --source "$WHEEL" --upgrade
 ```
@@ -45,10 +45,10 @@ On macOS without `sha256sum`, use `shasum -a 256 --check` instead.
 **PowerShell**
 
 ```powershell
-$wheel = "aigateway-1.0.0b26-py3-none-any.whl"
-Invoke-WebRequest -Uri "https://github.com/Azure/aigateway/releases/download/cli-v1.0.0b26/$wheel" `
+$wheel = "aigateway-1.0.0b30-py3-none-any.whl"
+Invoke-WebRequest -Uri "https://github.com/Azure/aigateway/releases/download/cli-v1.0.0b30/$wheel" `
   -OutFile $wheel -ErrorAction Stop
-$expected = "6cc6a91a3345f558896a2a3f127451faf88096d4456d5c88e81630ce35840e25"
+$expected = "3f984df96bf6fe82f7b92e5e4ce88b067e347af9b0032b59c00716fd56d4b5af"
 if ((Get-FileHash $wheel -Algorithm SHA256).Hash -ne $expected) {
   throw "CLI wheel checksum mismatch; do not install."
 }
@@ -65,7 +65,7 @@ az aigateway --help
 ```
 
 For this release, `version` reports extension `aigateway`, version
-`1.0.0b26`, and API `2025-09-01-preview`. Do not substitute legacy
+`1.0.0b30`, and API `2025-09-01-preview`. Do not substitute legacy
 `az ai-gateway`, a source build, or locally patched installed modules.
 
 ## Quickstart
@@ -136,7 +136,7 @@ published model route.
 
 Follow the [provider, model, and alias examples](command-reference.md#models-and-aliases).
 Those low-level paths keep external role grants separate. The convenience
-`model-provider create --foundry-resource-id` path instead imports every
+`model-provider import --foundry-resource-id` path instead imports every
 deployment and enables gateway identity/grants **Foundry User** on the
 account; use it only when that broader change is intended and authorized.
 

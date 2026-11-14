@@ -382,7 +382,7 @@ if ($?) { Write-Host "✨ Model deployment $DEPLOYMENT is ready" }
 
 Wait for the gateway, then publish the deployment with two commands:
 
-- `az aigateway model-provider create --foundry-resource-id` imports the Foundry account. It gives the gateway's
+- `az aigateway model-provider import --foundry-resource-id` imports the Foundry account. It gives the gateway's
   managed identity the **Foundry User** role on the account, adds a model provider that signs in with that identity,
   and adds a model for each deployment. The gateway calls the model with this identity, so your apps never hold a
   Foundry key.
@@ -397,7 +397,7 @@ az aigateway wait --resource-group "$RG" --name "$GATEWAY" --created &&
   echo "🚀 Gateway $GATEWAY is ready"
 
 # Import the Foundry account: role for the gateway's identity, a model provider, and a model for each deployment
-MODELS="$(az aigateway model-provider create --resource-group "$RG" --gateway-name "$GATEWAY" --name "$PROVIDER" \
+MODELS="$(az aigateway model-provider import --resource-group "$RG" --gateway-name "$GATEWAY" --name "$PROVIDER" \
   --foundry-resource-id "$FOUNDRY_ID" --query "join(', ', models[].name)" --output tsv)" &&
   echo "🔌 Model provider $PROVIDER imported $MODELS from $FOUNDRY"
 
@@ -417,7 +417,7 @@ az aigateway wait --resource-group $RG --name $GATEWAY --created
 if ($?) { Write-Host "🚀 Gateway $GATEWAY is ready" }
 
 # Import the Foundry account: role for the gateway's identity, a model provider, and a model for each deployment
-$MODELS = az aigateway model-provider create --resource-group $RG --gateway-name $GATEWAY --name $PROVIDER `
+$MODELS = az aigateway model-provider import --resource-group $RG --gateway-name $GATEWAY --name $PROVIDER `
   --foundry-resource-id $FOUNDRY_ID --query "models[].name" --output tsv
 if ($?) { Write-Host "🔌 Model provider $PROVIDER imported $($MODELS -join ', ') from $FOUNDRY" }
 
