@@ -2,7 +2,7 @@
 
 **Secure, observe, and control AI apps and agents from one place. Build and deploy with confidence.**
 
-[Visit Portal](https://ai.gateway.azure.com) · [Docs](https://ai.gateway.azure.com/docs)
+**https://ai.gateway.azure.com**
 
 
 ![Azure AI Gateway engineering architecture](assets/ai-gateway-architecture.png)
@@ -19,9 +19,11 @@ your app, or use the Azure CLI to manage a gateway.
 - [Migration tool](tools/migrate-apim/README.md): inventory and migrate AI workloads from API Management.
 - [Labs](labs/README.md) and [samples](samples/README.md): learn and build with AI Gateway.
 
+For service concepts and configuration, see the [AI Gateway documentation](https://aka.ms/aigateway/docs).
+
 ## Coding-agent plugin
 
-Install the plugin in Claude Code, GitHub Copilot CLI, Cursor, or Gemini CLI to use its skills and
+Install the plugin in Claude Code or GitHub Copilot CLI to use its skills and
 `/aigateway:*` commands.
 
 **Claude Code / GitHub Copilot CLI**
@@ -31,14 +33,12 @@ Install the plugin in Claude Code, GitHub Copilot CLI, Cursor, or Gemini CLI to 
 /plugin install aigateway@azure
 ```
 
-**Gemini CLI**
-
-```
-gemini extensions install https://github.com/Azure/aigateway
-```
-
-**Cursor:** in **Dashboard → Plugins → Add Marketplace → Import from Repo**, add
-`https://github.com/Azure/aigateway`, then install **aigateway** from **Customize**.
+| Skill | Use it to |
+| ----- | --------- |
+| [`use-ai-gateway`](skills/use-ai-gateway/SKILL.md) | Integrate: discover a gateway's models and MCP tools and connect them to your app. |
+| [`manage-ai-gateway`](skills/manage-ai-gateway/SKILL.md) | Configure and administer: providers, models, aliases, MCP sources, policies, keys, identities, networking, and telemetry. |
+| [`migrate-apim`](skills/migrate-apim/SKILL.md) | Migrate model APIs, MCP servers, and A2A agents from API Management. |
+| [`feedback-ai-gateway`](skills/feedback-ai-gateway/SKILL.md) | Package an agent session into a local feedback ZIP. |
 
 | Command | What it does |
 | ------- | ------------ |
@@ -56,8 +56,7 @@ For example, provide a gateway resource ID to discover its assets, then describe
 /aigateway:build /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.ApiManagement/aigateways/<gateway> summarize support tickets
 ```
 
-You can also provide published connection details instead of a resource ID. See the
-[`use-ai-gateway` skill](skills/use-ai-gateway/SKILL.md) for the developer workflow.
+You can also provide published connection details instead of a resource ID.
 
 ## Azure CLI
 
