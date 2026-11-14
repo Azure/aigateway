@@ -95,7 +95,7 @@ Clients call `<gatewayUrl>/default/toolservers/<mcp-name>/mcp`. Each source's `n
 
 ```bash
 az aigateway mcp create --subscription "$SUB" -g "$RG" --gateway-name "$GW" -n "$MCP_NAME" \
-  --endpoints '[{"kind":"mcp","namespace":"learn","required":true,"mcp":{"transport":"streamableHttp","url":"https://learn.microsoft.com/api/mcp"},"credentials":{"type":"none"}}]'
+  --url https://learn.microsoft.com/api/mcp
 
 az aigateway mcp source add --subscription "$SUB" -g "$RG" --gateway-name "$GW" --tool-server-name "$MCP_NAME" \
   --namespace "$NS" --kind mcp --mcp '{"transport":"streamableHttp","url":"https://tools.example.com/mcp"}' \
@@ -104,7 +104,7 @@ az aigateway mcp source add --subscription "$SUB" -g "$RG" --gateway-name "$GW" 
 az aigateway mcp source remove --subscription "$SUB" -g "$RG" --gateway-name "$GW" --tool-server-name "$MCP_NAME" --namespace "$NS"
 ```
 
-See [references/mcp.md](references/mcp.md) for OpenAPI/credential JSON schemas, editing existing sources (`mcp update --endpoints`), OAuth (`mcp authorize`), and tool filtering (`allowList`, `blocked`).
+See [references/mcp.md](references/mcp.md) for `--url` / `--transport` / `--namespace` vs `--endpoints`, OpenAPI/credential JSON schemas, editing existing sources (`mcp update --url` / `mcp update --endpoints`), OAuth (`mcp authorize`), and tool filtering (`allowList`, `blocked`).
 
 ### 3. Governance policies (`policy`, `model policy`, `--policies`)
 

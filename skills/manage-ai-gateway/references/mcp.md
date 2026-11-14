@@ -19,9 +19,11 @@ Each element in `--endpoints @endpoints.json` (or passed to `mcp source add` via
 | `managedIdentity` | `{"type": "managedIdentity", "managedIdentity": {"resource": "<audience>", "clientId": "<optional-uami-client-id>"}}` |
 | `oauth2` | `{"type": "oauth2", "oauth2": {"grantType": "authorizationCode", "authorizationUrl": "...", "tokenUrl": "...", "clientId": "...", "scopes": ["..."], "clientSecret": "<optional>"}}` |
 
-## Editing existing sources (`mcp update --endpoints`)
+## Editing existing sources (`mcp update --url` / `mcp update --endpoints`)
 
-There is no `mcp source update`. To modify an existing source's URL, transport, `required` flag, or credentials:
+For a single-endpoint MCP registration (or to update a specific `--namespace` endpoint's URL/transport in place), pass `--url "<mcp-url>"` (with optional `--transport streamableHttp|sse` and `--namespace "<namespace>"`) to `az aigateway mcp update`.
+
+There is no `mcp source update`. To modify multiple sources, `required` flags, or credentials via the full array:
 
 1. Read `az aigateway mcp show --subscription "$SUB" -g "$RG" --gateway-name "$GW" -n "$MCP_NAME" -o json`.
 2. Build the **complete `endpoints` array** in `endpoints-edit.json` with each kept source's `kind`, `namespace`, `required`, and `mcp`/`openApi` settings.

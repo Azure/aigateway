@@ -100,8 +100,19 @@ API Management `service` resource.
 ### 2. Register a public MCP server
 
 The [Microsoft Learn MCP server](https://learn.microsoft.com/training/support/mcp)
-needs no backend credential. Put the following endpoint array in
-`endpoints.json`:
+needs no backend credential. Register it directly with `--url` (which defaults
+`--transport` to `streamableHttp` and `--namespace` to `--name`):
+
+```bash
+az aigateway mcp create --subscription "$SUBSCRIPTION" \
+  -g "$RG" --gateway-name "$GATEWAY" -n learn \
+  --url https://learn.microsoft.com/api/mcp
+az aigateway mcp show --subscription "$SUBSCRIPTION" \
+  -g "$RG" --gateway-name "$GATEWAY" -n learn -o json
+```
+
+For multi-source or authenticated registrations, pass an endpoint array via
+`--endpoints @endpoints.json`:
 
 ```json
 [
@@ -116,15 +127,10 @@ needs no backend credential. Put the following endpoint array in
 ]
 ```
 
-```bash
-az aigateway mcp create --subscription "$SUBSCRIPTION" \
-  -g "$RG" --gateway-name "$GATEWAY" -n learn --endpoints @endpoints.json
-az aigateway mcp show --subscription "$SUBSCRIPTION" \
-  -g "$RG" --gateway-name "$GATEWAY" -n learn -o json
-```
-
 Here `--name` identifies the MCP registration; `--gateway-name` identifies
-its parent. Registration does not deploy the backend or test a tool call.
+its parent. Registration runs a pre-flight reachability check against the MCP
+endpoint (pass `--no-verify-endpoint` to skip it), and does not deploy the
+backend or execute a tool call.
 
 ### 3. Publish models through aliases
 

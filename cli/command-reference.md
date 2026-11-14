@@ -212,7 +212,12 @@ Content-safety flags are visible but are **not supported on typed
 
 ## MCP servers
 
-`mcp create --endpoints @endpoints.json` registers an endpoint array; see the
+`mcp create --url "<mcp-url>"` registers a single MCP endpoint (defaulting
+`--transport` to `streamableHttp` and `--namespace` to `--name`) after a
+pre-flight reachability check (`--no-verify-endpoint` skips the check);
+`mcp update --url "<mcp-url>"` updates the target endpoint in place. For
+multi-source or credential-bearing arrays, `mcp create --endpoints @endpoints.json`
+registers an endpoint array; see the
 [quickstart](README.md#2-register-a-public-mcp-server) for a complete example.
 Use `mcp source add/list/remove` to edit individual sources. A full endpoint
 array update changes complete membership and may involve credentials.
