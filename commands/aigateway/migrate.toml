@@ -1,87 +1,61 @@
-description = "Assess and migrate supported APIM V2 configuration with local validation and individually approved az aigateway changes."
+description = "Migrate AI workloads from an Azure API Management instance to Azure AI Gateway: inventory the source, propose a migration plan, adapt it with the operator, then provision it phase by phase."
 
 prompt = """
-Follow `skills/migrate-ai-gateway/SKILL.md` and its bundled Python helper,
-schemas, and capability catalog. Resolve the source service ID first. A
-source-only invocation selects read-only feasibility assessment; do not require
-a target, region, or provisioning approval. Require explicit destination
-IDs/subscriptions only for destination-bound planning or execution, and a region
-only for creation.
+Move model APIs, MCP servers, and A2A agents from `Microsoft.ApiManagement/service` to
+`Microsoft.ApiManagement/aigateways`. Follow the complete workflow in
+`skills/migrate-apim/SKILL.md`. Use the arguments below to resolve the source instance
+and, when given, the target gateway.
 
-Check dependencies, the installed `az aigateway` contract, and the source service profile.
-Only BasicV2, StandardV2, and PremiumV2 sources are initially enabled. V1 and
-AIGateway source profiles are reserved. The source remains a
-`Microsoft.ApiManagement/service`; the destination must use
-`Microsoft.ApiManagement/aigateways`. Check installed new-RP dispatch support,
-not just help. Never substitute legacy writes or pass the removed public
-`--workspace-name` selector. Preserve legacy checkpoints read-only;
-create a fresh version-4 workspace when destination-bound planning begins.
-b22 supports model writes, workspace policies, telemetry exporters and post-create
-networking; refresh evidence and approvals, using exposed arguments rather than
-help mentions. Use reviewed explicit
-alias and gateway key nodes, not an assumption that registrations are callable.
-Follow the skill's references/model-workflow.md for Foundry import/sync,
-approved Custom /models discovery, and operator-manifest fallback.
-Use that reference's scoped selections for policies, network/connection intent,
-telemetry, key lifecycle, MCP versions and multi-backend aliases. Keep exact
-source behavior ownership and scope decisions; cost governance and payload
-capture are opt-in. Do not enable mcp update --failure-mode, key rename,
-unreviewed OpenTelemetry write fields or external provisioning. Existing policy,
-network and lifecycle targets require verified foundations and fresh evidence;
-endpoint credential reads need explicit approval.
-For model discovery, use a protected runtime binding or the helper's separately
-approved scoped APIM named-value/subscription-key read. The read-only listValue
-and listSecrets actions use POST but do not mutate the source. Keep secrets in
-process memory for the exact approved catalog endpoint/header; do not enumerate,
-copy, log or expose their values. Do not categorically reject control-plane
-secret retrieval when this supported path is available.
+The work has four steps and they do not collapse into one another:
 
-Collect source evidence through read-only ARM GETs. Collect non-secret destination
-evidence only if a target is supplied and its reads are authorized.
-Local APIOps/ARM evidence requires explicit path/content-digest
-approval. Preserve gaps, conflicts, inheritance, provenance, and every behavior.
+1. Inventory the APIM instance with `migrate-apim collect`. Facts only, no verdicts.
+2. Plan with `migrate-apim plan`, which matches that inventory against what the
+   installed `az aigateway` can actually do.
+3. Adapt the plan with the operator. Everything that does not map one-to-one is an
+   item to settle; record a decision by setting only `status` and `decision`, then
+   re-run `plan`.
+4. Provision with `migrate-apim apply`, one phase at a time.
 
-Inventory model-facing APIs, MCP tools, and required dependencies first.
-Traditional APIs are not migration targets except as dependencies. Do not ask
-about replacing the entire APIM instance. Honor any supplied AI subset; otherwise
-ask about all discovered AI APIs versus a named subset only after inventory and
-only when the choice affects assessment or planning.
-Select concrete model IDs and finite supported operations. Never import wildcard
-models, wildcard destination operations or all APIM operations automatically.
-Keep catalogs source-only. Foundry import/sync compiles explicit add/update/verify
-nodes, preserves existing policies and stale models by default, and proposes
-removals separately. Do not execute native bulk sync as an opaque apply action.
-For Foundry model planning, require authorized collect-sync-preview evidence
-from the latest official, reviewed CLI and repeatable compile-plan
---sync-preview-file inputs. Native dry-run owns missing/stale decisions; only
-selected create/unchanged registrations become granular TODOs. Create/verify
-new providers in a foundation plan first. Alias-bound stale registrations can
-block even preview: retain configuration and report the blocker, without a
-substitute local diff. Custom discovery stays independent of native sync.
+Before step 1, make the tool runnable and say which way you did it. The extension ships it,
+so there is nothing separate to install. In order: the copy under this extension's own
+`tools/migrate-apim`; otherwise `tools/migrate-apim` in a clone of
+`github.com/Azure/aigateway`; otherwise `migrate-apim` already on `PATH`, which holds only
+if someone installed it earlier. It is a dependency-free Python package needing 3.10 or
+later, so `PYTHONPATH=<tool-dir> python3 -m migrate_apim.cli` runs it in place.
+`pip install -e <path>` installs the real command, but only from a clone -- the extension's
+copy sits under a path that moves when the extension updates. If none of those resolve, say
+so and stop rather than approximating the tool with `az` commands.
 
-For assessment, analyze inventory and reviewed capabilities to give evidence-backed
-outcomes: migratable, migratable with changes, not supported by this adapter, or
-undetermined. Distinguish moving all assessed AI traffic from a feasible subset,
-not full APIM replacement. Preserve broad inventory coverage and gaps. Determine
-technical compatibility yourself; ask an actual focused question for essential
-missing facts or scope decisions, not a generic confirmation checklist.
+Migration is additive. Everything is provisioned into the gateway and nothing is removed
+from APIM. A failed run leaves a partially built gateway and a source still serving as
+before. Retiring anything from APIM is the operator's decision after they have validated
+the new gateway -- do not do it, and do not offer to.
 
-For requested executable planning, classify work as ready, needs-input, or
-cannot-import and compile/validate the resource graph. Mappings own behaviors
-once and may require multiple resource kinds/models. Initial needs-input mappings
-are scaffolding, not feasibility findings. Missing coverage cannot be accepted away.
+Ask the operator only what APIM cannot answer. A provider you cannot identify, a dialect
+you cannot read, or a tool list you did not fetch is a bug in the tool, not a question:
+the governing rule and the question kinds are in the skill. Items carrying `plannerGaps`,
+`rulesGap`, or `cannotAccept` are defects or unknowns and cannot be settled by accepting
+a loss. An item whose `evidence.targetSupports` is true means the gateway can do it and
+the installed CLI cannot author it -- put that distinction to the operator rather than
+reporting a capability the target lacks.
 
-For requested execution, obtain per-item consequential approval against the
-current plan digest. Execute
-only helper-validated granular `az aigateway` templates. Never use legacy native
-migration commands, source writes, destination REST writes, implicit replacement,
-or unreviewed Foundry bulk/RBAC shortcuts. Keep secrets runtime-only.
+Run `apply --preflight` first and resolve everything blocking. It prints the eight phases
+and asks you to track them: make one TODO entry per phase before the first write, and tick
+them from what each run prints rather than from memory. Rehearse each phase before
+executing it, show the operator the actual commands, and get explicit agreement before
+`--execute` creates real Azure resources. Work one phase per turn and report what each
+produced before starting the next. Put the manual prerequisites -- Foundry RBAC, caller
+role assignments, Entra consent, private endpoint approvals -- to the operator before the
+first write, and never acknowledge one on their behalf.
 
-Verify structural resource dependencies before dependent mutations, and verify
-mapping-level source behavior across every required resource before completion.
-Keep both verification stages distinct, stop dependents on failure,
-and use protected atomic generations and drift checks on resume. Report complete,
-accepted-residual, incomplete, blocked, failed, or cancelled work accurately.
+Never pass a secret as a scalar CLI flag, write one to a file the tool did not create, or
+print one. The inventory carries retrieval recipes, not values.
+
+Report honestly. A management read-back proves configured, not working: do not claim the
+migration works, distinguish `unverified` from `verified`, name the work a phase could not
+perform, and separate what you provisioned from what still needs the operator. Close by
+sending them to the gateway in the portal -- `apply` prints the link once no phases
+remain -- and say what to look at there.
 
 Migration request: {{args}}
 """

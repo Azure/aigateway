@@ -46,10 +46,8 @@ bounded exporter read-back, and explicit alias `update` respectively.
 create-only safeguard.
 
 The CLI does not currently expose `az aigateway migration collect-source`,
-`validate`, `apply`, or `report`. The
-[migration skill](../skills/migrate-ai-gateway/SKILL.md) provides local
-assessment/planning helpers and delegates destination writes to native
-resource commands. Do not treat proposed migration commands as available.
+`validate`, `apply`, or `report`. Do not treat proposed migration commands as
+available.
 
 ## Resource selectors
 

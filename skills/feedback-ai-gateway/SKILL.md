@@ -1,7 +1,7 @@
 ---
 name: feedback-ai-gateway
 version: 1.0.0
-description: Packages one selected Copilot, Claude, Gemini, Cursor, or other coding-agent session and approved diagnostics into a local feedback ZIP. Use when users invoke /aigateway:feedback, request session telemetry for Azure AI Gateway product feedback, or prepare a migration-session bug report. Supports optional anonymization for private handoff and requires anonymization, archive review, and explicit approval for GitHub issue publication.
+description: Packages one selected Copilot, Claude, Gemini, Cursor, or other coding-agent session and approved diagnostics into a local feedback ZIP. Use when users invoke /aigateway:feedback, request session telemetry for Azure AI Gateway product feedback, or prepare a session-based bug report. Supports optional anonymization for private handoff and requires anonymization, archive review, and explicit approval for GitHub issue publication.
 ---
 
 # Collect Azure AI Gateway session feedback
@@ -60,7 +60,7 @@ Include available messages, visible tool calls/results, errors, approval
 decisions, and host-exposed model/version, timing, token usage, and cost.
 Record absent fields and incomplete history rather than estimating them.
 Optional approved context: expected/actual behavior, reproduction steps,
-plugin/CLI versions, or selected migration reports and validation errors.
+plugin/CLI versions, or selected command outputs and validation errors.
 
 Exclude hidden reasoning, credential stores/environment dumps, unrelated
 sessions, whole session databases, repository trees, and machine-wide logs.
@@ -75,8 +75,9 @@ another access method. Do not silently truncate evidence.
 credentials, personal/customer data, confidential code, and unnecessary payloads.
 Replace names, organizations, projects, resources, hosts, paths, and other
 identities with consistent neutral labels. Preserve the failure sequence,
-command structure, errors, and outcome. Migration reports need the same review
-as transcripts, even if their collector already redacts some fields.
+command structure, errors, and outcome. Generated reports and logs need the
+same review as transcripts, even when their producer already redacts some
+fields.
 
 If safe anonymization would remove essential evidence, stop the issue path and
 let the user choose a private handoff. Do not silently downgrade privacy.

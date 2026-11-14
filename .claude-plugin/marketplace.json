@@ -9,10 +9,10 @@
     {
       "name": "aigateway",
       "source": "./",
-      "description": "Create, configure, and operate Azure AI Gateway resources, discover and integrate their models and MCP tools, or migrate supported APIM V2 configuration with local validation and explicit approval.",
-      "version": "3.0.0",
+      "description": "Create, configure, and operate Azure AI Gateway resources, migrate AI workloads onto them from API Management, and discover and integrate their models and MCP tools.",
+      "version": "3.1.0",
       "category": "development",
-      "keywords": ["ai-gateway", "agents", "mcp", "models", "azure", "integration", "management", "migration"],
+      "keywords": ["ai-gateway", "agents", "mcp", "models", "azure", "integration", "management", "migration", "apim"],
       "author": {
         "name": "Microsoft",
         "url": "https://www.microsoft.com"

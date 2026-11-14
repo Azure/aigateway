@@ -1,0 +1,251 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Azure/aigateway/tools/migrate-apim/schemas/plan.schema.json",
+  "title": "APIM migration plan",
+  "description": "The one living artifact of a migration: proposed by the tool, adapted in place by the agent and the user, then executed one object at a time.",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "generator", "generatedAt", "source", "target", "summary", "prerequisites", "items"],
+  "properties": {
+    "$schema": {"type": "string"},
+    "schemaVersion": {"const": "1.0"},
+    "kind": {"const": "apimMigrationPlan"},
+    "generator": {
+      "type": "object",
+      "required": ["name", "version", "command"],
+      "properties": {
+        "name": {"const": "migrate-apim"},
+        "version": {"type": "string"},
+        "command": {"const": "plan"}
+      }
+    },
+    "generatedAt": {"type": "string", "format": "date-time"},
+
+    "source": {
+      "type": "object",
+      "required": ["resourceId", "name"],
+      "properties": {
+        "resourceId": {"type": ["string", "null"]},
+        "name": {"type": ["string", "null"]},
+        "inventoryCapturedAt": {"type": ["string", "null"]}
+      }
+    },
+
+    "target": {
+      "type": "object",
+      "required": ["capabilities", "publishableRoutes"],
+      "properties": {
+        "resourceId": {
+          "description": "The Microsoft.ApiManagement/aigateways resource this plan deploys to. A plan can be proposed and adapted without one; apply requires it.",
+          "type": ["string", "null"]
+        },
+        "capabilities": {
+          "type": "object",
+          "properties": {
+            "catalog": {"type": "string"},
+            "cliVersion": {"type": ["string", "null"]},
+            "probed": {
+              "description": "False means the catalogue was taken as declared; no claim is made about the installed extension.",
+              "type": "boolean"
+            },
+            "capabilities": {"type": "object"},
+            "unsupported": {"type": "array", "items": {"type": "string"}}
+          }
+        },
+        "publishableRoutes": {
+          "description": "The inference routes AI Gateway publishes. Everything outside them has no target.",
+          "type": "array", "items": {"type": "string"}
+        }
+      }
+    },
+
+    "summary": {
+      "type": "object",
+      "required": ["total", "byStatus", "unsettled", "blocking"],
+      "properties": {
+        "total": {"type": "integer", "minimum": 0},
+        "byStatus": {"type": "object"},
+        "unsettled": {"type": "integer", "minimum": 0},
+        "blocking": {"type": "integer", "minimum": 0},
+        "byKind": {"type": "object"},
+        "plannerGaps": {"type": "integer", "minimum": 0}
+      }
+    },
+
+    "plannerGaps": {
+      "description": "Work an item commits to that the plan cannot produce: a required field no source supplied, or a settled decision that yields no target object. These are defects in this tool rather than decisions for the operator, and they block apply, so work that will not happen is visible before the first write instead of being discovered when a phase produces nothing.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "gap"],
+        "properties": {
+          "id": {"type": "string"},
+          "gap": {"type": "string"}
+        }
+      }
+    },
+
+    "prerequisites": {
+      "description": "Steps the tool cannot perform, surfaced before anything is executed.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "owner", "summary"],
+        "properties": {
+          "id": {"type": "string"},
+          "owner": {"enum": ["azure-administrator", "operator", "migrate-apim"]},
+          "summary": {"type": "string"},
+          "detail": {"type": "string"},
+          "commands": {
+            "description": "The exact invocation that satisfies this prerequisite, so whoever runs it runs the one the plan specified rather than improvising a role name or scope.",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["command"],
+              "properties": {
+                "command": {"type": "string"},
+                "roleDefinitionId": {"type": "string"},
+                "scope": {"type": ["string", "null"]},
+                "principalFrom": {"type": "string"},
+                "note": {"type": "string"}
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "orphanedDecisions": {
+      "description": "Decisions settled against items that no longer exist, usually because the mapping rules changed an item's shape. Reported rather than dropped, so work is not silently lost across a tool change.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "decision", "note"],
+        "properties": {
+          "id": {"type": "string"},
+          "kind": {"type": ["string", "null"]},
+          "assetId": {"type": ["string", "null"]},
+          "aspect": {"type": ["string", "null"]},
+          "decision": {},
+          "note": {"type": "string"}
+        }
+      }
+    },
+
+    "items": {"type": "array", "items": {"$ref": "#/$defs/item"}}
+  },
+
+  "$defs": {
+    "item": {
+      "description": "One source aspect and what becomes of it on the target.",
+      "type": "object",
+      "required": ["id", "source", "status", "verdict", "rationale", "options", "evidence", "blocking"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^item:"},
+        "source": {
+          "type": "object",
+          "required": ["assetKind", "aspect"],
+          "properties": {
+            "assetId": {"type": ["string", "null"]},
+            "assetKind": {"type": "string"},
+            "aspect": {"type": "string"}
+          }
+        },
+        "status": {
+          "description": "ready executes as proposed; needs-decision wants confirming or changing; adapted is settled; stale was settled against facts that have since changed; excluded has nothing to migrate.",
+          "enum": ["ready", "needs-decision", "adapted", "excluded", "stale"]
+        },
+        "kind": {
+          "type": ["string", "null"],
+          "enum": ["reduce-surface", "translate", "accept-loss", "enumerate", "name", "scope", "collapse", null]
+        },
+        "verdict": {"enum": ["native", "partial", "gap", "handled", "notApplicable"]},
+        "capabilityId": {"type": ["string", "null"]},
+        "proposal": {},
+        "decision": {
+          "description": "Set when the item is adapted. Null while the proposal stands.",
+          "default": null
+        },
+        "decidedAt": {"type": ["string", "null"]},
+        "rationale": {"type": "string"},
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["value"],
+            "properties": {
+              "value": {"type": "string"},
+              "consequence": {"type": "string"}
+            }
+          }
+        },
+        "evidence": {
+          "description": "The source facts behind the item, so a reviewer can check the proposal without re-reading the inventory.",
+          "type": "object"
+        },
+        "target": {
+          "description": "Pre-shaped inputs for the capability, so a ready item executes without re-deriving anything.",
+          "type": "object",
+          "properties": {
+            "capability": {"type": "string"},
+            "objects": {"type": "array"}
+          }
+        },
+        "blocking": {"type": "boolean"},
+        "cannotAccept": {
+          "description": "True for an unknown that must not be closed by accepting a loss -- a failed read is not an absence.",
+          "type": "boolean"
+        },
+        "capabilityUnavailable": {
+          "description": "Present when the catalogue declares the capability but the installed CLI does not expose it.",
+          "type": "object"
+        },
+        "needsFact": {
+          "description": "Present when a settled decision commits to work whose facts the answer does not carry, so the plan shapes no object for it.",
+          "type": "object",
+          "properties": {"what": {"type": "string"}, "how": {"type": "string"}}
+        },
+        "appliedByHand": {
+          "description": "Present when the gateway and the installed CLI support the mapping but migrate-apim has no builder for it, so apply runs no step and the operator applies it themselves.",
+          "type": "object",
+          "properties": {
+            "command": {"type": ["string", "null"]},
+            "reason": {"type": "string"}
+          }
+        },
+        "capabilityLimitations": {"type": "array", "items": {"type": "string"}},
+        "shapeDigest": {
+          "description": "The question and its choices. A change here invalidates a decision made earlier.",
+          "type": "string"
+        },
+        "memberDigests": {
+          "description": "Per-member source facts, so one changed member does not unsettle the rest of a batch.",
+          "type": "object"
+        },
+        "decidedAgainst": {"type": ["object", "null"]},
+        "staleReason": {"type": "string"},
+        "newMembers": {
+          "description": "Members that joined a settled batch and inherit its decision.",
+          "type": "array", "items": {"type": "string"}
+        }
+      },
+
+      "allOf": [
+        {
+          "description": "An adapted item must say what was decided.",
+          "if": {"properties": {"status": {"const": "adapted"}}, "required": ["status"]},
+          "then": {"required": ["decision"], "properties": {"decision": {"not": {"const": null}}}}
+        },
+        {
+          "description": "An unsettled item must offer a choice.",
+          "if": {"properties": {"status": {"const": "needs-decision"}}, "required": ["status"]},
+          "then": {"properties": {"options": {"minItems": 1}, "kind": {"type": "string"}}}
+        },
+        {
+          "description": "An unknown cannot be closed by accepting it as a loss.",
+          "if": {"properties": {"cannotAccept": {"const": true}}, "required": ["cannotAccept"]},
+          "then": {"properties": {"decision": {"not": {"enum": ["accept"]}}}}
+        }
+      ]
+    }
+  }
+}

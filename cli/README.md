@@ -160,10 +160,6 @@ Use [the reference](command-reference.md) to find commands and configuration
 examples; use task-specific `--help` to check the installed version's options.
 Keep the CLI version stable during an approved change.
 
-For an existing APIM workload, follow the
-[APIM migration skill](../skills/migrate-ai-gateway/SKILL.md) for its supported
-scope, prerequisites, validation, and approval requirements.
-
 ## Removal
 
 `az extension remove --name aigateway` removes the local extension only.
