@@ -59,8 +59,12 @@ Clients call **model aliases** (`properties.aliasName`, set via `--routing-name`
 az aigateway model create --subscription "$SUB" -g "$RG" --gateway-name "$GW" \
   --foundry-resource-id "$FOUNDRY_ACCOUNT_ID" --deployment "$DEPLOYMENT_NAME"
 
-# Bulk-onboard all deployments in a Foundry account
+# Register a Foundry provider only (enables system MI and grants Foundry User by default, without importing deployments)
 az aigateway model-provider create --subscription "$SUB" -g "$RG" --gateway-name "$GW" \
+  --foundry-resource-id "$FOUNDRY_ACCOUNT_ID"
+
+# Bulk-onboard all deployments in a Foundry account
+az aigateway model-provider import --subscription "$SUB" -g "$RG" --gateway-name "$GW" \
   --foundry-resource-id "$FOUNDRY_ACCOUNT_ID"
 
 # Reconcile Foundry provider with current deployments (preview first; apply deletes stale unaliased models)
