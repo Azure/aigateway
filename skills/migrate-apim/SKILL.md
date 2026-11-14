@@ -166,14 +166,11 @@ An item carrying `needsFact` is settled on something the answer does not supply.
 metrics policy means "send them elsewhere" and APIM never says where, so no exporter is built and
 the phase reports nothing wrong. Go back to the operator for the fact, in the shape `how` names.
 
-**Telemetry is two questions, and the first one is `item:telemetry/destination`.** APIM reports to
-Azure Application Insights and the gateway exports OpenTelemetry; the only surface both support is
-the **OTLP endpoint on an Application Insights resource**, which an administrator has to enable.
-Ask which resource that is before anything else: reusing the one APIM reports to changes a resource
-other workloads may be reading, while a new one leaves existing dashboards and alerts pointing
-where the gateway does not report. Then `prereq:appinsights-otlp` goes to the administrator, and
-only once the endpoint exists does the decision carry it. Do not propose the `ApplicationInsights`
-exporter kind: the command takes it and it carries nothing across from APIM.
+**Telemetry destination** — `item:telemetry/destination` — is settled before applying any telemetry
+phase. The planner generates it with four options and a prerequisite. See `capabilities/rules.json`
+under the telemetry rule for the full decision guidance: what each option means, which prerequisite
+it raises, and what the administrator has to do. The plan item itself carries all the logic; treat
+this as passing the choice through to apply rather than re-deciding it.
 
 ## 3. Execute
 
