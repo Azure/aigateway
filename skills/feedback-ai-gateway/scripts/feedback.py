@@ -1,19 +1,15 @@
-"""Create a local feedback archive from explicitly selected UTF-8 session exports."""
+"""Anonymize session transcript summaries for product feedback."""
 
 import argparse
-from datetime import datetime, timezone
-import hashlib
 import ipaddress
 import json
 import os
 from pathlib import Path
 import re
 import sys
-import zipfile
 
 
 MAX_FILE_BYTES = 20 * 1024 * 1024
-MAX_TOTAL_BYTES = 50 * 1024 * 1024
 
 
 class Anonymizer:
@@ -81,103 +77,61 @@ class Anonymizer:
 
 def read_text(path):
     if path.is_symlink() or not path.is_file():
-        raise ValueError("Inputs must be regular files, not directories or symlinks.")
+        raise ValueError("Input must be a regular file, not a directory or symlink.")
     with path.open("rb") as stream:
         content = stream.read(MAX_FILE_BYTES + 1)
     if len(content) > MAX_FILE_BYTES:
-        raise ValueError("An input exceeds the 20 MiB per-file limit.")
+        raise ValueError("Input exceeds the 20 MiB per-file limit.")
     text = content.decode("utf-8")
     if "\x00" in text:
-        raise ValueError("Binary input is not supported; provide a UTF-8 session export.")
+        raise ValueError("Binary input is not supported; provide a UTF-8 summary export.")
     return text, len(content)
 
 
-def create_bundle(*, session_files, context_files, output, agent, sharing,
-                  anonymize=False, sensitive_values=()):
-    if sharing == "issue" and not anonymize:
-        raise ValueError("Issue bundles require --anonymize and subsequent human review.")
+def anonymize_summary(*, summary_file, output, sensitive_values=()):
+    """Anonymize a session summary and write it to output."""
     scrubber = Anonymizer(sensitive_values)
-    entries = {}
-    total = 0
-    for kind, paths in (("session", session_files), ("context", context_files)):
-        for index, path in enumerate(paths, 1):
-            text, size = read_text(Path(path))
-            total += size
-            if total > MAX_TOTAL_BYTES:
-                raise ValueError("Selected inputs exceed the 50 MiB total limit.")
-            if anonymize:
-                text = scrubber.scrub(text)
-            entries[f"{kind}-{index:03d}.txt"] = text.encode("utf-8")
-    if not session_files:
-        raise ValueError("Select at least one session export.")
-    manifest = {
-        "schemaVersion": 1,
-        "agent": agent,
-        "createdUtc": datetime.now(timezone.utc).isoformat(),
-        "sharing": sharing,
-        "anonymization": "automated-scrub-review-required" if anonymize else "none",
-        "reviewRequired": True,
-        "files": [
-            {"name": name, "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}
-            for name, data in entries.items()
-        ],
-    }
-    entries["manifest.json"] = json.dumps(manifest, indent=2).encode("utf-8")
-    entries["REVIEW.txt"] = (
-        "This archive was created locally. Nothing has been uploaded.\n"
-        "Inspect every file before sharing. Automated scrubbing is not proof of anonymity.\n"
-        "Free-text identities, source code, customer data, and unusual secrets may remain.\n"
-        "For GitHub issues, semantically anonymize the session and review the final ZIP,\n"
-        "issue title, body, and attachments. Never attach an original/private bundle.\n"
-    ).encode("utf-8")
+    text, _ = read_text(Path(summary_file))
+    text = scrubber.scrub(text)
+
     output = Path(output)
     descriptor = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
         with os.fdopen(descriptor, "wb") as stream:
-            with zipfile.ZipFile(stream, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-                for name, data in entries.items():
-                    info = zipfile.ZipInfo(name)
-                    info.compress_type = zipfile.ZIP_DEFLATED
-                    info.create_system = 3
-                    info.external_attr = 0o100600 << 16
-                    archive.writestr(info, data)
+            stream.write(text.encode("utf-8"))
     except BaseException:
         output.unlink()
         raise
-    return output
+    return output, len(scrubber.tokens)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--session-file", type=Path, action="append", required=True)
-    parser.add_argument("--context-file", type=Path, action="append", default=[])
-    parser.add_argument("--agent", choices=("copilot", "claude", "gemini", "cursor", "other"), required=True)
-    parser.add_argument("--sharing", choices=("private", "issue"), default="private")
-    parser.add_argument("--anonymize", action="store_true")
+    parser.add_argument("--summary-file", type=Path, required=True,
+                        help="Session summary file (friction, tasks, outcomes)")
+    parser.add_argument("--output", type=Path, required=True,
+                        help="Anonymized output file path")
     parser.add_argument(
         "--sensitive-values-file", type=Path,
-        help="Local UTF-8 JSON array of additional literal strings to replace; never bundled.",
+        help="Local UTF-8 JSON array of additional literal strings to replace; never included in output.",
     )
-    parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     try:
         values = []
         if args.sensitive_values_file:
-            if not args.anonymize:
-                raise ValueError("--sensitive-values-file requires --anonymize.")
             values = json.loads(read_text(args.sensitive_values_file)[0])
             if not isinstance(values, list) or not all(isinstance(v, str) and v.strip() for v in values):
                 raise ValueError("Sensitive values must be a JSON array of nonempty strings.")
-        output = create_bundle(
-            session_files=args.session_file, context_files=args.context_file,
-            output=args.output, agent=args.agent, sharing=args.sharing,
-            anonymize=args.anonymize, sensitive_values=values,
+        output, replacements = anonymize_summary(
+            summary_file=args.summary_file, output=args.output,
+            sensitive_values=values,
         )
     except (OSError, ValueError, UnicodeError) as error:
-        print(f"Feedback bundle failed: {error}", file=sys.stderr)
+        print(f"Anonymization failed: {error}", file=sys.stderr)
         return 1
-    print(f"Local feedback ZIP: {output.resolve()}")
-    print("Nothing uploaded. Review the archive before sharing; automated scrubbing is not a guarantee.")
+    print(f"Anonymized summary: {output.resolve()}")
+    print(f"Sensitive values masked: {replacements}")
+    print("Nothing uploaded. Review before sharing; automated scrubbing is not a guarantee.")
     return 0
 
 
