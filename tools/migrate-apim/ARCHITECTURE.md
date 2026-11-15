@@ -110,19 +110,26 @@ A data-driven contract is only as good as the checking of it. Two claims used to
 |---|---|
 | The commands exist | Each capability's `command` and `read` path is in the surface snapshot |
 | The options exist | Each declared and each required option is in that command's options |
+| Nothing the CLI insists on is missing | Every option the snapshot marks `[Required]`, other than the identity arguments `apply` supplies from the plan's target, is one the catalog marks required |
 | The snapshot is of this release | Its `wheelSha256` and version equal the catalog's `cliEvidence` |
 | One release, named consistently | Catalog filename, `targetCapabilities`, `DEFAULT_CATALOG`, and the `cli/` installers agree |
+| The catalog is not a release behind | With `--newest-release`, the documented version is the newest `cli-v*` there is |
 | The shapes are well formed | Both files against `schemas/capabilities.schema.json` and `schemas/rules.schema.json`, `additionalProperties` closed |
 | Every rule can be selected | Each rule is governed by a registered selector (below) |
-| No rule is ambiguous | No two rules look identical to the site that selects them |
+| Every rule field has a reader | Each field is one that some site able to select the rule declares it `reads` |
+| No rule is ambiguous | In every section, no two rules look identical to the site that selects them — including the policy passes keyed on `family` and `hasExpression` |
 
-Errors fail the command; warnings — a field no code reads, a rule with no `verdict` — are advisory, and `--strict` promotes them.
+Errors fail the command; warnings — a field no site reads, a version that cannot be compared — are advisory, and `--strict` promotes them. `--strict` passes on the committed data, which is the only state in which it is worth having: a mode that cannot pass is a mode nobody runs.
 
 ### The selector registry
 
 Reachability is checkable only because selection happens in one place. `migrate_apim/dispatch.py` defines `Selector`, which both performs a match and states what the match looks at; `plan.py` and `capability.py` declare one per selection site. `compile` imports those modules and reads `dispatch.REGISTRY`, so the contract it checks is the one the planner runs — not a second declaration that can drift from it.
 
 A selector *governs* a rule when the rule's `match` keys are a subset of the keys that site reads, and every value it pins is one that site accepts. Subset, not equality: a rule may pin fewer keys, but pinning more means the surplus is silently ignored and the rule matches more broadly than it reads.
+
+A selector also declares what it `reads`: the rule fields it consumes once it has chosen one. A field outside that union is a field somebody wrote expecting an effect it does not have — the same defect as an unreadable match key, one layer in — and it is found the same way, by asking the sites rather than by keeping a list in the checker. A list in the checker is a second declaration, and it drifted: `constraints` and `toolDiscoveryGuidance` sat unread for releases because nobody thought to add them to it.
+
+This is why the six `plan._structural` branches declare six selectors rather than one keyed on `kind`. They share a key and nothing else — each raises a different item and takes a different set of fields — and a single selector would have to declare the union, excusing a field on the workspace rule because the telemetry branch happens to read it.
 
 Adding a selection site means declaring a selector there. A rule that no selector governs is an error, with the reason given — an unread key is a different mistake from an unknown value, and they have different fixes.
 
@@ -166,7 +173,11 @@ The fake probe is also the reason `compile` exists. It answers whatever a test t
 
 | Workflow | When | What it proves | Needs |
 |---|---|---|---|
-| `.github/workflows/migrate-apim.yml` | every pull request and push touching the tool | the catalog and rules compile against the committed snapshot, and the suite passes | nothing — offline, no `az`, no credentials |
-| `.github/workflows/cli-surface.yml` | `cli-v*` tags, and on request | the committed snapshot is what the pinned wheel really offers | the Azure CLI and the network |
+| `.github/workflows/migrate-apim.yml` | every pull request and push touching the tool | the catalog and rules compile against the committed snapshot, the suite passes, and the pin is not behind the newest `cli-v*` tag | nothing — offline, no `az`, no credentials |
+| `.github/workflows/cli-surface.yml` | changes to `capabilities/` or the exporter, and on request | the committed snapshot is what the pinned wheel really offers | the Azure CLI and the network |
 
 Together they give catalog ⊆ reality. Keeping them apart is what lets the first one gate every change: proving a command exists needs the real wheel, but proving the catalog only names commands *the snapshot* contains needs nothing at all.
+
+Neither is wired to `cli-v*` tags. A CLI release is not this tool's build to redden, so the "a newer release exists" signal is raised offline, where the person it is addressed to is already standing. The cost is that it is only asked when somebody touches this tool: a pin can sit stale between visits, but it cannot be stale while being worked on.
+
+The drift check compares what two snapshots *claim* — version, digest, commands, options — rather than their bytes. The file also records the azure-cli-core that produced it, and that runner installs whatever is current; a byte comparison would report the next core release as drift in the wheel, which is both wrong and the kind of wrong that teaches people to ignore the check. `export_cli_surface.py --compare` is that comparison, and it names the command and flag that moved, so the log says what to re-pin rather than only that something did.

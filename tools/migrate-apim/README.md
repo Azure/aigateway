@@ -116,9 +116,10 @@ migrate-apim validate inventory.json
 migrate-apim summary inventory.json --format markdown
 
 # Check the contract itself: that the catalog names commands the pinned CLI has,
-# and that every rule is one the planner can actually select
+# and that every rule is one the planner can actually select and does read
 migrate-apim compile --cli-dir ../../cli
-migrate-apim compile --strict          # advisory warnings count as failures too
+migrate-apim compile --strict                       # warnings count as failures too
+migrate-apim compile --newest-release cli-v1.0.0b32 # has the catalog fallen behind?
 ```
 
 **Artifacts are read BOM-tolerantly and written without one.** The plan is meant to be edited, and
