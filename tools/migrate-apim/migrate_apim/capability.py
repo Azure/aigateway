@@ -24,7 +24,10 @@ from typing import Any, Callable, Iterable
 from .azcli import az_argv
 
 CAPABILITIES_DIR = Path(__file__).resolve().parent.parent / "capabilities"
-DEFAULT_CATALOG = "aigateway-1.0.0b26.json"
+# Must name a file that exists in CAPABILITIES_DIR: every entry point that does
+# not pass --capabilities falls back to it, so a stale name here breaks `plan`
+# outright rather than degrading. `test_capability.py` pins the two together.
+DEFAULT_CATALOG = "aigateway-1.0.0b31.json"
 
 # A probe maps an `az aigateway` command path to the option names the installed
 # extension exposes for it, or None when the command is absent.
@@ -73,9 +76,18 @@ class Capability:
 class CapabilityMap:
     """The target's capability table plus the APIM mapping rules."""
 
-    def __init__(self, catalog: dict[str, Any], rules: dict[str, Any]) -> None:
+    def __init__(
+        self,
+        catalog: dict[str, Any],
+        rules: dict[str, Any],
+        *,
+        catalog_name: str | None = None,
+    ) -> None:
         self.catalog = catalog
         self.rules = rules
+        # The catalog actually loaded, so a plan built with --capabilities
+        # records the table it was planned against rather than the default.
+        self.catalog_name = catalog_name or Path(DEFAULT_CATALOG).stem
         self.capabilities: dict[str, Capability] = {}
         for raw in catalog.get("capabilities", []):
             self.capabilities[raw["id"]] = Capability(
@@ -115,7 +127,7 @@ class CapabilityMap:
             raise CapabilityError(f"capability data unavailable: {exc}") from exc
         except json.JSONDecodeError as exc:
             raise CapabilityError(f"capability data is not valid JSON: {exc}") from exc
-        return cls(catalog, rules)
+        return cls(catalog, rules, catalog_name=catalog_path.stem)
 
     @property
     def cli_version(self) -> str | None:
@@ -208,7 +220,7 @@ class CapabilityMap:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "catalog": Path(DEFAULT_CATALOG).stem,
+            "catalog": self.catalog_name,
             "cliVersion": self.cli_version,
             "probed": self.probed,
             "capabilities": {cid: cap.support for cid, cap in sorted(self.capabilities.items())},

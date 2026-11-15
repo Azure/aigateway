@@ -612,7 +612,7 @@ stateful server rejects everything after the handshake without them.
 
 ## The plan
 
-`plan` matches the inventory against a **capability inventory** — `capabilities/aigateway-1.0.0b26.json`,
+`plan` matches the inventory against a **capability inventory** — `capabilities/aigateway-1.0.0b31.json`,
 a curated table of what `az aigateway` can actually do, pinned to a CLI revision, plus
 `capabilities/rules.json` mapping source shapes to target capabilities. A new AI Gateway release is
 a data change, not a code change. With `--probe-cli`, the declared table is reconciled against the
