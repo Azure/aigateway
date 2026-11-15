@@ -72,6 +72,7 @@
         "match": {
           "type": "object",
           "additionalProperties": false,
+          "minProperties": 1,
           "properties": {
             "family": {"enum": ["models", "modelProviders", "mcpServers", "agents"]},
             "pattern": {"type": "string"},
@@ -84,14 +85,12 @@
         "options": {"$ref": "#/$defs/options"},
         "proposal": {"type": "string"},
         "rationale": {"type": "string"},
-        "note": {"type": "string"},
-        "constraints": {"type": "object"},
-        "toolDiscoveryGuidance": {"type": "object"}
+        "note": {"type": "string"}
       }
     },
     "structuralRule": {
       "type": "object",
-      "required": ["match", "itemKind"],
+      "required": ["match", "itemKind", "verdict"],
       "additionalProperties": false,
       "allOf": [{"$ref": "#/$defs/partialNeedsOptions"}],
       "properties": {
@@ -110,8 +109,12 @@
         "note": {"type": "string"},
         "blocking": {"type": "boolean"},
         "cannotAccept": {"type": "boolean"},
-        "prerequisite": {"type": "string"},
-        "prerequisiteGuide": {"type": "string"}
+        "prerequisiteWhen": {
+          "type": "array",
+          "items": {"type": "string"},
+          "minItems": 1,
+          "description": "The options that leave a manual prerequisite outstanding. Any option not named here needs nothing, so settling on it withdraws the prerequisite."
+        }
       }
     },
     "policyRule": {
@@ -140,9 +143,7 @@
         "target": {"type": "string"},
         "partial": {"type": "object"},
         "partialWhen": {"type": "object"},
-        "batchOn": {"type": "array", "items": {"type": "string"}},
-        "dependsOnBackendRole": {"type": "string"},
-        "priority": {"type": "integer"}
+        "batchOn": {"type": "array", "items": {"type": "string"}}
       }
     }
   }

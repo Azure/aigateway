@@ -23,15 +23,7 @@
       },
       "verdict": "native",
       "capabilityId": "mcp.create",
-      "constraints": {
-        "transport": [
-          "streamableHttp",
-          "sse"
-        ],
-        "oauth2.grantType": [
-          "authorizationCode"
-        ]
-      }
+      "note": "The target takes streamableHttp or sse transports, and authorizationCode for OAuth2. Nothing checks a collected server against that here: a transport or grant type outside it is a gap the apply step surfaces, not a rule this file can select on. Recorded so the limit is written down where the mapping is."
     },
     {
       "match": {
@@ -80,19 +72,21 @@
       "verdict": "gap",
       "itemKind": "enumerate",
       "options": [
-        "accept-all",
-        "discover-at-runtime",
-        "retain-in-apim"
+        {
+          "value": "accept-all",
+          "consequence": "Federate whatever the server exposes at runtime. If the tool list was read from the upstream rather than through APIM, the API's policies did not run, so this can widen what callers reach beyond what APIM serves today."
+        },
+        {
+          "value": "discover-at-runtime",
+          "consequence": "List the tools through the gateway before deciding. That list is authoritative for what the gateway will serve, because it is what callers see with APIM's policies applied."
+        },
+        {
+          "value": "retain-in-apim",
+          "consequence": "Keep this server on APIM, where the current tool exposure already holds."
+        }
       ],
       "proposal": "accept-all",
-      "rationale": "APIM stores no tool names for a passthrough server, and the CLI cannot author allowList/blocked in this baseline regardless.",
-      "toolDiscoveryGuidance": {
-        "preferredRoute": "gateway",
-        "preferredReason": "Lists what callers actually see with APIM's policies applied",
-        "fallbackRoute": "upstream",
-        "fallbackMeaning": "Policies were bypassed; the upstream list may be broader than what the gateway exposes today",
-        "communicateWhen": "If discovery falls back to upstream, tell the operator that APIM may currently be withholding some of these tools because the API's policies did not pass at the gateway, and federating all of them would widen what callers can reach. The list from the gateway is authoritative for what the gateway will serve."
-      }
+      "rationale": "APIM stores no tool names for a passthrough server, and the CLI cannot author allowList/blocked in this baseline regardless."
     },
     {
       "match": {
@@ -263,7 +257,6 @@
       "verdict": "gap",
       "itemKind": "accept-loss",
       "rationale": "Content-safety flags are visible in the CLI but are not supported on typed aigateways. The policy also pulls in a separate Content Safety backend.",
-      "dependsOnBackendRole": "contentSafety",
       "proposal": "retain-in-apim"
     },
     {
@@ -332,7 +325,7 @@
       },
       "verdict": "gap",
       "itemKind": "accept-loss",
-      "priority": 10,
+      "note": "Last of the three passes in capability.policy_rule, so it is reached only by an element with no rule of its own and no family rule. The ordering is in the code, not in a priority here.",
       "rationale": "A policy expression doing more than reading a well-known context property has no equivalent. The target's policy surface is six declarative types.",
       "proposal": "retain-in-apim"
     }
@@ -393,37 +386,50 @@
       "itemKind": "enumerate",
       "blocking": true,
       "cannotAccept": true,
+      "options": [
+        {
+          "value": "re-collect",
+          "consequence": "Fix access and collect again."
+        },
+        {
+          "value": "supply-facts",
+          "consequence": "State what is there."
+        }
+      ],
       "rationale": "A control-plane read failed, so this is unknown rather than absent. Unknown coverage cannot be accepted as an acceptable loss."
     },
     {
       "match": {
         "kind": "telemetry"
       },
+      "verdict": "partial",
       "itemKind": "translate",
       "capabilityId": "telemetry.create",
       "options": [
         {
           "value": "reuse-appinsights",
-          "consequence": "Gateway telemetry reports to the same Application Insights resource APIM uses. Changes what other workloads reading that resource see. Prerequisite: administrator must enable the OTLP endpoint on the existing Application Insights resource."
+          "consequence": "Enable the OTLP endpoint on the Application Insights resource APIM already reports to. Both products' telemetry stays in one place, and enabling it changes a resource other workloads may share."
         },
         {
           "value": "new-appinsights",
-          "consequence": "Gateway telemetry reports to a new Application Insights resource with OTLP enabled. Existing dashboards and alerts remain pointing to APIM's resource and will not see gateway telemetry. Prerequisite: administrator must create a new Application Insights resource and enable its OTLP endpoint."
+          "consequence": "Create an Application Insights resource with the OTLP endpoint enabled, for the gateway alone. Nothing shared changes; existing dashboards and alerts do not cover the gateway until they are rebuilt."
         },
         {
           "value": "gateway-metrics-only",
-          "consequence": "No migration of telemetry configuration. Gateway publishes metrics to its own endpoint; APIM logs remain in the original Application Insights resource. Nothing created or configured on the target."
+          "consequence": "No exporter. The gateway's own metrics are the only telemetry, and nothing reports into Application Insights."
         },
         {
           "value": "retain-in-apim",
-          "consequence": "No migration attempted. Both APIM and gateway telemetry remain separate."
+          "consequence": "Keep this workload on APIM, reporting as it does now."
         }
       ],
       "proposal": "reuse-appinsights",
       "rationale": "APIM reports to Azure Application Insights and the gateway exports OpenTelemetry. The only surface both support is the OTLP endpoint on an Application Insights resource. This question asks where that is: reuse the resource APIM already reports to, create a new one for the gateway alone, configure the gateway only, or keep both separate.",
       "note": "The `ApplicationInsights` exporter kind exists in the command but carries nothing across from APIM and is never offered. The mapping requires an explicit OTLP endpoint. When deciding, ask this question before the `emit-token-metric` dimensions question (which is separate).",
-      "prerequisite": "appinsights-otlp",
-      "prerequisiteGuide": "For 'reuse-appinsights': Administrator must enable the OTLP endpoint on the existing Application Insights resource APIM reports to. For 'new-appinsights': Administrator must create a new Application Insights resource with the OTLP endpoint enabled. For others: nothing required."
+      "prerequisiteWhen": [
+        "reuse-appinsights",
+        "new-appinsights"
+      ]
     }
   ]
 }

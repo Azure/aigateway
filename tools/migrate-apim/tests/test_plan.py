@@ -252,6 +252,46 @@ class TestStructural:
         assert item["proposal"] == "retain-in-apim"
 
 
+class TestTheRulesDecideAndTheBuilderReads:
+    """Every field `rules.json` declares reaches the item, rather than the
+    builder hardcoding its own copy. Two copies of a decision drift, and the
+    one in the data file is the one a new gateway release is meant to change."""
+
+    def test_the_verdict_and_kind_come_from_the_rule(self, plan, capabilities):
+        rule = next(r for r in capabilities.structural_rules()
+                    if r["match"]["kind"] == "workspace")
+        [item] = items_of(plan, "collapse")
+        assert (item["verdict"], item["kind"]) == (rule["verdict"], rule["itemKind"])
+
+    def test_a_reprovisioning_loss_carries_the_proposal_its_rule_names(
+        self, inventory, capabilities
+    ):
+        """These were raised with no proposal at all while the rule named one."""
+        import copy
+
+        enriched = copy.deepcopy(inventory)
+        enriched["shared"]["certificates"] = [{"name": "client-cert"}]
+        enriched["shared"]["credentialProviders"] = [{"name": "github-connection"}]
+        built = build_plan(enriched, capabilities)
+        for kind in ("certificates", "credentialProviders"):
+            item = next(i for i in built["items"] if i["source"]["assetKind"] == kind)
+            rule = next(r for r in capabilities.structural_rules()
+                        if r["match"]["kind"] == kind)
+            assert item["proposal"] == rule["proposal"], kind
+            assert item["proposal"] in {o["value"] for o in item["options"]}, kind
+
+    def test_an_options_consequence_reaches_the_operator(self, plan):
+        """Bare-string options carry no consequence; the object form does, and
+        the reader takes either. A consequence written in rules.json that never
+        reached the plan is guidance nobody was given."""
+        item = next(i for i in plan["items"]
+                    if i["source"]["aspect"] == "toolExposure"
+                    and i["proposal"] == "accept-all")
+        consequences = {o["value"]: o["consequence"] for o in item["options"]}
+        assert all(consequences.values()), consequences
+        assert "policies did not run" in consequences["accept-all"]
+
+
 class TestPrerequisites:
     def test_external_steps_are_surfaced_before_execution(self, plan):
         ids = {entry["id"] for entry in plan["prerequisites"]}
@@ -1311,6 +1351,45 @@ class TestWhichApplicationInsightsIsAQuestion:
         item = next(i for i in second["items"] if i["id"] == self.ITEM)
         assert "needsFact" not in item
         assert not (item.get("target") or {}).get("objects")
+
+    def _settled_on(self, inventory, capabilities, decision):
+        import copy
+
+        first = build_plan(copy.deepcopy(inventory), capabilities)
+        for item in first["items"]:
+            if item["id"] == self.ITEM:
+                item["status"] = "adapted"
+                item["decision"] = decision
+        return build_plan(copy.deepcopy(inventory), capabilities, previous=first)
+
+    def _asks_for_the_endpoint(self, plan):
+        return any(p["id"] == "prereq:appinsights-otlp" for p in plan["prerequisites"])
+
+    @pytest.mark.parametrize("decision", ["gateway-metrics-only", "retain-in-apim"])
+    def test_a_destination_that_needs_no_endpoint_withdraws_the_prerequisite(
+        self, inventory, capabilities, decision
+    ):
+        """Two of the four destinations touch an Application Insights resource
+        and two do not. Asking an administrator to enable an OTLP endpoint for a
+        plan that will never export to one is work invented by the tool."""
+        assert not self._asks_for_the_endpoint(
+            self._settled_on(inventory, capabilities, decision))
+
+    @pytest.mark.parametrize("decision", ["reuse-appinsights", "new-appinsights"])
+    def test_a_destination_that_needs_one_still_asks(self, inventory, capabilities, decision):
+        assert self._asks_for_the_endpoint(
+            self._settled_on(inventory, capabilities, decision))
+
+    def test_an_undecided_plan_still_asks(self, plan):
+        """Nothing is ruled out yet, and the endpoint takes an administrator and
+        a change window. Finding out at apply time is finding out too late."""
+        assert self._asks_for_the_endpoint(plan)
+
+    def test_which_destinations_need_it_is_the_rule_s_to_say(self, capabilities):
+        rule = next(r for r in capabilities.structural_rules()
+                    if r["match"]["kind"] == "telemetry")
+        assert set(rule["prerequisiteWhen"]) == {"reuse-appinsights", "new-appinsights"}
+        assert set(rule["prerequisiteWhen"]) <= {o["value"] for o in rule["options"]}
 
 
 class TestWhatWillNotTravelIsSaidWhileItIsStillAQuestion:

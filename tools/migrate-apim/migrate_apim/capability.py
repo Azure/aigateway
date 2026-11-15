@@ -27,10 +27,24 @@ from .dispatch import selector
 # `policy_rule` runs three passes in order: an element-specific rule wins, then
 # a family rule, then the expression fallback. Each pass is its own selection
 # site, so each declares what it looks at.
-POLICY_BY_ELEMENT = selector("policies", keys=("element",), site="capability.policy_rule element")
-POLICY_BY_FAMILY = selector("policies", keys=("family",), site="capability.policy_rule family")
+#
+# All three hand the chosen rule back to the same reader in `plan._policies`, so
+# they read the same fields; they differ only in how the rule is found.
+_POLICY_FIELDS = (
+    "verdict", "itemKind", "capabilityId", "target", "proposal", "rationale",
+    "options", "partial", "partialWhen", "batchOn",
+)
+POLICY_BY_ELEMENT = selector(
+    "policies", keys=("element",), site="capability.policy_rule element",
+    reads=_POLICY_FIELDS,
+)
+POLICY_BY_FAMILY = selector(
+    "policies", keys=("family",), site="capability.policy_rule family",
+    reads=_POLICY_FIELDS,
+)
 POLICY_BY_EXPRESSION = selector(
-    "policies", keys=("hasExpression",), site="capability.policy_rule expression"
+    "policies", keys=("hasExpression",), site="capability.policy_rule expression",
+    reads=_POLICY_FIELDS,
 )
 
 CAPABILITIES_DIR = Path(__file__).resolve().parent.parent / "capabilities"

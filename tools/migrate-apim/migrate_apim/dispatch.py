@@ -22,6 +22,12 @@ A selector `governs` a rule when the rule's `match` keys are a subset of the
 keys the selector examines, and every value it constrains is one the selector
 accepts. Subset rather than equality: a rule may legitimately pin fewer keys.
 What it may not do is pin *more*, because the surplus would be silently ignored.
+
+A fourth thing can go wrong, one layer in: the rule is selected, and then a
+*field* of it is never looked at. That is the same defect as an unreadable match
+key -- something written expecting an effect it does not have -- so it is
+answered the same way. A selector also declares what it `reads`, and the site
+that reads a field is the site that declares it.
 """
 
 from __future__ import annotations
@@ -37,9 +43,19 @@ REGISTRY: list["Selector"] = []
 Rule = dict[str, Any]
 
 
-@dataclass(frozen=True)
+# Keys every rule carries that are not a field of the rule's own vocabulary:
+# `match` is the selection criteria, and `note` is addressed to whoever reads the
+# file. Neither is expected to be consumed by a selection site.
+STRUCTURAL_KEYS = ("match", "note")
+
+
+# Hashing is off because `values` is a Mapping, so the hash a frozen dataclass
+# would generate raises TypeError the first time anyone puts a selector in a set.
+# Identity is the right comparison anyway: two sites that read the same keys are
+# still two sites.
+@dataclass(frozen=True, eq=False)
 class Selector:
-    """One rule-selection site, and the criteria it dispatches on."""
+    """One rule-selection site: the criteria it dispatches on, and what it reads."""
 
     section: str
     """Which top-level list of rules.json this reads: assets, structural, policies."""
@@ -52,6 +68,16 @@ class Selector:
 
     site: str
     """Where the selection happens, for diagnostics: "plan._mcp"."""
+
+    reads: tuple[str, ...] = ()
+    """The rule fields this site consumes once it has chosen a rule.
+
+    Declared for the same reason `keys` is. A field no site reads is a field
+    somebody wrote expecting an effect it does not have, and the only way to
+    know is to ask the sites. `compile` warns about any field outside the union
+    of this across a rule's governing sites, so the list that decides it lives
+    where the reading happens rather than in the checker.
+    """
 
     def governs(self, rule: Rule) -> bool:
         """Whether this site could ever choose `rule`."""
@@ -92,9 +118,12 @@ def selector(
     keys: tuple[str, ...],
     site: str,
     values: Mapping[str, tuple[str, ...]] | None = None,
+    reads: tuple[str, ...] = (),
 ) -> Selector:
     """Declare a selection site and register it."""
-    entry = Selector(section=section, keys=keys, values=values or {}, site=site)
+    entry = Selector(
+        section=section, keys=keys, values=values or {}, site=site, reads=reads,
+    )
     REGISTRY.append(entry)
     return entry
 
@@ -102,3 +131,13 @@ def selector(
 def governing(rule: Rule, section: str) -> list[Selector]:
     """Every registered site that could choose `rule`."""
     return [s for s in REGISTRY if s.section == section and s.governs(rule)]
+
+
+def fields_read(rule: Rule, section: str) -> set[str]:
+    """Every field of `rule` that some site able to choose it would consume.
+
+    The union across governing sites, not the intersection: a rule reachable
+    from two sites is read by whichever one chose it, so a field either of them
+    takes is a field with an effect.
+    """
+    return {field for site in governing(rule, section) for field in site.reads}
