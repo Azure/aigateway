@@ -79,6 +79,18 @@ class Compilation:
 
 # ----------------------------------------------------------- the catalog
 
+# Options every command takes that name *which* resource is being addressed, not
+# what to do to it. `apply` supplies them from the plan's target -- see
+# `apply.Target.selectors` and the `--gateway-name`/`-n` pairs at each call site
+# -- so the catalog has no reason to carry them, and a command requiring one is
+# not evidence of anything missing.
+IDENTITY_OPTIONS = frozenset({
+    "subscription", "resource-group", "gateway-name", "name", "provider-name",
+    "model-name", "model-provider", "tool-server-name", "api-key-name",
+    "telemetry-exporter-name",
+})
+
+
 def check_capabilities(catalog: dict[str, Any], surface: dict[str, Any], out: Compilation) -> None:
     """Every declared command and option has to exist in the snapshot."""
     commands = surface.get("commands") or {}
@@ -98,6 +110,18 @@ def check_capabilities(catalog: dict[str, Any], surface: dict[str, Any], out: Co
         available = set((commands.get(path) or {}).get("options") or [])
         if path not in commands:
             continue
+        # The other direction, and the one the snapshot used to record for
+        # nobody: an option the CLI *insists* on. Leave it out of the catalog
+        # and the command is built without it and rejected at run time, which
+        # is a thing to learn offline rather than mid-migration.
+        insisted = set((commands.get(path) or {}).get("required") or [])
+        unmet = sorted(insisted - IDENTITY_OPTIONS - set(capability.get("required") or []))
+        if unmet:
+            out.error(
+                "cli-required-option-declared",
+                f"{cid}: `az aigateway {path}` requires {['--' + o for o in unmet]}, "
+                f"which the catalog does not mark required, so the command is built without it",
+            )
         for option in capability.get("required") or []:
             if option not in available:
                 out.error(
@@ -122,6 +146,68 @@ def check_capabilities(catalog: dict[str, Any], surface: dict[str, Any], out: Co
 # -------------------------------------------------------------- the pins
 
 _PIN = re.compile(r"1\.0\.0b\d+")
+_VERSION = re.compile(r"^(\d+)\.(\d+)\.(\d+)b(\d+)$")
+
+
+def release_order(version: str) -> tuple[int, ...] | None:
+    """A sortable key for `1.0.0b31`, or None if that is not what this is."""
+    found = _VERSION.match(version.strip())
+    return tuple(int(part) for part in found.groups()) if found else None
+
+
+def check_release_pin(catalog: dict[str, Any], releases: str, out: Compilation) -> None:
+    """Whether the catalog still documents the newest CLI release there is.
+
+    Asked here, offline, against tag names the caller supplies, rather than from
+    the CLI's own release pipeline: a gateway release is not this tool's build to
+    fail, and the signal that matters -- "the table you are about to edit
+    describes an older CLI" -- is most useful to whoever is editing it.
+
+    The cost is that it is only asked when somebody touches this tool. A pin can
+    sit stale between visits; what it cannot do is be stale while being worked on.
+
+    `releases` may be one version or every tag there is, whitespace separated.
+    Taking the whole list and picking the newest here keeps the answer off git's
+    `--sort=v:refname`, which orders `1.0.0b100` against `1.0.0b99` by rules of
+    its own that this does not have to depend on.
+    """
+    documented = (catalog.get("cliEvidence") or {}).get("documentedVersion") or ""
+    candidates = [tag.strip().removeprefix("cli-v") for tag in releases.split()]
+    candidates = [tag for tag in candidates if tag]
+    if not candidates:
+        return
+
+    here = release_order(documented)
+    ordered = [(release_order(tag), tag) for tag in candidates]
+    comparable = [(order, tag) for order, tag in ordered if order is not None]
+    if here is None or not comparable:
+        unreadable = documented if here is None else ", ".join(sorted(candidates))
+        out.warn(
+            "release-pin",
+            f"cannot tell whether the catalog is current: {unreadable!r} is not an "
+            f"X.Y.ZbN version, so there is nothing to compare {documented!r} against",
+        )
+        return
+
+    there, newest = max(comparable)
+    if there > here:
+        out.error(
+            "release-pin",
+            f"the catalog documents {documented} but {newest} has been released. "
+            f"Re-export the surface against the new wheel, re-pin cliEvidence, rename the "
+            f"catalog, and point rules.json and DEFAULT_CATALOG at it.",
+        )
+    elif there < here:
+        # A legitimate state while a release candidate is being prepared, and
+        # worth saying out loud anyway: until the tag exists there is no
+        # published wheel to check the snapshot against, so the one claim this
+        # whole arrangement rests on is the one claim currently unverifiable.
+        out.warn(
+            "release-pin",
+            f"the catalog documents {documented}, which is newer than {newest}, the newest "
+            f"published release. cli-surface.yml cannot verify the snapshot until that "
+            f"release is tagged and its wheel published.",
+        )
 
 
 def check_pins(
@@ -197,7 +283,13 @@ def check_pins(
         path = cli_dir / name
         if not path.is_file():
             continue
-        text = path.read_text(encoding="utf-8")
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            # Every other load here turns into a diagnostic. An unreadable
+            # installer should not be the one thing that raises.
+            out.error("installer-pin", f"cli/{name} could not be read: {exc}")
+            continue
         if digest and digest not in text:
             out.error("installer-pin", f"cli/{name} does not carry the catalog's wheel digest")
         if version and version not in text:
@@ -213,14 +305,6 @@ def check_pins(
 
 
 # --------------------------------------------------------------- the rules
-
-# Fields a rule may carry that no code reads. Reported as warnings: some are
-# deliberate notes to a human reader, and the compiler cannot tell those from
-# an option somebody expected to take effect.
-_UNREAD_RULE_FIELDS = (
-    "constraints", "defaultFrom", "blockingWhen", "dependsOnBackendRole", "priority",
-    "autoResolvable", "toolDiscoveryGuidance",
-)
 
 # Sections whose rules are chosen through a registered selector.
 _SELECTED_SECTIONS = ("assets", "structural", "policies")
@@ -256,10 +340,27 @@ def check_rules(catalog: dict[str, Any], rules: dict[str, Any], out: Compilation
                         f"{label}: proposes {rule['proposal']!r}, which is not among {options}",
                     )
 
-            for field in _UNREAD_RULE_FIELDS:
-                if field in rule:
-                    out.warn("rule-field-unread",
-                             f"{label}: carries {field!r}, which no code reads")
+            # Which fields have an effect is the selecting site's answer, not a
+            # list kept here: a list kept here is a second declaration, and it
+            # drifted. The denylist this replaces named `constraints` and
+            # `toolDiscoveryGuidance` and missed `prerequisiteGuide`, the
+            # telemetry rule's `options`, and `blocking`/`cannotAccept` -- all
+            # equally unread, none of them remembered.
+            #
+            # Only asked of a rule something can select. For one nothing can,
+            # every field is unread by construction, and saying so twenty times
+            # buries the reachability error that is the actual problem.
+            if governing:
+                unread = (
+                    set(rule) - dispatch.fields_read(rule, section)
+                    - set(dispatch.STRUCTURAL_KEYS)
+                )
+                for field in sorted(unread):
+                    out.warn(
+                        "rule-field-unread",
+                        f"{label}: carries {field!r}, which no site that can select this "
+                        f"rule reads. Sites that can: {[s.site for s in governing]}",
+                    )
 
     _check_uniqueness(rules, out)
     _check_required_fields(rules, out)
@@ -317,59 +418,63 @@ def _check_uniqueness(rules: dict[str, Any], out: Compilation) -> None:
 
     Ties are judged per selection site, over exactly the keys that site reads:
     two rules are indistinguishable when the site cannot tell them apart, not
-    when they happen to look alike.
+    when they happen to look alike. Every section is covered, including the
+    policy passes keyed on `family` and `hasExpression` -- they were not, and a
+    second `family: transform` rule compiled clean while never being reached.
     """
-    for section in ("assets", "structural"):
+    for section in _SELECTED_SECTIONS:
         for selector in [s for s in dispatch.REGISTRY if s.section == section]:
             seen: set[tuple] = set()
             for rule in rules.get(section) or []:
                 if not selector.governs(rule):
                     continue
                 match = rule.get("match") or {}
-                key = tuple(match.get(name) for name in selector.keys)
-                if key in seen:
-                    out.error(
-                        "rule-unique",
-                        f"{section}: {selector.site} cannot tell two rules apart on "
-                        f"{dict(zip(selector.keys, key))}; only one of them is ever used",
-                    )
-                seen.add(key)
+                # A match value may itself be a list of alternatives -- a policy
+                # rule naming several elements. Each alternative is its own way
+                # to reach the rule, so each is its own chance of a tie.
+                for key in _match_keys(match, selector.keys):
+                    if key in seen:
+                        out.error(
+                            "rule-unique",
+                            f"{section}: {selector.site} cannot tell two rules apart on "
+                            f"{dict(zip(selector.keys, key))}; only one of them is ever used",
+                        )
+                    seen.add(key)
 
-    elements: dict[str, int] = {}
-    for rule in rules.get("policies") or []:
-        for element in (rule.get("match") or {}).get("element") or []:
-            elements[element] = elements.get(element, 0) + 1
-    for element, count in sorted(elements.items()):
-        if count > 1:
-            out.error(
-                "rule-unique",
-                f"policies: element {element!r} appears in {count} rules; only the first is used",
-            )
+
+def _match_keys(match: dict[str, Any], keys: tuple[str, ...]) -> list[tuple]:
+    """Every distinct way a site keyed on `keys` can arrive at this rule."""
+    combinations: list[tuple] = [()]
+    for name in keys:
+        value = match.get(name)
+        alternatives = value if isinstance(value, list) else [value]
+        combinations = [(*prefix, alt) for prefix in combinations for alt in alternatives]
+    return combinations
 
 
 def _check_required_fields(rules: dict[str, Any], out: Compilation) -> None:
-    """`verdict` is read with a bare subscript, so a rule without one raises."""
-    for section in ("assets", "policies"):
+    """`verdict` decides an item's status, and assets read it with a bare subscript.
+
+    Structural rules used to be exempt, because `plan._structural` hardcoded a
+    verdict per branch and never consulted the rule. It consults it now, so the
+    exemption is gone and all three sections are held to the same thing.
+    """
+    for section in _SELECTED_SECTIONS:
         for rule in rules.get(section) or []:
             if "verdict" not in rule:
                 match = json.dumps(rule.get("match") or {}, sort_keys=True)
                 out.error(
                     "rule-has-verdict",
-                    f"{section} {match}: has no verdict, which is read unguarded",
+                    f"{section} {match}: has no verdict, which decides the item's status",
                 )
-    for rule in rules.get("structural") or []:
-        if "verdict" not in rule and rule.get("itemKind"):
-            match = json.dumps(rule.get("match") or {}, sort_keys=True)
-            out.warn(
-                "rule-has-verdict",
-                f"structural {match}: has no verdict; it survives only because the one site "
-                f"reading it takes itemKind, proposal and rationale alone",
-            )
 
 
 # ------------------------------------------------------------- the shapes
 
 SCHEMAS_DIR = Path(__file__).resolve().parent.parent / "schemas"
+
+# Enough to show the shape of the problem without burying the other checks.
+_SCHEMA_ERROR_LIMIT = 25
 
 
 def check_schemas(catalog: dict[str, Any], rules: dict[str, Any], out: Compilation) -> None:
@@ -403,9 +508,18 @@ def check_schemas(catalog: dict[str, Any], rules: dict[str, Any], out: Compilati
             out.error("schema", f"{schema_name} is unavailable: {exc}")
             continue
         validator = jsonschema.Draft202012Validator(schema)
-        for error in sorted(validator.iter_errors(document), key=lambda e: list(e.path))[:25]:
+        errors = sorted(validator.iter_errors(document), key=lambda e: list(e.path))
+        for error in errors[:_SCHEMA_ERROR_LIMIT]:
             where = "/".join(str(part) for part in error.path) or "<root>"
             out.error("schema", f"{label} {where}: {error.message}")
+        if len(errors) > _SCHEMA_ERROR_LIMIT:
+            # Said rather than left implicit: a reader who fixes every line
+            # printed here and expects a clean run should know there is more.
+            out.error(
+                "schema",
+                f"{label}: and {len(errors) - _SCHEMA_ERROR_LIMIT} further schema "
+                f"error(s), not shown",
+            )
 
 
 # ------------------------------------------------------------------ entry
@@ -423,6 +537,7 @@ def compile_contract(
     surface_path: Path,
     *,
     cli_dir: Path | None = None,
+    newest_release: str | None = None,
 ) -> Compilation:
     out = Compilation()
     try:
@@ -452,4 +567,6 @@ def compile_contract(
     check_capabilities(catalog, surface, out)
     check_pins(catalog, catalog_path, rules, surface, out, cli_dir=cli_dir)
     check_rules(catalog, rules, out)
+    if newest_release:
+        check_release_pin(catalog, newest_release, out)
     return out

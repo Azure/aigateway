@@ -13,7 +13,7 @@ import json
 
 import pytest
 
-from migrate_apim import dispatch
+from migrate_apim import compile, dispatch
 from migrate_apim.capability import CAPABILITIES_DIR, DEFAULT_CATALOG
 from migrate_apim.compile import compile_contract, find_surface
 
@@ -31,7 +31,7 @@ def shipped():
 @pytest.fixture
 def compile_with(tmp_path, shipped):
     """Compile a variation on the shipped contract, and return its diagnostics."""
-    def run(*, catalog=None, rules=None, surface=None, cli_dir=None):
+    def run(*, catalog=None, rules=None, surface=None, cli_dir=None, newest_release=None):
         base_catalog, base_rules, base_surface = shipped
         catalog = catalog if catalog is not None else base_catalog
         rules = rules if rules is not None else base_rules
@@ -51,6 +51,7 @@ def compile_with(tmp_path, shipped):
             paths["rules.json"],
             paths[f"cli-surface-{version}.json"],
             cli_dir=cli_dir,
+            newest_release=newest_release,
         )
     return run
 
@@ -237,6 +238,170 @@ class TestTheShapesAreClosed:
         assert any(isinstance(option, dict) for option in rule["options"])
         assert "schema" not in codes(compile_with(rules=rules))
 
+    def test_an_asset_rule_matching_on_nothing_is_rejected(self, compile_with, shipped):
+        # Reachability cannot catch this one: an empty match is a subset of
+        # every site's keys, so every site governs it -- and none ever selects
+        # it, because selection compares values.
+        rules = copy.deepcopy(shipped[1])
+        rules["assets"].append({"match": {}, "verdict": "gap"})
+        assert "schema" in codes(compile_with(rules=rules))
+
+    def test_a_structural_rule_without_a_verdict_is_rejected(self, compile_with, shipped):
+        # `_structural` consults the rule for its verdict now, rather than
+        # hardcoding one per branch, so the exemption these had is gone.
+        rules = copy.deepcopy(shipped[1])
+        rules["structural"] = [
+            {k: v for k, v in r.items() if k != "verdict"} if r["match"]["kind"] == "telemetry"
+            else r
+            for r in rules["structural"]
+        ]
+        result = compile_with(rules=rules)
+        assert {"schema", "rule-has-verdict"} & codes(result)
+
+
+class TestTheCatalogCarriesWhatTheCliInsistsOn:
+    """The snapshot records which options the CLI marks [Required]. That half of
+    it was written and read by nobody, so a release making an option mandatory
+    compiled clean and failed at run time instead."""
+
+    def test_an_option_the_cli_requires_must_be_declared(self, compile_with, shipped):
+        surface = copy.deepcopy(shipped[2])
+        surface["commands"]["mcp create"]["required"].append("failure-mode")
+        result = compile_with(surface=surface)
+        assert "cli-required-option-declared" in codes(result)
+        assert any("--failure-mode" in str(d) for d in result.errors)
+
+    def test_identity_arguments_are_not_held_against_the_catalog(self, compile_with, shipped):
+        # `apply` supplies --gateway-name and friends from the plan's target, so
+        # the catalog has no reason to carry them and the shipped one does not.
+        surface = copy.deepcopy(shipped[2])
+        surface["commands"]["mcp create"]["required"] = sorted(
+            {*surface["commands"]["mcp create"]["required"], "gateway-name", "name"}
+        )
+        assert "cli-required-option-declared" not in codes(compile_with(surface=surface))
+
+
+class TestEveryRuleFieldHasAReader:
+    """A field nothing reads is the same defect as an unreadable match key --
+    something written expecting an effect it does not have."""
+
+    def test_a_field_no_site_reads_is_reported(self, compile_with, shipped):
+        rules = copy.deepcopy(shipped[1])
+        rules["structural"] = [
+            {**r, "prerequisiteWhen": ["flatten"]} if r["match"]["kind"] == "workspace" else r
+            for r in rules["structural"]
+        ]
+        result = compile_with(rules=rules)
+        unread = [d for d in result.warnings if d.check == "rule-field-unread"]
+        assert any("prerequisiteWhen" in str(d) for d in unread), result.warnings
+
+    def test_the_same_field_is_fine_where_a_site_does_read_it(self, compile_with, shipped):
+        # The telemetry branch reads prerequisiteWhen; the workspace one does not.
+        # Which is the point of asking the site rather than keeping a list here.
+        assert not [d for d in compile_with().warnings if d.check == "rule-field-unread"]
+
+    def test_match_and_note_are_never_reported(self, compile_with, shipped):
+        rules = copy.deepcopy(shipped[1])
+        rules["assets"][0] = {**rules["assets"][0], "note": "for a human reader"}
+        assert not [d for d in compile_with(rules=rules).warnings
+                    if d.check == "rule-field-unread"]
+
+    def test_an_unreachable_rule_is_not_also_reported_field_by_field(
+        self, compile_with, shipped
+    ):
+        """Nothing can select it, so every field is unread by construction.
+        Saying so once per field buries the reachability error underneath."""
+        rules = copy.deepcopy(shipped[1])
+        rules["structural"].append({
+            "match": {"kind": "policyFragments"}, "verdict": "handled",
+            "itemKind": "accept-loss", "rationale": "x", "proposal": "accept",
+        })
+        result = compile_with(rules=rules)
+        assert "match-value-known" in codes(result)
+        assert not [d for d in result.warnings
+                    if d.check == "rule-field-unread" and "policyFragments" in str(d)]
+
+    def test_the_shipped_rules_leave_nothing_unread(self, compile_with):
+        """--strict has to be a mode that can actually pass on this repo's data."""
+        assert compile_with().ok(strict=True), [
+            str(d) for d in compile_with().diagnostics
+        ]
+
+
+class TestEveryPolicyPassIsCheckedForTies:
+    """Ties were checked for the element pass only. The family and expression
+    passes are first-match too, and a second rule there was simply never used."""
+
+    def test_two_rules_with_the_same_family_are_caught(self, compile_with, shipped):
+        rules = copy.deepcopy(shipped[1])
+        rules["policies"].append({"match": {"family": "transform"}, "verdict": "gap"})
+        assert "rule-unique" in codes(compile_with(rules=rules))
+
+    def test_two_expression_fallbacks_are_caught(self, compile_with, shipped):
+        rules = copy.deepcopy(shipped[1])
+        rules["policies"].append({"match": {"hasExpression": True}, "verdict": "gap"})
+        assert "rule-unique" in codes(compile_with(rules=rules))
+
+    def test_one_repeated_element_among_many_is_still_caught(self, compile_with, shipped):
+        rules = copy.deepcopy(shipped[1])
+        rules["policies"].append(
+            {"match": {"element": ["brand-new", "ip-filter"]}, "verdict": "gap"})
+        result = compile_with(rules=rules)
+        assert "rule-unique" in codes(result)
+        assert any("ip-filter" in str(d) for d in result.errors)
+
+
+class TestTheCatalogKeepsUpWithTheCli:
+    def test_a_newer_release_than_the_catalog_is_reported(self, compile_with, shipped):
+        result = compile_with(newest_release="cli-v1.0.0b32")
+        assert "release-pin" in codes(result)
+        assert any("1.0.0b32 has been released" in str(d) for d in result.errors)
+
+    def test_the_release_it_documents_is_not_a_complaint(self, compile_with, shipped):
+        documented = shipped[0]["cliEvidence"]["documentedVersion"]
+        assert "release-pin" not in codes(compile_with(newest_release=documented))
+
+    def test_an_older_tag_is_not_a_complaint(self, compile_with):
+        assert "release-pin" not in codes(compile_with(newest_release="cli-v1.0.0b6"))
+
+    def test_an_unparseable_version_warns_rather_than_passing_quietly(self, compile_with):
+        result = compile_with(newest_release="cli-vnightly")
+        assert "release-pin" not in codes(result)
+        assert any(d.check == "release-pin" for d in result.warnings)
+
+    def test_nothing_to_compare_against_is_silent(self, compile_with):
+        """No tags at all is a shallow clone, not a stale catalog."""
+        assert compile_with(newest_release="   ").ok()
+
+    def test_it_picks_the_newest_out_of_every_tag(self, compile_with):
+        """CI hands it the whole tag list rather than git's idea of the newest,
+        so `1.0.0b100` has to beat `1.0.0b99` here and not in `git --sort`."""
+        tags = "cli-v1.0.0b6 cli-v1.0.0b99 cli-v1.0.0b31 cli-v1.0.0b100"
+        result = compile_with(newest_release=tags)
+        assert "release-pin" in codes(result)
+        assert any("1.0.0b100 has been released" in str(d) for d in result.errors)
+
+    def test_an_unreadable_tag_among_readable_ones_is_ignored(self, compile_with):
+        result = compile_with(newest_release="cli-vnightly cli-v1.0.0b31")
+        assert result.ok(strict=True), [str(d) for d in result.diagnostics]
+
+    def test_pinning_an_unpublished_release_is_said_out_loud(self, compile_with):
+        """Legitimate while a candidate is being prepared. Worth saying anyway:
+        until the tag exists there is no wheel to check the snapshot against,
+        so the claim the whole arrangement rests on is unverifiable."""
+        result = compile_with(newest_release="cli-v1.0.0b6 cli-v1.0.0b30")
+        assert result.ok()
+        assert any("newest published release" in str(d) for d in result.warnings)
+
+    @pytest.mark.parametrize("newer,older", [
+        ("1.0.0b32", "1.0.0b31"), ("1.0.0b100", "1.0.0b99"),
+        ("1.1.0b1", "1.0.0b99"), ("2.0.0b1", "1.9.9b9"),
+    ])
+    def test_releases_order_by_version_not_by_string(self, newer, older):
+        # "1.0.0b100" < "1.0.0b99" as strings, which is how a lexical compare
+        # would quietly stop reporting anything after the ninety-ninth release.
+        assert compile.release_order(newer) > compile.release_order(older)
+
 
 class TestTheRegistryDescribesThePlanner:
     """If the registry were a second declaration it would drift; it is not."""
@@ -244,6 +409,21 @@ class TestTheRegistryDescribesThePlanner:
     def test_every_section_has_at_least_one_site(self):
         sections = {selector.section for selector in dispatch.REGISTRY}
         assert sections == {"assets", "structural", "policies"}
+
+    def test_each_structural_branch_declares_its_own_reads(self):
+        """One selector for all six branches would have to declare the union of
+        what they read, which excuses a field on one rule because another branch
+        happens to read it."""
+        structural = [s for s in dispatch.REGISTRY if s.section == "structural"]
+        assert len(structural) > 1
+        telemetry = next(s for s in structural if "telemetry" in s.site)
+        workspace = next(s for s in structural if "workspace" in s.site)
+        assert "prerequisiteWhen" in telemetry.reads
+        assert "prerequisiteWhen" not in workspace.reads
+
+    def test_a_selector_can_go_in_a_set(self):
+        # A frozen dataclass holding a Mapping generates a __hash__ that raises.
+        assert len(set(dispatch.REGISTRY)) == len(dispatch.REGISTRY)
 
     def test_a_selector_rejects_a_rule_pinning_a_key_it_ignores(self):
         site = next(s for s in dispatch.REGISTRY if s.site == "plan._agent")
