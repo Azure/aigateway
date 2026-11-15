@@ -19,8 +19,8 @@ import urllib.request
 
 
 CLI = Path(__file__).resolve().parents[1]
-VERSION = "1.0.0b30"
-SHA256 = "3f984df96bf6fe82f7b92e5e4ce88b067e347af9b0032b59c00716fd56d4b5af"
+VERSION = "1.0.0b31"
+SHA256 = "f8f13bfb1f5ca44b97675096e0e5361e09c7e62e74a73401e39ac1acafa3b4d4"
 URL = (
     "https://github.com/Azure/aigateway/releases/download/"
     f"cli-v{VERSION}/aigateway-{VERSION}-py3-none-any.whl"
@@ -73,8 +73,8 @@ elif args[:2] == ["extension", "add"]:
         sys.stderr.write("test installation failure\n")
         sys.exit(9)
     # Match Azure CLI: --upgrade does not replace equal versions.
-    if state.get("version") != "1.0.0b30":
-        state = {"version": "1.0.0b30", "official": True}
+    if state.get("version") != "1.0.0b31":
+        state = {"version": "1.0.0b31", "official": True}
 elif args[:2] == ["aigateway", "version"]:
     values = {"extensionName": os.environ.get("TEST_NAME", "aigateway"),
               "extensionVersion": os.environ.get("TEST_VERSION", state["version"]),

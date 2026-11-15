@@ -1,6 +1,6 @@
 # Azure AI Gateway CLI command reference
 
-This is the human-readable reference for the published **1.0.0b30** extension.
+This is the human-readable reference for the published **1.0.0b31** extension.
 Start with [installation and quickstart](README.md). Use this page to find a
 command, understand its purpose, and copy a configuration example. Use the
 installed command's `--help` for all arguments and allowed values; help
