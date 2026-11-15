@@ -1,0 +1,70 @@
+name: Compile migration contract
+
+# The capability catalog claims an `az aigateway` release can do certain things,
+# and the rules claim the planner reads certain shapes. Both claims shipped
+# wrong once, through a green suite: the catalog declared a command that exists
+# in no release, and rules.json carried entries no selection site could choose.
+#
+# This job settles both offline, against a committed surface snapshot. It needs
+# no Azure CLI, no network and no credentials, so it can gate every change.
+# Whether that snapshot is an honest record of the real wheel is the separate
+# question cli-surface.yml answers.
+
+on:
+  pull_request:
+    paths:
+      - 'tools/migrate-apim/**'
+      - 'cli/install.sh'
+      - 'cli/install.ps1'
+      - 'cli/tests/**'
+      - '.github/workflows/migrate-apim.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/migrate-apim/**'
+      - 'cli/install.sh'
+      - 'cli/install.ps1'
+      - 'cli/tests/**'
+      - '.github/workflows/migrate-apim.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: migrate-apim-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The floor declared in pyproject.toml, and the newest it is expected to
+        # run on. Anything between the two is covered by the two ends moving.
+        python-version: ['3.10', '3.13']
+    defaults:
+      run:
+        working-directory: tools/migrate-apim
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install the tool and its dev extra
+        run: pip install -e '.[dev]'
+
+      # Without jsonschema, `_validate_against` returns no errors for plan and
+      # journal documents rather than failing, and `compile` can only warn that
+      # it did not shape-check. Both would pass while checking nothing, so the
+      # absence is made loud here rather than discovered later.
+      - name: Confirm the schema validator is present
+        run: python -c "import jsonschema; print('jsonschema', jsonschema.__version__)"
+
+      - name: Compile the capability contract
+        run: python -m migrate_apim compile --cli-dir ../../cli
+
+      - name: Run the test suite
+        run: python -m pytest -q
