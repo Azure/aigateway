@@ -22,6 +22,16 @@ from pathlib import Path
 from typing import Any, Callable, Iterable
 
 from .azcli import az_argv
+from .dispatch import selector
+
+# `policy_rule` runs three passes in order: an element-specific rule wins, then
+# a family rule, then the expression fallback. Each pass is its own selection
+# site, so each declares what it looks at.
+POLICY_BY_ELEMENT = selector("policies", keys=("element",), site="capability.policy_rule element")
+POLICY_BY_FAMILY = selector("policies", keys=("family",), site="capability.policy_rule family")
+POLICY_BY_EXPRESSION = selector(
+    "policies", keys=("hasExpression",), site="capability.policy_rule expression"
+)
 
 CAPABILITIES_DIR = Path(__file__).resolve().parent.parent / "capabilities"
 # Must name a file that exists in CAPABILITIES_DIR: every entry point that does
@@ -195,15 +205,21 @@ class CapabilityMap:
         """
         rules = self.rules.get("policies") or []
         for rule in rules:
+            if not POLICY_BY_ELEMENT.governs(rule):
+                continue
             names = (rule.get("match") or {}).get("element")
             if names and element_name in names:
                 return rule
         for rule in rules:
+            if not POLICY_BY_FAMILY.governs(rule):
+                continue
             match = rule.get("match") or {}
             if match.get("family") and match["family"] == family:
                 return rule
         if has_expression:
             for rule in rules:
+                if not POLICY_BY_EXPRESSION.governs(rule):
+                    continue
                 if (rule.get("match") or {}).get("hasExpression"):
                     return rule
         return None

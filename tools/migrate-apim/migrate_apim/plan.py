@@ -20,10 +20,40 @@ from typing import Any
 
 from . import ids
 from .capability import CapabilityMap
-from .detect import dialect_target
+from .detect import MCP_PATTERNS, dialect_target
+from .dispatch import selector
 
 SCHEMA_VERSION = "1.0"
 GENERATOR_VERSION = "0.1.0"
+
+# Every place the planner chooses a rule, declared where the choosing happens.
+# `migrate_apim.compile` reads these to decide whether a rule in rules.json can
+# ever be selected; see migrate_apim/dispatch.py for why they are not a separate
+# list somewhere else.
+MCP_BY_PATTERN = selector(
+    "assets",
+    keys=("family", "pattern"),
+    values={"family": ("mcpServers",), "pattern": MCP_PATTERNS},
+    site="plan._mcp",
+)
+MCP_BY_TOOL_DISCOVERY = selector(
+    "assets",
+    keys=("family", "toolDiscovery"),
+    values={"family": ("mcpServers",), "toolDiscovery": ("runtimeOnly",)},
+    site="plan._mcp tool exposure",
+)
+AGENT_RULE = selector(
+    "assets", keys=("family",), values={"family": ("agents",)}, site="plan._agent"
+)
+# The kinds `_structural` actually asks for. A structural rule for any other
+# kind is written but never read.
+STRUCTURAL_BY_KIND = selector(
+    "structural",
+    keys=("kind",),
+    values={"kind": ("workspace", "subscriptions", "telemetry", "certificates",
+                     "credentialProviders", "coverageGap")},
+    site="plan._structural",
+)
 
 READY = "ready"
 NEEDS_DECISION = "needs-decision"
@@ -783,10 +813,8 @@ class PlanBuilder:
     def _mcp(self, server: dict[str, Any]) -> None:
         asset_id = server["id"]
         pattern = server.get("pattern")
-        rule = _first(
-            self.caps.asset_rules(),
-            lambda r: (r.get("match") or {}).get("family") == "mcpServers"
-            and (r.get("match") or {}).get("pattern") == pattern,
+        rule = MCP_BY_PATTERN.first(
+            self.caps.asset_rules(), family="mcpServers", pattern=pattern
         )
         if rule:
             self._add(
@@ -833,9 +861,8 @@ class PlanBuilder:
                 blocking=True,
             )
         if discovery == "runtimeOnly":
-            tool_rule = _first(
-                self.caps.asset_rules(),
-                lambda r: (r.get("match") or {}).get("toolDiscovery") == "runtimeOnly",
+            tool_rule = MCP_BY_TOOL_DISCOVERY.first(
+                self.caps.asset_rules(), family="mcpServers", toolDiscovery="runtimeOnly"
             ) or {}
             self._add(
                 item_id=ids.item(asset_id, "tools"),
@@ -849,9 +876,7 @@ class PlanBuilder:
             )
 
     def _agent(self, agent: dict[str, Any]) -> None:
-        rule = _first(
-            self.caps.asset_rules(), lambda r: (r.get("match") or {}).get("family") == "agents"
-        ) or {}
+        rule = AGENT_RULE.first(self.caps.asset_rules(), family="agents") or {}
         self._add(
             item_id=ids.item(agent["id"], "registration"),
             source={"assetId": agent["id"], "assetKind": "agent", "aspect": "registration"},
@@ -931,7 +956,7 @@ class PlanBuilder:
 
     def _structural(self) -> None:
         shared = self.inventory.get("shared") or {}
-        rules = {(_match_kind(rule)): rule for rule in self.caps.structural_rules()}
+        rules = STRUCTURAL_BY_KIND.index(self.caps.structural_rules(), "kind")
 
         for workspace in self.inventory.get("workspaces") or []:
             if workspace.get("name") == "default" or not workspace.get("collected"):
@@ -1771,17 +1796,6 @@ def _loss_options(verdict: str) -> list[dict[str, str]]:
         _opt("retain-in-apim", "Keep this workload on APIM."),
         _opt("block", "Stop the migration until resolved."),
     ]
-
-
-def _first(items: list[dict[str, Any]], predicate: Any) -> dict[str, Any] | None:
-    for item in items:
-        if predicate(item):
-            return item
-    return None
-
-
-def _match_kind(rule: dict[str, Any]) -> str:
-    return (rule.get("match") or {}).get("kind") or ""
 
 
 def _slug(value: str) -> str:

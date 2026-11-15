@@ -18,145 +18,6 @@
   "assets": [
     {
       "match": {
-        "family": "modelProviders",
-        "kind": "custom"
-      },
-      "verdict": "native",
-      "capabilityId": "provider.create",
-      "constraints": {
-        "custom.authentication": [
-          "ApiKey"
-        ],
-        "note": "Custom provider auth is ApiKey only; arbitrary header maps are not native authoring."
-      }
-    },
-    {
-      "match": {
-        "family": "modelProviders",
-        "kind": "foundry"
-      },
-      "verdict": "partial",
-      "itemKind": "enumerate",
-      "capabilityId": "provider.import",
-      "rationale": "Foundry provider with potential bulk deployment. Choose between bulk import (all deployments at once with automatic identity setup) or granular registration.",
-      "options": [
-        "bulk-import",
-        "create-only",
-        "create-with-import-models"
-      ],
-      "proposal": "bulk-import",
-      "note": "Use provider.import (--foundry-resource-id <account-id>) to bulk-import every deployment in the account; use provider.create --foundry @config.json for registration only; add --import-models to create for both in one operation. provider.import takes an account resource ID, not the --foundry JSON argument that create takes."
-    },
-    {
-      "match": {
-        "family": "models",
-        "modelsStatus": [
-          "resolved",
-          "declared"
-        ]
-      },
-      "verdict": "native",
-      "capabilityId": "model.create",
-      "constraints": {
-        "apiFormat": [
-          "OpenAIChatCompletions",
-          "ResponsesApi",
-          "AnthropicMessages"
-        ]
-      }
-    },
-    {
-      "match": {
-        "family": "models",
-        "modelsStatus": [
-          "unresolved",
-          "empty"
-        ]
-      },
-      "verdict": "partial",
-      "itemKind": "enumerate",
-      "capabilityId": "model.create",
-      "rationale": "A model registration needs a model name. The catalogue could not be resolved from configuration.",
-      "note": "When the item proposes 'resolve-models', it is not a question for the operator. Run migrate-apim resolve-models automatically using the credential the inventory recorded. The operator should not be asked to type model names the tool can fetch.",
-      "autoResolvable": "resolve-models"
-    },
-    {
-      "match": {
-        "family": "models",
-        "surfaceStatus": "bounded",
-        "hasUnpublishable": true
-      },
-      "verdict": "partial",
-      "itemKind": "reduce-surface",
-      "capabilityId": "alias.create",
-      "options": [
-        "split",
-        "inference-only",
-        "retain-in-apim",
-        "block"
-      ],
-      "proposal": "split",
-      "rationale": "AI Gateway publishes four inference routes. Operations outside them have no target at all."
-    },
-    {
-      "match": {
-        "family": "models",
-        "surfaceStatus": "unbounded"
-      },
-      "verdict": "partial",
-      "itemKind": "reduce-surface",
-      "capabilityId": "alias.create",
-      "options": [
-        "inference-only",
-        "retain-in-apim",
-        "block"
-      ],
-      "proposal": "inference-only",
-      "rationale": "A wildcard operation forwards every upstream path, so the exposed surface cannot be read from configuration."
-    },
-    {
-      "match": {
-        "family": "models",
-        "aspect": "aliasName"
-      },
-      "verdict": "partial",
-      "itemKind": "name",
-      "capabilityId": "alias.create",
-      "rationale": "The alias routingName is what clients send as `model`. APIM does not store it; it arrives in the request body at runtime.",
-      "defaultFrom": "deploymentName",
-      "blockingWhen": [
-        "collision",
-        "noBasis"
-      ]
-    },
-    {
-      "match": {
-        "family": "models",
-        "translationStatus": "translating"
-      },
-      "verdict": "partial",
-      "itemKind": "translate",
-      "capabilityId": "alias.create",
-      "options": [
-        "move-callers",
-        "retain-in-apim",
-        "block"
-      ],
-      "proposal": "move-callers",
-      "rationale": "APIM translates between the caller's dialect and the backend's. AI Gateway publishes a model at its native endpoint, so callers move or a translating layer stays in front."
-    },
-    {
-      "match": {
-        "family": "models",
-        "translationStatus": "indeterminate"
-      },
-      "verdict": "partial",
-      "itemKind": "enumerate",
-      "capabilityId": "alias.create",
-      "rationale": "The operations expose no recognizable inference route, so the dialect callers use could not be read from configuration."
-    },
-    {
-      "match": {
         "family": "mcpServers",
         "pattern": "passthrough"
       },
@@ -479,19 +340,9 @@
   "structural": [
     {
       "match": {
-        "kind": "gateway"
+        "kind": "workspace"
       },
-      "verdict": "native",
-      "capabilityId": "gateway.create",
-      "rationale": "The target gateway is created by apply when the plan names one that does not exist yet."
-    },
-    {
-      "match": {
-        "kind": "workspace",
-        "name": {
-          "not": "default"
-        }
-      },
+      "note": "Selection is by kind alone. The default workspace is skipped by the planner before this rule is consulted, so a name condition here would be read by nobody.",
       "verdict": "partial",
       "itemKind": "collapse",
       "options": [
@@ -515,29 +366,6 @@
       ],
       "proposal": "entra-rbac",
       "rationale": "APIM subscription keys are scoped per product, per API, or service-wide. AI Gateway keys are gateway-wide and no key value can be imported, so every caller is re-keyed."
-    },
-    {
-      "match": {
-        "kind": "products"
-      },
-      "verdict": "gap",
-      "itemKind": "scope",
-      "rationale": "No product grouping on the target; access is gateway-wide keys plus Entra RBAC.",
-      "proposal": "accept"
-    },
-    {
-      "match": {
-        "kind": "namedValues"
-      },
-      "verdict": "handled",
-      "rationale": "Values are inlined into target configuration; secrets are resolved at apply time from the inventory's secret references."
-    },
-    {
-      "match": {
-        "kind": "policyFragments"
-      },
-      "verdict": "handled",
-      "rationale": "Resolved into the including policy before mapping."
     },
     {
       "match": {
