@@ -23,6 +23,10 @@ here is anchored on structure, not on the characters: only lines indented
 exactly four spaces inside a section whose heading ends in "Arguments", and only
 the declaration half of the line, before the help separator. `--self-test`
 pins that behaviour against commands whose real surface is known.
+
+`--compare` answers the other question -- whether a committed snapshot still
+matches a freshly exported one -- on what the two *claim* rather than on their
+bytes, so that an Azure CLI upgrade is not reported as a change in the wheel.
 """
 
 from __future__ import annotations
@@ -169,6 +173,44 @@ def export(wheel_sha256: str) -> dict[str, Any]:
     }
 
 
+# -------------------------------------------------------------- comparison
+
+# What a snapshot *claims*, as opposed to how it came to be written. Only these
+# are compared, because only these are what the catalog is checked against.
+# `generatedBy` records the azure-cli-core that produced the file, which moves
+# on its own schedule: comparing it byte-for-byte turns every unrelated core
+# release into "the wheel has drifted", and a check that cries wolf gets muted.
+COMPARED = ("extensionVersion", "wheelSha256")
+
+
+def differences(old: dict[str, Any], new: dict[str, Any]) -> list[str]:
+    """What changed between two snapshots, named precisely enough to act on."""
+    report = []
+    for field in COMPARED:
+        if old.get(field) != new.get(field):
+            report.append(f"{field}: {old.get(field)!r} -> {new.get(field)!r}")
+
+    old_commands = old.get("commands") or {}
+    new_commands = new.get("commands") or {}
+    for name in sorted(set(old_commands) - set(new_commands)):
+        report.append(f"`az aigateway {name}` is gone")
+    for name in sorted(set(new_commands) - set(old_commands)):
+        report.append(f"`az aigateway {name}` is new")
+    for name in sorted(set(old_commands) & set(new_commands)):
+        for field in ("options", "required"):
+            before = set(old_commands[name].get(field) or [])
+            after = set(new_commands[name].get(field) or [])
+            gone = sorted(before - after)
+            added = sorted(after - before)
+            if gone:
+                report.append(f"`az aigateway {name}` no longer {field}: "
+                              + ", ".join(f"--{o}" for o in gone))
+            if added:
+                report.append(f"`az aigateway {name}` newly {field}: "
+                              + ", ".join(f"--{o}" for o in added))
+    return report
+
+
 # --------------------------------------------------------------- self-test
 
 # Facts about the b31 surface that any correct parser must reproduce. They exist
@@ -217,7 +259,30 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, help="Where to write the snapshot")
     parser.add_argument("--self-test", action="store_true",
                         help="Check the help parser against known commands and exit")
+    parser.add_argument(
+        "--compare", nargs=2, metavar=("COMMITTED", "FRESH"),
+        help="Compare two snapshots on what they claim, ignoring how they were "
+             "generated, and exit non-zero if they differ. Needs no Azure CLI.",
+    )
     args = parser.parse_args(argv)
+
+    if args.compare:
+        try:
+            old, new = (json.loads(Path(p).read_text(encoding="utf-8-sig"))
+                        for p in args.compare)
+        except (OSError, json.JSONDecodeError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        report = differences(old, new)
+        for line in report:
+            print(f"  {line}", file=sys.stderr)
+        committed, fresh = args.compare
+        print(
+            f"{committed} vs {fresh}: "
+            + (f"{len(report)} difference(s)" if report else "the same surface"),
+            file=sys.stderr,
+        )
+        return 1 if report else 0
 
     if "AZURE_EXTENSION_DIR" not in os.environ:
         print("warning: AZURE_EXTENSION_DIR is unset, so this reads the operator's own "

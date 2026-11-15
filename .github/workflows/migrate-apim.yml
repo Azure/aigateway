@@ -9,6 +9,11 @@ name: Compile migration contract
 # no Azure CLI, no network and no credentials, so it can gate every change.
 # Whether that snapshot is an honest record of the real wheel is the separate
 # question cli-surface.yml answers.
+#
+# It also reports a catalog that has fallen behind the newest cli-v* release.
+# That lives here, on this tool's own changes, rather than on the CLI's release
+# tags: a gateway release is not this tool's build to redden, and the fact is
+# most useful to whoever is already editing the table.
 
 on:
   pull_request:
@@ -47,7 +52,11 @@ jobs:
       run:
         working-directory: tools/migrate-apim
     steps:
+      # Tags, because the stale-pin check below reads the published cli-v*
+      # releases from them. They are not fetched by default.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-tags: true
 
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
@@ -55,6 +64,17 @@ jobs:
 
       - name: Install the tool and its dev extra
         run: pip install -e '.[dev]'
+
+      # Every published release, not the one git thinks is newest: `compile`
+      # picks the newest itself, so the answer does not rest on how git orders
+      # `1.0.0b100` against `1.0.0b99`.
+      - name: List the published CLI releases
+        id: release
+        run: |
+          set -euo pipefail
+          TAGS="$(git tag --list 'cli-v*' | tr '\n' ' ')"
+          echo "Published cli-v* tags: ${TAGS:-<none>}"
+          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
 
       # Without jsonschema, `_validate_against` returns no errors for plan and
       # journal documents rather than failing, and `compile` can only warn that
@@ -64,7 +84,10 @@ jobs:
         run: python -c "import jsonschema; print('jsonschema', jsonschema.__version__)"
 
       - name: Compile the capability contract
-        run: python -m migrate_apim compile --cli-dir ../../cli
+        run: |
+          python -m migrate_apim compile \
+            --cli-dir ../../cli \
+            --newest-release "${{ steps.release.outputs.tags }}"
 
       - name: Run the test suite
         run: python -m pytest -q
