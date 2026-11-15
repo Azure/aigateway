@@ -165,7 +165,7 @@ and ask you to confirm before they delete anything, change access, or read a sec
 | Command `discover` | `/aigateway:discover <resource ID>` | Lists the gateway's model aliases, MCP tool servers, and key metadata, with each endpoint, operation, and auth requirement. Stops there. |
 | Command `build` | `/aigateway:build <resource ID> <description>` | Discovers what's missing, integrates the assets into your project with a credential you already have, then verifies one request. |
 | Commands `create` and `manage` | `/aigateway:create`, `/aigateway:manage` | Create a gateway, then configure and operate its models, tools, policies, and keys with the skill `manage-ai-gateway`. Both take the gateway name and resource group, then a region or the operation. |
-| Commands `migrate` and `feedback` | `/aigateway:migrate`, `/aigateway:feedback` | Move supported API Management configuration to AI Gateway, and package an agent session into a local ZIP file for the product team. |
+| Commands `migrate` and `feedback` | `/aigateway:migrate`, `/aigateway:feedback` | Move model APIs, MCP servers, and A2A agents from an API Management instance to AI Gateway, phase by phase, and anonymize a session summary into a local file that you can share as product feedback. |
 
 What the generated code relies on:
 

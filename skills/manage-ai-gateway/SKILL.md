@@ -6,7 +6,7 @@ description: Create, configure, administer, troubleshoot, and operate Microsoft.
 
 # Manage Azure AI Gateway
 
-Manage `Microsoft.ApiManagement/aigateways` resources (`default` workspace) with `az aigateway` (or `az aig`). Never use `az rest` or target legacy `Microsoft.ApiManagement/service` (use [`migrate-ai-gateway`](../migrate-ai-gateway/SKILL.md) for APIM migration). External resources must already exist; only RBAC role assignments required for gateway operation may be created via `az role assignment create` after confirmation.
+Manage `Microsoft.ApiManagement/aigateways` resources (`default` workspace) with `az aigateway` (or `az aig`). Never use `az rest` or target legacy `Microsoft.ApiManagement/service`; migrating an existing APIM workload is outside this skill, so do not read, convert, or replicate source APIM configuration here. External resources must already exist; only RBAC role assignments required for gateway operation may be created via `az role assignment create` after confirmation.
 
 ## Prerequisites and target resolution
 
@@ -59,8 +59,12 @@ Clients call **model aliases** (`properties.aliasName`, set via `--routing-name`
 az aigateway model create --subscription "$SUB" -g "$RG" --gateway-name "$GW" \
   --foundry-resource-id "$FOUNDRY_ACCOUNT_ID" --deployment "$DEPLOYMENT_NAME"
 
-# Bulk-onboard all deployments in a Foundry account
+# Register a Foundry provider only (enables system MI and grants Foundry User by default, without importing deployments)
 az aigateway model-provider create --subscription "$SUB" -g "$RG" --gateway-name "$GW" \
+  --foundry-resource-id "$FOUNDRY_ACCOUNT_ID"
+
+# Bulk-onboard all deployments in a Foundry account
+az aigateway model-provider import --subscription "$SUB" -g "$RG" --gateway-name "$GW" \
   --foundry-resource-id "$FOUNDRY_ACCOUNT_ID"
 
 # Reconcile Foundry provider with current deployments (preview first; apply deletes stale unaliased models)
@@ -169,4 +173,3 @@ See [references/telemetry-and-troubleshooting.md](references/telemetry-and-troub
    - Rotating/suspending/deleting API keys, reading secrets (`api-key list-secrets`, `mcp authorize`), changing network/private-endpoint access, or enabling `--payload-capture true`.
 2. **Protect secrets**: Never print raw keys, backend secrets, or OAuth links. Pass secrets via environment variables or temporary `0600` JSON files outside source control (`@file.json` does not expand `$ENV_VAR`). Never send redacted markers in updates.
 3. **Verify**: Check command output and run `show`/`list` to confirm target fields and preserved sibling settings. The CLI has no subcommands for model inference, MCP `tools/list` / `tools/call`, or KQL log queries; verify runtime traffic separately with an authorized HTTP/MCP client or `az monitor` query.
-

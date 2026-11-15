@@ -445,6 +445,7 @@ Lab 25: [Use your gateway's models and tools in Claude Code](25-claude-code/READ
 
 | Step | Symptom | Likely cause | Fix |
 |---|---|---|---|
+| Import the Claude deployments | `'import' is misspelled or not recognized by the system` | The `aigateway` extension is older than `1.0.0b30`, the first version with `model-provider import` | [Run the installer again](SETUP.md#install-the-aigateway-extension), then check the version with `az aigateway version`. |
 | Deploy the template | `RoleAssignmentExists` | The gateway's managed identity already has Foundry User on the account, for example from the portal's import | Deploy with `grantFoundryUser=false`. The step's script sets it for you when it finds the assignment. |
 | Test the endpoint | `anthropic-version: header is required` | The request has no `anthropic-version` header | Add `-H "anthropic-version: 2023-06-01"`. Claude Code and the Anthropic SDK send it for you. |
 | Test the endpoint<br>Ask a quick question<br>Turn Claude Code back on | `401`: `Unauthorized. Missing or invalid Entra ID token, or missing Data.All scope.` | The key is wrong, suspended, or not active yet, or it's sent in an `x-api-key` header | Send the key as a bearer token: `ANTHROPIC_AUTH_TOKEN` for Claude Code. Check the key's state in **Access** › **API keys**, and wait a minute after you create it. |

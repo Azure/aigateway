@@ -1,0 +1,621 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Azure/aigateway/tools/migrate-apim/schemas/inventory.schema.json",
+  "title": "APIM AI inventory",
+  "description": "A faithful, secret-free capture of the AI assets of an Azure API Management instance, decomposed the way Azure AI Gateway building blocks are shaped.",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "generator", "collection", "service", "assets", "excludedApis", "shared", "policies", "secrets"],
+  "properties": {
+    "$schema": {"type": "string"},
+    "schemaVersion": {"const": "1.0"},
+    "kind": {"const": "apimAiInventory"},
+
+    "generator": {
+      "type": "object",
+      "required": ["name", "version", "command"],
+      "properties": {
+        "name": {"const": "migrate-apim"},
+        "version": {"type": "string"},
+        "command": {"type": "string"}
+      }
+    },
+
+    "collection": {
+      "type": "object",
+      "required": ["startedAt", "completedAt", "apiVersions", "options", "coverage", "warnings"],
+      "properties": {
+        "startedAt": {"type": "string", "format": "date-time"},
+        "completedAt": {"type": "string", "format": "date-time"},
+        "requestCount": {"type": "integer", "minimum": 0},
+        "apiVersions": {
+          "type": "object",
+          "properties": {
+            "apiManagement": {"type": "string"},
+            "cognitiveServices": {"type": ["string", "null"]}
+          }
+        },
+        "options": {"type": "object"},
+        "coverage": {
+          "description": "One record per control-plane collection read, so completeness is provable rather than assumed.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["collection", "scope", "status", "count", "error"],
+            "properties": {
+              "collection": {"type": "string"},
+              "scope": {"type": "string"},
+              "status": {
+                "description": "notCollected means the read was deliberately skipped; it is not evidence that nothing is there.",
+                "enum": ["complete", "empty", "notFound", "failed", "notCollected"]
+              },
+              "count": {"type": "integer", "minimum": 0},
+              "error": {"type": ["string", "null"]}
+            }
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["code"],
+            "properties": {"code": {"type": "string"}, "message": {"type": "string"}}
+          }
+        }
+      }
+    },
+
+    "service": {
+      "type": "object",
+      "required": ["resourceId", "name", "sku"],
+      "properties": {
+        "resourceId": {"type": "string"},
+        "name": {"type": "string"},
+        "location": {"type": ["string", "null"]},
+        "subscriptionId": {"type": "string"},
+        "resourceGroup": {"type": ["string", "null"]},
+        "sku": {"type": ["object", "null"]},
+        "gatewayUrl": {"type": ["string", "null"]},
+        "virtualNetworkType": {"type": ["string", "null"]},
+        "publicNetworkAccess": {"type": ["string", "null"]},
+        "hostnameConfigurations": {"type": "array"},
+        "identity": {"type": ["object", "null"]},
+        "tags": {"type": "object"}
+      }
+    },
+
+    "workspaces": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "collected"],
+        "properties": {
+          "name": {"type": "string"},
+          "displayName": {"type": ["string", "null"]},
+          "description": {"type": ["string", "null"]},
+          "serveOn": {"type": ["string", "null"]},
+          "collected": {"type": "boolean"}
+        }
+      }
+    },
+
+    "assets": {
+      "type": "object",
+      "required": ["modelProviders", "models", "mcpServers", "agents"],
+      "properties": {
+        "modelProviders": {"type": "array", "items": {"$ref": "#/$defs/modelProvider"}},
+        "models": {"type": "array", "items": {"$ref": "#/$defs/modelApi"}},
+        "mcpServers": {"type": "array", "items": {"$ref": "#/$defs/mcpServer"}},
+        "agents": {"type": "array", "items": {"$ref": "#/$defs/agent"}}
+      }
+    },
+
+    "excludedApis": {
+      "description": "Every API the collector saw and did not inventory, with the reason. Nothing is dropped silently.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["apiId", "name", "type", "reason"],
+        "properties": {
+          "apiId": {"type": "string"},
+          "name": {"type": ["string", "null"]},
+          "displayName": {"type": ["string", "null"]},
+          "type": {"type": "string"},
+          "path": {"type": ["string", "null"]},
+          "reason": {"type": "string"},
+          "signals": {"type": "array", "items": {"$ref": "#/$defs/signal"}},
+          "referencedBy": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+
+    "excludedBackends": {
+      "description": "Backends the collector did not treat as model providers, with the reason. Proves backend coverage the way excludedApis proves API coverage.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["backendId", "name", "reason"],
+        "properties": {
+          "backendId": {"type": "string"},
+          "name": {"type": "string"},
+          "url": {"type": ["string", "null"]},
+          "host": {"type": ["string", "null"]},
+          "reason": {"type": "string"},
+          "usedByAssets": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+
+    "shared": {
+      "type": "object",
+      "properties": {
+        "backends": {"type": "array"},
+        "namedValues": {"type": "array", "items": {"$ref": "#/$defs/namedValue"}},
+        "policyFragments": {"type": "array"},
+        "products": {"type": "array"},
+        "subscriptions": {"type": "array"},
+        "certificates": {"type": "array"},
+        "authorizationServers": {"type": "array"},
+        "openidConnectProviders": {"type": "array"},
+        "credentialProviders": {"type": "array"},
+        "telemetry": {"type": "object"},
+        "foundryAccounts": {"type": "array"}
+      }
+    },
+
+    "policies": {"type": "array", "items": {"$ref": "#/$defs/policyDocument"}},
+    "secrets": {"type": "array", "items": {"$ref": "#/$defs/secretRef"}}
+  },
+
+  "$defs": {
+    "signal": {
+      "type": "object",
+      "required": ["type", "value", "weight"],
+      "properties": {
+        "type": {"type": "string"},
+        "value": {"type": "string"},
+        "weight": {"type": "integer"},
+        "detail": {"type": "string"}
+      }
+    },
+
+    "detection": {
+      "type": "object",
+      "required": ["confidence", "score", "signals"],
+      "properties": {
+        "confidence": {"enum": ["high", "medium", "low", "forced", "none"]},
+        "score": {"type": "integer"},
+        "signals": {"type": "array", "items": {"$ref": "#/$defs/signal"}},
+        "providerGuess": {"type": "string"},
+        "reason": {"type": "string"}
+      }
+    },
+
+    "apiSource": {
+      "type": "object",
+      "required": ["apiId", "name", "type", "path"],
+      "properties": {
+        "apiId": {"type": "string"},
+        "name": {"type": ["string", "null"]},
+        "resourceId": {"type": ["string", "null"]},
+        "displayName": {"type": ["string", "null"]},
+        "description": {"type": ["string", "null"]},
+        "type": {"type": "string"},
+        "path": {"type": ["string", "null"]},
+        "protocols": {"type": ["array", "null"]},
+        "serviceUrl": {"type": ["string", "null"]},
+        "backendId": {"type": ["string", "null"]},
+        "apiRevision": {"type": ["string", "null"]},
+        "isCurrent": {"type": ["boolean", "null"]}
+      }
+    },
+
+    "modelProvider": {
+      "description": "An upstream model endpoint. Maps to an AI Gateway modelProvider, and exists even when no APIM API publishes it.",
+      "type": "object",
+      "required": ["id", "kind", "providerKind", "targetProviderKind", "endpoint", "origin", "auth", "models", "referencedBy"],
+      "properties": {
+        "id": {"type": "string"},
+        "kind": {"const": "modelProvider"},
+        "workspace": {"type": "string"},
+        "providerKind": {"type": "string"},
+        "providerLabel": {"type": ["string", "null"]},
+        "targetProviderKind": {"enum": ["Foundry", "Custom"]},
+        "apiDialect": {"type": ["string", "null"]},
+        "endpoint": {"type": ["string", "null"]},
+        "origin": {
+          "type": "object",
+          "required": ["type"],
+          "properties": {
+            "type": {"enum": ["backend", "serviceUrl"]},
+            "backendId": {"type": "string"},
+            "backendName": {"type": "string"},
+            "apiId": {"type": "string"}
+          }
+        },
+        "auth": {"$ref": "#/$defs/auth"},
+        "azure": {"type": ["object", "null"]},
+        "models": {"$ref": "#/$defs/modelCatalogue"},
+        "referencedBy": {
+          "type": "object",
+          "properties": {
+            "apis": {"type": "array", "items": {"type": "string"}},
+            "policies": {"type": "array"}
+          }
+        },
+        "secretRefs": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+
+    "modelCatalogue": {
+      "type": "object",
+      "required": ["status", "discoverySource", "resolved"],
+      "properties": {
+        "status": {"enum": ["resolved", "declared", "unresolved", "empty"]},
+        "discoverySource": {
+          "enum": ["armDeployments", "backendLanguageModel", "modelsEndpoint", "awsCli", "gcloudCli", "manual", "unknown"]
+        },
+        "resolved": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "deploymentName": {"type": ["string", "null"]},
+              "modelName": {"type": ["string", "null"]},
+              "modelVersion": {"type": ["string", "null"]},
+              "modelFormat": {"type": ["string", "null"]},
+              "sku": {"type": ["object", "null"]},
+              "target": {
+                "description": "Pre-shaped AI Gateway model registration input.",
+                "type": "object"
+              }
+            }
+          }
+        },
+        "declared": {"type": "array", "items": {"type": "string"}},
+        "notes": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+
+    "auth": {
+      "type": "object",
+      "required": ["mode", "secretRefs"],
+      "properties": {
+        "mode": {
+          "enum": ["none", "apiKey", "authorizationHeader", "clientCertificate", "managedIdentity", "credentialManager"]
+        },
+        "secretRefs": {"type": "array", "items": {"type": "string"}},
+        "evidence": {"type": "array", "items": {"type": "string"}},
+        "parameters": {"type": "object"},
+        "scheme": {"type": ["string", "null"]}
+      }
+    },
+
+    "modelApi": {
+      "description": "An APIM API that publishes model inference. Maps to AI Gateway models plus an alias.",
+      "type": "object",
+      "required": ["id", "kind", "source", "detection", "provider", "routing", "models", "endpoints"],
+      "properties": {
+        "id": {"type": "string"},
+        "kind": {"const": "modelApi"},
+        "workspace": {"type": "string"},
+        "pattern": {"type": "string"},
+        "source": {"$ref": "#/$defs/apiSource"},
+        "detection": {"$ref": "#/$defs/detection"},
+        "provider": {"type": "object"},
+        "providerIds": {"type": "array", "items": {"type": "string"}},
+        "routing": {
+          "type": "object",
+          "required": ["mode", "targets"],
+          "properties": {
+            "mode": {"enum": ["single", "pool", "policy"]},
+            "targets": {"type": "array"},
+            "circuitBreaker": {"type": ["array", "null"]},
+            "evidence": {"type": ["string", "null"]}
+          }
+        },
+        "models": {"$ref": "#/$defs/modelCatalogue"},
+        "endpoints": {"$ref": "#/$defs/endpoints"},
+        "policyRefs": {"$ref": "#/$defs/policyRefs"},
+        "access": {"type": "object"}
+      }
+    },
+
+    "endpoints": {
+      "type": "object",
+      "properties": {
+        "inboundDialects": {
+          "description": "Inferred from operation URL templates, which operators configure freely. Evidence, not a declaration.",
+          "type": "array", "items": {"type": "string"}
+        },
+        "inboundDialectsInferredFrom": {"const": "operationTemplates"},
+        "backendDialects": {
+          "description": "Declared by a languageModel backend's apiFormat.",
+          "type": "array", "items": {"type": "string"}
+        },
+        "backendDialectsDeclared": {"type": "boolean"},
+        "translation": {
+          "description": "Null only when the backend declares no dialect to compare against.",
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["status", "inbound", "backend", "basis", "note"],
+              "properties": {
+                "status": {
+                  "description": "indeterminate means the operation templates carry no recognizable inference route, so a caller-side dialect could not be read from configuration.",
+                  "enum": ["translating", "native", "indeterminate"]
+                },
+                "inbound": {"type": "array", "items": {"type": "string"}},
+                "backend": {"type": "array", "items": {"type": "string"}},
+                "basis": {"type": "object"},
+                "note": {"type": "string"}
+              }
+            },
+            {"type": "null"}
+          ]
+        },
+        "operations": {"type": "array"},
+        "basePath": {
+          "description": "The API's configured path, read verbatim from APIM.",
+          "type": ["string", "null"]
+        }
+      }
+    },
+
+    "mcpServer": {
+      "description": "An APIM MCP API. Maps to an AI Gateway toolServer with one or more endpoints.",
+      "type": "object",
+      "required": ["id", "kind", "pattern", "source", "mcp", "tools", "toolDiscovery"],
+      "properties": {
+        "id": {"type": "string"},
+        "kind": {"const": "mcpServer"},
+        "workspace": {"type": "string"},
+        "pattern": {
+          "description": "passthrough proxies an upstream MCP server; toolProjection exposes APIM operations as tools; federationRouter fans out to several; unconfigured has no upstream at all.",
+          "enum": ["passthrough", "toolProjection", "federationRouter", "unconfigured"]
+        },
+        "source": {"$ref": "#/$defs/apiSource"},
+        "detection": {"$ref": "#/$defs/detection"},
+        "mcp": {"type": "object"},
+        "upstream": {"type": "array"},
+        "sourceApiIds": {"type": "array", "items": {"type": "string"}},
+        "tools": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {"type": ["string", "null"]},
+              "description": {"type": ["string", "null"]},
+              "origin": {"enum": ["operation", "upstreamRuntime"]},
+              "operationId": {"type": ["string", "null"]},
+              "sourceApi": {"type": ["string", "null"]},
+              "hasToolPolicy": {"type": "boolean"}
+            }
+          }
+        },
+        "toolCount": {"type": "integer"},
+        "toolDiscovery": {
+          "type": "object",
+          "required": ["status", "source"],
+          "properties": {
+            "status": {"enum": ["complete", "runtimeOnly"]},
+            "source": {"enum": ["apimControlPlane", "upstreamMcpServer"]},
+            "note": {"type": "string"},
+            "discoveredCount": {"type": "integer"}
+          }
+        },
+        "openApiSources": {"type": ["array", "null"]},
+        "policyRefs": {"$ref": "#/$defs/policyRefs"},
+        "access": {"type": "object"},
+        "notes": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+
+    "agent": {
+      "description": "An APIM A2A agent API. Inventoried now; AI Gateway has no agent building block yet.",
+      "type": "object",
+      "required": ["id", "kind", "source", "agent", "agentCard", "hosting", "upstream", "a2a", "note"],
+      "properties": {
+        "id": {"type": "string"},
+        "kind": {"const": "agent"},
+        "workspace": {"type": "string"},
+        "pattern": {"const": "a2a"},
+        "source": {"$ref": "#/$defs/apiSource"},
+        "detection": {"$ref": "#/$defs/detection"},
+        "agent": {
+          "description": "The agent's identity as APIM records it.",
+          "type": "object",
+          "properties": {
+            "id": {"type": ["string", "null"]},
+            "name": {"type": ["string", "null"]},
+            "providerName": {"type": ["string", "null"]},
+            "managementPortalUrl": {"type": ["string", "null"]}
+          }
+        },
+        "agentCard": {
+          "description": "APIM stores the card's location, never its content.",
+          "type": "object",
+          "required": ["backendUrl", "exposedPath", "discovery"],
+          "properties": {
+            "backendUrl": {"type": ["string", "null"]},
+            "exposedPath": {"type": ["string", "null"]},
+            "discovery": {
+              "type": "object",
+              "properties": {
+                "status": {"const": "runtimeOnly"},
+                "note": {"type": "string"}
+              }
+            }
+          }
+        },
+        "hosting": {
+          "type": "object",
+          "required": ["kind", "endpoint"],
+          "properties": {
+            "kind": {"type": "string"},
+            "endpoint": {"type": ["string", "null"]},
+            "project": {"type": "string"},
+            "agentId": {"type": "string"},
+            "azure": {"type": "object"},
+            "note": {"type": "string"}
+          }
+        },
+        "upstream": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "url": {"type": ["string", "null"]},
+              "transport": {"enum": ["jsonRpc", "http"]},
+              "path": {"type": ["string", "null"]},
+              "source": {"enum": ["jsonRpcProperties", "backend", "serviceUrl"]}
+            }
+          }
+        },
+        "a2a": {
+          "description": "The raw APIM properties, kept verbatim because this surface is in preview.",
+          "type": "object"
+        },
+        "policyRefs": {"$ref": "#/$defs/policyRefs"},
+        "access": {"type": "object"},
+        "note": {"type": "string"}
+      }
+    },
+
+    "policyRefs": {
+      "type": "object",
+      "properties": {
+        "global": {"type": ["string", "null"]},
+        "api": {"type": ["string", "null"]},
+        "fragments": {"type": "array", "items": {"type": "string"}},
+        "products": {"type": "array", "items": {"type": "string"}},
+        "operations": {"type": "array", "items": {"type": "string"}},
+        "operationPoliciesCollected": {
+          "description": "False means an empty `operations` list says nothing about whether operation policies exist.",
+          "type": "boolean"
+        }
+      }
+    },
+
+    "policyDocument": {
+      "type": "object",
+      "required": ["id", "scope", "elements", "stats"],
+      "properties": {
+        "id": {"type": "string"},
+        "scope": {
+          "type": "object",
+          "required": ["level"],
+          "properties": {
+            "level": {"enum": ["global", "workspace", "product", "api", "operation", "fragment"]},
+            "name": {"type": ["string", "null"]},
+            "apiName": {"type": "string"},
+            "resourceId": {"type": ["string", "null"]}
+          }
+        },
+        "format": {"const": "rawxml"},
+        "xml": {"type": "string"},
+        "parseError": {"type": ["string", "null"]},
+        "elements": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["section", "path", "name", "family"],
+            "properties": {
+              "section": {"type": "string"},
+              "path": {"type": "string"},
+              "name": {"type": "string"},
+              "family": {"type": "string"},
+              "depth": {"type": "integer"},
+              "attributes": {"type": "object"},
+              "text": {"type": ["string", "null"]},
+              "expressionIds": {"type": "array", "items": {"type": "string"}},
+              "namedValueRefs": {"type": "array", "items": {"type": "string"}},
+              "childNames": {"type": "array", "items": {"type": "string"}},
+              "fragmentId": {"type": "string"}
+            }
+          }
+        },
+        "expressions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "sha256"],
+            "properties": {
+              "id": {"type": "string"},
+              "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+              "length": {"type": "integer"},
+              "source": {"type": ["string", "null"]},
+              "containsLiteralSecret": {"type": "boolean"},
+              "references": {"type": "array", "items": {"type": "string"}}
+            }
+          }
+        },
+        "namedValueRefs": {"type": "array", "items": {"type": "string"}},
+        "fragmentRefs": {"type": "array", "items": {"type": "string"}},
+        "secretRefs": {"type": "array", "items": {"type": "string"}},
+        "redactions": {"type": "array"},
+        "stats": {"type": "object"}
+      }
+    },
+
+    "namedValue": {
+      "type": "object",
+      "required": ["id", "name", "secret"],
+      "properties": {
+        "id": {"type": "string"},
+        "name": {"type": "string"},
+        "workspace": {"type": "string"},
+        "displayName": {"type": ["string", "null"]},
+        "secret": {"type": "boolean"},
+        "tags": {"type": ["array", "null"]},
+        "keyVault": {"type": ["object", "null"]},
+        "value": {
+          "description": "Present only for values APIM does not mark secret; a secret value is never written here.",
+          "type": ["string", "null"]
+        },
+        "secretRef": {"type": ["string", "null"]}
+      }
+    },
+
+    "secretRef": {
+      "description": "A pointer to a credential plus the exact command that retrieves it at apply time. The value itself never appears in this document.",
+      "type": "object",
+      "required": ["id", "class", "storage", "description", "retrievable", "resolution"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^secret:"},
+        "class": {"type": "string"},
+        "storage": {
+          "enum": ["apimEncrypted", "apimPlaintext", "keyVault", "inlineLiteral", "apimCertificateStore", "apimManagedToken", "none"]
+        },
+        "description": {"type": "string"},
+        "owner": {"type": ["string", "null"]},
+        "usedBy": {"type": "array", "items": {"type": "string"}},
+        "retrievable": {"type": "boolean"},
+        "resolution": {"oneOf": [{"$ref": "#/$defs/resolution"}, {"type": "null"}]},
+        "alternateResolution": {"oneOf": [{"$ref": "#/$defs/resolution"}, {"type": "null"}]},
+        "keyVault": {"type": "object"},
+        "audience": {"type": "string"},
+        "notes": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+
+    "resolution": {
+      "type": "object",
+      "required": ["method", "request", "command", "valuePath", "permissions"],
+      "properties": {
+        "method": {"enum": ["armAction", "armRead", "armReadXml", "keyVault", "none"]},
+        "request": {
+          "type": ["object", "null"],
+          "properties": {
+            "httpMethod": {"enum": ["GET", "POST"]},
+            "url": {"type": "string"},
+            "body": {"type": ["object", "null"]}
+          }
+        },
+        "command": {"type": ["string", "null"]},
+        "valuePath": {"type": ["string", "null"]},
+        "permissions": {"type": "array", "items": {"type": "string"}},
+        "alsoReturns": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  }
+}

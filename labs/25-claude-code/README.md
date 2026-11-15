@@ -282,9 +282,10 @@ Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) c
 
 ### Import the Claude deployments
 
-`az aigateway model-provider create --foundry-resource-id` imports the account's deployments as the models of a new
+`az aigateway model-provider import --foundry-resource-id` imports the account's deployments as the models of a
 provider. It also turns on the gateway's managed identity and grants it the **Foundry User** role on the account. It
-doesn't create aliases.
+doesn't create aliases. The command needs the `aigateway` extension 1.0.0b30 or later: if `az aigateway version`
+reports an older one, [run the installer again](../SETUP.md#install-the-aigateway-extension).
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -295,7 +296,7 @@ echo "🆔 Foundry account: $FOUNDRY_ID"
 
 # Import the account's deployments as a provider named after the account, and list its models
 echo "🏭 Models in provider $PROVIDER:"
-az aigateway model-provider create -g "$RG" --gateway-name "$GATEWAY" --name "$PROVIDER" \
+az aigateway model-provider import -g "$RG" --gateway-name "$GATEWAY" --name "$PROVIDER" \
   --foundry-resource-id "$FOUNDRY_ID" --query "join(', ', models[].name)" -o tsv
 ```
 </details> <!-- gh -->
@@ -309,7 +310,7 @@ Write-Host "🆔 Foundry account: $FOUNDRY_ID"
 
 # Import the account's deployments as a provider named after the account, and list its models
 Write-Host "🏭 Models in provider ${PROVIDER}:"
-az aigateway model-provider create -g $RG --gateway-name $GATEWAY --name $PROVIDER `
+az aigateway model-provider import -g $RG --gateway-name $GATEWAY --name $PROVIDER `
   --foundry-resource-id $FOUNDRY_ID --query "join(', ', models[].name)" -o tsv
 ```
 </details> <!-- gh -->

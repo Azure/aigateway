@@ -1,0 +1,559 @@
+{
+  "schemaVersion": "1.0",
+  "targetCapabilities": "aigateway-1.0.0b26",
+  "description": "How APIM shapes land on Azure AI Gateway. Source shape -> target capability -> verdict -> the plan item kind to raise when the mapping is not direct. Prose form lives in tools/migrate-apim/README.md; this is the executable form, so a new AI Gateway release is a data change.",
+  "verdicts": {
+    "native": "Direct equivalent. The item is ready and carries pre-shaped target objects.",
+    "partial": "Maps, but the semantics differ. Raises an item so the difference is chosen, not assumed.",
+    "gap": "No equivalent on the target. Raises an item to accept, compensate, retain in APIM, or block.",
+    "handled": "Carried by another object; excluded here and cross-referenced rather than dropped.",
+    "notApplicable": "Plumbing with nothing to migrate."
+  },
+  "publishableRoutes": [
+    "/openai/v1/chat/completions",
+    "/openai/v1/responses",
+    "/openai/v1/embeddings",
+    "/v1/messages"
+  ],
+  "assets": [
+    {
+      "match": {
+        "family": "modelProviders"
+      },
+      "verdict": "native",
+      "capabilityId": "provider.create",
+      "constraints": {
+        "custom.authentication": [
+          "ApiKey"
+        ],
+        "note": "Custom provider auth is ApiKey only; arbitrary header maps are not native authoring."
+      }
+    },
+    {
+      "match": {
+        "family": "models",
+        "modelsStatus": [
+          "resolved",
+          "declared"
+        ]
+      },
+      "verdict": "native",
+      "capabilityId": "model.create",
+      "constraints": {
+        "apiFormat": [
+          "OpenAIChatCompletions",
+          "ResponsesApi",
+          "AnthropicMessages"
+        ]
+      }
+    },
+    {
+      "match": {
+        "family": "models",
+        "modelsStatus": [
+          "unresolved",
+          "empty"
+        ]
+      },
+      "verdict": "partial",
+      "itemKind": "enumerate",
+      "capabilityId": "model.create",
+      "rationale": "A model registration needs a model name. The catalogue could not be resolved from configuration."
+    },
+    {
+      "match": {
+        "family": "models",
+        "surfaceStatus": "bounded",
+        "hasUnpublishable": true
+      },
+      "verdict": "partial",
+      "itemKind": "reduce-surface",
+      "capabilityId": "alias.create",
+      "options": [
+        "split",
+        "inference-only",
+        "retain-in-apim",
+        "block"
+      ],
+      "proposal": "split",
+      "rationale": "AI Gateway publishes four inference routes. Operations outside them have no target at all."
+    },
+    {
+      "match": {
+        "family": "models",
+        "surfaceStatus": "unbounded"
+      },
+      "verdict": "partial",
+      "itemKind": "reduce-surface",
+      "capabilityId": "alias.create",
+      "options": [
+        "inference-only",
+        "retain-in-apim",
+        "block"
+      ],
+      "proposal": "inference-only",
+      "rationale": "A wildcard operation forwards every upstream path, so the exposed surface cannot be read from configuration."
+    },
+    {
+      "match": {
+        "family": "models",
+        "aspect": "aliasName"
+      },
+      "verdict": "partial",
+      "itemKind": "name",
+      "capabilityId": "alias.create",
+      "rationale": "The alias routingName is what clients send as `model`. APIM does not store it; it arrives in the request body at runtime.",
+      "defaultFrom": "deploymentName",
+      "blockingWhen": [
+        "collision",
+        "noBasis"
+      ]
+    },
+    {
+      "match": {
+        "family": "models",
+        "translationStatus": "translating"
+      },
+      "verdict": "partial",
+      "itemKind": "translate",
+      "capabilityId": "alias.create",
+      "options": [
+        "move-callers",
+        "retain-in-apim",
+        "block"
+      ],
+      "proposal": "move-callers",
+      "rationale": "APIM translates between the caller's dialect and the backend's. AI Gateway publishes a model at its native endpoint, so callers move or a translating layer stays in front."
+    },
+    {
+      "match": {
+        "family": "models",
+        "translationStatus": "indeterminate"
+      },
+      "verdict": "partial",
+      "itemKind": "enumerate",
+      "capabilityId": "alias.create",
+      "rationale": "The operations expose no recognizable inference route, so the dialect callers use could not be read from configuration."
+    },
+    {
+      "match": {
+        "family": "mcpServers",
+        "pattern": "passthrough"
+      },
+      "verdict": "native",
+      "capabilityId": "mcp.create",
+      "constraints": {
+        "transport": [
+          "streamableHttp",
+          "sse"
+        ],
+        "oauth2.grantType": [
+          "authorizationCode"
+        ]
+      }
+    },
+    {
+      "match": {
+        "family": "mcpServers",
+        "pattern": "federationRouter"
+      },
+      "verdict": "native",
+      "capabilityId": "mcp.create"
+    },
+    {
+      "match": {
+        "family": "mcpServers",
+        "pattern": "toolProjection"
+      },
+      "verdict": "partial",
+      "itemKind": "accept-loss",
+      "capabilityId": "mcp.create",
+      "options": [
+        "accept",
+        "retain-in-apim",
+        "block"
+      ],
+      "proposal": "accept",
+      "rationale": "The REST contract becomes an openApi tool-server source, but APIM's per-tool policies and tool name overrides do not survive."
+    },
+    {
+      "match": {
+        "family": "mcpServers",
+        "pattern": "unconfigured"
+      },
+      "verdict": "gap",
+      "itemKind": "enumerate",
+      "rationale": "The MCP API declares no backend, service URL, MCP properties or tools, so there is nothing to register.",
+      "options": [
+        "supply-upstream",
+        "retain-in-apim",
+        "block"
+      ],
+      "proposal": "retain-in-apim"
+    },
+    {
+      "match": {
+        "family": "mcpServers",
+        "toolDiscovery": "runtimeOnly"
+      },
+      "verdict": "gap",
+      "itemKind": "enumerate",
+      "options": [
+        "accept-all",
+        "discover-at-runtime",
+        "retain-in-apim"
+      ],
+      "proposal": "accept-all",
+      "rationale": "APIM stores no tool names for a passthrough server, and the CLI cannot author allowList/blocked in this baseline regardless."
+    },
+    {
+      "match": {
+        "family": "agents"
+      },
+      "verdict": "gap",
+      "itemKind": "accept-loss",
+      "options": [
+        "retain-in-apim",
+        "block"
+      ],
+      "proposal": "retain-in-apim",
+      "rationale": "AI Gateway exposes no A2A building block. A2A is listed outside the confirmed typed-gateway surface."
+    }
+  ],
+  "policies": [
+    {
+      "match": {
+        "element": [
+          "azure-openai-token-limit",
+          "llm-token-limit"
+        ]
+      },
+      "verdict": "native",
+      "capabilityId": "model.policy",
+      "target": "tokenLimit",
+      "partialWhen": {
+        "attributeIsExpression": "counter-key"
+      },
+      "partial": {
+        "itemKind": "translate",
+        "options": [
+          "identity",
+          "ipAddress",
+          "identity+ipAddress",
+          "pooled"
+        ],
+        "proposal": "identity",
+        "rationale": "The counter partitions by an arbitrary expression in APIM; the target partitions by identity, IP, both, or one pooled counter. @(context.Subscription.Id) is close to identity but not identical."
+      },
+      "batchOn": [
+        "counter-key"
+      ]
+    },
+    {
+      "match": {
+        "element": [
+          "ip-filter"
+        ]
+      },
+      "verdict": "native",
+      "capabilityId": "policy.update",
+      "target": "ipFilter",
+      "batchOn": [
+        "action"
+      ]
+    },
+    {
+      "match": {
+        "element": [
+          "authentication-managed-identity"
+        ]
+      },
+      "verdict": "handled",
+      "capabilityId": "provider.create",
+      "target": "provider.authentication.ManagedIdentity",
+      "rationale": "Becomes provider authentication configuration. Carried by the model provider item rather than raised again here."
+    },
+    {
+      "match": {
+        "element": [
+          "rate-limit-by-key",
+          "rate-limit"
+        ]
+      },
+      "verdict": "partial",
+      "capabilityId": "policy.update",
+      "target": "requestRateLimit",
+      "itemKind": "translate",
+      "options": [
+        "identity",
+        "ipAddress",
+        "identity+ipAddress",
+        "pooled"
+      ],
+      "proposal": "identity",
+      "rationale": "APIM counter-key is an arbitrary expression; AI Gateway partitions by identity, IP, both, or a single pooled counter. @(context.Subscription.Id) is close to identity but not identical.",
+      "batchOn": [
+        "counter-key"
+      ]
+    },
+    {
+      "match": {
+        "element": [
+          "azure-openai-emit-token-metric",
+          "llm-emit-token-metric"
+        ]
+      },
+      "verdict": "partial",
+      "itemKind": "accept-loss",
+      "options": [
+        "accept",
+        "compensate",
+        "retain-in-apim"
+      ],
+      "proposal": "accept",
+      "rationale": "Token metrics are emitted by the gateway, but custom dimensions do not carry over one for one. Where the telemetry goes is a separate decision, on the telemetry destination item."
+    },
+    {
+      "match": {
+        "element": [
+          "validate-jwt",
+          "validate-azure-ad-token"
+        ]
+      },
+      "verdict": "partial",
+      "capabilityId": "key.create",
+      "target": "entraAuth",
+      "itemKind": "translate",
+      "options": [
+        "entra-rbac",
+        "compensate",
+        "retain-in-apim",
+        "block"
+      ],
+      "proposal": "entra-rbac",
+      "rationale": "Issuer and audience validation is covered by gateway Entra auth plus data-plane RBAC. Gating on custom claims or app roles is not.",
+      "batchOn": []
+    },
+    {
+      "match": {
+        "element": [
+          "quota",
+          "quota-by-key",
+          "limit-concurrency"
+        ]
+      },
+      "verdict": "gap",
+      "itemKind": "accept-loss",
+      "rationale": "costLimit is a dollar budget, not a call quota or a concurrency ceiling.",
+      "proposal": "retain-in-apim"
+    },
+    {
+      "match": {
+        "element": [
+          "azure-openai-semantic-cache-lookup",
+          "azure-openai-semantic-cache-store",
+          "llm-semantic-cache-lookup",
+          "llm-semantic-cache-store",
+          "cache-lookup",
+          "cache-store",
+          "cache-lookup-value",
+          "cache-store-value"
+        ]
+      },
+      "verdict": "gap",
+      "itemKind": "accept-loss",
+      "rationale": "No caching of any kind on the typed gateway.",
+      "proposal": "accept"
+    },
+    {
+      "match": {
+        "element": [
+          "azure-openai-content-safety",
+          "llm-content-safety"
+        ]
+      },
+      "verdict": "gap",
+      "itemKind": "accept-loss",
+      "rationale": "Content-safety flags are visible in the CLI but are not supported on typed aigateways. The policy also pulls in a separate Content Safety backend.",
+      "dependsOnBackendRole": "contentSafety",
+      "proposal": "retain-in-apim"
+    },
+    {
+      "match": {
+        "family": "transform"
+      },
+      "verdict": "gap",
+      "itemKind": "accept-loss",
+      "rationale": "No request or response rewriting on the target.",
+      "proposal": "accept"
+    },
+    {
+      "match": {
+        "family": "validation"
+      },
+      "verdict": "gap",
+      "itemKind": "accept-loss",
+      "rationale": "No schema, header, or status validation on the target.",
+      "proposal": "retain-in-apim"
+    },
+    {
+      "match": {
+        "element": [
+          "send-request",
+          "send-one-way-request",
+          "return-response",
+          "wait"
+        ]
+      },
+      "verdict": "gap",
+      "itemKind": "accept-loss",
+      "rationale": "No side-effecting call-outs. agentHooks is the nearest mechanism and applies to tool traffic only.",
+      "proposal": "accept"
+    },
+    {
+      "match": {
+        "element": [
+          "set-backend-service",
+          "forward-request"
+        ]
+      },
+      "verdict": "handled",
+      "capabilityId": "alias.create",
+      "rationale": "Backend selection becomes the alias backend pool."
+    },
+    {
+      "match": {
+        "element": [
+          "base",
+          "include-fragment",
+          "choose",
+          "when",
+          "otherwise",
+          "set-variable",
+          "cors",
+          "trace",
+          "retry"
+        ]
+      },
+      "verdict": "notApplicable",
+      "rationale": "Composition, control flow, and gateway plumbing with no target object."
+    },
+    {
+      "match": {
+        "hasExpression": true
+      },
+      "verdict": "gap",
+      "itemKind": "accept-loss",
+      "priority": 10,
+      "rationale": "A policy expression doing more than reading a well-known context property has no equivalent. The target's policy surface is six declarative types.",
+      "proposal": "retain-in-apim"
+    }
+  ],
+  "structural": [
+    {
+      "match": {
+        "kind": "gateway"
+      },
+      "verdict": "native",
+      "capabilityId": "gateway.create",
+      "rationale": "The target gateway is created by apply when the plan names one that does not exist yet."
+    },
+    {
+      "match": {
+        "kind": "workspace",
+        "name": {
+          "not": "default"
+        }
+      },
+      "verdict": "partial",
+      "itemKind": "collapse",
+      "options": [
+        "flatten",
+        "retain-in-apim",
+        "block"
+      ],
+      "proposal": "flatten",
+      "rationale": "AI Gateway configures the implicit default workspace only. Flattening can collide with same-named assets in other workspaces."
+    },
+    {
+      "match": {
+        "kind": "subscriptions"
+      },
+      "verdict": "partial",
+      "itemKind": "scope",
+      "options": [
+        "gateway-key-per-consumer",
+        "entra-rbac",
+        "retain-in-apim"
+      ],
+      "proposal": "entra-rbac",
+      "rationale": "APIM subscription keys are scoped per product, per API, or service-wide. AI Gateway keys are gateway-wide and no key value can be imported, so every caller is re-keyed."
+    },
+    {
+      "match": {
+        "kind": "products"
+      },
+      "verdict": "gap",
+      "itemKind": "scope",
+      "rationale": "No product grouping on the target; access is gateway-wide keys plus Entra RBAC.",
+      "proposal": "accept"
+    },
+    {
+      "match": {
+        "kind": "namedValues"
+      },
+      "verdict": "handled",
+      "rationale": "Values are inlined into target configuration; secrets are resolved at apply time from the inventory's secret references."
+    },
+    {
+      "match": {
+        "kind": "policyFragments"
+      },
+      "verdict": "handled",
+      "rationale": "Resolved into the including policy before mapping."
+    },
+    {
+      "match": {
+        "kind": "certificates"
+      },
+      "verdict": "gap",
+      "itemKind": "accept-loss",
+      "rationale": "APIM does not export a certificate private key. Client certificates are re-provisioning work, not migration work.",
+      "proposal": "accept"
+    },
+    {
+      "match": {
+        "kind": "credentialProviders"
+      },
+      "verdict": "gap",
+      "itemKind": "accept-loss",
+      "rationale": "Credential-manager connections are never exported. The equivalent tool-server OAuth connection is re-authorized interactively.",
+      "proposal": "accept"
+    },
+    {
+      "match": {
+        "kind": "coverageGap"
+      },
+      "verdict": "gap",
+      "itemKind": "enumerate",
+      "blocking": true,
+      "cannotAccept": true,
+      "rationale": "A control-plane read failed, so this is unknown rather than absent. Unknown coverage cannot be accepted as an acceptable loss."
+    },
+    {
+      "match": {
+        "kind": "telemetry"
+      },
+      "itemKind": "translate",
+      "capabilityId": "telemetry.create",
+      "options": [
+        "reuse-appinsights",
+        "new-appinsights",
+        "gateway-metrics-only",
+        "retain-in-apim"
+      ],
+      "proposal": "reuse-appinsights",
+      "rationale": "APIM reports to Azure Application Insights and the gateway exports OpenTelemetry. The only surface both support is the OTLP endpoint on an Application Insights resource, which an administrator has to enable. So the question is which resource that is: the one APIM already reports to, or a new one for the gateway alone."
+    }
+  ]
+}
