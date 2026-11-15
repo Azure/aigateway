@@ -114,6 +114,11 @@ migrate-apim collect --apim <name> -g <rg> --foundry-subscription <sub-id>
 # Check and read
 migrate-apim validate inventory.json
 migrate-apim summary inventory.json --format markdown
+
+# Check the contract itself: that the catalog names commands the pinned CLI has,
+# and that every rule is one the planner can actually select
+migrate-apim compile --cli-dir ../../cli
+migrate-apim compile --strict          # advisory warnings count as failures too
 ```
 
 **Artifacts are read BOM-tolerantly and written without one.** The plan is meant to be edited, and
@@ -618,6 +623,18 @@ a curated table of what `az aigateway` can actually do, pinned to a CLI revision
 a data change, not a code change. With `--probe-cli`, the declared table is reconciled against the
 installed extension, so a capability the docs promise but the local CLI does not expose is reported
 `unavailable` instead of being planned against.
+
+"Curated" is doing real work in that sentence, and it used to be doing it unsupervised: a curated
+table can name a command that exists in no release, and a rule can match on a field no collector
+emits. Both happened. `migrate-apim compile` is the check — it compiles the catalog against
+`capabilities/cli-surface-<version>.json`, a record of what one released wheel really offers, and
+every rule against the planner's registered selection sites. It needs no `az` and no network, so it
+runs on every change; `scripts/export_cli_surface.py` refreshes the snapshot when the CLI moves. See
+[ARCHITECTURE.md](ARCHITECTURE.md#compilation).
+
+`--probe-cli` answers a different question and still earns its keep: `compile` asks whether the
+catalog is true of the release it claims, while `--probe-cli` asks what *this operator's* install
+can do right now, which may be older.
 
 Each item is one source aspect and what becomes of it:
 

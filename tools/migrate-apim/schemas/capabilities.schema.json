@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Azure/aigateway/tools/migrate-apim/schemas/capabilities.schema.json",
+  "title": "AI Gateway capability catalog",
+  "description": "What one released `az aigateway` CLI can author, pinned to that release. Whether the commands it declares exist is a question for `migrate-apim compile`, which checks it against a surface snapshot; this schema only decides whether the declaration is well formed.",
+  "type": "object",
+  "required": ["schemaVersion", "apiVersion", "destinationResourceType", "cliEvidence", "capabilities"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {"type": "string"},
+    "schemaVersion": {"const": "1.0"},
+    "catalogVersion": {"type": "string"},
+    "apiVersion": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}(-preview)?$"},
+    "destinationResourceType": {"const": "Microsoft.ApiManagement/aigateways"},
+    "modelOperations": {
+      "type": "object",
+      "additionalProperties": {"type": "array", "items": {"type": "string"}}
+    },
+    "cliEvidence": {
+      "type": "object",
+      "description": "Which release this catalog describes, and how that was established. `wheelSha256` is what joins it to a surface snapshot.",
+      "required": ["documentedVersion", "wheelSha256"],
+      "properties": {
+        "revision": {"type": "string"},
+        "documentedVersion": {"type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+b\\d+$"},
+        "wheelSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "releaseNotes": {"type": "string"},
+        "quickstart": {"type": "string"},
+        "commandReference": {"type": "string"},
+        "surfaceDelta": {"type": "string"},
+        "routingContract": {"type": "string"}
+      }
+    },
+    "sourceEvidence": {"type": "object", "additionalProperties": {"type": "string"}},
+    "sourceProfiles": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["enabled"],
+        "properties": {"enabled": {"type": "boolean"}},
+        "additionalProperties": false
+      }
+    },
+    "capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/capability"}
+    },
+    "unsupported": {
+      "type": "array",
+      "description": "What the target cannot do at all, so a workload depending on it cannot move.",
+      "items": {"type": "string"}
+    },
+    "//serviceOnly": {"type": "string"},
+    "serviceOnly": {
+      "type": "array",
+      "description": "What the gateway can do and this CLI cannot author. Kept apart from `unsupported`: one means the workload cannot move, the other that it moves by hand.",
+      "items": {"$ref": "#/$defs/serviceOnlyEntry"}
+    }
+  },
+  "$defs": {
+    "capability": {
+      "type": "object",
+      "required": ["id", "command", "kind", "options", "required", "approvalClass", "limitations"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-zA-Z0-9.-]*$"},
+        "command": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
+          "description": "The command path below `az aigateway`, one token per element."
+        },
+        "read": {"type": "array", "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"}},
+        "kind": {"enum": ["create", "update", "verify"]},
+        "options": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
+          "description": "Option names without their leading dashes, as the CLI spells them."
+        },
+        "required": {"type": "array", "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"}},
+        "approvalClass": {"enum": ["consequential", "routine"]},
+        "behaviorTypes": {"type": "array", "items": {"type": "string"}},
+        "limitations": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "serviceOnlyEntry": {
+      "type": "object",
+      "required": ["id", "summary", "cliGap", "evidence", "authoring"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string"},
+        "property": {"type": "string"},
+        "summary": {"type": "string"},
+        "values": {"type": "array", "items": {"type": "string"}},
+        "shape": {"type": "object"},
+        "requires": {"type": "string"},
+        "cliGap": {"type": "string"},
+        "evidence": {"type": "string"},
+        "authoring": {"enum": ["armOnly", "portalOnly"]},
+        "incomplete": {"type": "string"}
+      }
+    }
+  }
+}

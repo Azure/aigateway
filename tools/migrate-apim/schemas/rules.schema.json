@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Azure/aigateway/tools/migrate-apim/schemas/rules.schema.json",
+  "title": "APIM to AI Gateway mapping rules",
+  "description": "Source shape to target capability, with the verdict and the plan-item kind to raise when the mapping is not direct. Whether a rule can ever be selected is a question for `migrate-apim compile`, which checks each one against the planner's registered selection sites; this schema only decides whether the rule is well formed. `additionalProperties` is false throughout on purpose: an invented key is how a rule comes to match nothing while reading as though it matches something.",
+  "type": "object",
+  "required": ["schemaVersion", "targetCapabilities", "assets", "structural", "policies"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {"type": "string"},
+    "schemaVersion": {"const": "1.0"},
+    "targetCapabilities": {
+      "type": "string",
+      "pattern": "^aigateway-\\d+\\.\\d+\\.\\d+b\\d+$",
+      "description": "The catalog these rules are versioned with, by filename stem."
+    },
+    "description": {"type": "string"},
+    "verdicts": {"type": "object", "additionalProperties": {"type": "string"}},
+    "publishableRoutes": {"type": "array", "items": {"type": "string"}},
+    "assets": {"type": "array", "items": {"$ref": "#/$defs/assetRule"}},
+    "structural": {"type": "array", "items": {"$ref": "#/$defs/structuralRule"}},
+    "policies": {"type": "array", "items": {"$ref": "#/$defs/policyRule"}}
+  },
+  "$defs": {
+    "verdict": {
+      "enum": ["native", "partial", "gap", "handled", "notApplicable"],
+      "description": "native: direct equivalent. partial: a decision is needed. gap: no target. handled: carried by another object. notApplicable: nothing to carry."
+    },
+    "itemKind": {
+      "enum": ["reduce-surface", "translate", "accept-loss", "enumerate", "name", "scope", "collapse"]
+    },
+    "options": {
+      "type": "array",
+      "minItems": 1,
+      "description": "The choices offered when a verdict is partial. A bare string is the choice itself; the object form carries what choosing it costs.",
+      "items": {
+        "oneOf": [
+          {"type": "string"},
+          {
+            "type": "object",
+            "required": ["value", "consequence"],
+            "additionalProperties": false,
+            "properties": {
+              "value": {"type": "string"},
+              "consequence": {"type": "string"}
+            }
+          }
+        ]
+      }
+    },
+    "common": {
+      "properties": {
+        "verdict": {"$ref": "#/$defs/verdict"},
+        "itemKind": {"$ref": "#/$defs/itemKind"},
+        "capabilityId": {"type": "string"},
+        "options": {"$ref": "#/$defs/options"},
+        "proposal": {"type": "string"},
+        "rationale": {"type": "string"},
+        "note": {"type": "string"}
+      }
+    },
+    "partialNeedsOptions": {
+      "if": {"properties": {"verdict": {"const": "partial"}}, "required": ["verdict"]},
+      "then": {"required": ["options"]}
+    },
+    "assetRule": {
+      "type": "object",
+      "required": ["match", "verdict"],
+      "additionalProperties": false,
+      "allOf": [{"$ref": "#/$defs/partialNeedsOptions"}],
+      "properties": {
+        "match": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "family": {"enum": ["models", "modelProviders", "mcpServers", "agents"]},
+            "pattern": {"type": "string"},
+            "toolDiscovery": {"type": "string"}
+          }
+        },
+        "verdict": {"$ref": "#/$defs/verdict"},
+        "itemKind": {"$ref": "#/$defs/itemKind"},
+        "capabilityId": {"type": "string"},
+        "options": {"$ref": "#/$defs/options"},
+        "proposal": {"type": "string"},
+        "rationale": {"type": "string"},
+        "note": {"type": "string"},
+        "constraints": {"type": "object"},
+        "toolDiscoveryGuidance": {"type": "object"}
+      }
+    },
+    "structuralRule": {
+      "type": "object",
+      "required": ["match", "itemKind"],
+      "additionalProperties": false,
+      "allOf": [{"$ref": "#/$defs/partialNeedsOptions"}],
+      "properties": {
+        "match": {
+          "type": "object",
+          "required": ["kind"],
+          "additionalProperties": false,
+          "properties": {"kind": {"type": "string"}}
+        },
+        "verdict": {"$ref": "#/$defs/verdict"},
+        "itemKind": {"$ref": "#/$defs/itemKind"},
+        "capabilityId": {"type": "string"},
+        "options": {"$ref": "#/$defs/options"},
+        "proposal": {"type": "string"},
+        "rationale": {"type": "string"},
+        "note": {"type": "string"},
+        "blocking": {"type": "boolean"},
+        "cannotAccept": {"type": "boolean"},
+        "prerequisite": {"type": "string"},
+        "prerequisiteGuide": {"type": "string"}
+      }
+    },
+    "policyRule": {
+      "type": "object",
+      "required": ["match", "verdict"],
+      "additionalProperties": false,
+      "allOf": [{"$ref": "#/$defs/partialNeedsOptions"}],
+      "properties": {
+        "match": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "element": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+            "family": {"type": "string"},
+            "hasExpression": {"type": "boolean"}
+          }
+        },
+        "verdict": {"$ref": "#/$defs/verdict"},
+        "itemKind": {"$ref": "#/$defs/itemKind"},
+        "capabilityId": {"type": "string"},
+        "options": {"$ref": "#/$defs/options"},
+        "proposal": {"type": "string"},
+        "rationale": {"type": "string"},
+        "note": {"type": "string"},
+        "target": {"type": "string"},
+        "partial": {"type": "object"},
+        "partialWhen": {"type": "object"},
+        "batchOn": {"type": "array", "items": {"type": "string"}},
+        "dependsOnBackendRole": {"type": "string"},
+        "priority": {"type": "integer"}
+      }
+    }
+  }
+}

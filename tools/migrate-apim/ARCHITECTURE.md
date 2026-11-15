@@ -82,14 +82,49 @@ Declares how APIM shapes map to target capabilities. Never versioned separately;
              └──────────────────┘
 ```
 
+### `capabilities/cli-surface-<version>.json`
+
+What one released wheel actually offers: every `az aigateway` command and the options it exposes, exported by `scripts/export_cli_surface.py` from an installed extension. It carries the wheel's SHA-256, which is the same digest `cliEvidence.wheelSha256` names — that pairing is what stops a snapshot being checked against a release it did not come from.
+
+The catalog says what the tool intends to call; the snapshot says what exists. `compile` compares them.
+
 ## The Version Contract
 
 When the Azure CLI extension gains a new capability:
 
 1. **Update the CLI** — `az aigateway` gains the command and options.
-2. **Update `capabilities/aigateway-<version>.json`** — Add the capability, update `cliEvidence.documentedVersion` and `.wheelSha256`. If a capability became unavailable, move it to `unsupported` or `serviceOnly`.
-3. **Update `capabilities/rules.json`** — Add or modify asset/policy rules to use the new capability id.
-4. **No code change needed** — The planner reads the data files; it does not care what they contain. A new gateway release is a data change.
+2. **Re-export the surface** — `scripts/export_cli_surface.py --wheel <wheel> --out capabilities/cli-surface-<version>.json`, against the extension installed into its own `AZURE_EXTENSION_DIR`.
+3. **Update `capabilities/aigateway-<version>.json`** — Add the capability, update `cliEvidence.documentedVersion` and `.wheelSha256`. Rename the file to match the version it documents. If a capability became unavailable, move it to `unsupported` or `serviceOnly`.
+4. **Update `capabilities/rules.json`** — Add or modify asset/policy rules to use the new capability id, and point `targetCapabilities` at the catalog.
+5. **Point `DEFAULT_CATALOG` at the new file** — every entry point that is not given `--capabilities` falls back to it.
+6. **Compile** — `migrate-apim compile --cli-dir ../../cli` must pass. It is the step that makes the rest of this list checkable rather than advisory.
+7. **No code change needed** — The planner reads the data files; it does not care what they contain. A new gateway release is a data change.
+
+## Compilation
+
+A data-driven contract is only as good as the checking of it. Two claims used to go unverified, and both were wrong in shipped releases: the catalog declared `az aigateway mcp import`, which exists in no release, and `model-provider import --foundry`, where the flag is `--foundry-resource-id`; `rules.json` carried thirteen rules no selection site could ever choose, five of them matching on keys no collector emits. Neither could fail a test — the suite injects a probe, so a fabricated command answers whatever the fake says, and a rule nobody selects is a rule nobody notices.
+
+`migrate-apim compile` settles both, offline:
+
+| Claim | How it is checked |
+|---|---|
+| The commands exist | Each capability's `command` and `read` path is in the surface snapshot |
+| The options exist | Each declared and each required option is in that command's options |
+| The snapshot is of this release | Its `wheelSha256` and version equal the catalog's `cliEvidence` |
+| One release, named consistently | Catalog filename, `targetCapabilities`, `DEFAULT_CATALOG`, and the `cli/` installers agree |
+| The shapes are well formed | Both files against `schemas/capabilities.schema.json` and `schemas/rules.schema.json`, `additionalProperties` closed |
+| Every rule can be selected | Each rule is governed by a registered selector (below) |
+| No rule is ambiguous | No two rules look identical to the site that selects them |
+
+Errors fail the command; warnings — a field no code reads, a rule with no `verdict` — are advisory, and `--strict` promotes them.
+
+### The selector registry
+
+Reachability is checkable only because selection happens in one place. `migrate_apim/dispatch.py` defines `Selector`, which both performs a match and states what the match looks at; `plan.py` and `capability.py` declare one per selection site. `compile` imports those modules and reads `dispatch.REGISTRY`, so the contract it checks is the one the planner runs — not a second declaration that can drift from it.
+
+A selector *governs* a rule when the rule's `match` keys are a subset of the keys that site reads, and every value it pins is one that site accepts. Subset, not equality: a rule may pin fewer keys, but pinning more means the surplus is silently ignored and the rule matches more broadly than it reads.
+
+Adding a selection site means declaring a selector there. A rule that no selector governs is an error, with the reason given — an unread key is a different mistake from an unknown value, and they have different fixes.
 
 ## The Probe
 
@@ -124,3 +159,14 @@ The test suite provides a fake probe (`tests/test_collect.py`, `tests/test_capab
 4. Running the plan and apply builders against the test case.
 
 No code change required in the builder itself — if the capability and rule are correct, the planner works.
+
+The fake probe is also the reason `compile` exists. It answers whatever a test tells it to, so it can confirm that the planner handles an unavailable capability correctly, but it can say nothing about whether the capability is real. `tests/test_compile.py` covers the other half, by reconstructing each defect that shipped and asserting the compiler names it.
+
+## CI
+
+| Workflow | When | What it proves | Needs |
+|---|---|---|---|
+| `.github/workflows/migrate-apim.yml` | every pull request and push touching the tool | the catalog and rules compile against the committed snapshot, and the suite passes | nothing — offline, no `az`, no credentials |
+| `.github/workflows/cli-surface.yml` | `cli-v*` tags, and on request | the committed snapshot is what the pinned wheel really offers | the Azure CLI and the network |
+
+Together they give catalog ⊆ reality. Keeping them apart is what lets the first one gate every change: proving a command exists needs the real wheel, but proving the catalog only names commands *the snapshot* contains needs nothing at all.
