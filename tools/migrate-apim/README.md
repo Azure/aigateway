@@ -114,6 +114,12 @@ migrate-apim collect --apim <name> -g <rg> --foundry-subscription <sub-id>
 # Check and read
 migrate-apim validate inventory.json
 migrate-apim summary inventory.json --format markdown
+
+# Check the contract itself: that the catalog names commands the pinned CLI has,
+# and that every rule is one the planner can actually select and does read
+migrate-apim compile
+migrate-apim compile --strict                       # warnings count as failures too
+migrate-apim compile --newest-release "$(git tag --list 'cli-v*')"  # anything newer out?
 ```
 
 **Artifacts are read BOM-tolerantly and written without one.** The plan is meant to be edited, and
@@ -612,12 +618,24 @@ stateful server rejects everything after the handshake without them.
 
 ## The plan
 
-`plan` matches the inventory against a **capability inventory** — `capabilities/aigateway-1.0.0b26.json`,
+`plan` matches the inventory against a **capability inventory** — `capabilities/aigateway-<version>.json`,
 a curated table of what `az aigateway` can actually do, pinned to a CLI revision, plus
 `capabilities/rules.json` mapping source shapes to target capabilities. A new AI Gateway release is
 a data change, not a code change. With `--probe-cli`, the declared table is reconciled against the
 installed extension, so a capability the docs promise but the local CLI does not expose is reported
 `unavailable` instead of being planned against.
+
+"Curated" is doing real work in that sentence, and it used to be doing it unsupervised: a curated
+table can name a command that exists in no release, and a rule can match on a field no collector
+emits. Both happened. `migrate-apim compile` is the check — it compiles the catalog against
+`capabilities/cli-surface-<version>.json`, a record of what one released wheel really offers, and
+every rule against the planner's registered selection sites. It needs no `az` and no network, so it
+runs on every change; `scripts/azcli_aigw_export.py` refreshes the snapshot when the CLI moves. See
+[ARCHITECTURE.md](ARCHITECTURE.md#compilation).
+
+`--probe-cli` answers a different question and still earns its keep: `compile` asks whether the
+catalog is true of the release it claims, while `--probe-cli` asks what *this operator's* install
+can do right now, which may be older.
 
 Each item is one source aspect and what becomes of it:
 

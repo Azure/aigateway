@@ -183,6 +183,23 @@ def build_parser() -> argparse.ArgumentParser:
     validate = subparsers.add_parser("validate", help="Check an artifact against its JSON Schema")
     validate.add_argument("file", help="Path to inventory.json")
 
+    compile_cmd = subparsers.add_parser(
+        "compile",
+        help="Check the capability catalog and rules against a pinned CLI release",
+    )
+    compile_cmd.add_argument("--capabilities", help="Path to the capability catalog")
+    compile_cmd.add_argument("--rules", help="Path to rules.json")
+    compile_cmd.add_argument("--surface", help="Path to the CLI surface snapshot")
+    compile_cmd.add_argument(
+        "--newest-release",
+        metavar="VERSIONS",
+        help="Published CLI versions or cli-v tags, whitespace separated, to report "
+             "a catalog that has fallen behind the newest of them",
+    )
+    compile_cmd.add_argument(
+        "--strict", action="store_true", help="Fail on warnings as well as errors"
+    )
+
     summarize = subparsers.add_parser("summary", help="Print a readable summary of an inventory")
     summarize.add_argument("file", help="Path to inventory.json")
     summarize.add_argument("--format", choices=["text", "markdown"], default="text")
@@ -226,6 +243,8 @@ def _dispatch(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
         return _apply(args)
     if args.command == "validate":
         return _validate(args)
+    if args.command == "compile":
+        return _compile(args)
     if args.command == "summary":
         return _summary(args)
     parser.error(f"unknown command {args.command}")
@@ -595,6 +614,46 @@ def _write_journal(journal: dict, path: Path) -> None:
     payload = {k: v for k, v in journal.items() if not k.startswith("_")}
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def _compile(args: argparse.Namespace) -> int:
+    """Check that the declared contract is one the CLI and the planner can keep."""
+    from .capability import CAPABILITIES_DIR, DEFAULT_CATALOG
+    from .compile import compile_contract, find_surface
+
+    catalog_path = Path(args.capabilities) if args.capabilities else CAPABILITIES_DIR / DEFAULT_CATALOG
+    rules_path = Path(args.rules) if args.rules else CAPABILITIES_DIR / "rules.json"
+    if args.surface:
+        surface_path = Path(args.surface)
+    else:
+        try:
+            catalog = read_json(catalog_path)
+        except (OSError, json.JSONDecodeError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        surface_path = find_surface(catalog, catalog_path.parent)
+
+    result = compile_contract(
+        catalog_path, rules_path, surface_path, newest_release=args.newest_release,
+    )
+
+    # What was checked, before what came of it. A run that only speaks up on
+    # failure tells a reader nothing about what a green one covered.
+    for line in result.covered:
+        print(f"  checked {line}", file=sys.stderr)
+    for diagnostic in result.diagnostics:
+        print(f"  {diagnostic}", file=sys.stderr)
+    errors, warnings = len(result.errors), len(result.warnings)
+    counted = f"{errors} error(s), {warnings} warning(s)"
+    # Suggestions are counted apart from the tally that decides pass or fail,
+    # so a clean compile still reads as clean when one is present.
+    if result.suggestions:
+        counted += f", {len(result.suggestions)} suggestion(s)"
+    print(
+        f"{catalog_path.name} against {surface_path.name}: {counted}",
+        file=sys.stderr,
+    )
+    return 0 if result.ok(strict=args.strict) else 1
 
 
 def _validate(args: argparse.Namespace) -> int:
