@@ -6,3 +6,8 @@ agent-framework-foundry-hosting==1.0.0b261112
 azure-identity==1.27.0
 mcp==2.3.0
 python-dotenv==1.2.4
+
+# Minimum versions of transitive dependencies that fix security advisories, so that
+# uv pip compile can't resolve a vulnerable version.
+certifi>=2026.10.18
+oauthlib>=4.0.1

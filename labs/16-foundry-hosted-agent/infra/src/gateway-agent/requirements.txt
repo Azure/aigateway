@@ -66,6 +66,7 @@ azure-monitor-opentelemetry-exporter==1.0.0b58
     # via microsoft-opentelemetry
 certifi==2026.10.23
     # via
+    #   -r requirements.in
     #   httpcore
     #   httpx
     #   msrest
@@ -156,7 +157,9 @@ multidict==7.1.0
     #   aiohttp
     #   yarl
 oauthlib==4.0.1
-    # via requests-oauthlib
+    # via
+    #   -r requirements.in
+    #   requests-oauthlib
 openai==3.46.0
     # via agent-framework-openai
 opentelemetry-api==1.45.1
