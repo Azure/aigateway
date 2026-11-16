@@ -1,0 +1,53 @@
+# Checks that the coding-agent plugin still loads everywhere it is published.
+#
+# Version 3.1.0 shipped with half its commands and skills unloadable in GitHub
+# Copilot CLI (issue #49), because their frontmatter only parsed under a lenient
+# YAML reader. Claude Code accepted it, so nothing here caught it. This job is
+# what makes a stricter host's verdict visible before a release instead of after.
+#
+# It needs no Azure, no network beyond pip, and no secrets, so it runs on every
+# pull request that touches the plugin surface.
+name: Check plugin
+
+on:
+  pull_request:
+    paths:
+      - 'commands/**'
+      - 'skills/**'
+      - '.claude-plugin/**'
+      - '.cursor-plugin/**'
+      - '.github/plugin/**'
+      - 'gemini-extension.json'
+      - '.github/scripts/check-plugin.py'
+      - '.github/workflows/plugin.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'commands/**'
+      - 'skills/**'
+      - '.claude-plugin/**'
+      - '.cursor-plugin/**'
+      - '.github/plugin/**'
+      - 'gemini-extension.json'
+      - '.github/scripts/check-plugin.py'
+      - '.github/workflows/plugin.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: plugin-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The script falls back to its quoting rules when PyYAML is absent, but CI
+      # is where the strict parse is worth having, so install it here.
+      - name: Install PyYAML
+        run: python3 -m pip install --disable-pip-version-check --quiet pyyaml
+      - name: Check the plugin loads under a strict YAML parser
+        run: python3 .github/scripts/check-plugin.py

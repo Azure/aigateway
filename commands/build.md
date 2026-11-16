@@ -1,6 +1,6 @@
 ---
-description: Connect an existing application or workflow to Azure AI Gateway models and MCP tools.
-argument-hint: [gateway resource ID, runtime endpoint, or connection details] [use case]
+description: "Connect an existing application or workflow to Azure AI Gateway models and MCP tools."
+argument-hint: "[gateway resource ID, runtime endpoint, or connection details] [use case]"
 ---
 
 # /aigateway:build

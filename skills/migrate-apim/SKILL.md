@@ -1,6 +1,6 @@
 ---
 name: migrate-apim
-description: Migrate AI workloads from Azure API Management to Azure AI Gateway. Use when asked to inventory, assess, plan, or execute a move of model APIs, MCP servers, or A2A agents from an APIM instance to Microsoft.ApiManagement/aigateways.
+description: "Migrate AI workloads from Azure API Management to Azure AI Gateway. Use when asked to inventory, assess, plan, or execute a move of model APIs, MCP servers, or A2A agents from an APIM instance to Microsoft.ApiManagement/aigateways."
 ---
 
 # Migrate APIM AI workloads to Azure AI Gateway

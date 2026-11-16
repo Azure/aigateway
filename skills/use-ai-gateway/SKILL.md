@@ -1,7 +1,7 @@
 ---
 name: use-ai-gateway
-version: 3.2.0
-description: Discover callable Azure AI Gateway model and MCP endpoints, then connect them to an existing app or developer workflow.
+version: "3.2.0"
+description: "Discover callable Azure AI Gateway model and MCP endpoints, then connect them to an existing app or developer workflow."
 ---
 
 # Use Azure AI Gateway assets
