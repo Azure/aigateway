@@ -48,10 +48,14 @@ POLICY_BY_EXPRESSION = selector(
 )
 
 CAPABILITIES_DIR = Path(__file__).resolve().parent.parent / "capabilities"
-# Must name a file that exists in CAPABILITIES_DIR: every entry point that does
-# not pass --capabilities falls back to it, so a stale name here breaks `plan`
-# outright rather than degrading. `test_capability.py` pins the two together.
-DEFAULT_CATALOG = "aigateway-1.0.0b31.json"
+# Discovered rather than written down. The catalog is renamed on every CLI
+# release it adopts, and a constant left behind does not degrade `plan`, it
+# stops it. Writing the version here would also put a Python edit in the middle
+# of a data change, which is the one step of adopting a release that nothing
+# would check. `cli-surface.yml` resolves it the same way, and
+# `test_capability.py` pins that exactly one catalog is present.
+_CATALOGS = sorted(path.name for path in CAPABILITIES_DIR.glob("aigateway-*.json"))
+DEFAULT_CATALOG = _CATALOGS[0] if len(_CATALOGS) == 1 else ""
 
 # A probe maps an `az aigateway` command path to the option names the installed
 # extension exposes for it, or None when the command is absent.

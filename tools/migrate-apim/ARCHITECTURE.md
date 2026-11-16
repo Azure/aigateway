@@ -84,7 +84,7 @@ Declares how APIM shapes map to target capabilities. Never versioned separately;
 
 ### `capabilities/cli-surface-<version>.json`
 
-What one released wheel actually offers: every `az aigateway` command and the options it exposes, exported by `scripts/export_cli_surface.py` from an installed extension. It carries the wheel's SHA-256, which is the same digest `cliEvidence.wheelSha256` names — that pairing is what stops a snapshot being checked against a release it did not come from.
+What one released wheel actually offers: every `az aigateway` command and the options it exposes, exported by `scripts/azcli_aigw_export.py` from an installed extension. It carries the wheel's SHA-256, which is the same digest `cliEvidence.wheelSha256` names — that pairing is what stops a snapshot being checked against a release it did not come from.
 
 The catalog says what the tool intends to call; the snapshot says what exists. `compile` compares them.
 
@@ -93,7 +93,7 @@ The catalog says what the tool intends to call; the snapshot says what exists. `
 When the Azure CLI extension gains a new capability:
 
 1. **Update the CLI** — `az aigateway` gains the command and options.
-2. **Re-export the surface** — `scripts/export_cli_surface.py --wheel <wheel> --out capabilities/cli-surface-<version>.json`, against the extension installed into its own `AZURE_EXTENSION_DIR`.
+2. **Re-export the surface** — `scripts/azcli_aigw_export.py --wheel <wheel> --out capabilities/cli-surface-<version>.json`, against the extension installed into its own `AZURE_EXTENSION_DIR`.
 3. **Update `capabilities/aigateway-<version>.json`** — Add the capability, update `cliEvidence.documentedVersion` and `.wheelSha256`. Rename the file to match the version it documents. If a capability became unavailable, move it to `unsupported` or `serviceOnly`.
 4. **Update `capabilities/rules.json`** — Add or modify asset/policy rules to use the new capability id, and point `targetCapabilities` at the catalog.
 5. **Point `DEFAULT_CATALOG` at the new file** — every entry point that is not given `--capabilities` falls back to it.
@@ -180,4 +180,4 @@ Together they give catalog ⊆ reality. Keeping them apart is what lets the firs
 
 Neither is wired to `cli-v*` tags. A CLI release is not this tool's build to redden, so the "a newer release exists" signal is raised offline, where the person it is addressed to is already standing. The cost is that it is only asked when somebody touches this tool: a pin can sit stale between visits, but it cannot be stale while being worked on.
 
-The drift check compares what two snapshots *claim* — version, digest, commands, options — rather than their bytes. The file also records the azure-cli-core that produced it, and that runner installs whatever is current; a byte comparison would report the next core release as drift in the wheel, which is both wrong and the kind of wrong that teaches people to ignore the check. `export_cli_surface.py --compare` is that comparison, and it names the command and flag that moved, so the log says what to re-pin rather than only that something did.
+The drift check compares what two snapshots *claim* — version, digest, commands, options — rather than their bytes. The file also records the azure-cli-core that produced it, and that runner installs whatever is current; a byte comparison would report the next core release as drift in the wheel, which is both wrong and the kind of wrong that teaches people to ignore the check. `azcli_aigw_export.py --compare` is that comparison, and it names the command and flag that moved, so the log says what to re-pin rather than only that something did.

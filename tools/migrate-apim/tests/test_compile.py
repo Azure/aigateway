@@ -177,7 +177,7 @@ class TestTheSnapshotIsOfThisRelease:
         rules_path.write_text(json.dumps(rules), encoding="utf-8")
         result = compile_contract(catalog_path, rules_path, tmp_path / "absent.json")
         assert not result.ok()
-        assert any("export_cli_surface" in str(d) for d in result.errors)
+        assert any("azcli_aigw_export" in str(d) for d in result.errors)
 
 
 class TestThePinsAgree:

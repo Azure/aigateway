@@ -1,6 +1,6 @@
 """The exporter's offline half.
 
-`scripts/export_cli_surface.py` needs an Azure CLI to walk a command tree, but
+`scripts/azcli_aigw_export.py` needs an Azure CLI to walk a command tree, but
 not to parse help text or to compare two snapshots. Those two are what CI leans
 on -- the parser decides what the snapshot says, and the comparison decides
 whether the committed one still holds -- so they are tested here without one.
@@ -13,11 +13,11 @@ from pathlib import Path
 
 import pytest
 
-SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "export_cli_surface.py"
+SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "azcli_aigw_export.py"
 
 
 def _load():
-    spec = importlib.util.spec_from_file_location("export_cli_surface", SCRIPT)
+    spec = importlib.util.spec_from_file_location("azcli_aigw_export", SCRIPT)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

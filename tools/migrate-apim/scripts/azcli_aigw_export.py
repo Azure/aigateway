@@ -11,7 +11,7 @@ Run it against an extension installed into an isolated extension directory, so
 the operator's own install is never touched:
 
     AZURE_EXTENSION_DIR=/tmp/ext AZURE_CONFIG_DIR=/tmp/azcfg \\
-      python scripts/export_cli_surface.py --wheel aigateway-1.0.0b31-py3-none-any.whl \\
+      python scripts/azcli_aigw_export.py --wheel aigateway-1.0.0b31-py3-none-any.whl \\
       --out capabilities/cli-surface-1.0.0b31.json
 
 The command tree is walked through `--help`, which is the only interface the

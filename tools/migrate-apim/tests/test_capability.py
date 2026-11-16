@@ -164,8 +164,16 @@ class TestTargetSurface:
 
 class TestTheDefaultCatalogueResolves:
     """Every entry point that does not pass --capabilities falls back to
-    DEFAULT_CATALOG. A rename that leaves the constant behind does not degrade
-    `plan`, it stops it, and it takes the whole suite's fixtures with it."""
+    DEFAULT_CATALOG. It is discovered, so what has to hold is that exactly one
+    catalog is there to find: none and `plan` stops outright, two and it would
+    silently pick by sort order rather than by what was adopted."""
+
+    def test_exactly_one_catalogue_is_present(self):
+        found = sorted(path.name for path in CAPABILITIES_DIR.glob("aigateway-*.json"))
+        assert len(found) == 1, (
+            f"expected one aigateway-*.json in {CAPABILITIES_DIR}, found {found}. "
+            "Adopting a release renames the catalog; it does not add a second."
+        )
 
     def test_the_default_names_a_file_that_exists(self):
         assert (CAPABILITIES_DIR / DEFAULT_CATALOG).is_file(), (

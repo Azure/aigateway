@@ -16,13 +16,13 @@ on:
   pull_request:
     paths:
       - 'tools/migrate-apim/capabilities/**'
-      - 'tools/migrate-apim/scripts/export_cli_surface.py'
+      - 'tools/migrate-apim/scripts/azcli_aigw_export.py'
       - '.github/workflows/cli-surface.yml'
   push:
     branches: [main]
     paths:
       - 'tools/migrate-apim/capabilities/**'
-      - 'tools/migrate-apim/scripts/export_cli_surface.py'
+      - 'tools/migrate-apim/scripts/azcli_aigw_export.py'
       - '.github/workflows/cli-surface.yml'
   workflow_dispatch:
     inputs:
@@ -99,7 +99,7 @@ jobs:
         env:
           AZURE_EXTENSION_DIR: /tmp/aigw-ext
           AZURE_CONFIG_DIR: /tmp/aigw-cfg
-        run: python scripts/export_cli_surface.py --self-test
+        run: python scripts/azcli_aigw_export.py --self-test
 
       - name: Re-export the surface
         working-directory: tools/migrate-apim
@@ -110,7 +110,7 @@ jobs:
           set -euo pipefail
           SNAPSHOT="capabilities/cli-surface-${{ steps.wheel.outputs.version }}.json"
           cp "$SNAPSHOT" /tmp/committed-surface.json
-          python scripts/export_cli_surface.py \
+          python scripts/azcli_aigw_export.py \
             --wheel "${{ steps.wheel.outputs.wheel }}" \
             --out "$SNAPSHOT"
 
@@ -134,7 +134,7 @@ jobs:
         id: drift
         working-directory: tools/migrate-apim
         run: |
-          if ! python scripts/export_cli_surface.py --compare \
+          if ! python scripts/azcli_aigw_export.py --compare \
                  /tmp/committed-surface.json \
                  "capabilities/cli-surface-${{ steps.wheel.outputs.version }}.json"; then
             echo "::error::The committed CLI surface snapshot does not match the pinned wheel."

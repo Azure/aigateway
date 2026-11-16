@@ -15,7 +15,7 @@ nobody notices.
 This module decides both questions without an Azure CLI and without a network,
 by compiling the two data files against a *snapshot* of a real CLI release
 (`capabilities/cli-surface-<version>.json`, written by
-`scripts/export_cli_surface.py`). The snapshot carries the wheel digest, and the
+`scripts/azcli_aigw_export.py`). The snapshot carries the wheel digest, and the
 catalog carries the same digest in `cliEvidence`, so a snapshot cannot be
 silently paired with a release it did not come from. Offline here, authoritative
 there, and the digest is the join.
@@ -556,7 +556,7 @@ def compile_contract(
         out.error(
             "load",
             f"no CLI surface snapshot at {surface_path}. Generate one with "
-            f"scripts/export_cli_surface.py against the pinned wheel.",
+            f"scripts/azcli_aigw_export.py against the pinned wheel.",
         )
         return out
     except json.JSONDecodeError as exc:

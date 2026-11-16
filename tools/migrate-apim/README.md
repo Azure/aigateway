@@ -630,7 +630,7 @@ table can name a command that exists in no release, and a rule can match on a fi
 emits. Both happened. `migrate-apim compile` is the check — it compiles the catalog against
 `capabilities/cli-surface-<version>.json`, a record of what one released wheel really offers, and
 every rule against the planner's registered selection sites. It needs no `az` and no network, so it
-runs on every change; `scripts/export_cli_surface.py` refreshes the snapshot when the CLI moves. See
+runs on every change; `scripts/azcli_aigw_export.py` refreshes the snapshot when the CLI moves. See
 [ARCHITECTURE.md](ARCHITECTURE.md#compilation).
 
 `--probe-cli` answers a different question and still earns its keep: `compile` asks whether the
