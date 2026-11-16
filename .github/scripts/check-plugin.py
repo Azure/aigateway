@@ -9,12 +9,18 @@ beginning with ``[`` is read as a flow sequence, so the host gets a list where i
 wants a string. Claude Code accepted all of it, which is why the break reached a
 release unnoticed.
 
-So this script checks the two halves of what a host needs:
+So this script checks what a host needs:
 
 * every command and skill the manifests promise parses, and parses to the types a
   loader expects;
 * every manifest promises the same thing, because the plugin is published through
-  five of them and a version bump that misses one ships a lie.
+  five of them and a version bump that misses one ships a lie;
+* each Gemini ``.toml`` adapter describes its command the same way the canonical
+  Markdown does. The same text is written twice, once per host, so it drifts: the
+  feedback adapter went on advertising a ZIP long after the skill stopped
+  producing one;
+* no development test or fixture sits inside a skill directory, since whatever is
+  in there is downloaded by everyone who installs the plugin.
 
 The guard against parser differences is quoting, not parseability. A quoted
 scalar is a string under every YAML implementation regardless of what it
@@ -42,6 +48,11 @@ try:
     import yaml  # type: ignore
 except ImportError:  # optional, see module docstring
     yaml = None
+
+try:
+    import tomllib  # Python 3.11+; the adapter check is skipped without it
+except ImportError:
+    tomllib = None
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -164,6 +175,55 @@ def check_markdown(rel: str, kind: str) -> None:
             fail(rel, f"{key} parses as {got}, not str: {data[key]!r}")
 
 
+def check_adapters(commands: list[str]) -> None:
+    """Each Gemini .toml must describe its command exactly as the Markdown does.
+
+    The description is authored twice, once per host, with nothing tying the
+    copies together. That is how the feedback adapter kept advertising a ZIP
+    after the skill had moved to returning an anonymized summary.
+    """
+    if tomllib is None:  # Python < 3.11, see module docstring
+        return
+    for entry in commands:
+        rel = entry.lstrip("./")
+        name = Path(rel).stem
+        adapter = REPO / "commands" / "aigateway" / f"{name}.toml"
+        canonical = REPO / rel
+        if not adapter.is_file() or not canonical.is_file():
+            continue
+        try:
+            want = tomllib.loads(adapter.read_text(encoding="utf-8")).get("description")
+        except tomllib.TOMLDecodeError as exc:
+            fail(f"commands/aigateway/{name}.toml", f"invalid TOML: {exc}")
+            continue
+
+        lines = split_frontmatter(canonical.read_text(encoding="utf-8")) or []
+        got = None
+        for line in lines:
+            match = re.match(r"^description:\s*(.*)$", line)
+            if match:
+                got = match.group(1).strip().strip("\"'")
+        if got is not None and want != got:
+            fail(
+                f"commands/aigateway/{name}.toml",
+                "description does not match "
+                f"{rel}\n        toml: {want}\n        md:   {got}",
+            )
+
+
+def check_no_bundled_tests() -> None:
+    """Skill directories ship to users; development files do not belong in them."""
+    stray = sorted(
+        str(path.relative_to(REPO))
+        for pattern in ("*/tests/*", "*/evals/*", "*/test_*.py")
+        for path in (REPO / "skills").glob(pattern)
+        # Local build artifacts are gitignored; do not fail a developer's run.
+        if "__pycache__" not in path.parts
+    )
+    for path in stray:
+        fail(path, "development file inside a shipped skill; move it under tests/")
+
+
 def main() -> int:
     manifests: dict[str, dict] = {}
     for rel in MANIFESTS:
@@ -209,6 +269,9 @@ def main() -> int:
         check_markdown(entry.lstrip("./"), "command")
     for entry in base.get("skills", []):
         check_markdown(f"{entry.strip('./')}/SKILL.md", "skill")
+
+    check_adapters(base.get("commands", []))
+    check_no_bundled_tests()
 
     strict = "with" if yaml else "without"
     checked = len(base.get("commands", [])) + len(base.get("skills", []))
