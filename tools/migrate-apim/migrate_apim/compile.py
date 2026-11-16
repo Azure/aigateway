@@ -194,8 +194,9 @@ def check_release_pin(catalog: dict[str, Any], releases: str, out: Compilation) 
         out.error(
             "release-pin",
             f"the catalog documents {documented} but {newest} has been released. "
-            f"Re-export the surface against the new wheel, re-pin cliEvidence, rename the "
-            f"catalog, and point rules.json and DEFAULT_CATALOG at it.",
+            f"Adopt it with `python scripts/azcli_aigw_apply.py --version {newest}`, "
+            f"which re-exports the surface, re-pins cliEvidence, renames the catalog, "
+            f"repoints rules.json and moves the installers together.",
         )
     elif there < here:
         # A legitimate state while a release candidate is being prepared, and
