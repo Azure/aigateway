@@ -72,15 +72,16 @@ a.hx-group:is(:hover, :focus-visible, [aria-expanded="true"]) .hx-title { color:
 .hx-hint { margin: 18px 0 0; text-align: center; font-size: 12px; color: var(--fg-3); }
 
 /* Wires: workloads → gateway → backends, controls → gateway → observability. */
-/* Each wire spans the gap, and its arrowhead's tip touches the next card, above the cards' shadows. */
+/* Each wire spans the gap, and its arrowhead's tip touches the next card, above the cards' shadows. The line and the
+   arrowhead share one 10px box with whole-pixel sizes, so the browser snaps them together and the arrow stays centered. */
 .hx-wire { --hx-head: 7px; position: absolute; z-index: 1; pointer-events: none; }
-.hx-wire-l, .hx-wire-r { top: 50%; width: var(--hx-gap); height: 1.5px; background: repeating-linear-gradient(90deg, var(--hx-wire) 0 4px, transparent 4px 7px) 0 0 / calc(100% - var(--hx-head)) 100% no-repeat; }
+.hx-wire-l, .hx-wire-r { top: calc(50% - 5px); width: var(--hx-gap); height: 10px; background: repeating-linear-gradient(90deg, var(--hx-wire) 0 4px, transparent 4px 7px) 0 50% / calc(100% - var(--hx-head)) 2px no-repeat; }
 .hx-wire-l { right: calc(100% + 1px); } .hx-wire-r { left: calc(100% + 1px); }
-.hx-wire-t, .hx-wire-b { left: 50%; width: 1.5px; height: var(--hx-gap); background: repeating-linear-gradient(180deg, var(--hx-wire) 0 4px, transparent 4px 7px) 0 0 / 100% calc(100% - var(--hx-head)) no-repeat; }
+.hx-wire-t, .hx-wire-b { left: calc(50% - 5px); width: 10px; height: var(--hx-gap); background: repeating-linear-gradient(180deg, var(--hx-wire) 0 4px, transparent 4px 7px) 50% 0 / 2px calc(100% - var(--hx-head)) no-repeat; }
 .hx-wire-t { bottom: calc(100% + 1px); } .hx-wire-b { top: calc(100% + 1px); }
 .hx-wire::after { content: ""; position: absolute; border-style: solid; border-color: transparent; }
-.hx-wire-l::after, .hx-wire-r::after { right: 0; top: 50%; margin-top: -4.5px; border-width: 4.5px 0 4.5px var(--hx-head); border-left-color: var(--hx-arrow); }
-.hx-wire-t::after, .hx-wire-b::after { bottom: 0; left: 50%; margin-left: -4.5px; border-width: var(--hx-head) 4.5px 0; border-top-color: var(--hx-arrow); }
+.hx-wire-l::after, .hx-wire-r::after { top: 0; right: 0; border-width: 5px 0 5px var(--hx-head); border-left-color: var(--hx-arrow); }
+.hx-wire-t::after, .hx-wire-b::after { bottom: 0; left: 0; border-width: var(--hx-head) 5px 0; border-top-color: var(--hx-arrow); }
 @keyframes dash { to { stroke-dashoffset: -22; } }
 
 /* Hero preview: the lab behind a part of the map, in the top layer next to the part. A bottom sheet on phones. */
