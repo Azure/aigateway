@@ -74,9 +74,6 @@ Foundry reports the limit.
 > Gateway connections in Microsoft Foundry are an emerging capability of Azure AI Gateway. Labels and behavior can
 > change; see [Connect Microsoft Foundry to AI Gateway](https://ai.gateway.azure.com/docs/foundry#foundry-topology-hub-spoke)
 > and [Connect Microsoft Foundry agents to AI Gateway](https://learn.microsoft.com/azure/foundry/agents/how-to/ai-gateway).
-> The portal track opens the Foundry portal with
-> [this link](https://eastus2euap.ai.azure.com/nextgen?flight=add_model_menu_option,ai_gateway_bundle), which turns
-> on the **AI Gateway tier** connection type.
 
 - A gateway with a model alias from
   [Publish a Foundry model and make your first call](../02-first-model-call/README.md). This lab calls it from a new
@@ -224,10 +221,8 @@ if ($?) { Write-Host "📦 Resource group $APP_RG is ready" }
 
 ### Create a Foundry project
 
-1. Open the Foundry portal with
-   [the link that turns on gateway connections](https://eastus2euap.ai.azure.com/nextgen?flight=add_model_menu_option,ai_gateway_bundle),
-   and sign in. If it shows **No access**, select your avatar › **Switch**, and pick the directory of your
-   subscription.
+1. Open the [Foundry portal](https://ai.azure.com), and sign in. If it shows **No access**, select your avatar ›
+   **Switch**, and pick the directory of your subscription.
 2. Select the project name ⌄ in the top bar › **Create new project**.
 3. Enter `app-team` in **Project name**, and open **Advanced options**:
 
