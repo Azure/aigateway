@@ -97,29 +97,55 @@ function parseReleaseNotes(markdown) {
 }
 
 // The docs navigation is a nested array of [id, title, route, browser title, isMarkdown, component or source, hidden].
+// Routes are either absolute (/docs/models/failover) or relative to the docs root (/models/failover).
 function listPages(chunks) {
   const pages = new Map();
   for (const text of chunks.values()) {
-    for (const m of text.matchAll(/\["[\w-]+","((?:[^"\\]|\\.)*)","(\/docs[^"]*)",(?:"(?:[^"\\]|\\.)*"|null),([01]),"([^"]+)"(?:,!0)?\]/g)) {
-      if (!pages.has(m[2])) pages.set(m[2], { route: m[2], title: literal(m[1]), markdown: m[3] === '1', source: m[4] });
+    for (const m of text.matchAll(/\["[\w-]+","((?:[^"\\]|\\.)*)","(\/[^"]*)",(?:"(?:[^"\\]|\\.)*"|null),([01]),"([^"]+)"(?:,!0)?\]/g)) {
+      const route = m[2].startsWith('/docs') ? m[2] : `/docs${m[2] === '/' ? '' : m[2]}`;
+      if (!pages.has(route)) pages.set(route, { route, title: literal(m[1]), markdown: m[3] === '1', source: m[4] });
     }
   }
   return [...pages.values()];
 }
 
-// Markdown pages are template literals in chunks that the Markdown page component imports by source path.
+// Decodes the escapes of a JavaScript string literal body.
+const ESCAPES = { n: '\n', r: '\r', t: '\t', b: '\b', f: '\f', v: '\v', 0: '\0' };
+const decode = (s) => s.replace(/\\(u\{[\da-fA-F]+\}|u[\da-fA-F]{4}|x[\da-fA-F]{2}|[\s\S])/g, (_, e) =>
+  e[0] === 'u' && e.length > 1 ? String.fromCodePoint(parseInt(e.replace(/[u{}]/g, ''), 16))
+    : e[0] === 'x' && e.length === 3 ? String.fromCharCode(parseInt(e.slice(1), 16))
+      : ESCAPES[e] ?? (e === '\n' ? '' : e));
+const LITERAL = String.raw`"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|` + '`(?:[^`\\\\]|\\\\[\\s\\S])*`';
+
+// Reads a string, or a template literal whose ${name} placeholders name other string constants of the chunk.
+function literalValue(chunk, lit, depth = 0) {
+  const inner = lit.slice(1, -1);
+  if (lit[0] !== '`') return decode(inner);
+  return inner.split(/(?<!\\)\$\{([\w$]+)\}/).map((part, i) => i % 2 ? (depth < 4 && constant(chunk, part, depth + 1)) ?? `\${${part}}` : decode(part)).join('');
+}
+
+function constant(chunk, name, depth = 0) {
+  const m = chunk.match(new RegExp(`(?:^|[,;{(\\s])${name.replace(/\$/g, '\\$')}=(${LITERAL})`));
+  return m ? literalValue(chunk, m[1], depth) : null;
+}
+
+const cleanMarkdown = (s) => s.replace(/\r/g, '').replace(/^\s*(?:<!--[\s\S]*?-->\s*)*/, '').trim();
+
+// Markdown pages are string or template literals in chunks that the Markdown page component imports by source path.
 function markdownPage(chunks, source) {
   for (const text of chunks.values()) {
-    const m = text.match(new RegExp(`"[./]*content/docs/${source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}":\\(\\)=>[\\w$]+\\(\\(\\)=>import\\("\\./([^"]+\\.js)"\\)`));
+    const m = text.match(new RegExp(`"[./]*content/docs/${source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\.md)?":\\(\\)=>[\\w$]+\\(\\(\\)=>import\\("\\./([^"]+\\.js)"\\)`));
     const chunk = m && chunks.get(m[1]);
-    const body = chunk?.match(/`((?:[^`\\]|\\.)*)`/);
-    if (body) return unescape(body[1]).replace(/^\s*(?:<!--[\s\S]*?-->\s*)*/, '').trim();
+    if (!chunk) continue;
+    const literals = [...chunk.matchAll(new RegExp(`=(${LITERAL})`, 'g'))].map((l) => l[1]).sort((a, b) => b.length - a.length);
+    if (literals.length) return cleanMarkdown(literalValue(chunk, literals[0]));
   }
   return null;
 }
 
-// React pages are lazy components; renders a component's JSX back to Markdown-like text: headings, paragraphs, list
-// items, links, and the URLs of its screenshots.
+// React pages are lazy components. A page that passes Markdown to the docs renderer (content:name) returns that
+// Markdown; otherwise its JSX is rendered back to Markdown-like text: headings, paragraphs, list items, links, and the
+// URLs of its screenshots.
 function reactPage(chunks, component) {
   let code;
   for (const text of chunks.values()) {
@@ -134,6 +160,9 @@ function reactPage(chunks, component) {
     break;
   }
   if (!code) return null;
+  const content = code.body.match(/\bcontent:([\w$]+)/)?.[1];
+  const markdown = content && constant(code.chunk, content);
+  if (markdown) return cleanMarkdown(markdown);
   const assets = new Map([...code.chunk.matchAll(/(?:const |,)([\w$]+)="(\/assets\/[^"]+\.(?:png|jpe?g|svg|webp|gif|mp4))"/g)].map((m) => [m[1], m[2]]));
   const block = { h1: '\n\n# ', h2: '\n\n## ', h3: '\n\n### ', h4: '\n\n#### ', p: '\n\n', li: '\n- ', figcaption: '\n\nCaption: ', pre: '\n\n', tr: '\n|', td: ' | ', th: ' | ', time: '\n\n' };
   const re = /[\w$]+\.jsxs?\("(\w+)"|(?:children|alt|title|label|value):"((?:[^"\\]|\\.)*)"|[[,]"((?:[^"\\]|\\.)*)"(?=[,\]])|src:([\w$]+)|href:"([^"]+)"|`((?:[^`\\]|\\.){40,})`/g;

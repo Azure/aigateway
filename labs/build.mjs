@@ -193,6 +193,8 @@ function loadLabs(catalog) {
       updated: gitUpdated(path.join(LABS, slug)),
       notebook,
       video: findVideo(content),
+      // The lab's first shared diagram, which the home page's architecture map previews.
+      illustration: content.match(/\]\((?:\.\.\/)+assets\/(diagrams\/[a-z0-9-]+\.svg)[\s)]/)?.[1] || null,
       source,
       raw: `---\n${meta}\n---\n\n${content}`,
       content,

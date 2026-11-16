@@ -8,7 +8,9 @@
 }
 @media (max-width: 1100px) {
   .hero-inner { grid-template-columns: minmax(0, 1fr); gap: 24px; padding-top: 56px; }
+  .hero-inner.hx-hero { grid-template-columns: minmax(0, 1fr); gap: 36px; }
   .hero-visual { max-width: 620px; margin: 0 auto; width: 100%; }
+  .hx-hero .hero-visual { max-width: 760px; }
   .track-grid { grid-template-columns: repeat(2, 1fr); }
   .qs-card { grid-template-columns: minmax(0, 1fr); gap: 28px; padding: 28px; }
   .cat-grid, .resource-grid, .home .lab-grid, .feature-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -78,6 +80,14 @@
   .figure-svg { padding: 10px; }
   .footer-cols { grid-template-columns: repeat(2, 1fr); }
   .lab-actions .btn-ghost span, .lab-actions .btn-ghost { font-size: 12.5px; }
+  .hx { --hx-gap: 22px; }
+  .hx-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "ctl" "wl" "gw" "be" "obs"; }
+  .hx-wire-l, .hx-wire-r { display: none; }
+  .hx-wl, .hx-be { padding: 10px; }
+  .hx-wl-items { flex-direction: row; flex-wrap: wrap; justify-content: flex-start; }
+  .hx-be { flex-direction: row; flex-wrap: wrap; }
+  .hx-be .hx-group { flex: 1 1 140px; }
+  .hx-cap { padding: 7px 6px; gap: 7px; }
 }
 @media (max-width: 520px) {
   .hide-xs { display: none !important; }
@@ -103,13 +113,13 @@
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
-  .hd-link, .hd-orbit, .hd-pulse, .wd-alias-hub path.on, .ws-reply.live p::after { animation: none !important; }
+  .wd-alias-hub path.on, .ws-reply.live p::after { animation: none !important; }
   [class*="dg-flow"] { animation: none !important; }
 }
 /* The topbar "Pause animations" toggle (WCAG 2.2.2). */
 html[data-motion="off"] { scroll-behavior: auto !important; }
 html[data-motion="off"] *, html[data-motion="off"] *::before, html[data-motion="off"] *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
-html[data-motion="off"] :is(.hd-link, .hd-orbit, .hd-pulse, .wd-alias-hub path.on, [class*="dg-flow"]), html[data-motion="off"] .ws-reply.live p::after { animation: none !important; }
+html[data-motion="off"] :is(.wd-alias-hub path.on, [class*="dg-flow"]), html[data-motion="off"] .ws-reply.live p::after { animation: none !important; }
 
 @media print {
   .topbar, .sidebar, .toc, .footer, .lab-actions, .track-bar, .pager, .lab-complete, .feedback, .read-progress, .step-btns, .code-actions, .widget { display: none !important; }
