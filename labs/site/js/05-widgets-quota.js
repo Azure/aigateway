@@ -30,12 +30,16 @@ function wdBindSeg(root, onChange) {
     onChange(g.dataset.seg, $$('button[aria-pressed="true"]', g).map((x) => x.dataset.v));
   }));
 }
-// Runs fn on an interval only while the element is on-screen and the tab is visible.
-function wdTicker(el, fn, ms = 250) {
+// Runs fn on an interval while the element is on-screen, the tab is visible, and active() is true. It stops by
+// itself once active() turns false, so a widget only moves after the reader acts (WCAG 2.2.2): call the returned
+// wake() after each action.
+function wdTicker(el, fn, ms = 250, active = () => true) {
   let vis = false, id = null;
-  const sync = () => { const on = vis && !document.hidden; if (on && !id) id = setInterval(fn, ms); if (!on && id) { clearInterval(id); id = null; } };
+  const stop = () => { clearInterval(id); id = null; };
+  const sync = () => { const on = vis && !document.hidden && active(); if (on && !id) id = setInterval(() => { fn(); if (!active()) stop(); }, ms); if (!on && id) stop(); };
   new IntersectionObserver(([e]) => { vis = e.isIntersecting; sync(); }).observe(el);
   document.addEventListener('visibilitychange', sync);
+  return sync;
 }
 
 const QUOTA_CALLERS = [
@@ -78,7 +82,8 @@ function quotaWidget(el, cfg, mode) {
   const s = { ...M.defaults(cfg), dims: ['identity'], override: false };
   const periodSecs = () => M.periods.find((p) => p[0] === s.period)?.[2] || 60;
   const periodName = () => M.periods.find((p) => p[0] === s.period)?.[1] || s.period;
-  let counters = new Map(), winStart = wdNow(), log = [];
+  // A renewal period starts with the first request and ends idle, so the countdown only runs after the reader acts (WCAG 2.2.2).
+  let counters = new Map(), winStart = null, log = [];
   const ovAmount = () => +(s.limit * 3).toFixed(2);
 
   const controls = wdField(M.limitLabel, `<input type="number" min="1" step="${M.budget ? '0.5' : '1'}" value="${s.limit}" data-k="limit">`)
@@ -109,6 +114,7 @@ function quotaWidget(el, cfg, mode) {
     return ct.used;
   };
   const add = (key, v) => {
+    if (!M.rolling && winStart === null) winStart = wdNow();
     const ct = counters.get(key) || { entries: [], used: 0 };
     ct.entries.push({ t: wdNow(), v }); ct.used += v; counters.set(key, ct);
   };
@@ -140,7 +146,7 @@ function quotaWidget(el, cfg, mode) {
           : { code: 200, msg: `${c.name} · 1 call <small>${M.fmt(u + 1)} of ${M.fmt(lim)} this period</small>`, hdr: '' };
     }
     log.unshift(row); log = log.slice(0, 30);
-    renderLog(); paint();
+    renderLog(); paint(); wake();
   }
   function renderLog() {
     logEl.innerHTML = log.length ? log.map((r) => `<div class="wd-log-row"><span class="wd-code s${r.code}">${r.code}</span><span class="wd-log-msg">${r.msg}</span>${r.hdr ? `<span class="wd-log-hdr">${escHtml(r.hdr)}</span>` : ''}</div>`).join('')
@@ -148,7 +154,7 @@ function quotaWidget(el, cfg, mode) {
   }
   function paint() {
     const now = wdNow();
-    if (!M.rolling && now - winStart >= SIM_MS) { winStart = now; counters = new Map(); }
+    if (!M.rolling && winStart !== null && now - winStart >= SIM_MS) { winStart = null; counters = new Map(); }
     // Window indicator
     let p, left;
     if (M.rolling) {
@@ -156,6 +162,9 @@ function quotaWidget(el, cfg, mode) {
       p = oldest === Infinity ? 0 : 1 - (now - oldest) / SIM_MS;
       left = oldest === Infinity ? '' : `${fmtDur(toReal(SIM_MS - (now - oldest)))}`;
       $('[data-r="wlabel"]', el).textContent = oldest === Infinity ? 'Rolling window: no recent usage' : 'Oldest usage frees up in';
+    } else if (winStart === null) {
+      p = 0; left = '';
+      $('[data-r="wlabel"]', el).textContent = 'Renewal period: starts with the next request';
     } else {
       p = (now - winStart) / SIM_MS;
       left = fmtDur(toReal(SIM_MS - (now - winStart)));
@@ -202,15 +211,16 @@ function quotaWidget(el, cfg, mode) {
     $('.wd-foot span', el).lastChild.textContent = `Simulated time: one ${M.rolling ? 'rolling window' : 'renewal period'} (${periodName().toLowerCase()}) runs in 20 seconds. Values are illustrative.`;
     reset();
   }));
-  function reset() { counters = new Map(); winStart = wdNow(); log = []; renderLog(); paint(); }
+  function reset() { counters = new Map(); winStart = null; log = []; renderLog(); paint(); }
   el.addEventListener('click', (e) => {
     const b = e.target.closest('[data-send]');
     if (b) return send(b.dataset.send);
     if (e.target.closest('[data-reset]')) return reset();
     if (e.target.closest('[data-burst]')) for (let i = 0; i < 5; i++) setTimeout(() => send('a'), i * 140);
   });
+  const active = () => (M.rolling ? [...counters.values()].some((ct) => ct.entries.some((e) => wdNow() - e.t < SIM_MS)) : winStart !== null);
   renderLog(); paint();
-  wdTicker(el, paint);
+  const wake = wdTicker(el, paint, 250, active);
 }
 WIDGETS['token-limit'] = (el, c) => quotaWidget(el, c, 'token-limit');
 WIDGETS['request-rate'] = (el, c) => quotaWidget(el, c, 'request-rate');
