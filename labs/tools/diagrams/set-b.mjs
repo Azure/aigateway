@@ -31,19 +31,21 @@ export const observability = () => svgDoc('observability', {
 
 export const privateNetworking = () => svgDoc('private-networking', {
   title: 'Private networking for Azure AI Gateway',
-  desc: 'Clients reach the gateway on its public endpoint, protected by API keys or Microsoft Entra ID and an IP filter policy. Inbound private endpoints and disabling public network access are not available for the aigateways resource yet. Outbound, private routing chosen when you create the gateway joins it to an integration subnet of at least /27 delegated to Microsoft.App/environments, so it reaches a Foundry account with public access disabled through a private endpoint and private DNS zones.',
+  desc: 'Clients on the internet reach the gateway on its public endpoint, protected by API keys or Microsoft Entra ID and an IP filter policy. Clients in your virtual network reach it through an inbound private endpoint with the group ID Gateway, which needs private endpoint access for the subscription. With public network access disabled, the public endpoint returns 403 and only private clients get through. Outbound, private routing joins the gateway to an integration subnet of at least /27 delegated to Microsoft.App/environments, so it reaches a Foundry account with public access disabled through a private endpoint and private DNS zones.',
   h: 430,
   body: () => {
     let o = zone(16, 20, 230, 330, 'Clients', { ic: 'users', tone: 'azure' });
-    o += box(28, 56, 206, 72, { t: 'App or agent', s: 'Calls the gateway host', icon: 'app', tone: 'azure' });
-    o += box(28, 150, 206, 72, { t: 'Caller credential', s: 'API key or Entra token', icon: 'key', tone: 'azure' });
-    o += `<path class="dg-ghost" d="M131 130 V148"/>`;
+    o += box(28, 56, 206, 72, { t: 'App or agent', s: 'Over the internet', icon: 'app', tone: 'azure' });
+    o += box(28, 150, 206, 72, { t: 'Private client', s: 'Inside your VNet', icon: 'network', tone: 'green' });
+    o += box(28, 244, 206, 72, { t: 'Caller credential', s: 'API key or Entra token', icon: 'key', tone: 'azure' });
+    o += `<path class="dg-ghost" d="M131 224 V242"/>`;
     o += zone(276, 20, 330, 330, 'AI Gateway', { gw: true, ic: 'sparkle' });
     o += box(292, 56, 298, 72, { t: 'Inbound', s: 'Public endpoint', s2: '*.ai.gateway.azure.com', icon: 'globe', accent: true, mono: true });
     o += pills(292, 140, ['Keys or Entra ID', 'IP filter policy'], { tone: 'violet' });
-    o += pill(292, 174, 'Private frontend: not yet', { tone: 'amber' });
-    o += box(292, 252, 298, 72, { t: 'Outbound', s: 'Private routing, set at creation', s2: 'backend.subnet.id', icon: 'network', tone: 'green', accent: true, mono: true });
+    o += box(292, 174, 298, 64, { t: 'Inbound private endpoint', s: 'groupId: Gateway', icon: 'plug', tone: 'green', accent: true, mono: true });
+    o += box(292, 252, 298, 72, { t: 'Outbound', s: 'Private routing', s2: 'backend.subnet.id', icon: 'network', tone: 'green', accent: true, mono: true });
     o += arrow('M236 92 H288', { tone: 'azure' });
+    o += arrow('M236 186 C262 186 262 206 288 206', { tone: 'green' });
     o += zone(636, 20, 308, 330, 'Your virtual network', { ic: 'network', tone: 'green' });
     o += text(652, 60, 'Integration subnet: /27 or larger,', 'dg-s') + text(652, 78, 'delegated to Microsoft.App/environments', 'dg-m');
     o += box(648, 96, 284, 64, { t: 'Private DNS zones', s: 'privatelink.*.azure.com', icon: 'dns', tone: 'green', mono: true });
@@ -52,8 +54,8 @@ export const privateNetworking = () => svgDoc('private-networking', {
     o += arrow('M790 248 V266', { tone: 'green' });
     o += box(648, 268, 284, 64, { t: 'Microsoft Foundry', s: 'Public network access disabled', icon: 'models', tone: 'cyan' });
     o += arrow('M592 288 C620 288 620 214 644 214', { tone: 'green' });
-    o += `<g class="tn-amber">${icon('lock', 16, 372, 20)}</g>` + text(44, 387, 'Inbound private endpoints and turning off public network access aren\'t available for aigateways yet.', 'dg-s');
-    o += `<g class="tn-amber">${icon('dns', 16, 400, 20)}</g>` + text(44, 415, 'DNS is the common pitfall: the gateway must resolve Foundry to its private endpoint IP.', 'dg-s');
+    o += `<g class="tn-amber">${icon('lock', 16, 372, 20)}</g>` + text(44, 387, 'Public network access Disabled: the public endpoint returns 403, and only private endpoint clients get through.', 'dg-s');
+    o += `<g class="tn-amber">${icon('dns', 16, 400, 20)}</g>` + text(44, 415, 'DNS is the common pitfall: each caller must resolve the host it calls to the private endpoint IP.', 'dg-s');
     return o;
   },
 });

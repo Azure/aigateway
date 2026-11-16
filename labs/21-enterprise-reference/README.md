@@ -1591,7 +1591,8 @@ test a few more times if the charts are still empty.
   which is in public preview and
   [requires approval](https://ai.gateway.azure.com/docs/networking/request-private-endpoint-access), then set
   **Public network access** to **Disabled**. See
-  [Configure inbound access](https://ai.gateway.azure.com/docs/networking/private-endpoints).
+  [Reach the gateway through an inbound private endpoint](../18-private-networking/README.md#reach-the-gateway-through-an-inbound-private-endpoint)
+  and [Configure inbound access](https://ai.gateway.azure.com/docs/networking/private-endpoints).
 - **Protect and govern tools.** Add [Agent 365 tool threat protection](../19-tool-threat-protection/README.md)
   to sensitive MCP servers in the portal, and [govern MCP servers with Agent 365](../20-agent-365-governance/README.md).
 - **Charge back by team.** Attribute tokens and cost to callers with

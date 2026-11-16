@@ -149,8 +149,11 @@ Before you create, change, or delete Azure resources, confirm the subscription a
   With `publicNetworkAccess: Disabled`, runtime calls from the internet answer `403`. The backend subnet stays
   editable after creation (`properties.backend.subnet`, `null` removes it).
 - Inbound private endpoints (group ID `Gateway`) need access for the subscription; until then, creating one fails
-  with `SubscriptionNotRegisteredForFeature`. The private DNS zone is the one in
-  `GET {gateway}/privateLinkResources` (`privatelink.<region>-01.ai.gateway.azure.com`), not `privatelink.azure-api.net`.
+  with `SubscriptionNotRegisteredForFeature`. With access, the gateway approves them automatically
+  ("Automatically approved by AI Gateway."). The private DNS zone is the one in
+  `GET {gateway}/privateLinkResources` (`privatelink.<region>-01.ai.gateway.azure.com`), not `privatelink.azure-api.net`,
+  which never gets the record. With public access `Disabled`, clients through the private endpoint still get `200`.
+  Lab 18 tests it with an Azure Container Instances client in a delegated subnet.
 - MCP tool controls: a blocked tool stays in `tools/list`, and a call returns HTTP `200` with `isError: true` and
   `ToolNotAvailable`. With **MCP server access** set to **Blocked**, `initialize` returns HTTP `200` with JSON-RPC
   error `-32000` and `data.code` `AccessBlockedByGateway`. Agent 365 needs a static allowed-tool list: exact names
@@ -282,7 +285,7 @@ Each entry shows the level, time, tracks, and the labs it needs.
 
 ### Production & emerging
 
-- **18** [Lock down backend traffic with private networking](https://azure.github.io/aigateway/labs/18-private-networking/index.md) `18-private-networking` (Advanced, 60 min · Portal, CLI, Bicep · needs 01, 12): Create an Azure AI Gateway with private routing through your virtual network, reach a Foundry backend over a private endpoint with its public access turned off, change the routing of the running gateway, and turn off the gateway's own public access.
+- **18** [Lock down backend traffic with private networking](https://azure.github.io/aigateway/labs/18-private-networking/index.md) `18-private-networking` (Advanced, 75 min · Portal, CLI, Bicep · needs 01, 12): Create an Azure AI Gateway with private routing through your virtual network, reach a Foundry backend over a private endpoint with its public access turned off, change the routing of the running gateway, and give the gateway its own inbound private endpoint so you can turn off its public access.
 - **19** [Protect tool calls with Agent 365 threat protection](https://azure.github.io/aigateway/labs/19-tool-threat-protection/index.md) `19-tool-threat-protection` (Advanced, 30 min · Portal, Bicep · needs 04, 11): Have Microsoft Defender and Microsoft Purview evaluate every tool call on an MCP server, before the tool runs, after it returns, or both, and see how a fail-closed denial reaches the caller.
 - **20** [Govern MCP servers with Agent 365](https://azure.github.io/aigateway/labs/20-agent-365-governance/index.md) `20-agent-365-governance` (Intermediate, 20 min · Portal · needs 04, 05): Connect Microsoft Agent 365 to your gateways, find their MCP servers in one inventory, block a single tool or a whole server from the Microsoft 365 admin center, and see exactly what agents get back.
 - **21** [Deploy an enterprise reference architecture](https://azure.github.io/aigateway/labs/21-enterprise-reference/index.md) `21-enterprise-reference` (Advanced, 60 min · Bicep · needs 09, 13, 12): Deploy a production-shaped Azure AI Gateway environment from modular Bicep, with a keyless Foundry backend, models and MCP tools behind RBAC, a key per app, layered policies, and monitoring. Then promote it from dev to prod with a GitHub Actions workflow that signs in with OpenID Connect and smoke-tests every deployment.

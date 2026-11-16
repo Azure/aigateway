@@ -385,6 +385,7 @@ Kinds: `NOTE`, `TIP`, `IMPORTANT`, `WARNING`, `CAUTION`. A blockquote starting w
   `token-limits-01-policy-type.webp` and `streaming-responses-01-policy-type.webp` (the **Add policy** › **Type**
   step), `content-safety-01-edit-policy.webp`, `model-routing-01-priorities-weights.webp` (**Create alias** ›
   **Priorities and weights**), `monitoring-13-failed-tool-call.webp`, `networking-inbound-public-access.webp`,
+  `networking-inbound-private-endpoint.webp` (an approved private endpoint on **Networking** › **Inbound**),
   `networking-outbound-vnet.webp`, and `access-control-plane-01…03-*.webp` (**Add role assignment** › **Manage
   gateway assets**, Review, and the Access list). The `quickstart-01…15-*.webp` set walks the whole portal flow:
   the gateway switcher, Create AI gateway, provisioning, Home, the Foundry import, aliases, Access › API keys, the

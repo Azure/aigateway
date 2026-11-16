@@ -158,7 +158,7 @@ Private networking, Agent 365, threat protection, and reference architectures.
 
 | # | Lab | Level | Time | Tracks | Notebook |
 | :-: | :-- | :-- | --: | :-- | :-: |
-| 18 | [Lock down backend traffic with private networking](18-private-networking/README.md) | Advanced | 60 min | Portal · CLI · Bicep |  |
+| 18 | [Lock down backend traffic with private networking](18-private-networking/README.md) | Advanced | 75 min | Portal · CLI · Bicep |  |
 | 19 | [Protect tool calls with Agent 365 threat protection](19-tool-threat-protection/README.md) | Advanced | 30 min | Portal · Bicep |  |
 | 20 | [Govern MCP servers with Agent 365](20-agent-365-governance/README.md) | Intermediate | 20 min | Portal |  |
 | 21 | [Deploy an enterprise reference architecture](21-enterprise-reference/README.md) | Advanced | 60 min | Bicep |  |

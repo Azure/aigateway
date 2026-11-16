@@ -10,6 +10,9 @@
     },
     "foundryPublicNetworkAccess": {
       "value": "${FOUNDRY_PUBLIC_NETWORK_ACCESS=Enabled}"
+    },
+    "gatewayPrivateEndpoint": {
+      "value": "${GATEWAY_PRIVATE_ENDPOINT=false}"
     }
   }
 }

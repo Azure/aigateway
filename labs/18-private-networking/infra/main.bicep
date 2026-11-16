@@ -2,6 +2,8 @@
 // gpt-5-mini, a virtual network, a new gateway with private routing through the network's integration subnet, a
 // private endpoint and private DNS for Foundry, and lab 02's provider, model, private-chat alias, and runtime key.
 // Set FOUNDRY_PUBLIC_NETWORK_ACCESS to Disabled and run "azd provision" to turn off Foundry's public access.
+// Set GATEWAY_PRIVATE_ENDPOINT to true and run "azd provision" to add an inbound private endpoint to the gateway,
+// once the subscription has private endpoint access.
 // The key value is never an output.
 targetScope = 'subscription'
 
@@ -20,6 +22,9 @@ param location string
   'Disabled'
 ])
 param foundryPublicNetworkAccess string = 'Enabled'
+
+@description('Add an inbound private endpoint to the gateway, its private DNS zone, and a client subnet. Needs private endpoint access for the subscription.')
+param gatewayPrivateEndpoint bool = false
 
 var suffix = take(uniqueString(subscription().id, environmentName, location), 6)
 var tags = { 'azd-env-name': environmentName }
@@ -51,6 +56,7 @@ module network 'private-network.bicep' = {
     location: location
     tags: tags
     foundryAccountId: foundry.outputs.accountId
+    gatewayPrivateEndpoint: gatewayPrivateEndpoint
   }
 }
 
@@ -82,3 +88,6 @@ output FOUNDRY_ACCOUNT_NAME string = foundry.outputs.accountName
 output FOUNDRY_ACCOUNT_ID string = foundry.outputs.accountId
 output FOUNDRY_ENDPOINT string = foundry.outputs.endpoint
 output FOUNDRY_PRIVATE_ENDPOINT_NAME string = network.outputs.foundryPrivateEndpointName
+output AI_GATEWAY_PRIVATE_ENDPOINT_NAME string = network.outputs.gatewayPrivateEndpointName
+output AI_GATEWAY_PRIVATE_DNS_ZONE string = network.outputs.gatewayPrivateDnsZone
+output CLIENT_SUBNET_ID string = network.outputs.clientSubnetId

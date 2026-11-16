@@ -732,7 +732,8 @@ If you configured Application Insights in [Monitor usage, cost, and traces](../1
   [Protect tool calls with Agent 365 threat protection](../19-tool-threat-protection/README.md).
 - **Keep the allow list for inbound traffic.** Inbound private endpoints, with public network access turned off,
   are in preview and need approval: see
-  [Configure inbound access](https://ai.gateway.azure.com/docs/networking/private-endpoints). Until you have
+  [Reach the gateway through an inbound private endpoint](../18-private-networking/README.md#reach-the-gateway-through-an-inbound-private-endpoint)
+  and [Configure inbound access](https://ai.gateway.azure.com/docs/networking/private-endpoints). Until you have
   them, the IP filter is how you restrict who can call the gateway. To keep the gateway's traffic to your
   backends private, see [Lock down backend traffic with private networking](../18-private-networking/README.md).
 - **Count Entra callers.** With `identity` counters, each Entra caller gets its own allowance. Move clients to

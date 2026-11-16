@@ -4,10 +4,12 @@
 //     gateway) and a private-endpoint subnet
 //   - the gateway, joined to the integration subnet, by reusing the lab 01 template as a module
 //   - optionally, a private endpoint to a Foundry resource (group ID "account") with its private DNS zones
+//   - optionally, an inbound private endpoint to the gateway (group ID "Gateway") with its private DNS zone, and a
+//     client subnet delegated to Microsoft.ContainerInstance/containerGroups for a test client in the network
 // The subnet isn't fixed at creation: redeploy with a different backendSubnetId to change it, or use the portal,
 // "az aigateway network update", or a REST PATCH to add, change, or remove it on an existing gateway.
-// Inbound private endpoints to the gateway (group ID "Gateway") need private endpoint access for the subscription,
-// so the template doesn't declare them.
+// The inbound private endpoint needs private endpoint access for the subscription, so it's off by default: set
+// gatewayPrivateEndpoint to true once the subscription has access.
 // The lab's main.bicep calls it with azd. You can also deploy it on its own to an existing resource group with
 // "az deployment group create".
 
@@ -49,7 +51,37 @@ param foundryAccountId string = ''
 @description('Name of the private endpoint to the Foundry account.')
 param foundryPrivateEndpointName string = 'pe-foundry-${gatewayName}'
 
+@description('Create an inbound private endpoint to the gateway in the private-endpoint subnet, with its private DNS zone, and a client subnet. Needs private endpoint access for the subscription.')
+param gatewayPrivateEndpoint bool = false
+
+@description('Name of the inbound private endpoint to the gateway.')
+param gatewayPrivateEndpointName string = 'pe-gateway-${gatewayName}'
+
+@description('Name of the subnet for test clients, delegated to Microsoft.ContainerInstance/containerGroups.')
+param clientSubnetName string = 'snet-clients'
+
+@description('Prefix of the client subnet.')
+param clientSubnetPrefix string = '10.20.2.0/24'
+
 var includeFoundryPrivateEndpoint = !empty(foundryAccountId)
+
+// The client subnet exists only with the gateway's private endpoint: a container there tests the private path.
+var clientSubnets = gatewayPrivateEndpoint ? [
+  {
+    name: clientSubnetName
+    properties: {
+      addressPrefix: clientSubnetPrefix
+      delegations: [
+        {
+          name: 'Microsoft.ContainerInstance.containerGroups'
+          properties: {
+            serviceName: 'Microsoft.ContainerInstance/containerGroups'
+          }
+        }
+      ]
+    }
+  }
+] : []
 
 // Standard private DNS zones for Foundry (AIServices) accounts.
 var foundryDnsZoneNames = [
@@ -77,7 +109,7 @@ resource vnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
     addressSpace: {
       addressPrefixes: [ vnetAddressPrefix ]
     }
-    subnets: [
+    subnets: concat([
       {
         name: integrationSubnetName
         properties: {
@@ -102,7 +134,7 @@ resource vnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
           privateEndpointNetworkPolicies: 'Disabled'
         }
       }
-    ]
+    ], clientSubnets)
   }
 }
 
@@ -179,6 +211,20 @@ resource foundryPrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateD
   }
 }
 
+// Inbound: clients in the virtual network resolve the gateway's host name to a private IP and call it privately.
+module gatewayPrivateEndpointDeployment 'gateway-private-endpoint.bicep' = if (gatewayPrivateEndpoint) {
+  name: 'aigw-pe-${gatewayName}'
+  params: {
+    gatewayId: gateway.outputs.gatewayId
+    gatewayHostName: replace(gateway.outputs.gatewayUrl, 'https://', '')
+    subnetId: privateEndpointSubnet.id
+    vnetId: vnet.id
+    privateEndpointName: gatewayPrivateEndpointName
+    location: location
+    tags: tags
+  }
+}
+
 output vnetId string = vnet.id
 output integrationSubnetId string = integrationSubnet.id
 output privateEndpointSubnetId string = privateEndpointSubnet.id
@@ -187,3 +233,6 @@ output gatewayId string = gateway.outputs.gatewayId
 output gatewayUrl string = gateway.outputs.gatewayUrl
 output principalId string = gateway.outputs.principalId
 output foundryPrivateEndpointName string = includeFoundryPrivateEndpoint ? foundryPrivateEndpoint.name : ''
+output gatewayPrivateEndpointName string = gatewayPrivateEndpointDeployment.?outputs.privateEndpointName ?? ''
+output gatewayPrivateDnsZone string = gatewayPrivateEndpointDeployment.?outputs.dnsZoneName ?? ''
+output clientSubnetId string = gatewayPrivateEndpoint ? '${vnet.id}/subnets/${clientSubnetName}' : ''
