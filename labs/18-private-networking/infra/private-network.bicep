@@ -1,12 +1,13 @@
-// Private routing for a new AI Gateway (Microsoft.ApiManagement/aigateways).
-// Outbound virtual network integration can only be set when the gateway is created, so this template creates:
-//   - an NSG that allows outbound TCP 443 to the Storage and AzureKeyVault service tags
+// Outbound virtual network integration for an AI Gateway (Microsoft.ApiManagement/aigateways). This template creates:
+//   - an NSG for the integration subnet, with no custom rules: AI Gateway needs no outbound service-tag rules
 //   - a virtual network with an integration subnet (delegated to Microsoft.App/environments, dedicated to the
 //     gateway) and a private-endpoint subnet
 //   - the gateway, joined to the integration subnet, by reusing the lab 01 template as a module
 //   - optionally, a private endpoint to a Foundry resource (group ID "account") with its private DNS zones
-// Inbound private endpoints and disabling the gateway's public network access aren't available for the
-// aigateways resource type yet, so the template doesn't declare them.
+// The subnet isn't fixed at creation: redeploy with a different backendSubnetId to change it, or use the portal,
+// "az aigateway network update", or a REST PATCH to add, change, or remove it on an existing gateway.
+// Inbound private endpoints to the gateway (group ID "Gateway") need private endpoint access for the subscription,
+// so the template doesn't declare them.
 // The lab's main.bicep calls it with azd. You can also deploy it on its own to an existing resource group with
 // "az deployment group create".
 
@@ -57,39 +58,13 @@ var foundryDnsZoneNames = [
   'privatelink.services.ai.azure.com'
 ]
 
+// The default NSG rules are enough: the gateway reaches backends over TCP 443 inside the virtual network.
 resource nsg 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
   name: nsgName
   location: location
   tags: tags
   properties: {
-    securityRules: [
-      {
-        name: 'AllowStorageOutbound'
-        properties: {
-          priority: 100
-          direction: 'Outbound'
-          access: 'Allow'
-          protocol: 'Tcp'
-          sourceAddressPrefix: 'VirtualNetwork'
-          sourcePortRange: '*'
-          destinationAddressPrefix: 'Storage'
-          destinationPortRange: '443'
-        }
-      }
-      {
-        name: 'AllowKeyVaultOutbound'
-        properties: {
-          priority: 110
-          direction: 'Outbound'
-          access: 'Allow'
-          protocol: 'Tcp'
-          sourceAddressPrefix: 'VirtualNetwork'
-          sourcePortRange: '*'
-          destinationAddressPrefix: 'AzureKeyVault'
-          destinationPortRange: '443'
-        }
-      }
-    ]
+    securityRules: []
   }
 }
 

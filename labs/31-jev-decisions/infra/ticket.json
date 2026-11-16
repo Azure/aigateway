@@ -1,0 +1,34 @@
+{
+  "state": {
+    "ticket": {
+      "subject": "Charged twice for invoice INV-2291",
+      "message": "Hi, my card was charged twice for invoice INV-2291 this morning. Please refund the duplicate today: I need that money for rent tomorrow. This is the second time it has happened!",
+      "plan": "Pro",
+      "channel": "email"
+    }
+  },
+  "questions": {
+    "urgent": {
+      "type": "noul",
+      "instructions": "Does the customer need an answer today?"
+    },
+    "team": {
+      "type": "choice",
+      "instructions": "Which support team should own this ticket?",
+      "criteria": {
+        "billing": "Payments, invoices, refunds, or subscription changes",
+        "technical": "Bugs, errors, outages, or integration problems",
+        "account": "Sign-in, users, permissions, or account settings"
+      }
+    },
+    "frustration": {
+      "type": "score",
+      "instructions": "How frustrated is the customer?",
+      "criteria": [
+        "Calm, just stating facts",
+        "Frustrated but civil",
+        "Very angry, strong language"
+      ]
+    }
+  }
+}

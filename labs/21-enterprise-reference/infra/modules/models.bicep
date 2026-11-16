@@ -27,7 +27,7 @@ param foundryResourceIds array
 @description('Audience the gateway requests a managed identity token for when it calls Foundry.')
 param foundryManagedIdentityResource string = 'https://cognitiveservices.azure.com/'
 
-@description('Backend models: objects with armName, description, resourceId, modelName, modelVersion, tokenLimit, apiFormat, and supportedEndpoints.')
+@description('Backend models: objects with armName, description, resourceId, modelName, modelVersion, tokenLimit, and supportedEndpoints.')
 param foundryModels array
 
 @description('Content safety threshold for every category on every backend model. The threshold is the lowest severity that is blocked.')
@@ -53,45 +53,45 @@ var normalizedFoundryEndpoint = endsWith(foundryEndpoint, '/') ? foundryEndpoint
 var aiGatewayModelsUserRoleDefinitionId = 'a6b68e3d-a1f0-4c60-8678-237c050cf4ea'
 
 #disable-next-line BCP081
-resource aiGateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
+resource aiGateway 'Microsoft.ApiManagement/aigateways@2026-11-01' existing = {
   name: gatewayName
 }
 
 #disable-next-line BCP081
-resource defaultWorkspace 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' existing = {
+resource defaultWorkspace 'Microsoft.ApiManagement/aigateways/workspaces@2026-11-01' existing = {
   parent: aiGateway
   name: 'default'
 }
 
 #disable-next-line BCP081
-resource foundryProvider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2025-09-01-preview' = {
+resource foundryProvider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2026-11-01' = {
   parent: defaultWorkspace
   name: providerName
   properties: {
-    kind: 'Foundry'
+    modelProviderType: 'Foundry'
     displayName: providerDisplayName
     description: empty(providerDescription) ? null : providerDescription
     foundry: {
-      endpoint: normalizedFoundryEndpoint
+      endpoint: {
+        url: normalizedFoundryEndpoint
+      }
       resourceIds: foundryResourceIds
-      authentication: {
-        kind: 'ManagedIdentity'
-        managedIdentity: {
-          resource: foundryManagedIdentityResource
-        }
+    }
+    authentication: {
+      managedIdentity: {
+        resource: foundryManagedIdentityResource
       }
     }
   }
 }
 
 #disable-next-line BCP081
-resource foundryCatalogModels 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2025-09-01-preview' = [for model in foundryModels: {
+resource foundryCatalogModels 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2026-11-01' = [for model in foundryModels: {
   parent: foundryProvider
   name: model.armName
   properties: {
     description: model.?description ?? null
     displayName: model.modelName
-    apiFormat: model.apiFormat
     supportedEndpoints: model.supportedEndpoints
     deployment: {
       resourceId: model.resourceId
@@ -117,7 +117,7 @@ resource foundryCatalogModels 'Microsoft.ApiManagement/aigateways/workspaces/mod
 }]
 
 #disable-next-line BCP081
-resource alias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2025-09-01-preview' = {
+resource alias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01' = {
   parent: defaultWorkspace
   name: aliasName
   properties: {

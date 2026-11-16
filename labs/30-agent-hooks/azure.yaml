@@ -1,0 +1,51 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+# Lab 30: "azd up" registers the hook's Microsoft Entra application, creates a gateway, the decision service (a Python
+# function app on Flex Consumption behind App Service Authentication), the learn MCP server with an agent hooks
+# policy that calls the decision service before and after each tool call, and a runtime API key. Then it deploys the
+# function code. The lab clones the repo's main branch from GitHub and runs azd up in this folder.
+name: aigw-lab30
+metadata:
+  template: aigw-lab30@1.0.0
+infra:
+  provider: bicep
+  path: infra
+services:
+  hook:
+    project: ./infra/hook
+    language: python
+    host: function
+hooks:
+  # A new Flex Consumption app that reaches its storage through a private endpoint can fail the first code upload
+  # with "BlobUploadFailedException ... Resource temporarily unavailable" until it restarts once. Restart it before
+  # azd deploys the code.
+  postprovision:
+    posix:
+      shell: sh
+      run: az functionapp restart --resource-group "$AZURE_RESOURCE_GROUP" --name "$HOOK_APP_NAME"
+    windows:
+      shell: pwsh
+      run: az functionapp restart --resource-group $env:AZURE_RESOURCE_GROUP --name $env:HOOK_APP_NAME
+  # The app registration lives in Microsoft Entra ID, not in the resource group, so deleting the resource group
+  # doesn't delete it. Before "azd down" deletes the resource group (and the outputs saved in the azd environment),
+  # this hook deletes the registration with the client ID that the deployment saved, then removes it from the deleted
+  # items so that the next "azd up" can register it again.
+  predown:
+    continueOnError: true
+    posix:
+      shell: sh
+      run: >-
+        if [ -n "$HOOK_CLIENT_ID" ]; then
+        id=$(az ad app show --id "$HOOK_CLIENT_ID" --query id --output tsv) &&
+        az ad app delete --id "$HOOK_CLIENT_ID" &&
+        az rest --method delete --url "https://graph.microsoft.com/v1.0/directory/deletedItems/$id" &&
+        echo "Deleted the app registration $HOOK_CLIENT_ID";
+        fi
+    windows:
+      shell: pwsh
+      run: >-
+        if ($env:HOOK_CLIENT_ID) {
+        $id = az ad app show --id $env:HOOK_CLIENT_ID --query id --output tsv;
+        if ($id) {
+        az ad app delete --id $env:HOOK_CLIENT_ID;
+        az rest --method delete --url "https://graph.microsoft.com/v1.0/directory/deletedItems/$id";
+        "Deleted the app registration $env:HOOK_CLIENT_ID" } }

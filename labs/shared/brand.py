@@ -519,8 +519,9 @@ def policies(alias: str, items) -> View:
     def caller(override):
         if override.get("apiKeyResourceId"):
             return mono(f"API key {override['apiKeyResourceId'].rsplit('/', 1)[-1]}")
-        claims = override.get("claims") or {}
-        return mono("Entra ID " + ", ".join(f"{k} {v}" for k, v in claims.items()))
+        claims = override.get("claims") or []
+        pairs = claims.items() if isinstance(claims, dict) else ((c.get("name"), c.get("value")) for c in claims)
+        return mono("Entra ID " + ", ".join(f"{k} {v}" for k, v in pairs))
 
     blocks = []
     for policy in items:

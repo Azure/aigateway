@@ -69,23 +69,24 @@ allowed calls through.
 
 > [!TIP]
 > On the **Bicep + azd** track, `azd up` creates its own gateway, the `learn` MCP server, your **AI Gateway Tools
-> User** role assignment on it, and a key, so you can skip this section except for the Microsoft Defender or Microsoft
-> Purview license. You need only the one-time setup above, signed in as a user.
+> User** role assignment on it, and a key, so you can skip this section except for the Microsoft Agent 365 license.
+> You need only the one-time setup above, signed in as a user.
 
 - Complete [Federate MCP tools behind one endpoint](../04-federate-mcp-tools/README.md). This lab protects the
   `learn` MCP server from that lab. Any MCP server in your gateway works.
 - Complete [Go keyless with Microsoft Entra ID and RBAC](../11-entra-rbac/README.md). Tool threat protection
   only works for callers that send a **delegated** Microsoft Entra ID bearer token issued for AI Gateway.
-- A **Microsoft Defender or Microsoft Purview license** in your tenant.
+- A **Microsoft Agent 365 license** in your tenant. Agent 365 runs the Microsoft Defender and Microsoft Purview
+  checks.
 - Permission to manage policies on the gateway, for example **Contributor** on its resource group, and permission
   to create role assignments if your user doesn't have a data-plane role yet.
 - Your Azure CLI sign-in as a **user**, not a service principal.
 - Run the scripts and samples from the lab's folder, `~/aigateway/labs/19-tool-threat-protection`.
 
 > [!NOTE]
-> Agent 365 tool threat protection is an emerging capability of Azure AI Gateway. Labels and behavior can
-> change; see the [release note](https://ai.gateway.azure.com/docs/releases/2026-10-08-tool-threat-protection).
-> Defender and Purview are licensed separately.
+> Agent 365 tool threat protection is in preview, so its labels and behavior can change. See the
+> [October 8, 2026 release](https://ai.gateway.azure.com/docs/releases#release-2026-10-08) and
+> [Agent 365 tool threat protection](https://ai.gateway.azure.com/docs/policies/tool-threat-protection).
 
 Set these variables once. The steps and the **Verify** section reuse them.
 
@@ -105,7 +106,7 @@ echo "🆔 Gateway ID: $GATEWAY_ID"
 echo "🌐 Runtime URL: $AI_GATEWAY_URL"
 
 # Paste the runtime key from Access › API keys without showing it: you use it once, to see a key-only call fail closed
-read -rsp "AI Gateway API key: " AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
+printf "AI Gateway API key: " && read -rs AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 ```
 </details> <!-- gh -->
@@ -164,8 +165,9 @@ the token and the role work, so any later failure comes from the policy.
 
 In the AI Gateway portal, select **Access** › **Entra ID** › **Add role assignment**. Enter your object ID in
 **Search by name, email, or object ID**, check your account, and select **Next**. Select
-**Invoke gateway assets only**, then **Next**. Select **Specific assets**, check the `learn` MCP server under
-**Resources**, and confirm that **Azure roles to assign** shows **AI Gateway Tools User**. Select **Next**, then
+**Invoke gateway assets only**, then **Next**. Select **Specific assets**, check **Microsoft Learn**, the MCP server
+with the scope `/workspaces/default/toolServers/learn`, under **Resources**, and confirm that **Azure roles to
+assign** shows **AI Gateway Tools User**. Select **Next**, check the assignment on the **Review** step, then select
 **Assign**. The [Entra ID lab](../11-entra-rbac/README.md) walks through this wizard.
 
 The same assignment with the Azure CLI:
@@ -199,7 +201,7 @@ assignments can take several minutes to apply.
 
 **What you need:** only the one-time setup from **Before you begin**, signed in as a **user**. This track doesn't use
 your gateway or `learn` server from lab 04: `azd up` creates a new gateway with its own `learn` server, so it works on
-its own. You still need the Microsoft Defender or Microsoft Purview license.
+its own. You still need the Microsoft Agent 365 license.
 
 ### Review the templates
 
@@ -328,33 +330,33 @@ param apiKeyName string = 'app-first-call'
 var toolsUserRoleId = 'dce03f8d-857f-4e40-a90d-67770fa6ecd2'
 
 #disable-next-line BCP081
-resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
+resource gateway 'Microsoft.ApiManagement/aigateways@2026-11-01' existing = {
   name: gatewayName
 }
 
 #disable-next-line BCP081
-resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' existing = {
+resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2026-11-01' existing = {
   parent: gateway
   name: 'default'
 }
 
 #disable-next-line BCP081
-resource toolServer 'Microsoft.ApiManagement/aigateways/workspaces/toolServers@2025-09-01-preview' = {
+resource toolServer 'Microsoft.ApiManagement/aigateways/workspaces/toolServers@2026-11-01' = {
   parent: workspace
   name: serverName
   properties: {
     displayName: 'Microsoft Learn'
     description: 'Search and fetch official Microsoft documentation and code samples.'
-    type: 'mcp'
+    toolServerType: 'mcp'
     endpoints: [
       {
         namespace: 'learn'
         kind: 'mcp'
+        mode: 'failClosed'
         mcp: {
-          url: 'https://learn.microsoft.com/api/mcp'
+          endpoint: { url: 'https://learn.microsoft.com/api/mcp' }
           transport: 'streamableHttp'
         }
-        required: true
       }
     ]
     // A tool threat protection policy needs at least one stage.
@@ -381,7 +383,7 @@ resource toolsUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!e
 }
 
 #disable-next-line BCP081
-resource apiKey 'Microsoft.ApiManagement/aigateways/apiKeys@2025-09-01-preview' = {
+resource apiKey 'Microsoft.ApiManagement/aigateways/apiKeys@2026-11-01' = {
   parent: gateway
   name: apiKeyName
   properties: {}
@@ -693,12 +695,12 @@ On the **Type** step, under **Security**, select **Agent 365 tool threat protect
 **MCP server** badge and reads "Evaluate tool calls and results with Microsoft Defender and Microsoft Purview
 for threats, prompt injection, and sensitive-data risks." Select **Next**.
 
-![The Add policy wizard on the Type step, with Agent 365 tool threat protection selected under Security](../assets/screens/policy-tool-threat-protection.jpeg "Agent 365 tool threat protection sits in the Security group, next to Content safety and IP filter. It applies to MCP servers only.")
+![The Add policy wizard on the Type step, with Agent 365 tool threat protection selected under Security](../assets/screens/tool-threat-protection-01-policy-type.webp "Agent 365 tool threat protection sits in the Security group, between IP filter and Agent hooks. Its MCP server badge means it applies to MCP servers only.")
 
 ### Select the MCP server
 
-On the **Scope** step, the wizard notes that this policy applies to individual MCP servers. Select the `learn`
-MCP server, then select **Next**.
+On the **Scope** step, the wizard notes that this policy applies to individual MCP servers. Check
+**Microsoft Learn**, the `learn` MCP server, which the list shows with the type **Tool**. Then select **Next**.
 
 ### Choose the evaluation stages
 
@@ -708,7 +710,9 @@ evaluation runs on behalf of the caller. Select both stages:
 - **Before tool invocation: Evaluate the request payload**
 - **After tool invocation: Evaluate the tool output**
 
-You must select at least one stage. Then select **Create**.
+You must select at least one stage. Then select **Create**. The **Policies** list shows the new
+**Agent 365 tool threat protection** policy on **MCP server: Microsoft Learn**, running
+**Before tool execution and Before returning the tool result**.
 
 </details> <!-- gh -->
 <!-- track: iac | Bicep + azd -->
@@ -757,8 +761,8 @@ if ($?) { Write-Host "🔐 Tool threat protection is on for the learn MCP server
 
 ### Confirm the policy
 
-The new policy appears in the portal's **Policies** overview. The policy is stored on the MCP server, so you can
-also read it with `az aigateway mcp show`:
+The new policy appears in the portal's **Policies** list. The policy is stored on the MCP server, so you can also
+read it with `az aigateway mcp show`:
 
 ```bash
 # Read the MCP server's policies: expect one toolThreatProtection entry with both stages on
@@ -788,14 +792,19 @@ The list includes an entry with `"type": "toolThreatProtection"`, `"preInvocatio
 
 ## Understand verdicts and failures
 
-The gateway doesn't decide what's risky. Microsoft Defender does, in the policy mode your security team sets in
-Microsoft Defender. You can't change that mode at the gateway.
+The gateway doesn't decide what's risky. Agent 365 decides which Microsoft Defender and Microsoft Purview checks run,
+and Defender's runtime protection runs in the policy mode that your security team sets in Microsoft Defender. You
+can't change that mode at the gateway.
 
 | Defender policy mode | Behavior |
 |---|---|
-| **Disabled** | A permanent fail-open state. No inspection occurs. |
-| **Audit** | Tool calls are logged without blocking. If the service lags or drops out, calls fail open. |
-| **Block** | Explicit enforcement that fails closed. Withholding a result after invocation requires Block mode. |
+| **Disabled** | Defender skips its inspection. The gateway's policy stays on. |
+| **Audit** | Defender records findings without blocking threats. Token-exchange, transport, and verdict failures still fail closed at the gateway. |
+| **Block** | Defender enforces its checks and can return a block verdict, which the gateway returns as `ToolEvaluationDenied`. |
+
+Whatever the mode, the gateway continues only on a completed Defender evaluation with an **allow** verdict. If the
+response reports a skipped or failed-open Defender evaluation, the gateway returns `ToolEvaluationUnavailable`
+instead of allowing the call.
 
 When a call fails closed, the caller sees one of these codes in the result's
 `_meta["com.microsoft.azure.ai.gateway/denial"].code`:
@@ -864,8 +873,9 @@ isError: false (the result was returned)
 ...
 ```
 
-A harmless question about Azure is allowed at both stages, so the result comes back as before. If you see
-`ToolEvaluationUnavailable` or `ToolEvaluationDenied` instead, see
+A harmless question about Azure is allowed at both stages, so the result comes back as before. The first call
+right after you add the policy can return `ToolEvaluationUnavailable` with "could not be evaluated by the security
+service". Wait a minute and call again. If you still see `ToolEvaluationUnavailable` or `ToolEvaluationDenied`, see
 [Troubleshooting](../TROUBLESHOOTING.md#lab-19-tool-threat-protection).
 
 ### Call it with a runtime key only
@@ -895,7 +905,7 @@ HTTP status: 200
 isError: true
 Denial code: ToolEvaluationIdentityRequired
 Correlation ID: <guid>
-Tool '...' requires a validated delegated caller token.
+Tool 'learn_microsoft_docs_search' requires a validated delegated caller token. Do not retry this tool.
 ```
 
 The denial text can differ. The code is what matters.
@@ -926,7 +936,7 @@ steps. Find your calls by time and compare the allowed call with the key-only ca
   recommends the same phased rollout, with alerts reviewed in the Microsoft Defender portal.
 - **Automate the policy.** The policy is the `toolThreatProtection` entry in the MCP server's
   `properties.policies`, as described in
-  [Protect tool calls with Defender and Purview](https://learn.microsoft.com/azure/ai-gateway/policy-tool-threat).
+  [Agent 365 tool threat protection](https://ai.gateway.azure.com/docs/policies/tool-threat-protection).
   The Bicep + azd track declares it in `infra/protected-tool-server.bicep`. With the Azure CLI,
   `az aigateway mcp update --policies` replaces the whole `policies` array, so read the current array first and
   keep any other policies, such as the request rate limits from
@@ -976,8 +986,9 @@ steps. Find your calls by time and compare the allowed call with the key-only ca
 
 ### Delete the policy
 
-In the AI Gateway portal, select **Policies**, select the **Agent 365 tool threat protection** policy, and select
-**Delete**. Confirm with **Delete**. Tool calls with a runtime key work again.
+In the AI Gateway portal, select **Policies**. On the row of the **Agent 365 tool threat protection** policy,
+select **More actions** (**…**), then **Delete**. Confirm with **Delete** in **Delete this policy?**. Tool calls
+with a runtime key work again.
 
 ### Remove the role assignment
 
@@ -1041,7 +1052,7 @@ because the Bicep + azd track created its own gateway.
 - [Govern MCP servers with Agent 365](../20-agent-365-governance/README.md)
 - [Control which tools agents can call](../05-mcp-tool-controls/README.md)
 - [Lock down backend traffic with private networking](../18-private-networking/README.md)
-- [Protect tool calls with Defender and Purview](https://learn.microsoft.com/azure/ai-gateway/policy-tool-threat) on Microsoft Learn
+- [Agent 365 tool threat protection](https://ai.gateway.azure.com/docs/policies/tool-threat-protection) in the AI Gateway docs
 
 <!-- gh:begin footer: generated by "npm run sync" from the metadata, do not edit -->
 
@@ -1053,5 +1064,5 @@ because the Bicep + azd track created its own gateway.
 | :-- | :-: | --: |
 | [18 · Private networking](../18-private-networking/README.md) | [All labs](../README.md) | [20 · Agent 365 governance](../20-agent-365-governance/README.md) |
 
-<sub>Learning paths: [Security & compliance](../README.md#learning-paths) (6 of 7)</sub>
+<sub>Learning paths: [Security & compliance](../README.md#learning-paths) (6 of 8)</sub>
 <!-- gh:end -->

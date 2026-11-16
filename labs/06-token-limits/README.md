@@ -97,7 +97,7 @@ echo "🔖 Model alias: $AI_GATEWAY_MODEL"
 
 # Paste the runtime key that you created in Access › API keys, without showing it
 # Don't commit the key or write it to a file
-read -rsp "AI Gateway API key: " AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
+printf "AI Gateway API key: " && read -rs AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 ```
 </details> <!-- gh -->
@@ -144,11 +144,12 @@ gateway answers `429 Too Many Requests` with a `Retry-After` header and never ca
 |---|---|---|---|
 | Allowance | **Allowed tokens** | `count` | Positive integer |
 | Window | **Time period** | `period` | `minute` (TPM), `hour`, `day` (quota) |
-| Who gets a counter | **Counter dimensions** | `counterKey` | An array: `["identity"]` (each API key, or each Entra tenant + object ID), `["ipAddress"]`, or both |
+| Who gets a counter | **Counter dimensions** | `counterKey` | A required array: `["identity"]` (each API key, or each Entra tenant + object ID), `["ipAddress"]`, both, or `[]` for one allowance that all callers share |
 
 You can attach a token limit to a **model** (applies to every alias that targets it), to an **alias** (only
-callers that use that name), or to the **gateway** (a default for every compatible model, including models you
-add later). Every applicable policy is checked, and any one of them can block the request.
+callers that use that name), or to the **gateway** (every compatible model and alias, including ones you add
+later). A gateway limit keeps one counter per caller across all of those assets, not one per model. Every
+applicable policy is checked, and any one of them can block the request.
 
 > [!NOTE]
 > The backend deployment has its own capacity, shown as **Token rate limit (TPM)** on the model's details page.
@@ -172,15 +173,15 @@ different route, explained in its first step.
 ### Start the policy wizard
 
 Open the [AI Gateway portal](https://ai.gateway.azure.com) and select your gateway from the gateway switcher.
-Select **Policies** › **Add policy**. On the **Type** step, under **Cost & Rate Limits**, select
+Select **Policies** › **Add policy**. On the **Type** step, under **Cost and rate limits**, select
 **Token rate limit**, then **Next**.
 
-![The Add policy wizard on the Type step](../assets/screens/policy-add-wizard.png "Policies › Add policy opens a three-step wizard: Type, Scope, Configure.")
+![The Type step of the Add policy wizard, with Token rate limit selected under Cost and rate limits](../assets/screens/token-limits-01-policy-type.webp "Policies › Add policy opens a three-step wizard: Type, Scope, Details.")
 
 ### Choose where the limit applies
 
 On the **Scope** step, select **Individual assets** ("Apply only to selected models, aliases, or MCP servers").
-Select your model, then **Next**.
+Select the row of type **Model** for your model, then **Next**.
 
 > [!TIP]
 > **Gateway** scope applies the limit to every compatible asset, including models you add later. It's a good
@@ -188,19 +189,19 @@ Select your model, then **Next**.
 
 ### Configure the allowance
 
-On the **Details** step (**Configure** in some portal versions), under **Parameters**, set:
+On the **Details** step, under **Policy details**, set:
 
 | Field | Value |
 |---|---|
 | **Time period** | **Per minute** |
-| **Allowed tokens** | `1000` |
-| **Counter dimensions** | **Caller identity** |
+| **Allowed tokens** | `1000` (the default is `10000`) |
+| **Counter dimensions** | **Identity** (the default) |
 
-Select **Create**. The policy appears in the **Policies** list with your model as its scope.
+Select **Create**. The portal confirms **Policy created**.
 
 > **Checkpoint**
-> **Policies** lists a **Token rate limit** for your model with 1,000 tokens per minute and the
-> **Caller identity** counter.
+> **Policies** lists a **Token rate limit** for your model, with **1,000 tokens / minute per caller identity**
+> under **Configuration**.
 
 </details> <!-- gh -->
 <!-- track: cli | Azure CLI -->
@@ -271,7 +272,7 @@ always read it first and keep the policies you didn't mean to change.
 ```bash
 # Read your subscription ID, and build the model's management URL, with the API version
 SUB="$(az account show --query id -o tsv)"
-URL="https://management.azure.com/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.ApiManagement/aigateways/$GATEWAY/workspaces/default/modelProviders/$PROVIDER/models/$MODEL?api-version=2025-09-01-preview"
+URL="https://management.azure.com/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.ApiManagement/aigateways/$GATEWAY/workspaces/default/modelProviders/$PROVIDER/models/$MODEL?api-version=2026-11-01"
 echo "🆔 Subscription: $SUB"
 
 # Read the model's policies, so that you can keep the ones you don't change
@@ -302,7 +303,7 @@ az rest --method patch --url "$URL" --body "{\"properties\":{\"policies\":$POLIC
 ```powershell title="PowerShell"
 # Read your subscription ID, and build the model's management URL, with the API version
 $SUB = az account show --query id -o tsv
-$URL = "https://management.azure.com/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.ApiManagement/aigateways/$GATEWAY/workspaces/default/modelProviders/$PROVIDER/models/$MODEL`?api-version=2025-09-01-preview"
+$URL = "https://management.azure.com/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.ApiManagement/aigateways/$GATEWAY/workspaces/default/modelProviders/$PROVIDER/models/$MODEL`?api-version=2026-11-01"
 Write-Host "🆔 Subscription: $SUB"
 
 # Read the model, keep every policy except the token limit, and add the new one:
@@ -469,30 +470,30 @@ param period string = 'minute'
 param counterKey array = [ 'identity' ]
 
 #disable-next-line BCP081
-resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
+resource gateway 'Microsoft.ApiManagement/aigateways@2026-11-01' existing = {
   name: gatewayName
 }
 
 #disable-next-line BCP081
-resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' existing = {
+resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2026-11-01' existing = {
   parent: gateway
   name: 'default'
 }
 
 #disable-next-line BCP081
-resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2025-09-01-preview' existing = {
+resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2026-11-01' existing = {
   parent: workspace
   name: providerName
 }
 
 #disable-next-line BCP081
-resource model 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2025-09-01-preview' existing = {
+resource model 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2026-11-01' existing = {
   parent: provider
   name: modelName
 }
 
 #disable-next-line BCP081
-resource limitedAlias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2025-09-01-preview' = {
+resource limitedAlias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01' = {
   parent: workspace
   name: aliasName
   properties: {
@@ -690,20 +691,20 @@ Expected output (your token counts will differ):
 ```text
 🚦 Expect 429 Too Many Requests once the 1,000-token allowance runs out:
 Request  Status  Retry-After  Tokens used  Backend tokens left
-1        200     -            231          9977
-2        200     -            214          9977
-3        200     -            220          9977
-4        200     -            221          9977
-5        200     -            223          9977
-6        200     -            229          9977
-7        429     1            -            -
-8        200     -            222          9977
+1        200     -            211          9977
+2        200     -            208          9977
+3        200     -            205          9977
+4        200     -            215          9977
+5        200     -            225          9977
+6        200     -            203          9977
+7        429     3            -            -
+8        429     3            -            -
 ```
 
-The gateway stops this caller once it passes 1,000 tokens, while the backend deployment still has most of its
-capacity left: that's the point of a per-caller limit. `Retry-After` says how many seconds to wait, and a request sent
-after that wait can succeed again, as request 8 shows. The gateway doesn't add its own remaining-tokens header, so
-watch the status and `Retry-After`.
+The gateway stops this caller once it passes 1,000 tokens, while the backend deployment still has most of its capacity
+left: that's the point of a per-caller limit. `Retry-After` says how many seconds to wait, and a request sent after
+that wait can succeed again. The gateway doesn't add its own remaining-tokens header, so watch the status and
+`Retry-After`.
 
 > [!NOTE]
 > The gateway counts a request's tokens after the response, and its counters catch up within a few seconds, so a
@@ -722,14 +723,16 @@ curl -i "${AI_GATEWAY_URL%/}/default/models/openai/v1/chat/completions" \
   -d "{\"model\":\"$AI_GATEWAY_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}]}"
 ```
 
-The status line is `HTTP/1.1 429`, and `Retry-After` tells the client how many seconds to wait. Well-behaved
-SDKs, including the OpenAI SDKs, honor `Retry-After` automatically when they retry.
+The status line is `HTTP/2 429`, and the body is
+`{ "statusCode": 429, "message": "Token limit is exceeded. Try again in 5 seconds." }`, with your own wait.
+`Retry-After` tells the client how many seconds to wait. Well-behaved SDKs, including the OpenAI SDKs, honor
+`Retry-After` automatically when they retry.
 
 ### Prove the counter is per caller
 
 Create a second runtime key in **Access** › **API keys**, set it as `AI_GATEWAY_API_KEY` in a new terminal, and
 run the burst again while the first key is still throttled. The second key starts with a full allowance,
-because **Caller identity** gives every key its own counter.
+because the **Identity** counter dimension gives every key its own counter.
 
 ### Find the throttled calls in Monitoring
 
@@ -749,11 +752,11 @@ If you configured Application Insights in [Monitor usage, cost, and traces](../1
 
 - **Set a gateway-wide default.** Add a second **Token rate limit** with **Gateway** scope and a generous
   allowance, such as `100000` per minute. New models get a guardrail the moment you import them, and you keep
-  the stricter model or alias limits on top.
+  the stricter model or alias limits on top. Each caller gets one allowance across all models and aliases.
 - **Add a daily quota.** Combine a per-minute limit (smooths bursts) with a **Per day** limit (caps total use).
   Both are checked on every request.
-- **Limit by IP address.** For a public demo with one shared key, use **Caller IP address** so each visitor
-  gets their own counter.
+- **Limit by IP address.** For a public demo with one shared key, use the **IP address** counter dimension so
+  each visitor gets their own counter.
 - **Budget in dollars instead of tokens.** Token counts don't reflect model prices. To cap spend, continue
   with [Enforce cost budgets](../07-cost-budgets/README.md).
 
@@ -767,8 +770,9 @@ to a production value, before you continue.
 
 ### Remove the policy
 
-Select **Policies**, open the **Token rate limit** you created, and delete it. If you created a second runtime
-key for testing, revoke it in **Access** › **API keys**.
+Select **Policies**. On the row of the **Token rate limit** you created, select **More actions** (⋮) ›
+**Delete**, then **Delete** again in **Delete this policy?**. If you created a second runtime key for testing,
+revoke it in **Access** › **API keys**.
 
 </details> <!-- gh -->
 <!-- track: cli | Azure CLI -->
@@ -845,7 +849,9 @@ the Bicep + azd track created its own gateway.
 - [Enforce cost budgets with per-key overrides](../07-cost-budgets/README.md): cap spend in dollars per caller.
 - [Monitor usage, cost, and traces](../13-monitoring/README.md): see which callers hit their limits.
 - [Publish model aliases across providers](../03-multi-provider-aliases/README.md): give each audience its own alias and limit.
-- Docs: [Policies in AI Gateway](https://ai.gateway.azure.com/docs/policies).
+- Docs: [Token rate limit](https://ai.gateway.azure.com/docs/policies/token-rate-limit),
+  [Limit requests by rate, tokens, or cost](https://ai.gateway.azure.com/docs/policies/limit-requests), and
+  [Policies in AI Gateway](https://ai.gateway.azure.com/docs/policies).
 
 <!-- gh:begin footer: generated by "npm run sync" from the metadata, do not edit -->
 
@@ -857,5 +863,5 @@ the Bicep + azd track created its own gateway.
 | :-- | :-: | --: |
 | [05 · Tool allow & block lists](../05-mcp-tool-controls/README.md) | [All labs](../README.md) | [07 · Cost budgets](../07-cost-budgets/README.md) |
 
-<sub>Learning paths: [FinOps & operations](../README.md#learning-paths) (1 of 5)</sub>
+<sub>Learning paths: [FinOps & operations](../README.md#learning-paths) (1 of 6)</sub>
 <!-- gh:end -->

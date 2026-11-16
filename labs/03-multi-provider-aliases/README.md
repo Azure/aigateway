@@ -99,7 +99,7 @@ export AI_GATEWAY_URL="https://$(az aigateway show -g "$RG" -n "$GATEWAY" --quer
 echo "🌐 Runtime URL: $AI_GATEWAY_URL"
 
 # Paste the gateway runtime key from lab 02, not the Anthropic key. Don't commit it or write it to a file.
-read -rsp "AI Gateway API key: " AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
+printf "AI Gateway API key: " && read -rs AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 ```
 </details> <!-- gh -->
@@ -154,7 +154,8 @@ alias only to a model that supports the same interface.
 ## Add Anthropic as a custom provider
 
 The gateway connects to these providers. Microsoft Foundry and Azure OpenAI can use the gateway's managed
-identity. Every other provider is a custom provider, and the gateway stores its API key.
+identity. AWS Bedrock has its own wizard. Every other provider is a custom provider. For both, the gateway stores
+the API key.
 
 | | Provider | How you add it | Gateway authenticates with |
 |---|---|---|---|
@@ -162,7 +163,7 @@ identity. Every other provider is a custom provider, and the gateway stores its 
 | <img src="../assets/providers/azure-openai.png" alt="" height="24"> | Azure OpenAI | **Models from Microsoft Foundry** | Managed identity (recommended) or API key |
 | <img src="../assets/providers/openai.png" alt="" height="24"> | OpenAI | **Models from a custom provider** | API key |
 | <img src="../assets/providers/anthropic.png" alt="" height="24"> | Anthropic | **Models from a custom provider** | API key |
-| <img src="../assets/providers/aws-bedrock.png" alt="" height="24"> | AWS Bedrock | **Models from a custom provider** | API key |
+| <img src="../assets/providers/aws-bedrock.png" alt="" height="24"> | AWS Bedrock | **Models from AWS Bedrock** | Bedrock API key (the gateway adds the `Bearer` prefix) |
 | <img src="../assets/providers/google-vertex.png" alt="" height="24"> | Google Vertex AI | **Models from a custom provider** | API key |
 | <img src="../assets/providers/custom-models.png" alt="" height="24"> | Any other OpenAI-compatible endpoint | **Models from a custom provider** | API key |
 
@@ -184,7 +185,7 @@ On the **Provider** step, select **Create new provider** and fill in **Basic inf
 | Field | Value |
 |---|---|
 | **Display name** | `Anthropic` |
-| **Provider name** | `anthropic` (used in the resource ID; you can't change it later) |
+| **Provider name** | `anthropic`, which the wizard fills in from the display name. It's used in the resource ID, and you can't change it later. |
 | **Description** | Optional |
 
 Select **Next**.
@@ -196,9 +197,9 @@ On the **Endpoint** step, fill in **Endpoint and authentication**:
 | Field | Value for Anthropic |
 |---|---|
 | **Base endpoint URL** | `https://api.anthropic.com` |
-| **Header name** | `x-api-key` |
+| **Header name** | `x-api-key`, in place of the default `Authorization` |
 | **API key** | Your Anthropic API key |
-| **Authentication scheme** | Leave **Include Bearer in the authorization header value** cleared. Anthropic expects the raw key. |
+| **Authentication scheme** | Leave **Include Bearer scheme in the authorization header value** cleared. Anthropic expects the raw key. |
 
 The wizard lists the provider's models by calling `<base endpoint URL>/v1/models`, so leave `/v1` off the base
 URL. The key is stored in the gateway. Apps that call the gateway never receive it.
@@ -209,27 +210,29 @@ For other providers, change these values:
 |---|---|---|---|
 | OpenAI | `https://api.openai.com` | `Authorization` | Selected, so the gateway sends `Bearer <key>` |
 | Other OpenAI-compatible endpoints | The URL in front of `/v1/...` | The header the endpoint expects | As the endpoint expects |
-| AWS Bedrock, Google Vertex AI | The provider's OpenAI-compatible endpoint, without the `/v1/...` path | The header that the provider's API key goes in | As the provider expects |
+| Google Vertex AI | The provider's OpenAI-compatible endpoint, without the `/v1/...` path | The header that the provider's API key goes in | As the provider expects |
 
 Select **Next**.
 
 ### Choose the models and their aliases
 
-The **Models** step shows **Discovering available models…** while it calls the provider. Then select **Add** ›
-**Individual model** and add each model:
+The **Models** step calls the provider to discover its models. Select **Add** › **Individual model**, fill in the
+**Add model** dialog for each model, and select **Add**:
 
 | Field | First model | Second model |
 |---|---|---|
 | **Backend model** | `claude-haiku-5-5` | `claude-sonnet-5-5` |
-| **Supported endpoints** | **Anthropic messages** | **Anthropic messages** |
-| **Callable alias** | Change it to `support-chat` | Keep the default, `anthropic/claude-sonnet-5-5` |
+| **Create an alias** | Selected | Selected |
+| **Alias** | Change the default, `anthropic/claude-haiku-5-5`, to `support-chat` | Keep the default, `anthropic/claude-sonnet-5-5` |
+| **API format** | **Anthropic Messages**. **Provider path** fills in as `/v1/messages`. | **Anthropic Messages** |
 
-If discovery fails or times out, you can still add the models by hand. Select **Add models**.
+If the step shows **No models discovered.**, check the base URL and the key. You can still add the models by
+hand. When **Included** lists both models, select **Add models**.
 
 > **Checkpoint**
 > **Models** lists the two Claude models of the `Anthropic` provider and the aliases `support-chat` and
-> `anthropic/claude-sonnet-5-5`. Open a model: its **Overview** shows the Anthropic Messages endpoint,
-> `<gateway-url>/default/models/anthropic/v1/messages`.
+> `anthropic/claude-sonnet-5-5`. Open a model: under **Endpoints**, its **Overview** shows the **Messages**
+> endpoint, `<gateway-url>/default/models/anthropic/v1/messages`.
 
 </details> <!-- gh -->
 <!-- track: cli | Azure CLI -->
@@ -238,8 +241,8 @@ If discovery fails or times out, you can still add the models by hand. Select **
 ### Check the variables
 
 The provider, its models, and the aliases are child resources of the gateway's `default` workspace. You set
-`RG`, `GATEWAY`, `WS` (the workspace URL), and `API` in [Before you begin](#before-you-begin). Check that they
-point at your gateway by listing its model providers. The command is the same in Bash and PowerShell.
+`RG`, `GATEWAY`, `PROVIDER`, `FAST_MODEL`, and `SMART_MODEL` in [Before you begin](#before-you-begin). Check that
+they point at your gateway by listing its model providers. The command is the same in Bash and PowerShell.
 
 ```bash
 # List the gateway's model providers, to check that the variables point at your gateway
@@ -258,7 +261,7 @@ output, like `az aigateway model-provider show`, never includes the key.
 
 ```bash title="Bash"
 # Read the Anthropic key from a hidden prompt, so that it never lands in your shell history
-read -rsp "Anthropic API key: " ANTHROPIC_API_KEY && echo
+printf "Anthropic API key: " && read -rs ANTHROPIC_API_KEY && echo
 echo "🔑 Anthropic key: in ANTHROPIC_API_KEY (${#ANTHROPIC_API_KEY} characters, not shown)"
 
 # Add Anthropic as a custom provider: the gateway stores the key and sends it in the x-api-key header
@@ -340,6 +343,10 @@ foreach ($model in $FAST_MODEL, $SMART_MODEL) {
 > holds the provider path: `/v1/messages` for Anthropic, `/v1/chat/completions` or `/v1/responses` for
 > OpenAI-compatible endpoints. Leave out `--api-format` for custom providers. If the service rejects either
 > command, create the provider and models with the **Portal** tab, then continue here with the aliases.
+>
+> The GA management API (`2026-11-01`) stores the provider as `modelProviderType: "Custom"`, the URL in
+> `custom.endpoint.url`, and the key in `authentication.headers`, a list with exactly one `{name, value}` header.
+> A `GET` returns the header name but never its value, so a full `PUT` to the provider must send the key again.
 
 ### Create the aliases
 
@@ -511,14 +518,15 @@ output ANTHROPIC_SMART_MODEL string = anthropic.outputs.smartModel
 <!-- gh:end -->
 
 `infra/anthropic-aliases.bicep` declares the provider, the two backend models, and the three aliases, each with its
-callable name in `aliasName` and its token limit in `policies`. It only references the gateway, so you can also
-deploy it on its own to a gateway you already have, with `az deployment group create`:
+callable name in `aliasName` and its token limit in `policies`. The provider's key goes in `authentication.headers`,
+and every deployment sends it again, because the gateway never returns it. The template only references the gateway,
+so you can also deploy it on its own to a gateway you already have, with `az deployment group create`:
 
 <!-- include: infra/anthropic-aliases.bicep -->
 <!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
 📄 [`infra/anthropic-aliases.bicep`](infra/anthropic-aliases.bicep)
 
-<details><summary>Show all 130 lines</summary>
+<details><summary>Show all 135 lines</summary>
 
 ```bicep
 // Adds Anthropic to an existing AI Gateway as a custom provider, registers two Claude models, and publishes them
@@ -555,33 +563,38 @@ param supportChatTokensPerMinute int = 20000
 param batchChatTokensPerMinute int = 2000
 
 #disable-next-line BCP081
-resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
+resource gateway 'Microsoft.ApiManagement/aigateways@2026-11-01' existing = {
   name: gatewayName
 }
 
 #disable-next-line BCP081
-resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' existing = {
+resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2026-11-01' existing = {
   parent: gateway
   name: 'default'
 }
 
-// Leave /v1 off the endpoint. Anthropic expects the raw key in x-api-key, with no "Bearer" scheme.
+// Leave /v1 off the endpoint. Anthropic expects the raw key in x-api-key, with no "Bearer" scheme. A custom provider
+// takes exactly one header, and reads hide its value, so every deployment sends the key again.
 #disable-next-line BCP081
-resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2025-09-01-preview' = {
+resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2026-11-01' = {
   parent: workspace
   name: providerName
   properties: {
-    kind: 'Custom'
+    modelProviderType: 'Custom'
     displayName: 'Anthropic'
+    description: 'Anthropic Messages API, with the key in the x-api-key header.'
     custom: {
-      endpoint: 'https://api.anthropic.com'
-      authentication: {
-        kind: 'ApiKey'
-        apiKey: {
-          headerName: 'x-api-key'
+      endpoint: {
+        url: 'https://api.anthropic.com'
+      }
+    }
+    authentication: {
+      headers: [
+        {
+          name: 'x-api-key'
           value: anthropicApiKey
         }
-      }
+      ]
     }
   }
 }
@@ -589,7 +602,7 @@ resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@
 // Custom providers list the provider path in supportedEndpoints and leave out apiFormat. Names may only contain
 // lowercase letters, digits, and hyphens; modelName keeps the provider's real model ID.
 #disable-next-line BCP081
-resource models 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2025-09-01-preview' = [for name in [ fastModel, smartModel ]: {
+resource models 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2026-11-01' = [for name in [ fastModel, smartModel ]: {
   parent: provider
   name: name
   properties: {
@@ -627,7 +640,7 @@ var aliases = [
 ]
 
 #disable-next-line BCP081
-resource aliasResources 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2025-09-01-preview' = [for alias in aliases: {
+resource aliasResources 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01' = [for alias in aliases: {
   parent: workspace
   name: alias.name
   properties: {
@@ -674,7 +687,7 @@ azd env new aigw-lab03 --location eastus2 --subscription "$(az account show --qu
   echo "📝 azd environment aigw-lab03 deploys to eastus2"
 
 # Read the Anthropic key from a hidden prompt, so that it never lands in your shell history
-read -rsp "Anthropic API key: " ANTHROPIC_API_KEY && echo
+printf "Anthropic API key: " && read -rs ANTHROPIC_API_KEY && echo
 echo "🔑 Anthropic key: in ANTHROPIC_API_KEY (${#ANTHROPIC_API_KEY} characters, not shown)"
 
 # Store the key in the azd environment, which passes it to the template's secure parameter
@@ -842,6 +855,12 @@ with a `thinking` block, and thinking counts toward `max_tokens`. Read the `text
 > The call prints a `🤖` Claude reply and `✨ Backend model: claude-haiku-5-5`. Your app never sent an Anthropic
 > key.
 
+> [!TIP]
+> To stream the reply, add `"stream": true` to the body and pass `-N` to `curl`. The gateway answers with
+> `text/event-stream` and forwards Anthropic's events as they arrive: `message_start`, `content_block_delta`,
+> `message_delta`, and `message_stop`. Streaming Anthropic Messages through the gateway works since the
+> [November 6 release](https://ai.gateway.azure.com/docs/releases#release-2026-11-06).
+
 ## Give one backend model two aliases
 
 The batch team's nightly job shouldn't be able to use up the capacity that the support app needs. Point a second
@@ -854,29 +873,33 @@ Policies on the backend model apply to every alias that targets it.
 
 ### Add the batch-chat alias
 
-Select **Models** › **Aliases** › **Add alias**. The **Create alias** wizard has four steps:
+Select **Models** › **Aliases** › **Add alias**. The **Create alias** wizard has seven steps:
 
 | Step | What to do |
 |---|---|
 | **Basics** | Set **Alias name** to `batch-chat` and **Description** to `Nightly batch summaries`. |
-| **Select models** | Under **Available backend models**, select `claude-haiku-5-5` from the `Anthropic` provider. |
-| **Priority and weights** | Keep the defaults, priority `0` and weight `1`. With one backend model, it gets all requests. |
+| **Auto model selection (preview)** | Leave **Choose a model based on the prompt** off. |
+| **Select models** | Select `claude-haiku-5-5` from the `Anthropic` provider. The models of one alias must share an API format. |
+| **Session affinity** | Keep the default. Session affinity needs several backend models. |
+| **Priorities and weights** | Keep the defaults, priority `0` and weight `1`. With one backend model, it gets all requests. |
+| **Failure handling** | Keep the default, with no failure rules. |
 | **Review** | Check the summary. |
 
-Select **Create**. You can also start from **Models** › **Add** › **Alias for an existing model**.
+Select **Create**. You can also start from **Models** › **Add** › **Alias for existing models**.
 
 ### Limit each alias
 
-Select **Policies** › **Add policy**. On the **Type** step, select **Token rate limit**, then **Next**. On the
-**Scope** step, select **Individual assets**, select the `batch-chat` alias, then **Next**. On the
-**Configure** step, set **Time period** to **Per minute**, **Allowed tokens** to `2000`, and **Counter
-dimensions** to **Caller identity**. Select **Create**.
+Select **Policies** › **Add policy**. On the **Type** step, select **Token rate limit** under **Cost and rate
+limits**, then **Next**. On the **Scope** step, select **Individual assets**, select the `batch-chat` alias, then
+**Next**. On the **Details** step, set **Time period** to **Per minute**, **Allowed tokens** to `2000`, and
+**Counter dimensions** to **Identity**. Select **Create**.
 
 Repeat for the `support-chat` alias with `20000` **Allowed tokens**.
 
 > **Checkpoint**
-> **Policies** lists two **Token rate limit** policies, one scoped to `batch-chat` and one scoped to
-> `support-chat`.
+> In **Models** › **Aliases**, open `batch-chat` and select its **Policies** tab. It lists a **Token rate limit**
+> with the configuration `2,000 tokens / minute per caller identity` and the scope **This alias**. The
+> `support-chat` alias lists `20,000 tokens / minute per caller identity`.
 
 </details> <!-- gh -->
 <!-- track: cli | Azure CLI -->
@@ -972,12 +995,12 @@ The support team wants better answers. Point `support-chat` at the bigger model.
 
 ### Edit the alias
 
-In **Models** › **Aliases**, open the `support-chat` alias and select **Edit**. **Edit alias** has the same
-steps as **Create alias**. On **Select models**, clear `claude-haiku-5-5` and select `claude-sonnet-5-5` from
-the `Anthropic` provider. Keep the defaults on **Priority and weights**, select **Next** until you reach
-**Review**, then select **Save**. New requests use the selected backend model immediately.
+In **Models** › **Aliases**, open the `support-chat` alias and select **Edit**. **Edit alias** shows the sections
+of **Create alias** on one page. Under **Select models**, clear `claude-haiku-5-5` and select `claude-sonnet-5-5`
+from the `Anthropic` provider, then select **Save**. New requests use the selected backend model within about
+30 seconds.
 
-![The Priority and weights step of the alias wizard, with a backend model at priority 0 and two at priority 1 split 75/25](../assets/screens/models-alias-routing.png "Edit alias changes the backend models behind the name. The alias name that clients send stays the same. With several backend models, Priority and weights decides which one serves each request, as in lab 22.")
+![The Priorities and weights step of Create alias, with two backend models at priority 0 split 80/20](../assets/screens/model-routing-01-priorities-weights.webp "Edit alias changes the backend models behind the name. The alias name that clients send stays the same. With several backend models, Priorities and weights decides which one serves each request, as in lab 22.")
 
 ### Check that the policy stayed
 
@@ -1205,12 +1228,15 @@ open `support-chat` and select **Policies**.
   ```
 
 - **Move one alias between providers.** Add OpenAI as a second custom provider with the values from the
-  provider table, and register `gpt-5-mini` with **OpenAI chat completions**. Create an alias such as
+  provider table, and register `gpt-5-mini` with the **OpenAI Chat Completions** API format. Create an alias such as
   `team-chat` on your Foundry `gpt-5-mini`, then retarget it to the OpenAI model. Both speak Chat Completions,
   so clients don't notice the switch.
 - **Layer the limits.** Add a token limit to the `claude-haiku-5-5` backend model as in
   [Throttle tokens per caller with token limits](../06-token-limits/README.md). It applies to every alias that
   targets the model, on top of each alias's own limit.
+- **Read the product docs.** [Model API formats and providers](https://ai.gateway.azure.com/docs/models/api-formats-and-providers)
+  lists the supported APIs and providers, and [Create and update a model alias](https://ai.gateway.azure.com/docs/models/create-alias)
+  covers every step of the alias wizard.
 
 ## Clean up
 
@@ -1315,5 +1341,5 @@ you created the key only for this lab, delete it in the Claude Console.
 | :-- | :-: | --: |
 | [02 · First model call](../02-first-model-call/README.md) | [All labs](../README.md) | [22 · Priority & weighted routing](../22-model-routing/README.md) |
 
-<sub>Learning paths: [Platform engineer](../README.md#learning-paths) (3 of 9) · [App & agent developer](../README.md#learning-paths) (2 of 10)</sub>
+<sub>Learning paths: [Platform engineer](../README.md#learning-paths) (3 of 11) · [App & agent developer](../README.md#learning-paths) (2 of 13)</sub>
 <!-- gh:end -->

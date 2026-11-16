@@ -7,11 +7,12 @@ duration: 20
 tracks: [portal]
 order: 0
 illustration: diagrams/architecture.svg
-tags: [concepts, architecture, overview, aliases, MCP, policies, OpenTelemetry]
+tags: [concepts, architecture, overview, aliases, routing, failover, MCP, policies, Agent hooks, OpenTelemetry]
 objectives:
   - Describe what Azure AI Gateway does and where it sits between your apps, agents, models, and tools
   - Follow a request through authentication, policies, alias routing, the backend, and telemetry
   - Explain the difference between a backend model, an alias, and an MCP server
+  - Pick the routing option an alias needs, from priorities and weights to backend conditions, auto model selection, session affinity, and failover
   - Predict which policies apply to a request and which status code a blocked request returns
   - Choose the learning path that matches your role
 -->
@@ -33,6 +34,7 @@ objectives:
 - Describe what Azure AI Gateway does and where it sits between your apps, agents, models, and tools
 - Follow a request through authentication, policies, alias routing, the backend, and telemetry
 - Explain the difference between a backend model, an alias, and an MCP server
+- Pick the routing option an alias needs, from priorities and weights to backend conditions, auto model selection, session affinity, and failover
 - Predict which policies apply to a request and which status code a blocked request returns
 - Choose the learning path that matches your role
 
@@ -57,8 +59,8 @@ what gets recorded.
 ![Azure AI Gateway architecture: clients call one gateway that routes to model providers and tool sources](../assets/diagrams/architecture.svg "Apps, agents, and coding agents call one gateway. The gateway authenticates them, applies policies, routes model calls through aliases, federates tools, and emits OpenTelemetry.")
 
 > [!NOTE]
-> Azure AI Gateway runs in a growing list of regions: run the command in
-> [Find the available regions](../SETUP.md#find-the-available-regions) to list them. For the
+> Azure AI Gateway is generally available since November 18, 2026, and runs in a growing list of regions: run the
+> command in [Find the available regions](../SETUP.md#find-the-available-regions) to list them. For the
 > gateway's pricing, see the [AI Gateway documentation](https://ai.gateway.azure.com/docs). Connected services, such
 > as Microsoft Foundry inference and Application Insights, are billed normally.
 
@@ -87,18 +89,20 @@ you can keep business APIs in API Management and send model and tool traffic thr
 | Building block | What it is | Example |
 |---|---|---|
 | **Gateway** | An Azure AI Gateway resource (`Microsoft.ApiManagement/aigateways`) in your subscription | `<gateway-url>` |
-| **Backend model** | A model at a provider, such as a Foundry deployment or an Anthropic model | `gpt-5-mini` at Microsoft Foundry |
-| **Alias** | The stable, gateway-wide name clients send in the `model` field | `chat` |
+| **Backend model** | A model at a provider: a chat, embedding, or decision model, such as a Foundry deployment or an Anthropic model | `gpt-5-mini` at Microsoft Foundry |
+| **Alias** | The stable, gateway-wide name clients send in the `model` field. Its routing settings pick a backend model for each request | `chat` |
 | **MCP server** | One governed MCP endpoint that federates tools from one or more sources | `/default/toolservers/<server-name>/mcp` |
-| **Policy** | A rule on the gateway or on one asset: limits, budgets, safety, filters | Token rate limit, Cost limit |
+| **Policy** | A rule on the gateway or on one asset: limits, budgets, safety, filters, and Agent hooks | Token rate limit, Cost limit |
 | **Access** | How callers authenticate: API keys or Microsoft Entra ID roles | `Authorization: Bearer` with a key or an Entra token |
 | **Managed identity** | How the gateway authenticates to backends | Foundry User role on the Foundry account |
 | **Monitoring** | OpenTelemetry metrics, logs, and traces for every call | Application Insights or any OTLP endpoint |
 
 Model calls use protocols developers already know. The OpenAI-compatible base URL is
-`https://<gateway-host>/default/models/openai/v1` (append `/responses` or `/chat/completions`), and
-Anthropic Messages lives at `/default/models/anthropic/v1/messages`. The gateway passes requests through without
-translating between OpenAI and Anthropic formats, so call each model on an interface it advertises.
+`https://<gateway-host>/default/models/openai/v1` (append `/responses`, `/chat/completions`, or `/embeddings`),
+Anthropic Messages lives at `/default/models/anthropic/v1/messages`, and Jev decision models answer TypeSafe System
+One requests at `/default/models/typesafe/v1/systemone`. The gateway passes requests through without translating
+between formats, so call each model on an interface it advertises. See
+[Model API formats and providers](https://ai.gateway.azure.com/docs/models/api-formats-and-providers).
 
 ## Follow one request
 
@@ -115,12 +119,16 @@ request and which status code the caller gets back.
 Three rules explain almost every response you'll see in these labs:
 
 1. **Policies run before the backend.** If any applicable policy blocks a request, the gateway answers right away
-   and never calls the backend.
+   and never calls the backend. The one exception is an Agent hooks policy that checks a tool's result: it runs
+   after the tool and can withhold the result, but it can't undo the tool's work.
 2. **Each block has a predictable status.** `401` for missing or invalid credentials, `403` for IP filters and
    cost limits (`LlmCostQuotaExceeded`), `429` with `Retry-After` for token and request rate limits, and `400` for
    content safety.
 3. **Everything is recorded.** Allowed and blocked calls both show up in **Monitoring**, along with the policies
    that affected them.
+
+A backend error is different from a policy block. When the serving backend fails, for example with `429` or a
+`5xx`, the alias's failover rules can retry it or switch to another backend before the caller sees the error.
 
 ## Models and aliases
 
@@ -135,9 +143,29 @@ it to a newer or cheaper model without a code change, and the alias keeps its ow
 
 ![Aliases decouple clients from backend models](../assets/diagrams/aliases.svg "Two aliases can share one backend model with different policies. Retargeting an alias needs no client change.")
 
-You can put models from Microsoft Foundry, Azure OpenAI, OpenAI, Anthropic, AWS Bedrock, Google Vertex AI, and
+You can put models from Microsoft Foundry, Azure OpenAI, OpenAI, Anthropic, Amazon Bedrock, Google Vertex AI, and
 custom OpenAI-compatible endpoints behind aliases. You try it in
-[Route models from several providers behind aliases](../03-multi-provider-aliases/README.md).
+[Route models from several providers behind aliases](../03-multi-provider-aliases/README.md). Besides chat models,
+an alias can publish embedding models for search and retrieval, which you try in
+[lab 26](../26-embeddings/README.md), or TypeSafe Jev decision models that return structured yes/no probabilities,
+choices, and rubric scores, which you try in [lab 31](../31-jev-decisions/README.md). An alias can't mix chat,
+embedding, and decision models: all its backends must share an API endpoint.
+
+### Routing options
+
+An alias can point to several backend models. Its routing settings decide which one serves each request:
+
+| Routing option | What it does | Try it |
+|---|---|---|
+| **Priorities and weights** | Prefers the available backends with the lowest priority number, and spreads requests across them by weight | [Lab 22](../22-model-routing/README.md) |
+| **Backend conditions** | Limits which requests a backend can receive, with a CEL expression over the request, such as a header | [Lab 27](../27-conditional-routing/README.md) |
+| **Auto model selection** | Uses Model Router to choose a smaller or larger model for each prompt, for your quality and cost objective. It's still emerging: see the [November 6, 2026 release](https://ai.gateway.azure.com/docs/releases#release-2026-11-06) | [Lab 28](../28-auto-model-selection/README.md) |
+| **Session affinity** | Sends requests with the same session key, read by a CEL expression, to the same backend when possible, so a conversation can reuse the provider's prompt cache | [Session affinity](https://ai.gateway.azure.com/docs/models/session-affinity) |
+| **Failover and retry** | Retries a failed backend or switches to the next eligible one, and can exclude a failing backend for a while | [Lab 29](../29-model-failover/README.md) |
+
+Clients keep calling the same alias while you change any of these settings. See
+[Models and routing](https://ai.gateway.azure.com/docs/models) and
+[Routing order](https://ai.gateway.azure.com/docs/models/routing-order) for how the settings combine.
 
 ## MCP servers and tools
 
@@ -167,9 +195,17 @@ that applies to it.
 | **Content safety** | Models, aliases, and MCP servers | `400` |
 | **IP filter** | Models, aliases, and MCP servers | `403` |
 | **Agent 365 tool threat protection** | MCP servers | Denies the tool call |
+| **Agent hooks** | MCP servers | Your decision service denies the tool call before it runs, or withholds its result after it runs |
 
 At gateway scope, the policy type decides which assets are relevant. A gateway-scope cost limit, for example,
-tracks one budget across all models.
+tracks one budget across all models. An asset policy adds a control: it doesn't replace a policy the asset inherits
+from the gateway.
+
+Agent hooks send the tool call's context to an external decision service that you run, and enforce its `allow` or
+`deny` verdict, for example to refuse refunds above a limit. They're still emerging: see the
+[November 6, 2026 release](https://ai.gateway.azure.com/docs/releases#release-2026-11-06) and
+[Agent hooks](https://ai.gateway.azure.com/docs/policies/agent-hooks), then try them in
+[lab 30](../30-agent-hooks/README.md).
 
 ## Identities on both sides
 
@@ -177,12 +213,20 @@ The gateway separates **who is calling** from **how the gateway reaches the back
 Microsoft Entra token with one of the AI Gateway data-plane roles. The gateway uses its own managed identity, or a
 provider key it stores, to call backends. Callers never see backend credentials.
 
+Managing the gateway is a third, separate permission. **AI Gateway Developer** can view the configuration of
+aliases and MCP servers, **AI Gateway Contributor** can manage model providers, aliases, MCP servers, routing,
+limits, and policies, and **Contributor** on the gateway resource can also change gateway settings, networking,
+identities, and API keys. None of these roles can call models or tools: that
+takes a data-plane role. See [Control-plane access](https://ai.gateway.azure.com/docs/security/control-plane-access).
+
 ![Identity boundaries](../assets/diagrams/identity-boundaries.svg "Inbound and outbound identities are authorized separately.")
 
 ## Observability
 
-The gateway emits OpenTelemetry metrics, logs, and traces for model calls, tool calls, and policy decisions. Send
-them to Application Insights to light up the built-in **Monitoring** dashboard, or to any OTLP endpoint.
+The gateway emits OpenTelemetry metrics, logs, and traces for model calls, embeddings, decisions, tool calls,
+routing, and policy decisions. Traces also mark model-stream and MCP operation failures as errors, even when the
+HTTP response was `200`. Send them to Application Insights to light up the built-in **Monitoring** dashboard, or
+to any OTLP endpoint.
 
 ![Observability with OpenTelemetry](../assets/diagrams/observability.svg "Signals flow to Application Insights, which powers the Monitoring dashboard, or to any OTLP endpoint.")
 
@@ -196,28 +240,29 @@ If you have a gateway, walk through the portal now. Otherwise, use the screensho
 ### Open your gateway
 
 Go to [ai.gateway.azure.com](https://ai.gateway.azure.com) and sign in. Use the gateway switcher in the top bar to
-pick a gateway. The left rail lists **Home**, **Catalog**, **Models**, **MCP servers**, **Access**, **Policies**,
-**Monitoring**, **Networking**, and **Managed identities**. Press <kbd>Ctrl</kbd>+<kbd>K</kbd> to open the
-command palette from anywhere.
+pick a gateway. The left rail lists **Home** and **Catalog**, then **Models**, **MCP servers**, **Policies**, and
+**Monitoring** under **Manage**, and **Access**, **Managed identities**, and **Networking** under **Secure**. Press
+<kbd>Ctrl</kbd>+<kbd>K</kbd>, or <kbd>⌘</kbd>+<kbd>K</kbd> on macOS, to open the command palette from anywhere.
 
 ### Browse models and aliases
 
-Select **Models**. Each backend model lists its provider and the aliases that point to it.
+Select **Models**. It opens on **Aliases**, which lists each alias with its backend models, providers, API formats,
+and model selection. The **Backend models** tab lists each backend model with its aliases and provider.
 
-![Models page with aliases](../assets/screens/models-aliases.png "Models: backend models and the aliases clients call.")
+![The Models page open on the Aliases tab, with columns for backend models, providers, API formats, and model selection](../assets/screens/quickstart-07-alias.webp "Models opens on Aliases. The Backend models and Model providers tabs list what the aliases point to.")
 
 ### Look at an MCP server
 
 Select **MCP servers** and open a server. The tool availability settings decide which tools clients can see.
 
-![MCP server tool availability](../assets/screens/mcp-tool-controls.png "MCP servers: tool availability with exact lists and name patterns.")
+![An MCP server's Tool availability set to Match tools by name pattern, with an allowed pattern and a blocked tool](../assets/screens/mcp-tool-controls-05-tools.webp "MCP servers: Tool availability allows tools by exact name or name pattern, and Blocked tools removes tools from the list.")
 
 ### Start a policy
 
 Select **Policies** › **Add policy**. The wizard asks for a **Type**, then a **Scope** (**Gateway** or
-**Individual assets**), then the settings. Close the wizard without saving.
+**Individual assets**), then the **Details**. Select **Cancel** to leave without saving.
 
-![Add policy wizard](../assets/screens/policy-add-wizard.png "Policies: pick a type, a scope, then configure.")
+![The Type step of the Add policy wizard, with Security and Cost and rate limits policy types](../assets/screens/token-limits-01-policy-type.webp "Policies: pick a Type, then a Scope, then the Details.")
 
 ### Open Monitoring
 
@@ -242,6 +287,13 @@ A callable **alias** on the gateway. The `model` field must exactly match an ali
 <summary>A caller exceeds a token rate limit. Is the backend called?</summary>
 
 No. The gateway answers `429 Too Many Requests` with `Retry-After` and never forwards the request.
+</details>
+
+<details>
+<summary>An alias has two backends, and the first one returns <code>503</code>. Does the caller see the error?</summary>
+
+Only if no failover rule on the alias matches the failure. A matching rule can retry the same backend, switch to the
+other backend, and exclude the failing one for a while. Without a matching rule, the gateway returns the `503`.
 </details>
 
 <details>

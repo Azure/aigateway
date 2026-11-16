@@ -75,7 +75,7 @@ the token limit and the budget, and see how Claude Code reports them.
   for the regions and requirements. Model inference is billed per use.
 - Permission to assign roles on that Foundry account, for example **Owner** or **User Access Administrator**. The
   gateway's managed identity needs the **Foundry User** role there to call the models.
-- [Claude Code](https://code.claude.com/docs/en/setup). This lab was tested with version 2.1.314. You don't need an
+- [Claude Code](https://code.claude.com/docs/en/setup). This lab was tested with version 2.1.319. You don't need an
   Anthropic account or a Claude subscription: Claude Code uses the gateway's key.
 - `jq` for the Bash commands.
 
@@ -187,7 +187,8 @@ only the model calls leave for the gateway. Five environment variables do it:
 
 Claude Code picks a model by tier, so `--model sonnet` or `/model sonnet` switches it to the Sonnet alias. A model that
 you saved with `/model`, or set in `ANTHROPIC_MODEL`, replaces the default, so the commands that need Opus pass
-`--model opus`. The gateway gives each alias its own policies, and **Caller identity** gives each key its own counters:
+`--model opus`. The gateway gives each alias its own policies, and the **Identity** counter dimension gives each key its
+own counters:
 
 | Alias | Token limit for each caller | Cost limit for each caller |
 |---|---|---|
@@ -218,30 +219,33 @@ key `claude-code`. Pick a track.
 
 1. Open the [AI Gateway portal](https://ai.gateway.azure.com) and select your gateway in the top bar.
 2. Select **Models** › **Add** › **Models from Microsoft Foundry**.
-3. Select the subscription and resource group of your Foundry account, then select the `claude-opus-5-5`,
-   `claude-sonnet-5-5`, and `claude-haiku-5-5` deployments. Keep **Managed identity** as the
-   **Authentication method**.
-4. Under **Aliases**, keep **Create an alias for each model** selected, then select **Add models**.
+3. In **Subscriptions** and **Resource groups**, select those of your Foundry account. Keep **Managed identity** as
+   the **Authentication method**.
+4. In **Models**, check that only your Foundry account is selected, with its `claude-opus-5-5`,
+   `claude-sonnet-5-5`, and `claude-haiku-5-5` deployments: the page preselects every deployment it lists.
+5. Under **Aliases**, keep **Create an alias for each model** selected, then select **Add models**. The page reports
+   **Models and aliases imported.**
 
 The import names each alias after the Foundry account and the deployment, for example
 `<foundry-account-name>/claude-opus-5-5`. Claude Code sends these names in the request's `model` field.
 
 ### Add the token limit
 
-1. Select **Policies** › **Add policy**. On the **Type** step, under **Cost & Rate Limits**, select
+1. Select **Policies** › **Add policy**. On the **Type** step, under **Cost and rate limits**, select
    **Token rate limit**, then **Next**.
-2. On the **Scope** step, select **Individual assets**, select the three Claude aliases, then **Next**.
-3. On the **Details** step, set **Time period** to **Per minute**, **Allowed tokens** to `100000`, and
-   **Counter dimensions** to **Caller identity**. Select **Create**.
+2. On the **Scope** step, select **Individual assets**, select the three `<foundry-account-name>/claude-*-5-5` assets
+   of type **Alias**, then **Next**.
+3. On the **Details** step, set **Time period** to **Per minute** and **Allowed tokens** to `100000`. Keep
+   **Counter dimensions** at **Identity**, so that each key gets its own counter. Select **Create**.
 
 ### Add the daily budget to Opus
 
-1. Select **Policies** › **Add policy**. On the **Type** step, under **Cost & Rate Limits**, select **Cost limit**,
+1. Select **Policies** › **Add policy**. On the **Type** step, under **Cost and rate limits**, select **Cost limit**,
    then **Next**.
-2. On the **Scope** step, select **Individual assets**, select the `<foundry-account-name>/claude-opus-5-5` alias,
-   then **Next**.
-3. On the **Details** step, under **Parameters**, set **Budget amount** to `5`, **Renewal period** to **Daily**, and
-   **Counter dimensions** to **Caller identity**. Select **Next**.
+2. On the **Scope** step, select **Individual assets**, select the `<foundry-account-name>/claude-opus-5-5` asset of
+   type **Alias**, then **Next**.
+3. On the **Details** step, under **Parameters**, set **Budget amount** to `5` and **Renewal period** to **Daily**.
+   Keep **Counter dimensions** at **Identity**. Select **Next**.
 4. Skip the **Overrides** step, and select **Create**.
 
 [Set a cost budget with cost limits](../07-cost-budgets/README.md) explains the budget's fields and overrides.
@@ -257,7 +261,7 @@ The import names each alias after the Foundry account and the deployment, for ex
 
 ```bash title="Bash"
 # Paste the key without showing it, and export it for the test calls and Claude Code
-read -rsp "AI Gateway API key: " AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
+printf "AI Gateway API key: " && read -rs AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 ```
 </details> <!-- gh -->
@@ -470,7 +474,7 @@ policies with the template's.
 <!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
 📄 [`infra/claude-code.bicep`](infra/claude-code.bicep)
 
-<details><summary>Show all 180 lines</summary>
+<details><summary>Show all 183 lines</summary>
 
 ```bicep
 // Publishes the Claude deployments of a Microsoft Foundry account through an existing Azure AI Gateway, for Claude
@@ -521,12 +525,12 @@ var foundrySubscriptionId = split(foundryAccountId, '/')[2]
 var foundryResourceGroup = split(foundryAccountId, '/')[4]
 
 #disable-next-line BCP081
-resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
+resource gateway 'Microsoft.ApiManagement/aigateways@2026-11-01' existing = {
   name: gatewayName
 }
 
 #disable-next-line BCP081
-resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' existing = {
+resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2026-11-01' existing = {
   parent: gateway
   name: 'default'
 }
@@ -556,25 +560,26 @@ module foundryUserRole '../../02-first-model-call/infra/foundry-user-role.bicep'
 }
 
 #disable-next-line BCP081
-resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2025-09-01-preview' = if (createProvider) {
+resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2026-11-01' = if (createProvider) {
   parent: workspace
   name: foundryAccountName
   dependsOn: [
     foundryUserRole
   ]
   properties: {
-    kind: 'Foundry'
+    modelProviderType: 'Foundry'
     displayName: foundryAccountName
     foundry: {
-      endpoint: endsWith(foundryEndpoint, '/') ? foundryEndpoint : '${foundryEndpoint}/'
+      endpoint: {
+        url: endsWith(foundryEndpoint, '/') ? foundryEndpoint : '${foundryEndpoint}/'
+      }
       resourceIds: [
         foundryAccountId
       ]
-      authentication: {
-        kind: 'ManagedIdentity'
-        managedIdentity: {
-          resource: 'https://cognitiveservices.azure.com/'
-        }
+    }
+    authentication: {
+      managedIdentity: {
+        resource: 'https://cognitiveservices.azure.com/'
       }
     }
   }
@@ -582,14 +587,16 @@ resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@
 
 // The models go under the provider, whether the template created it or the gateway already had it.
 #disable-next-line BCP081
-resource accountProvider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2025-09-01-preview' existing = {
+resource accountProvider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2026-11-01' existing = {
   parent: workspace
   name: foundryAccountName
 }
 
-// Claude deployments speak the Anthropic Messages API, so the gateway serves them on /default/models/anthropic.
+// Claude deployments speak the Anthropic Messages API. A Foundry account serves them on /anthropic/v1/messages, so the
+// models declare that path: with /v1/messages, every call fails with "Resource not found". The gateway serves them on
+// /default/models/anthropic/v1/messages, the route that Claude Code uses, and on /default/models/v1/messages.
 #disable-next-line BCP081
-resource models 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2025-09-01-preview' = [for (m, i) in claudeModels: {
+resource models 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2026-11-01' = [for (m, i) in claudeModels: {
   parent: accountProvider
   name: m.name
   dependsOn: [
@@ -619,7 +626,7 @@ var budgetPolicy = {
 
 // Each caller identity, a key or a Microsoft Entra identity, gets its own counters.
 #disable-next-line BCP081
-resource aliases 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2025-09-01-preview' = [for (m, i) in claudeModels: {
+resource aliases 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01' = [for (m, i) in claudeModels: {
   parent: workspace
   name: '${foundryAccountName}-${m.name}'
   properties: {
@@ -639,7 +646,7 @@ resource aliases 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2025-09-
 }]
 
 #disable-next-line BCP081
-resource apiKey 'Microsoft.ApiManagement/aigateways/apiKeys@2025-09-01-preview' = {
+resource apiKey 'Microsoft.ApiManagement/aigateways/apiKeys@2026-11-01' = {
   parent: gateway
   name: apiKeyName
   properties: {
@@ -900,7 +907,7 @@ Expected output:
 🔖 Sonnet: <foundry-account-name>/claude-sonnet-5-5
 🔖 Haiku: <foundry-account-name>/claude-haiku-5-5
 🔑 Key: in ANTHROPIC_AUTH_TOKEN (32 characters, not shown)
-2.1.314 (Claude Code)
+2.1.319 (Claude Code)
 ```
 
 These variables last for the current terminal. [Go further](#go-further) shows how to keep them in Claude Code's
@@ -966,7 +973,7 @@ claude
 ```
 
 The first time, Claude Code asks you to pick a theme and shows its security notes. Then it asks whether you trust the
-folder: select **Yes, I trust this folder**. The banner shows `Claude Code v2.1.314` and
+folder: select **Yes, I trust this folder**. The banner shows `Claude Code v2.1.319` and
 `Opus 5.5 · API Usage Billing`. Claude Code runs on the gateway's Opus alias, and it doesn't ask you to sign in.
 
 Type `/status` to see where the requests go. It shows `ANTHROPIC_AUTH_TOKEN` as the auth token, the gateway's
@@ -978,11 +985,10 @@ Then send this prompt:
 Fix the bug in calc.py and add a guard for division by zero
 ```
 
-Claude Code reads `calc.py`, makes `add` return `a + b`, and makes `divide` raise
-`ZeroDivisionError("cannot divide by zero")` when `b` is zero. Depending on its permission mode, it asks before each
-edit and command, or runs them. In testing, the session started in auto mode, shown as
-`⏵⏵ auto mode on (shift+tab to cycle)` under the prompt, and each step showed `Allowed by auto mode`. Press
-Shift+Tab to cycle the modes.
+Claude Code reads `calc.py`, makes `add` return `a + b`, and makes `divide` raise an error, such as
+`ZeroDivisionError`, when `b` is zero. Depending on its permission mode, it asks before each edit and command, or
+runs them. In testing, the session started in auto mode, shown as `⏵⏵ auto mode on (shift+tab to cycle)` under the
+prompt, and each step showed `Allowed by auto mode`. Press Shift+Tab to cycle the modes.
 
 <!-- /steps -->
 
@@ -1021,9 +1027,11 @@ Learn server is public, so the backend needs no credentials. Pick a track.
 1. Open the [AI Gateway portal](https://ai.gateway.azure.com), select your gateway, and select **MCP servers** ›
    **Add MCP server**.
 2. On **Basic info**, set **Name** to `learn`, **Display name** to `Microsoft Learn`, and **Description** to
-   `Search and fetch official Microsoft documentation and code samples.` Select **Next**.
-3. On **Backends**, select **Add backend** › **MCP server**. Set **URL** to `https://learn.microsoft.com/api/mcp`,
-   **Namespace** to `learn`, and **Authentication** to **None**. Select **Next**.
+   `Search and fetch official Microsoft documentation and code samples.` In **Supported MCP versions**, select
+   `2025-06-18`, the version that the Learn server reports. Select **Next**.
+3. On **Backends**, select **Add backend** › **MCP server**. Set **Endpoint URL** to
+   `https://learn.microsoft.com/api/mcp`, keep **Authentication** at **None**, and set **Namespace** to `learn`.
+   Select **Add**, then **Next**, which saves the server and opens **Tools**.
 4. On **Tools**, keep **Allow all tools**, and select **Create**.
 
 [Register the Learn MCP server](../04-federate-mcp-tools/README.md#register-the-learn-mcp-server) in lab 04
@@ -1682,8 +1690,8 @@ Set-Location ~/contoso-calc; claude -p "Say hi in three words"
   `claudeCode.environmentVariables` setting. See [Use Claude Code in VS Code](https://code.claude.com/docs/en/vs-code).
 - **Turn off nonessential traffic.** `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` turns off Claude Code's telemetry,
   error reports, and automatic updates. See [Environment variables](https://code.claude.com/docs/en/env-vars).
-- **Give each developer their own key.** Keys are cheap, and **Caller identity** gives each key its own token limit
-  and budget. Rotate or revoke them with [Manage runtime API keys](../10-api-keys/README.md).
+- **Give each developer their own key.** Keys are cheap, and the **Identity** counter dimension gives each key its own
+  token limit and budget. Rotate or revoke them with [Manage runtime API keys](../10-api-keys/README.md).
 - **Cap one run.** `claude -p --max-budget-usd 1` stops a one-shot run when Claude Code's own estimate reaches $1. The
   gateway's budget stays the limit that Claude Code can't change.
 - **Choose which tools Claude Code can call.** On the gateway, publish only some Learn tools or cap tool calls per
@@ -1884,5 +1892,5 @@ portal.
 | :-- | :-: | --: |
 | [24 · GitHub Copilot BYOK](../24-github-copilot-byok/README.md) | [All labs](../README.md) | [18 · Private networking](../18-private-networking/README.md) |
 
-<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (10 of 10)</sub>
+<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (13 of 13)</sub>
 <!-- gh:end -->

@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+# Lab 28: "azd up" creates the quick start's gateway, model, and runtime API key, then gpt-5.5 next to gpt-5-mini and the
+# auto alias, which lets Model Router pick one of them for each prompt.
+# The lab clones the repo's main branch from GitHub and runs azd up in this folder.
+name: aigw-lab28
+metadata:
+  template: aigw-lab28@1.0.0
+infra:
+  provider: bicep
+  path: infra

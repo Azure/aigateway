@@ -10,12 +10,12 @@ param gatewayName string
 param appNames string[] = []
 
 #disable-next-line BCP081
-resource aiGateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
+resource aiGateway 'Microsoft.ApiManagement/aigateways@2026-11-01' existing = {
   name: gatewayName
 }
 
 #disable-next-line BCP081
-resource runtimeApiKeys 'Microsoft.ApiManagement/aigateways/apiKeys@2025-09-01-preview' = [for app in appNames: {
+resource runtimeApiKeys 'Microsoft.ApiManagement/aigateways/apiKeys@2026-11-01' = [for app in appNames: {
   parent: aiGateway
   name: app
   properties: {

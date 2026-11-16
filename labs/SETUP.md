@@ -132,13 +132,15 @@ az aigateway version
 
 > **Checkpoint**
 > The installer printed `📦 aigateway extension … is installed`, and `az aigateway version` prints the extension
-> version and the API version it calls, `2025-09-01-preview`. The labs need version `1.0.0b22` or later; run the
+> version and the API version it calls, `2025-09-01-preview`. The labs need version `1.0.0b31` or later; run the
 > installer again to upgrade an older one.
 
 > [!NOTE]
 > The labs use `az aigateway` commands wherever the extension covers an operation. A few operations, such as
-> an MCP server's tool rules, aren't in the extension yet. For those, the labs call the Azure Resource Manager
-> REST API with `az rest` and say why.
+> an MCP server's tool rules or an alias's backend conditions and failover, aren't in the extension yet. For
+> those, the labs call the Azure Resource Manager REST API with `az rest` and API version `2026-11-01`, and say
+> why. Because the extension calls the earlier API version, its output uses a few older field names, such as
+> `kind` for a provider's type; each lab's checkpoints show what to expect.
 
 ## Register the resource providers
 

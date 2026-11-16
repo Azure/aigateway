@@ -109,7 +109,7 @@ export AI_GATEWAY_MODEL="$(az aigateway model show -g "$RG" --gateway-name "$GAT
 echo "🔖 Model alias: $AI_GATEWAY_MODEL"
 
 # Paste the app-dev runtime key from Access › API keys, without showing it: don't commit it or write it to a file
-read -rsp "AI Gateway API key: " AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
+printf "AI Gateway API key: " && read -rs AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 ```
 </details> <!-- gh -->
@@ -155,9 +155,9 @@ estimated cost of the call, and blocked responses carry the remaining budget and
 |---|---|---|---|
 | Budget | **Budget amount** | `amount` | US dollars, for example `5` |
 | Window | **Renewal period** | `period` | `hour`, `day`, `week`, `month`, `year` (**Hourly** … **Yearly**) |
-| Who gets a counter | **Counter dimensions** (shown as **Budget counted by**) | `counterKey` | An array: `["identity"]` (the API key, or the Entra tenant ID + object ID) or `["ipAddress"]` |
-| Exceptions | **Overrides** | `overrides` | A different `amount` for an API key (`apiKeyResourceId`) or Entra identity (`claims`) |
-| Policy identity | Not shown | `id` | Stable ID. Editing the amount keeps accumulated spend. |
+| Who gets a counter | **Counter dimensions** (shown as **Budget counted by**) | `counterKey` | A required array: `["identity"]` (the API key, or the Entra tenant ID + object ID), `["ipAddress"]`, or `[]` for one counter that all callers share |
+| Exceptions | **Overrides** | `overrides` | A different `amount` for an API key (`apiKeyResourceId`) or Entra identity (`claims`: a list of `name` and `value` pairs that must all match) |
+| Policy identity | Not shown | `id` | Required, and unique on the asset. Editing the amount keeps accumulated spend. |
 
 Renewal periods are **fixed calendar windows**, not rolling windows: a **Daily** budget starts fresh at the
 beginning of each day, not 24 hours after the first call. Attach the policy to a **model** to budget spend on
@@ -186,18 +186,18 @@ the portal for them.
 ### Start the policy wizard
 
 Open the [AI Gateway portal](https://ai.gateway.azure.com) and select your gateway from the gateway switcher.
-Select **Policies** › **Add policy**. On the **Type** step, under **Cost & Rate Limits**, select
+Select **Policies** › **Add policy**. On the **Type** step, under **Cost and rate limits**, select
 **Cost limit**, then **Next**.
 
 ### Choose where the budget applies
 
 On the **Scope** step, select **Individual assets** ("Apply only to selected models, aliases, or MCP servers").
-Select your model, then **Next**.
+Select the row of type **Model** for your model, then **Next**.
 
 > [!TIP]
-> Choose **Gateway** ("Apply to all compatible assets") when the budget should cover **every** model a caller
-> uses, including models you import later. A gateway-scoped cost limit tracks one budget across all models
-> instead of one per model.
+> Choose **Gateway** ("Apply to the entire gateway workspace, including applicable assets added later") when the
+> budget should cover **every** model a caller uses, including models you import later. A gateway-scoped cost
+> limit tracks one budget across all models instead of one per model.
 
 ### Set the default budget
 
@@ -207,14 +207,14 @@ On the **Details** step, under **Parameters**, set:
 |---|---|
 | **Budget amount** | `5` (US dollars) |
 | **Renewal period** | **Daily** |
-| **Counter dimensions** | **Caller identity** |
+| **Counter dimensions** | **Identity** |
 
 Select **Next**.
 
 > [!NOTE]
-> **Caller identity** gives each API key, and each Entra caller, its own counter. If you select no dimension, every
-> caller shares one counter for the policy. **Caller IP address** can't be combined with overrides: the portal asks
-> you to remove all overrides or switch to caller identity before saving.
+> **Identity** gives each API key, and each Entra caller, its own counter. **IP address** counts per client IP
+> address instead, and can't be combined with overrides: while the policy has overrides, **Edit policy** disables
+> **Counter dimensions** and shows "Remove all overrides before switching to Caller IP address."
 
 ### Give an API key a bigger budget
 
@@ -233,21 +233,24 @@ Under **Microsoft Entra identities**, select **Add**. In **Add Microsoft Entra i
 
 Set **Budget amount** to `20`, then select **Add**.
 
-![The Overrides step with one Microsoft Entra identity override and one custom token claims override](../assets/screens/policy-cost-limit-entra-overrides.png "Overrides (optional): API key overrides match a specific key; Microsoft Entra overrides match one identity or a combination of validated token claims. The first matching override wins.")
+![The Overrides step with an API key override, a Microsoft Entra identity override, and a custom token claims override](../assets/screens/policy-cost-limit-entra-overrides.png "Overrides (optional): API key overrides match a specific key; Microsoft Entra overrides match one identity or a combination of validated token claims. The first matching override wins.")
 
-Overrides are evaluated in the order you add them, and the **first match wins**. A claim combination never
+API key and Microsoft Entra overrides are evaluated together, in the order you add them. The **first match wins**,
+and later overrides aren't evaluated. A claim combination never
 pools callers into a shared budget: with identity counting, each matching identity gets the override amount
 on its own counter.
 
 ### Create the policy
 
-Select **Create**. Back in **Policies**, open the new **Cost limit** to review it.
+Select **Create**. The portal confirms **Policy created**, and **Policies** lists the **Cost limit** for your
+model with **$5.00 / day per caller identity** under **Configuration**. Select it to review the policy.
 
-![The Cost limit details page showing behavior, configuration, and the assets it applies to](../assets/screens/policy-cost-limit-details.png "The details page explains the trigger and the 403 LlmCostQuotaExceeded response, and lists Budget amount, Renewal period, Budget counted by, and Applies to.")
+![The Cost limit details page showing behavior, configuration, overrides, and the assets it applies to](../assets/screens/policy-cost-limit-details.png "The details page explains the trigger and the 403 LlmCostQuotaExceeded response, and lists the Policy ID, Budget amount, Renewal period, Budget counted by, Overrides, and Applies to.")
 
 > **Checkpoint**
-> The **Cost limit** details page shows **Budget amount** $5.00, **Renewal period** **Daily**, **Budget
-> counted by** **Caller identity**, and your model under **Applies to**. Select **Edit** to see your overrides.
+> The **Cost limit** details page shows **Budget amount** $5.00, **Renewal period** **Daily**, and **Budget
+> counted by** **Caller identity**. Under **Overrides**, `support-bot` has $50.00, and your Microsoft Entra
+> override shows as **Claim-based override** (read-only) with $20.00. Your model is under **Applies to**.
 
 </details> <!-- gh -->
 <!-- track: cli | Azure CLI -->
@@ -285,9 +288,9 @@ count per client IP address. A new cost limit gets the `id` `default` unless you
 ### Add overrides in the portal
 
 Configure overrides for API keys and Microsoft Entra identities in the portal: select **Policies**, open the
-**Cost limit**, select **Edit**, and use the **Overrides** step as described in the portal track. The command
-above keeps those overrides when you change the amount later. Its `--overrides` argument doesn't accept override
-objects yet.
+**Cost limit**, select **Edit**, and use the **Overrides (optional)** section as described in the portal track.
+The command above keeps those overrides when you change the amount later. Its `--overrides` argument doesn't
+accept override objects yet.
 
 ### Confirm the policy
 
@@ -333,7 +336,7 @@ and two entries in the policy's `overrides` array. Overrides are evaluated in or
 | Override | Matches | Budget |
 |---|---|---|
 | API key | `apiKeyResourceId`: the resource ID of the `support-bot` key | $50 per day |
-| Microsoft Entra identity | `claims`: your tenant ID (`tid`) and object ID (`oid`) | $20 per day |
+| Microsoft Entra identity | `claims`: two `name` and `value` pairs, your tenant ID (`tid`) and object ID (`oid`) | $20 per day |
 
 azd fills in the object ID of the account you signed in with. The policy `id` is a GUID that the template derives
 from the gateway and the alias name, so it stays the same on every deployment, and a new amount keeps the spend
@@ -438,7 +441,7 @@ model, so you can also deploy it on its own to a gateway you already have, with 
 <!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
 📄 [`infra/budget-alias.bicep`](infra/budget-alias.bicep)
 
-<details><summary>Show all 129 lines</summary>
+<details><summary>Show all 130 lines</summary>
 
 ```bicep
 // Publishes an alias with a cost limit for an existing AI Gateway model, creates the app-dev and support-bot runtime
@@ -482,31 +485,31 @@ param entraObjectId string = ''
 param entraAmount string = '20'
 
 #disable-next-line BCP081
-resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
+resource gateway 'Microsoft.ApiManagement/aigateways@2026-11-01' existing = {
   name: gatewayName
 }
 
 #disable-next-line BCP081
-resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' existing = {
+resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2026-11-01' existing = {
   parent: gateway
   name: 'default'
 }
 
 #disable-next-line BCP081
-resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2025-09-01-preview' existing = {
+resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2026-11-01' existing = {
   parent: workspace
   name: providerName
 }
 
 #disable-next-line BCP081
-resource model 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2025-09-01-preview' existing = {
+resource model 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2026-11-01' existing = {
   parent: provider
   name: modelName
 }
 
 // Each key is a separate caller identity, so each one gets its own budget counter.
 #disable-next-line BCP081
-resource defaultKey 'Microsoft.ApiManagement/aigateways/apiKeys@2025-09-01-preview' = {
+resource defaultKey 'Microsoft.ApiManagement/aigateways/apiKeys@2026-11-01' = {
   parent: gateway
   name: defaultKeyName
   properties: {
@@ -515,7 +518,7 @@ resource defaultKey 'Microsoft.ApiManagement/aigateways/apiKeys@2025-09-01-previ
 }
 
 #disable-next-line BCP081
-resource overrideKey 'Microsoft.ApiManagement/aigateways/apiKeys@2025-09-01-preview' = {
+resource overrideKey 'Microsoft.ApiManagement/aigateways/apiKeys@2026-11-01' = {
   parent: gateway
   name: overrideKeyName
   properties: {
@@ -524,7 +527,8 @@ resource overrideKey 'Microsoft.ApiManagement/aigateways/apiKeys@2025-09-01-prev
 }
 
 // Overrides are evaluated in order, and the first match wins. An API key override matches the key's resource ID.
-// An Entra override matches validated token claims: here the tenant ID and the object ID of one identity.
+// An Entra override matches validated token claims, as name and value pairs that must all match: here the tenant ID
+// and the object ID of one identity.
 var keyOverrides = [
   {
     apiKeyResourceId: overrideKey.id
@@ -533,16 +537,16 @@ var keyOverrides = [
 ]
 var entraOverrides = empty(entraObjectId) ? [] : [
   {
-    claims: {
-      tid: tenant().tenantId
-      oid: entraObjectId
-    }
+    claims: [
+      { name: 'tid', value: tenant().tenantId }
+      { name: 'oid', value: entraObjectId }
+    ]
     amount: json(entraAmount)
   }
 ]
 
 #disable-next-line BCP081
-resource budgetAlias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2025-09-01-preview' = {
+resource budgetAlias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01' = {
   parent: workspace
   name: aliasName
   dependsOn: [ defaultKey ]
@@ -632,7 +636,7 @@ export PROVIDER="$(azd env get-value AI_GATEWAY_PROVIDER)"
 export MODEL="$(azd env get-value AI_GATEWAY_BACKEND_MODEL)"
 
 # Read the gateway's resource ID, and build the management URL of its default workspace for the az rest calls
-export API="api-version=2025-09-01-preview"
+export API="api-version=2026-11-01"
 export GATEWAY_ID="$(azd env get-value AI_GATEWAY_ID)"
 export WS="https://management.azure.com$GATEWAY_ID/workspaces/default"
 
@@ -659,7 +663,7 @@ $PROVIDER               = azd env get-value AI_GATEWAY_PROVIDER
 $MODEL                  = azd env get-value AI_GATEWAY_BACKEND_MODEL
 
 # Read the gateway's resource ID, and build the management URL of its default workspace for the az rest calls
-$API                    = "api-version=2025-09-01-preview"
+$API                    = "api-version=2026-11-01"
 $GATEWAY_ID             = azd env get-value AI_GATEWAY_ID
 $WS                     = "https://management.azure.com$GATEWAY_ID/workspaces/default"
 
@@ -680,7 +684,8 @@ Write-Host "🔖 Model alias: $env:AI_GATEWAY_MODEL"
 > `azd up` ended with `SUCCESS`, and the last command printed `🔖 Model alias: gpt-5-mini-budget`.
 > `az rest --url "$WS/aliases/$AI_GATEWAY_MODEL?$API" --query properties.policies` returns one `costLimit` entry
 > with `"amount": 5.0`, `"period": "day"`, `"counterKey": ["identity"]`, and two `overrides`: `"amount": 50.0`
-> with the `apiKeyResourceId` of `support-bot`, and `"amount": 20.0` with your `oid` and `tid` claims.
+> with the `apiKeyResourceId` of `support-bot`, and `"amount": 20.0` with a `claims` list that holds your `tid`
+> and `oid` as `name` and `value` pairs.
 
 ### Change the budget
 
@@ -770,21 +775,22 @@ successful calls, and the header values will differ):
 ```text
 🚦 Expect 403 once app-dev's estimated spend reaches the budget:
 Request  Status  Error code               Tokens used  Budget headers
-1        200     -                        208          …; x-alias-cost-per-day-consumed=0.000374000
-2        200     -                        210          …; x-alias-cost-per-day-consumed=0.000378000
-3        200     -                        199          …; x-alias-cost-per-day-consumed=0.000356000
-4        403     -                        -            x-alias-cost-per-day-retry-after=7375; x-alias-cost-per-day-remaining=0.000000000; x-alias-cost-per-day-consumed=0.000000000
+1        200     -                        205          …; x-alias-cost-per-day-consumed=0.000368000
+2        200     -                        189          …; x-alias-cost-per-day-consumed=0.000336000
+3        200     -                        196          …; x-alias-cost-per-day-consumed=0.000350000
+4        200     -                        211          …; x-alias-cost-per-day-consumed=0.000380000
+5        403     -                        -            x-alias-cost-per-day-retry-after=74726; x-alias-cost-per-day-consumed=0.000000000
 …
-10       403     -                        -            x-alias-cost-per-day-retry-after=7368; x-alias-cost-per-day-remaining=0.000000000; x-alias-cost-per-day-consumed=0.000000000
+10       403     -                        -            x-alias-cost-per-day-retry-after=74722; x-alias-cost-per-day-consumed=0.000000000
 ```
 
 `x-alias-cost-per-day-consumed` is the estimated cost of an answered call; the elided headers are the Foundry
-deployment's `x-ratelimit-*` headers. A blocked call carries `x-alias-cost-per-day-remaining`, which is `0`, and
-`…-retry-after`, the seconds until the budget renews at the start of the next day in UTC. On a cost limit attached
-to the model, the headers start with `x-cost-` instead. A blocked call has no error code in its body, so the script
-prints `-`. How many calls succeed depends on the model's price. A call or two more than you expect is the
-small overshoot described in [How it works](#how-it-works). If all 10 requests return `200`, run the script again:
-the spend so far still counts.
+deployment's `x-ratelimit-*` headers. A blocked call carries `…-retry-after`, the seconds until the budget renews at
+the start of the next day in UTC, and can also carry `x-alias-cost-per-day-remaining`, which is `0`. On a cost limit
+attached to the model, the headers start with `x-cost-` instead. A blocked call has no error code in its body, so the
+script prints `-`. How many calls succeed depends on the model's price. A call or two more than you expect is the
+small overshoot described in [How it works](#how-it-works). If all 10 requests return `200`, run the script again: the
+spend so far still counts.
 
 ### Inspect one blocked response
 
@@ -882,8 +888,9 @@ budget.
 
 ### Remove or raise the budget
 
-Select **Policies**, open the **Cost limit** you created, and select **Delete**, or select **Edit** and set a
-production **Budget amount**. If you created runtime keys only for this lab, revoke them in **Access** › **API keys**.
+Select **Policies** and open the **Cost limit** you created. Select **More actions** (⋮) › **Delete**, then
+**Delete** again in **Delete this policy?**, or select **Edit**, set a production **Budget amount**, and **Save**.
+If you created runtime keys only for this lab, revoke them in **Access** › **API keys**.
 
 </details> <!-- gh -->
 <!-- track: cli | Azure CLI -->
@@ -943,7 +950,9 @@ because the Bicep + azd track created its own gateway.
 - [Set gateway-wide policy baselines](../09-gateway-baselines/README.md): combine gateway-scoped budgets with other guardrails.
 - [Monitor usage, cost, and traces](../13-monitoring/README.md): see estimated spend by API key and model.
 - [Attribute tokens and cost with OpenTelemetry](../14-otel-chargeback/README.md): build chargeback reports by team or identity.
-- Docs: [Policies in AI Gateway](https://ai.gateway.azure.com/docs/policies).
+- Docs: [Set cost limits](https://ai.gateway.azure.com/docs/finops/set-cost-limits),
+  [Cost limit](https://ai.gateway.azure.com/docs/policies/cost-limit), and
+  [Attribute and cap model spend](https://ai.gateway.azure.com/docs/finops).
 
 <!-- gh:begin footer: generated by "npm run sync" from the metadata, do not edit -->
 
@@ -955,5 +964,5 @@ because the Bicep + azd track created its own gateway.
 | :-- | :-: | --: |
 | [06 · Token limits](../06-token-limits/README.md) | [All labs](../README.md) | [08 · Content safety](../08-content-safety/README.md) |
 
-<sub>Learning paths: [FinOps & operations](../README.md#learning-paths) (3 of 5)</sub>
+<sub>Learning paths: [FinOps & operations](../README.md#learning-paths) (3 of 6)</sub>
 <!-- gh:end -->

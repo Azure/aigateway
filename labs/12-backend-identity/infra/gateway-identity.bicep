@@ -19,7 +19,7 @@ param tags object = {}
 param identityId string
 
 #disable-next-line BCP081
-resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' = {
+resource gateway 'Microsoft.ApiManagement/aigateways@2026-11-01' = {
   name: gatewayName
   location: location
   tags: tags

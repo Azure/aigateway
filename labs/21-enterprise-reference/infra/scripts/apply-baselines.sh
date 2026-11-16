@@ -20,7 +20,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BASELINES="${1:-$SCRIPT_DIR/../baselines.json}"
-API_VERSION="2025-09-01-preview"
+API_VERSION="2026-11-01"
 : "${RG:?Set RG to the gateway resource group}"
 : "${GATEWAY:?Set GATEWAY to the gateway name}"
 command -v jq >/dev/null || { echo "This script needs jq." >&2; exit 1; }

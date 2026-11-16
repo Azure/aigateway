@@ -33,30 +33,30 @@ param sexualSeverity string = 'Medium'
 param violenceSeverity string = 'Low'
 
 #disable-next-line BCP081
-resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
+resource gateway 'Microsoft.ApiManagement/aigateways@2026-11-01' existing = {
   name: gatewayName
 }
 
 #disable-next-line BCP081
-resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' existing = {
+resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2026-11-01' existing = {
   parent: gateway
   name: 'default'
 }
 
 #disable-next-line BCP081
-resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2025-09-01-preview' existing = {
+resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2026-11-01' existing = {
   parent: workspace
   name: providerName
 }
 
 #disable-next-line BCP081
-resource model 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2025-09-01-preview' existing = {
+resource model 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2026-11-01' existing = {
   parent: provider
   name: modelName
 }
 
 #disable-next-line BCP081
-resource safeAlias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2025-09-01-preview' = {
+resource safeAlias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01' = {
   parent: workspace
   name: aliasName
   properties: {

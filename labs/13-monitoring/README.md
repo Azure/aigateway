@@ -40,7 +40,7 @@ prereqs:
 
 **Follow along:** 🌐 [Interactive version](https://azure.github.io/aigateway/labs/13-monitoring/) with your own values filled in · 📁 [Lab files](infra/)
 
-**On this page:** [Before you begin](#before-you-begin) · [How it works](#how-it-works) · [Connect Application Insights](#connect-application-insights) · [Generate traffic](#generate-traffic) · [Tour the dashboard](#tour-the-dashboard) · [Follow a request through the trace waterfall](#follow-a-request-through-the-trace-waterfall) · [Query telemetry with KQL](#query-telemetry-with-kql) · [Verify](#verify) · [Go further](#go-further) · [Clean up](#clean-up) · [Next steps](#next-steps)
+**On this page:** [Before you begin](#before-you-begin) · [How it works](#how-it-works) · [Connect Application Insights](#connect-application-insights) · [Generate traffic](#generate-traffic) · [Tour the dashboard](#tour-the-dashboard) · [Follow a request through the trace waterfall](#follow-a-request-through-the-trace-waterfall) · [Query telemetry with KQL](#query-telemetry-with-kql) · [Find failed operations](#find-failed-operations) · [Verify](#verify) · [Go further](#go-further) · [Clean up](#clean-up) · [Next steps](#next-steps)
 <!-- gh:end -->
 
 Your gateway now serves several apps. Finance asks what the models cost per team, an app owner reports
@@ -94,7 +94,7 @@ export AI_GATEWAY_URL="https://$(az aigateway show -g "$RG" -n "$GATEWAY" --quer
 echo "🌐 Runtime URL: $AI_GATEWAY_URL"
 
 # Paste the runtime key you created in Access › API keys, without showing it: don't commit it or write it to a file
-read -rsp "AI Gateway API key: " AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
+printf "AI Gateway API key: " && read -rs AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 ```
 </details> <!-- gh -->
@@ -118,17 +118,21 @@ Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) c
 </details> <!-- gh -->
 
 > [!IMPORTANT]
-> Did you configure monitoring before the 2026-08-28 release? Reconfigure it to get logs, traces, cost metrics, and
-> policy spans: on the **Monitoring** page select **Settings**, disable monitoring, and configure it again. You can
-> select the same Application Insights resource.
+> Did you configure monitoring before the 2026-08-28 release? If the **Monitoring** page flags the exporter as
+> legacy, select **Settings** › **General** › **Disable monitoring**, then select **Configure** to run the setup
+> again. You can select the same Application Insights resource.
 
 ## How it works
 
 The gateway emits three OpenTelemetry signals and exports each one **independently** over OTLP, to Azure Application
 Insights or to any OTLP endpoint (for example Datadog, Splunk, Grafana Cloud, or your own collector). Configure only
 the signals you need. Telemetry follows the OpenTelemetry GenAI and MCP semantic conventions, such as
-`gen_ai.request.model`, `gen_ai.operation.name`, and `mcp.method.name`, and adds gateway attributes such as the API
-key, alias, resolved model, and policy type.
+`gen_ai.request.model`, `gen_ai.operation.name`, and `mcp.method.name`, and adds gateway attributes under
+`azure.ai_gateway.*`: the API key, the routing decision, the estimated cost, and the policy type.
+
+A failed operation marks its span `Error` even when the HTTP response is `200`: for example an MCP tool call that
+returns a tool error. The span's `error.type` names the failure, so you can find these calls even though no HTTP
+error reached the client.
 
 When the destination is Application Insights and all three signals are on, the **Monitoring** page turns that data
 into a dashboard. Estimated cost is **observed tokens × public pricing**: use it to spot trends and compare callers,
@@ -138,12 +142,12 @@ then reconcile with provider billing or Azure Cost Management for financial repo
 |---|---|---|---|
 | Metrics | Token usage and estimated token cost, by model, token type, API key, and caller | Azure Monitor workspace (managed Prometheus) linked to Application Insights | Tokens and **Estimated model cost** |
 | Traces | One root span per request, with child spans for each stage and each policy that ran | `OTelSpans` table in the Log Analytics workspace | Calls, outcomes, blocked traces, the trace waterfall |
-| Logs | Request records with status, caller, model, and the token usage the backend reported | `OTelLogs` table in the Log Analytics workspace | Correlated logs and caller attribution |
+| Logs | Request records with status, caller, model, routing, estimated cost, and the token usage the backend reported | `OTelLogs` table in the Log Analytics workspace | Correlated logs and caller attribution |
 
 ## Connect Application Insights
 
 Pick one track. Each ends with the gateway exporting all three signals to an Application Insights resource named
-`<gateway>-insights`.
+after the gateway, `<gateway>-insights`.
 
 <!-- track: portal | Portal -->
 <details open><summary><b>🖥️ Portal</b></summary> <!-- gh -->
@@ -151,37 +155,42 @@ Pick one track. Each ends with the gateway exporting all three signals to an App
 ### Start the setup
 
 Open the [AI Gateway portal](https://ai.gateway.azure.com) and select your gateway from the gateway switcher. Select
-**Monitoring**. If monitoring isn't configured yet, the page shows **Set up monitoring**. Select
-**Configure telemetry**. The wizard has three steps: **Destination**, **Authentication**, and **Review and apply**.
+**Monitoring**. If monitoring isn't configured yet, a banner reads **Start by configuring telemetry**. Select
+**Configure**. The **Configure telemetry** wizard has three steps: **Destination**, **Authentication**, and
+**Review and apply**.
 
 ### Choose a destination
 
-On **Destination**, select **New Azure Application Insights resource** and keep the suggested name,
-`<gateway>-insights`. Select **Next**.
+On **Destination**, keep **New Azure Application Insights resource**. The wizard suggests the resource name
+`<gateway>-insights`, adds a short random suffix if that name is taken, and creates it in the gateway's region and
+resource group. Select **Next**.
 
 > [!TIP]
 > The other choices are **Existing Azure Application Insights resource**, for a component you already have, and
 > **Custom OpenTelemetry destination**, which takes separate **Metrics endpoint**, **Logs endpoint**, and
 > **Traces endpoint** URLs. Leave an endpoint empty to turn that signal off. The built-in dashboard only reads
-> Application Insights, so with a custom destination you use your own platform's views.
+> Application Insights, so with a custom destination you use your own platform's views. See
+> [Send telemetry to a custom destination](https://ai.gateway.azure.com/docs/observability/custom-destination).
 
 ### Review authentication
 
-On **Authentication**, the gateway exports with its managed identity. If none is enabled, the wizard enables the
-system-assigned identity for you. It also assigns the **Monitoring Metrics Publisher** role on the destination's
-Data Collection Rule when you apply.
+On **Authentication**, **Managed identity** shows **System-assigned managed identity**: the gateway exports with
+its managed identity. If the gateway also has a user-assigned identity, you can pick it here instead. A note
+confirms that the **Monitoring Metrics Publisher** role is assigned on the destination's Data Collection Rule when
+you apply.
 
-Leave **Include recommended token claims in telemetry** selected. It adds Microsoft Entra caller claims to the
-telemetry, which [Attribute tokens and cost with OpenTelemetry](../14-otel-chargeback/README.md) builds on. Select
-**Next**.
+Leave **Include recommended token claims in telemetry** selected. It adds four Microsoft Entra caller claims to the
+telemetry: `tid` and `oid` in logs, traces, and metrics, and `appid` and `azp` in logs and traces.
+[Attribute tokens and cost with OpenTelemetry](../14-otel-chargeback/README.md) builds on them. Select **Next**.
 
 ### Apply the configuration
 
-On **Review and apply**, select **Apply**. The wizard shows each step as it runs: **Register resource providers**,
-**Resolve managed identity**, **Provision destination**, **Discover OTLP endpoints**,
-**Assign Monitoring Metrics Publisher role**, and **Create telemetry exporter**. If a step fails, fix the cause
-shown in the message and select **Retry**. If an Azure Policy assignment blocks a step, check the Activity Log for
-the denied operation.
+On **Review and apply**, check the **Destination**, the **Signals** (all three **Discovered automatically**), the
+**Identity**, and the **Token claim attributes**, then select **Apply**. The button shows **Applying…** while the
+wizard registers the resource providers, creates Application Insights on a managed Log Analytics workspace,
+discovers the OTLP endpoints, assigns the role, and creates the exporter. It can take a few minutes. If it fails,
+the wizard shows the error: fix the cause and select **Apply** again. If an Azure Policy assignment blocks a step,
+check the Activity Log for the denied operation.
 
 > **Checkpoint**
 > The **Monitoring** page shows the **Overview**, **Models**, **Tools**, **Policies**, and **Traces** tabs, with
@@ -193,9 +202,10 @@ the denied operation.
 
 ### Create the destination
 
-Create what the wizard's **New Azure Application Insights resource** creates: a Log Analytics workspace and a
-workspace-based Application Insights component, named after the gateway and in its region. `az monitor app-insights`
-comes from the `application-insights` extension, which the Azure CLI offers to install the first time.
+Create a Log Analytics workspace and a workspace-based Application Insights component, named after the gateway and
+in its region. The portal's wizard puts its component on a managed workspace; here you create and own the workspace,
+so you can query it directly later. `az monitor app-insights` comes from the `application-insights` extension, which
+the Azure CLI offers to install the first time.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -298,7 +308,7 @@ Write-Host "🌐 Logs and traces endpoint: $(($LOGS_URL -split '/dataCollectionR
 ### Let the gateway publish
 
 The gateway exports with its system-assigned managed identity, which needs **Monitoring Metrics Publisher** on the
-Data Collection Rule. The wizard's **Assign Monitoring Metrics Publisher role** step does the same.
+Data Collection Rule. The portal's wizard assigns the same role when you apply.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -330,17 +340,17 @@ if ($?) { Write-Host "🔐 The gateway can publish to the Data Collection Rule" 
 
 ### Create the telemetry exporter
 
-`az aigateway telemetry-exporter create` creates what the wizard's **Create telemetry exporter** step creates: an
-exporter named `appinsights`, of kind `OpenTelemetry`, that sends each signal to its OTLP endpoint with the gateway's
-managed identity. `--telemetry` adds the recommended token claims: `tid` and `oid` on every signal, and `appid` and
-`azp` on logs and traces.
+`az aigateway telemetry-exporter create` creates an exporter named `appinsights`, of kind `OpenTelemetry`, that sends
+each signal to its OTLP endpoint with the gateway's managed identity, like the portal's wizard. `--telemetry` adds the
+recommended token claims: `tid` and `oid` on every signal, and `appid` and `azp` on logs and traces. A gateway has
+one exporter of each kind, and the kind can't change after you create it.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
 # Export metrics, logs, and traces to the component's OTLP endpoints, signed with the gateway's managed identity
-az aigateway telemetry-exporter create -g "$RG" --gateway-name "$GATEWAY" -n appinsights --kind OpenTelemetry \
-  --application-insights "{resourceId:'$COMPONENT_ID'}" --payload-capture false \
+az aigateway telemetry-exporter create -g "$RG" --gateway-name "$GATEWAY" -n appinsights \
+  --kind OpenTelemetry --payload-capture false \
   --open-telemetry "{metricsEndpoint:'$METRICS_URL',logsEndpoint:'$LOGS_URL',tracesEndpoint:'$TRACES_URL',credentials:{managedIdentity:{resource:'https://monitor.azure.com'}}}" \
   --telemetry "{attributes:[{source:{kind:claims,value:tid},signals:[logs,traces,metrics]},{source:{kind:claims,value:oid},signals:[logs,traces,metrics]},{source:{kind:claims,value:appid},signals:[logs,traces]},{source:{kind:claims,value:azp},signals:[logs,traces]}]}" \
   -o none &&
@@ -356,8 +366,8 @@ az aigateway telemetry-exporter list -g "$RG" --gateway-name "$GATEWAY" --query 
 
 ```powershell title="PowerShell"
 # Export metrics, logs, and traces to the component's OTLP endpoints, signed with the gateway's managed identity
-az aigateway telemetry-exporter create -g $RG --gateway-name $GATEWAY -n appinsights --kind OpenTelemetry `
-  --application-insights "{resourceId:'$COMPONENT_ID'}" --payload-capture false `
+az aigateway telemetry-exporter create -g $RG --gateway-name $GATEWAY -n appinsights `
+  --kind OpenTelemetry --payload-capture false `
   --open-telemetry "{metricsEndpoint:'$METRICS_URL',logsEndpoint:'$LOGS_URL',tracesEndpoint:'$TRACES_URL',credentials:{managedIdentity:{resource:'https://monitor.azure.com'}}}" `
   --telemetry "{attributes:[{source:{kind:claims,value:tid},signals:[logs,traces,metrics]},{source:{kind:claims,value:oid},signals:[logs,traces,metrics]},{source:{kind:claims,value:appid},signals:[logs,traces]},{source:{kind:claims,value:azp},signals:[logs,traces]}]}" `
   -o none
@@ -372,6 +382,11 @@ az aigateway telemetry-exporter list -g $RG --gateway-name $GATEWAY --query "[].
 To change the exporter later, such as to turn on `--payload-capture`, run `az aigateway telemetry-exporter update`
 with the same name and only the settings that change.
 
+> [!NOTE]
+> The `aigateway` extension nests the managed identity in `--open-telemetry` as `credentials`. In the management API
+> version `2026-11-01`, which the Bicep track uses, the same setting is a top-level `authentication` property and
+> each endpoint is an object with a `url`.
+
 > **Checkpoint**
 > The list shows one exporter, `appinsights`, of kind `OpenTelemetry`. In the portal, the gateway's **Monitoring**
 > page shows the **Overview**, **Models**, **Tools**, **Policies**, and **Traces** tabs.
@@ -385,8 +400,8 @@ with the same name and only the settings that change.
 
 ### Choose what to declare
 
-The templates declare what the portal's wizard sets up: a Log Analytics workspace, a workspace-based Application
-Insights component with OTLP ingestion turned on, and a gateway telemetry exporter of kind `OpenTelemetry` that
+The templates declare the same setup as the Azure CLI track: a Log Analytics workspace, a workspace-based Application
+Insights component with OTLP ingestion turned on, and a gateway telemetry exporter of type `OpenTelemetry` that
 sends metrics, logs, and traces to the component's OTLP endpoints with the recommended token claims. When OTLP
 ingestion turns on, Azure creates a managed resource group, `ai_<component>_<id>_managed`, with the Data Collection
 Rule and the Azure Monitor workspace for the metrics. The component reports the OTLP endpoints a few minutes later.
@@ -402,8 +417,11 @@ the gateway in two steps:
    (`infra/connect-telemetry.ps1` on Windows). The script waits for the endpoints, assigns the role with the Azure
    CLI, then deploys `infra/otel-exporter.bicep` and retries while the role assignment propagates.
 
-The `applicationInsights` exporter kind that older samples deploy is legacy: the portal flags it because it no longer
-activates the OTLP signals the dashboard needs. The templates don't use it.
+The exporter uses the management API version `2026-11-01`: `telemetryExporterType` sets the type, each endpoint is
+an object with a `url`, and the managed identity sits in a top-level `authentication` block. An `OpenTelemetry`
+exporter can't also carry an `applicationInsights` block, and the type can't change after creation. The
+`ApplicationInsights` type, with a connection string, is the legacy exporter that older samples deploy: the portal
+flags it because it doesn't send the OTLP signals the dashboard needs. The templates don't use it.
 
 ### Review the templates
 
@@ -506,9 +524,9 @@ resource**:
 //
 // The lab's main.bicep calls it with azd and sets enableOtlpIngestion. azure.yaml then connects the gateway with
 // connect-telemetry.sh and otel-exporter.bicep. You can also deploy it on its own to the resource group of an existing
-// gateway, then connect the gateway in the portal: Monitoring › Configure telemetry › Existing Azure Application
-// Insights resource. The portal enables OTLP ingestion on the component, grants the gateway's managed identity the
-// Monitoring Metrics Publisher role, and creates an OpenTelemetry exporter.
+// gateway, then connect the gateway in the portal: Monitoring › Configure › Existing Azure Application Insights
+// resource. The portal enables OTLP ingestion on the component, grants the gateway's managed identity the Monitoring
+// Metrics Publisher role, and creates an OpenTelemetry exporter.
 
 @description('Name of the existing AI Gateway (Microsoft.ApiManagement/aigateways).')
 param gatewayName string
@@ -576,7 +594,7 @@ telemetry**:
 <!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
 📄 [`infra/otel-exporter.bicep`](infra/otel-exporter.bicep)
 
-<details><summary>Show all 92 lines</summary>
+<details><summary>Show all 98 lines</summary>
 
 ```bicep
 // Connects an AI Gateway to Application Insights over OpenTelemetry, the same way the portal's Configure telemetry
@@ -626,12 +644,12 @@ param claimAttributes array = [
 param payloadCapture bool = false
 
 #disable-next-line BCP081
-resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
+resource gateway 'Microsoft.ApiManagement/aigateways@2026-11-01' existing = {
   name: gatewayName
 }
 
 #disable-next-line BCP081
-resource defaultWorkspace 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' existing = {
+resource defaultWorkspace 'Microsoft.ApiManagement/aigateways/workspaces@2026-11-01' existing = {
   parent: gateway
   name: 'default'
 }
@@ -644,23 +662,29 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' existing = {
 var otlp = any(appInsights.properties)
 
 #disable-next-line BCP081
-resource telemetryExporter 'Microsoft.ApiManagement/aigateways/workspaces/telemetryExporters@2025-09-01-preview' = {
+resource telemetryExporter 'Microsoft.ApiManagement/aigateways/workspaces/telemetryExporters@2026-11-01' = {
   parent: defaultWorkspace
   name: exporterName
   properties: {
-    kind: 'OpenTelemetry'
+    telemetryExporterType: 'OpenTelemetry'
     payloadCapture: payloadCapture
-    applicationInsights: {
-      resourceId: appInsights.id
-    }
+    // No applicationInsights block: an OpenTelemetry exporter can't carry one. The portal finds the component from
+    // the Data Collection Rule in the endpoint URLs.
     openTelemetry: {
-      metricsEndpoint: otlp.OTLPMetricsEndpoint
-      logsEndpoint: otlp.OTLPLogsEndpoint
-      tracesEndpoint: otlp.OTLPTracesEndpoint
-      credentials: {
-        managedIdentity: {
-          resource: 'https://monitor.azure.com'
-        }
+      metricsEndpoint: {
+        url: otlp.OTLPMetricsEndpoint
+      }
+      logsEndpoint: {
+        url: otlp.OTLPLogsEndpoint
+      }
+      tracesEndpoint: {
+        url: otlp.OTLPTracesEndpoint
+      }
+    }
+    // The gateway's system-assigned identity gets a token for Azure Monitor ingestion.
+    authentication: {
+      managedIdentity: {
+        resource: 'https://monitor.azure.com'
       }
     }
     telemetry: {
@@ -842,36 +866,51 @@ The dashboard needs data. Send a few requests through the gateway so every view 
 
 ### Run the traffic script
 
-From the lab folder, run the script for your shell. It sends ten chat completions with an `x-correlation-id` header
-on each, then one request for an alias that doesn't exist, so you also get a failure to investigate.
+From the lab folder, run the script for your shell. It sends ten chat completions, then a few calls that fail on
+purpose, so you have failures to investigate: one to an alias that doesn't exist, which the gateway rejects, and one
+with an invalid message role, which the model provider rejects. If you federated the `learn` tool server in
+[Federate MCP tools behind one endpoint](../04-federate-mcp-tools/README.md), pass its name too: the script then calls
+a tool without its required argument. That call returns HTTP `200`, but the tool reports an error.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# Send ten chat completions, each with an x-correlation-id header, then one call to an alias that doesn't exist
-echo "📊 Sending 10 requests to $AI_GATEWAY_MODEL, then one that fails on purpose:"
-./infra/generate-traffic.sh "$AI_GATEWAY_MODEL" 10
+# Send ten chat completions, then the failing calls: drop "learn" if you don't have lab 04's tool server
+echo "📊 Sending 10 requests to $AI_GATEWAY_MODEL, then the calls that fail on purpose:"
+./infra/generate-traffic.sh "$AI_GATEWAY_MODEL" 10 learn
 ```
 </details> <!-- gh -->
 
 <details><summary>PowerShell</summary> <!-- gh -->
 
 ```powershell title="PowerShell"
-# Send ten chat completions, each with an x-correlation-id header, then one call to an alias that doesn't exist
-Write-Host "📊 Sending 10 requests to $env:AI_GATEWAY_MODEL, then one that fails on purpose:"
-./infra/generate-traffic.ps1 -Model $env:AI_GATEWAY_MODEL -Requests 10
+# Send ten chat completions, then the failing calls: drop -ToolServer if you don't have lab 04's tool server
+Write-Host "📊 Sending 10 requests to $env:AI_GATEWAY_MODEL, then the calls that fail on purpose:"
+./infra/generate-traffic.ps1 -Model $env:AI_GATEWAY_MODEL -Requests 10 -ToolServer learn
 ```
 </details> <!-- gh -->
 
 On GitHub, open [generate-traffic.sh](infra/generate-traffic.sh) or
 [generate-traffic.ps1](infra/generate-traffic.ps1).
 
-Expected output: ten `200` rows and a final `error` row with a `4xx` status. Telemetry can take a few minutes to
-reach the dashboard.
+Expected output, with the requests in the middle left out:
+
+```text
+Request  Target                             Status       Expected
+1        gpt-5-mini                         200          200
+...
+10       gpt-5-mini                         200          200
+fail-1   does-not-exist                     404          404, unknown alias
+fail-2   gpt-5-mini                         400          400, from the provider
+fail-3   learn: learn_microsoft_docs_fetch  200 isError  200 isError, tool error
+```
+
+Telemetry can take a few minutes to reach the dashboard.
 
 > [!TIP]
-> Sending `x-correlation-id` from your apps makes application-level investigations easier. Never put personal data,
-> secrets, prompts, or regulated identifiers in it.
+> To find your own requests later, send a W3C `traceparent` header from your app, or let an OpenTelemetry SDK send
+> it. The gateway continues your trace, so the trace ID your app logs is the **Trace ID** on the **Traces** tab and
+> the `TraceId` in KQL.
 
 <!-- /steps -->
 
@@ -894,39 +933,46 @@ stacks both kinds of traffic, **Top models** ranks models by estimated cost with
 
 ### Models: who uses which model, and how many tokens?
 
-Select **Models**. Each row is a responding model with its **Aliases**, **Calls**, **Input tokens**,
-**Output tokens**, **Cached input tokens**, **Token share**, error counts, **Caller identities**, and
-**Estimated cost**. **Model usage by caller identity** breaks usage and estimated cost down by API key or Entra
-caller. That's your first view of cost by API key and model.
+Select **Models**. The cards show **Estimated model cost**, **Total tokens**, **Active aliases**,
+**Active caller identities**, and **Peak throughput**. **Estimated cost over time** splits cost by token type, and
+**Token breakdown** compares input, output, cached, and reasoning tokens. The **Usage** table lists each **Alias**
+with its **Responding models**, **Caller identities**, **Estimated cost**, **Estimated cost share**,
+**Total tokens**, and **Calls**: switch between **By alias** and **By model**. **Model usage by caller identity**
+breaks cost, tokens, and calls down by API key or Microsoft Entra caller. That's your first view of cost by API key
+and model.
 
 > [!NOTE]
-> If you see "Model token and estimated cost data are incomplete until you add a Prometheus access token", follow
-> the prompt: run `az account get-access-token --resource https://prometheus.monitor.azure.com --query accessToken -o tsv`
-> and paste the value into **Prometheus access token**.
+> If the page asks for a Prometheus access token, follow its Azure CLI instructions while you're signed in to the
+> destination's tenant. The token is used only to query metrics.
 
 ### Tools: which MCP tools are called?
 
-Select **Tools**. You see **Total tool calls**, **Active tool servers**, **Usage by tool server**,
-**Top tools within tool servers**, and **Tool usage by caller identity**. It stays empty until agents call tools
-through the gateway, as in [Federate MCP tools behind one endpoint](../04-federate-mcp-tools/README.md).
+Select **Tools**. The cards show **Total tool calls**, **Active tool servers**, **Active tools**,
+**Active caller identities**, and **Peak throughput**. **Tool calls over time by response status code** charts the
+calls, then **Usage by tool server**, **Top tools within tool servers**, and **Tool usage by caller identity** rank
+them. It stays empty until agents call tools through the gateway, as in
+[Federate MCP tools behind one endpoint](../04-federate-mcp-tools/README.md).
 
 ### Policies: what did governance block?
 
-Select **Policies**. The summary shows **Requests blocked**, **Caller identities blocked**, and
-**Assets with blocked calls**. The table lists each **Policy type** with **Allowed requests**,
-**Blocked requests**, and **Last executed**. After [Throttle tokens per caller](../06-token-limits/README.md), the
-token limit's `429` responses show up here.
+Select **Policies**. The table lists each **Policy type** with **Allowed requests**, **Allowed caller identities**,
+**Blocked requests**, **Blocked caller identities**, and **Last executed**. After
+[Throttle tokens per caller](../06-token-limits/README.md), the token limit's `429` responses show up as blocked
+requests.
 
 ### Traces: find the failed request
 
-Select **Traces**. Each row shows **Time**, **Assets**, **Outcome**, and **Applied policies**. Find the request
-for `does-not-exist` from the script, or use **Search trace ID, asset, policy, or reason**.
+Select **Traces**. Each row shows the **Trace ID**, **Time**, **Assets**, **Caller identities**, **Outcome**,
+**Applied policies**, and **Duration**. **Outcome** is **Succeeded**, **Completed with issues**, **Blocked by policy**,
+**Failed**, or **Disconnected**. Narrow the list with the caller identity, outcome, and asset type filters (they're
+under **Filters** in a narrow window). Find the `fail-2` request, which the provider rejected: set the outcome filter
+to **Failed**, or paste a trace ID in **Search**.
 
 <!-- /steps -->
 
 > **Checkpoint**
 > **Overview** shows the model calls you sent and a non-zero **Estimated model cost**, **Models** shows your API key
-> as a caller identity, and **Traces** lists the failed request.
+> as a caller identity, and **Traces** lists the `fail-2` request as **Failed**.
 
 ## Follow a request through the trace waterfall
 
@@ -937,8 +983,9 @@ backend failure at a glance.
 
 ### Open a successful trace
 
-On **Traces**, select a successful model call. The header shows the **Trace ID**, the number of **Spans**, and the
-**Duration**.
+On **Traces**, select a successful model call. **Trace details** shows the **Trace ID**, the number of **Spans** and
+**Logs**, and the **Duration**. For a model call, **Model identity** compares the **Alias** that the caller sent with
+the **Responding model** that answered, for example `gpt-5-mini` and `gpt-5-mini-2025-08-07`.
 
 ### Read the waterfall
 
@@ -947,12 +994,12 @@ On **Traces**, select a successful model call. The header shows the **Trace ID**
 
 | Child span | What it measures |
 |---|---|
-| **inbound** | Work before the backend call. Each policy that ran is a child span, such as `policy costLimit` with its configuration. |
-| **backend** | The call to the provider, for example `HTTP POST` on `/openai/v1/chat/completions`. |
+| **inbound** | Work before the backend call. Each policy that ran is a child span, such as `policy tokenLimit` with its configuration. |
+| **backend** | The call to the provider: a `chat <alias>` span with the routing decision, and its `HTTP POST` on `/openai/v1/chat/completions`. |
 | **outbound** | Work on the response before it returns to the client. |
 | **response transfer** | Sending the response back to the client. |
 
-![A trace waterfall with inbound, backend, outbound, and response transfer spans and a cost limit policy span](../assets/screens/monitoring-trace.png "The waterfall splits gateway time from backend time, and each policy that ran appears as its own span.")
+![A trace waterfall with inbound, backend, outbound, and response transfer spans and a token limit policy span](../assets/screens/monitoring-trace.png "The waterfall splits gateway time from backend time, and each policy that ran appears as its own span.")
 
 ### Read the correlated logs
 
@@ -962,6 +1009,10 @@ Under **Correlated logs**, expand the request log and switch between **Code** an
   `gen_ai.response.model` (the versioned model that answered).
 - `azure.ai_gateway.client.usage.prompt_tokens`, `...completion_tokens`, and `...total_tokens`: the usage the
   backend reported for this one call.
+- `azure.ai_gateway.client.token.cost` and `azure.ai_gateway.currency`: the call's estimated cost.
+- `azure.ai_gateway.api_key_id`: the API key that made the call.
+- `azure.ai_gateway.routing.backend`, `...routing.attempt`, and `...routing.circuit.state`: which backend served the
+  call, on which attempt, and the state of its circuit breaker.
 
 <!-- /steps -->
 
@@ -978,19 +1029,26 @@ You can query them directly to build your own reports and alerts.
 
 ### Open Logs
 
-In the [Azure portal](https://portal.azure.com), open the Log Analytics workspace linked to your Application Insights
-resource (`<gateway>-logs` if you used the Bicep + azd track) and select **Logs**. Switch the editor to **KQL mode**.
+The tables are in a Log Analytics workspace: the **Logs** page of the Application Insights resource doesn't resolve
+`OTelSpans`. In the [Azure portal](https://portal.azure.com), open the workspace, select **Logs**, and switch the
+editor to **KQL mode**:
+
+- **Portal track**: the wizard's Application Insights resource stores its data in a managed workspace,
+  `managed-<insights>-ws`, in a managed resource group whose name starts with `ai_<insights>_`. The resource's
+  **Overview** page links to it.
+- **Azure CLI and Bicep + azd tracks**: `<gateway>-logs`.
 
 ### Run the starter queries
 
-Copy a query from [infra/queries.kql](infra/queries.kql) and run it. Start with query 2 (calls by alias, resolved
-model, and API key) and query 3 (token usage per model and API key).
+Copy a query from [infra/queries.kql](infra/queries.kql) and run it. Start with query 2 (calls by alias, responding
+models, and API key) and query 3 (token usage and estimated cost by alias and API key). Query 8 lists the failed
+operations that the next section explores.
 
 <!-- include: infra/queries.kql kusto -->
 <!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
 📄 [`infra/queries.kql`](infra/queries.kql)
 
-<details><summary>Show all 102 lines</summary>
+<details><summary>Show all 136 lines</summary>
 
 ```kusto
 // Starting-point KQL queries for AI Gateway telemetry. Adapt them to your traffic before you rely on them.
@@ -1001,48 +1059,60 @@ model, and API key) and query 3 (token usage per model and API key).
 // AI Gateway exports OpenTelemetry (OTLP) signals. Traces land in the OTelSpans table and logs in the
 // OTelLogs table; span and log attributes are in the dynamic Attributes column. Attribute names follow the
 // OpenTelemetry GenAI and MCP semantic conventions (gen_ai.request.model, gen_ai.response.model,
-// gen_ai.operation.name, gen_ai.tool.name, mcp.method.name) plus gateway attributes (azure.ai_gateway.*,
-// azure.apim.*). Run `OTelSpans | take 10` first and check the names your data actually carries.
-// Token and cost metrics go to the Azure Monitor workspace (Prometheus), not to these tables.
+// gen_ai.operation.name, gen_ai.tool.name, mcp.method.name) plus gateway attributes (azure.ai_gateway.*).
+// See https://ai.gateway.azure.com/docs/observability/telemetry-reference, and run `OTelSpans | take 10`
+// to check the names your data carries. Token and cost metrics also go to the Azure Monitor workspace
+// (Prometheus), which these queries don't use.
+//
+// Each request is one trace. Its request span is the Server span that carries http.route, for example
+// POST /default/models/*. Its request log in OTelLogs shares the trace ID and the span ID of that span.
 
-// 1. Model and tool server requests over time, by outcome
+// 1. Model and tool server requests over time, by HTTP outcome
 OTelSpans
 | where TimeGenerated > ago(24h)
-| where Kind =~ "Server"
-| extend Route = tostring(Attributes["http.route"]),
-         Status = coalesce(toint(Attributes["http.response.status_code"]), toint(Attributes["http.status_code"]), toint(ResultCode))
-| extend Asset = case(Route contains "/models/", "model", Route contains "/toolservers/", "tool server", "other"),
+| where Kind == "Server" and isnotempty(Attributes["http.route"])
+| extend Route = tostring(Attributes["http.route"]), Status = toint(Attributes["http.response.status_code"])
+| extend Asset = case(Route contains "/models", "model", Route contains "/toolservers/", "tool server", "other"),
          Outcome = case(Status between (200 .. 399), "2xx-3xx", Status between (400 .. 499), "4xx", Status >= 500, "5xx", "unknown")
 | summarize Requests = count() by bin(TimeGenerated, 15m), Series = strcat(Asset, " ", Outcome)
 | render timechart
 
-// 2. Model calls by requested alias, resolved model, and API key, with errors and latency
-OTelSpans
+// 2. Model calls by alias and API key: responding models, errors, and latency
+let requests = OTelSpans
 | where TimeGenerated > ago(24h)
-| where Kind =~ "Server" and tostring(Attributes["http.route"]) contains "/models/"
-| extend RequestedModel = tostring(Attributes["gen_ai.request.model"]),
-         ResolvedModel = tostring(Attributes["azure.ai_gateway.resolved_model.name"]),
-         ApiKeyId = tostring(Attributes["azure.ai_gateway.api_key_id"]),
-         Status = coalesce(toint(Attributes["http.response.status_code"]), toint(Attributes["http.status_code"]), toint(ResultCode))
-| summarize Calls = count(), Errors4xx = countif(Status between (400 .. 499)), Errors5xx = countif(Status >= 500),
-            P95DurationMs = percentile(DurationMs, 95)
-    by RequestedModel, ResolvedModel, ApiKeyId
-| order by Calls desc
-
-// 3. Token usage reported by the backend, per model and API key (from request logs)
-//    Chat Completions reports prompt/completion tokens; the Responses API reports input/output tokens.
-//    Cached input tokens are part of the input tokens. Missing usage means "unknown", not zero.
+| where Kind == "Server" and isnotempty(Attributes["http.route"])
+| project TraceId, SpanId, DurationMs;
 OTelLogs
 | where TimeGenerated > ago(24h)
-| extend Model = tostring(Attributes["gen_ai.request.model"]),
+| where isnotempty(Attributes["gen_ai.request.model"])
+| extend Alias = tostring(Attributes["gen_ai.request.model"]),
+         RespondingModel = tostring(Attributes["gen_ai.response.model"]),
+         ApiKeyId = tostring(Attributes["azure.ai_gateway.api_key_id"]),
+         Status = toint(Attributes["http.response.status_code"])
+| join kind=leftouter requests on TraceId, SpanId
+| summarize Calls = count(), Errors4xx = countif(Status between (400 .. 499)), Errors5xx = countif(Status >= 500),
+            RespondingModels = make_set_if(RespondingModel, isnotempty(RespondingModel), 5),
+            P95DurationMs = round(percentile(DurationMs, 95))
+    by Alias, ApiKeyId
+| order by Calls desc
+
+// 3. Token usage and estimated cost reported for each alias and API key (from request logs)
+//    Chat Completions reports prompt/completion tokens; the Responses API reports input/output tokens.
+//    Cached input tokens are part of the input tokens. Missing usage means "unknown", not zero.
+//    The estimated cost uses the gateway's model prices, in the currency the log reports.
+OTelLogs
+| where TimeGenerated > ago(24h)
+| extend Alias = tostring(Attributes["gen_ai.request.model"]),
          ApiKeyId = tostring(Attributes["azure.ai_gateway.api_key_id"]),
          InputTokens = coalesce(tolong(Attributes["azure.ai_gateway.client.usage.prompt_tokens"]), tolong(Attributes["azure.ai_gateway.client.usage.input_tokens"])),
          OutputTokens = coalesce(tolong(Attributes["azure.ai_gateway.client.usage.completion_tokens"]), tolong(Attributes["azure.ai_gateway.client.usage.output_tokens"])),
-         CachedInputTokens = coalesce(tolong(Attributes["azure.ai_gateway.client.usage.prompt_tokens_details.cached_tokens"]), tolong(Attributes["azure.ai_gateway.client.usage.input_tokens_details.cached_tokens"]))
+         CachedInputTokens = coalesce(tolong(Attributes["azure.ai_gateway.client.usage.prompt_tokens_details.cached_tokens"]), tolong(Attributes["azure.ai_gateway.client.usage.input_tokens_details.cached_tokens"])),
+         Cost = todouble(Attributes["azure.ai_gateway.client.token.cost"]),
+         Currency = tostring(Attributes["azure.ai_gateway.currency"])
 | where isnotnull(InputTokens) or isnotnull(OutputTokens)
 | summarize Requests = count(), InputTokens = sum(InputTokens), CachedInputTokens = sum(CachedInputTokens),
-            OutputTokens = sum(OutputTokens)
-    by Model, ApiKeyId
+            OutputTokens = sum(OutputTokens), EstimatedCost = round(sum(Cost), 6)
+    by Alias, ApiKeyId, Currency
 | extend TotalTokens = InputTokens + OutputTokens
 | order by TotalTokens desc
 
@@ -1050,16 +1120,15 @@ OTelLogs
 //    A 4xx on a trace where a policy ran usually means that policy rejected it. Open the trace to confirm.
 let requests = OTelSpans
 | where TimeGenerated > ago(24h)
-| where Kind =~ "Server"
-| project TraceId, Status = coalesce(toint(Attributes["http.response.status_code"]), toint(Attributes["http.status_code"]), toint(ResultCode));
+| where Kind == "Server" and isnotempty(Attributes["http.route"])
+| project TraceId, Status = toint(Attributes["http.response.status_code"]);
 OTelSpans
 | where TimeGenerated > ago(24h)
-| extend PolicyType = tostring(Attributes["azure.apim.policy.type"]), ErrorType = tostring(Attributes["error.type"])
+| extend PolicyType = tostring(Attributes["azure.ai_gateway.policy.type"])
 | where isnotempty(PolicyType)
-| where PolicyType !in ("forward-request", "set-backend-service", "llm-emit-token-metric", "llm-emit-cost-metric")
 | join kind=inner requests on TraceId
 | summarize Requests = dcount(TraceId), RequestsEndingIn4xx = dcountif(TraceId, Status between (400 .. 499)),
-            ErrorTypes = make_set_if(ErrorType, isnotempty(ErrorType), 5), LastExecuted = max(TimeGenerated)
+            LastExecuted = max(TimeGenerated)
     by PolicyType
 | order by RequestsEndingIn4xx desc
 
@@ -1070,21 +1139,24 @@ let backend = OTelSpans
 | project TraceId, BackendMs = DurationMs;
 OTelSpans
 | where TimeGenerated > ago(24h)
-| where Kind =~ "Server" and tostring(Attributes["http.route"]) contains "/models/"
+| where Kind == "Server" and tostring(Attributes["http.route"]) contains "/models/"
 | project TimeGenerated, TraceId, Model = tostring(Attributes["gen_ai.request.model"]), TotalMs = DurationMs
 | join kind=leftouter backend on TraceId
 | extend GatewayMs = TotalMs - BackendMs
 | project TimeGenerated, TraceId, Model, TotalMs, BackendMs, GatewayMs
 | top 20 by TotalMs desc
 
-// 6. MCP tool calls by tool name
+// 6. MCP tool calls by tool server and tool, with failed calls
+//    A tool that returns isError: true still answers HTTP 200; its tools/call span has the status Error.
 OTelSpans
 | where TimeGenerated > ago(24h)
-| extend Operation = coalesce(tostring(Attributes["gen_ai.operation.name"]), tostring(Attributes["azure.ai_gateway.operation.name"]), tostring(Attributes["mcp.method.name"])),
-         ToolName = tostring(Attributes["gen_ai.tool.name"])
-| where Operation =~ "tools/call" or Name startswith "tools/call "
-| where isnotempty(ToolName)
-| summarize Calls = count(), Errors = countif(StatusCode =~ "Error") by ToolName
+| where Kind == "Server" and tostring(Attributes["mcp.method.name"]) == "tools/call"
+| extend ToolServer = tostring(Attributes["azure.ai_gateway.mcp.tool_server.name"]),
+         ToolName = tostring(Attributes["gen_ai.tool.name"]),
+         ErrorType = tostring(Attributes["error.type"])
+| summarize Calls = count(), Failed = countif(StatusCode == "Error"),
+            ErrorTypes = make_set_if(ErrorType, isnotempty(ErrorType), 5)
+    by ToolServer, ToolName
 | order by Calls desc
 
 // 7. Every span of one trace, in order (paste a trace ID from Monitoring › Traces)
@@ -1093,8 +1165,28 @@ OTelSpans
 | where TimeGenerated > ago(30d)
 | where TraceId == traceId
 | project TimeGenerated, SpanId, ParentSpanId, Name, Kind, DurationMs, StatusCode,
-          PolicyType = tostring(Attributes["azure.apim.policy.type"]), Attributes
+          ErrorType = tostring(Attributes["error.type"]),
+          PolicyType = tostring(Attributes["azure.ai_gateway.policy.type"]), Attributes
 | order by TimeGenerated asc
+
+// 8. Failed operations: requests with at least one span whose status is Error, whatever the HTTP status
+//    Model-stream errors and MCP tool errors can answer HTTP 200 and still mark a span as Error.
+//    error.type names the cause, for example tool_error or LlmAliasNotFound. A request to a path that the
+//    gateway doesn't serve has no http.route; its request span is named after the method, for example
+//    HTTP GET, and its error.type is OperationNotFound.
+OTelSpans
+| where TimeGenerated > ago(24h)
+| summarize Request = coalesce(take_anyif(Name, Kind == "Server" and isnotempty(Attributes["http.route"])),
+                               take_anyif(Name, Kind == "Server")),
+            HttpStatus = take_anyif(toint(Attributes["http.response.status_code"]),
+                                    Kind == "Server" and isnotempty(Attributes["http.response.status_code"])),
+            FailedSpans = make_set_if(Name, StatusCode == "Error", 5),
+            ErrorTypes = make_set_if(tostring(Attributes["error.type"]), isnotempty(Attributes["error.type"]), 5),
+            Start = min(TimeGenerated)
+    by TraceId
+| where array_length(FailedSpans) > 0
+| project Start, TraceId, Request, HttpStatus, FailedSpans, ErrorTypes
+| order by Start desc
 ```
 
 </details>
@@ -1138,6 +1230,74 @@ them.
 > Query 2 returns one row per alias and API key with your call count, and query 3 returns input and output token
 > totals that match the order of magnitude on the **Models** tab.
 
+## Find failed operations
+
+HTTP status alone doesn't identify every failure. A model stream can fail after it has started, and an MCP tool can
+report an error in a successful response. In both cases, the gateway marks the span of the failed operation with the
+status `Error` and keeps `http.response.status_code` unchanged, so a `200` response can still carry a failure. The
+`error.type` attribute names the cause, for example `tool_error` for a tool that failed. Docs:
+[Operation failures](https://ai.gateway.azure.com/docs/observability/telemetry-reference#operation-failures).
+
+<!-- steps -->
+
+### Open the failed tool call
+
+On **Traces**, set the outcome filter to **Completed with issues** and open the `fail-3` request, a `Tools: 1` row.
+The request log under **Correlated logs** says `200 OK`, and the root span `Tool · learn` is only **Completed**. The
+spans below it show the failure: **backend**, `Tool · microsoft_docs_fetch`, and `tools/call microsoft_docs_fetch`
+are **Failed**, and the last two carry `tool_error`.
+
+![Trace details of a tool call that answered 200 OK, with the backend and tools/call spans marked Failed](../assets/screens/monitoring-13-failed-tool-call.webp "A tool error answers 200 OK: the root span is Completed, and the spans that failed carry tool_error.")
+
+### Compare the three failures
+
+Each failing call that the traffic script sent leaves a different trace:
+
+| Request | HTTP status | Outcome on **Traces** | Spans with the status `Error` | `error.type` |
+|---|---|---|---|---|
+| `fail-1`, an unknown alias | `404` | Not listed | `inbound` | `LlmAliasNotFound` |
+| `fail-2`, rejected by the provider | `400` | **Failed** | `chat <alias>` and `HTTP POST` | `400` |
+| `fail-3`, a tool error | `200` | **Completed with issues** | `tools/call microsoft_docs_fetch` | `tool_error` |
+
+The `fail-1` request doesn't name a model on the gateway, so it never appears on **Traces**: find it with KQL. The
+request log of `fail-2` shows why it cost nothing: `azure.ai_gateway.routing.failure.type` is `http_response`, and
+`azure.ai_gateway.client.token.cost` is `0`.
+
+### Query failed operations
+
+In Logs, run query 8 from [infra/queries.kql](infra/queries.kql). It lists every request with at least one span
+whose status is `Error`, whatever its HTTP status, with the failed spans and their `error.type` values:
+
+```text
+Request                              HttpStatus  FailedSpans                          ErrorTypes
+POST /default/toolservers/learn/mcp  200         ["tools/call microsoft_docs_fetch"]  ["tool_error"]
+POST /default/models/*               400         ["HTTP POST","chat gpt-5-mini"]      ["400"]
+POST /default/models                 404         ["inbound"]                          ["LlmAliasNotFound"]
+```
+
+The list can also show `HTTP GET` or `HTTP POST` requests with the status `404` and the `error.type`
+`OperationNotFound`: calls to a path that the gateway doesn't serve, such as a probe of the runtime URL. Their request
+span has no `http.route`.
+
+Query 6 counts the failed calls of each tool, and query 7 shows the `error.type` of each span of one trace. The
+[telemetry reference](https://ai.gateway.azure.com/docs/observability/telemetry-reference#operation-failures) also
+lists `rpc.response.status_code`, the JSON-RPC error code of a failed MCP call, when the tool server reports one.
+
+### Read the routing attributes
+
+The spans and logs also record why the gateway sent a call where it did. The `azure.ai_gateway.routing.*` attributes
+on the `chat <alias>` span and in the request log name the backend, the attempt, the circuit breaker state, the
+priority and weight, and the classified failure of a failed attempt. Requests to a
+[Jev decision model](https://ai.gateway.azure.com/docs/models/use-jev) set `gen_ai.operation.name` to `decisions`.
+Docs: [Routing attributes](https://ai.gateway.azure.com/docs/observability/telemetry-reference#routing-attributes)
+and [Jev decisions](https://ai.gateway.azure.com/docs/observability/telemetry-reference#jev-decisions).
+
+<!-- /steps -->
+
+> **Checkpoint**
+> You found the `fail-3` tool call that answered `200` with **Failed** spans, and query 8 lists all three failing
+> calls with their `error.type`.
+
 ## Verify
 
 <!-- steps -->
@@ -1149,8 +1309,9 @@ with **1H** selected. **Model calls** grows by at least five.
 
 ### Confirm all signals are flowing
 
-Open **Settings**. All three signals point at your Application Insights resource, and the dashboard doesn't show
-"Enable all telemetry signals".
+Open **Settings** › **Endpoints**. **Metrics endpoint**, **Logs endpoint**, and **Traces endpoint** are all on: if
+any endpoint is disabled, the built-in dashboard is unavailable. **Settings** › **General** shows your Application
+Insights resource as the **Telemetry destination**.
 
 To check the exporter from the CLI, list the gateway's telemetry exporters:
 
@@ -1172,8 +1333,10 @@ az aigateway telemetry-exporter list -g $RG --gateway-name $GATEWAY --query "[].
 ```
 </details> <!-- gh -->
 
-The exporter that every track creates has kind `OpenTelemetry`. A legacy `applicationInsights` exporter, from
-[Troubleshooting](../TROUBLESHOOTING.md#lab-13-monitoring), shows an empty kind, because Azure doesn't return one.
+Every track creates an exporter of kind `OpenTelemetry`. The extension calls the preview API, which names the type
+`kind`; the `2026-11-01` API returns it as `properties.telemetryExporterType`. A legacy exporter of kind
+`ApplicationInsights`, from [Troubleshooting](../TROUBLESHOOTING.md#lab-13-monitoring), shows an empty kind in this
+list.
 
 <!-- /steps -->
 
@@ -1186,8 +1349,10 @@ The exporter that every track creates has kind `OpenTelemetry`. A legacy `applic
   build on them. [Attribute tokens and cost with OpenTelemetry](../14-otel-chargeback/README.md) queries them.
 - **Alert on what you can act on.** Start with token usage spikes, backend authentication failures, and telemetry
   export failures. Route each alert to an owner who can investigate the gateway, backend, policy, or destination.
-- **Send telemetry somewhere else.** Use **Custom OpenTelemetry destination** to export to any OTLP endpoint. Store
-  any credential headers as secrets.
+- **Send telemetry somewhere else.** In the **Configure telemetry** wizard, choose
+  **Custom OpenTelemetry destination** to export to an OpenTelemetry Collector or any receiver that accepts OTLP/HTTP
+  with binary Protobuf. Store any credential headers as secrets. The dashboard doesn't show data from a custom
+  destination. Docs: [Send telemetry to a custom destination](https://ai.gateway.azure.com/docs/observability/custom-destination).
 - **Capture payloads carefully.** **Settings** › **Logging** has **Log request and response payloads**. It's off by
   default because prompts and responses can be sensitive and add volume.
 
@@ -1206,9 +1371,11 @@ doesn't delete the destination.
 
 ### Delete the destination
 
-In the [Azure portal](https://portal.azure.com), delete the `<gateway>-insights` Application Insights resource and its
-Log Analytics workspace if nothing else uses them. Enabling OTLP can also create an Azure Monitor workspace and a
-Data Collection Rule for the metrics. Check the resource group for them and delete them if they're unused.
+In the [Azure portal](https://portal.azure.com), delete the Application Insights resource that the wizard created,
+`<gateway>-insights` or the name you kept, if nothing else uses it. Azure deletes the managed Log Analytics workspace
+and the data collection endpoint and rule along with it, then its managed resource group once the Azure Monitor
+workspace in it is gone. Azure can take a long time to delete that workspace, and a deny assignment keeps you from
+deleting it yourself.
 
 </details> <!-- gh -->
 <!-- track: cli | Azure CLI -->
@@ -1217,7 +1384,9 @@ Data Collection Rule for the metrics. Check the resource group for them and dele
 ### Delete the exporter and the destination
 
 Delete the exporter first, so that the gateway stops exporting, then the component and the workspace. Azure deletes
-the component's managed resource group, with the Data Collection Rule, along with the component.
+the component's Data Collection Rule and endpoint along with it, then its managed resource group once the Azure
+Monitor workspace in it is gone. Azure can take a long time to delete that workspace, and a deny assignment keeps you
+from deleting it yourself.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -1257,8 +1426,9 @@ if ($?) { Write-Host "🚮 Log Analytics workspace $GATEWAY-logs is deleted" }
 
 In the `aigateway/labs/13-monitoring` folder, delete the resource group with the gateway, the Foundry account, the
 Application Insights component, and the Log Analytics workspace. Azure deletes the component's managed resource group
-with it. [`--purge`](../SETUP.md#delete-what-azd-created) also purges the soft-deleted Foundry account. It takes about
-ten minutes.
+too, once the Azure Monitor workspace in it is gone, which can take longer than `azd down`.
+[`--purge`](../SETUP.md#delete-what-azd-created) also purges the soft-deleted Foundry account. It takes about ten
+minutes.
 
 ```bash
 # Delete everything that azd up created, and purge the Foundry account
@@ -1292,5 +1462,5 @@ Bicep + azd track created its own gateway.
 | :-- | :-: | --: |
 | [12 · Backend identities](../12-backend-identity/README.md) | [All labs](../README.md) | [14 · OpenTelemetry chargeback](../14-otel-chargeback/README.md) |
 
-<sub>Learning paths: [FinOps & operations](../README.md#learning-paths) (4 of 5)</sub>
+<sub>Learning paths: [FinOps & operations](../README.md#learning-paths) (5 of 6)</sub>
 <!-- gh:end -->

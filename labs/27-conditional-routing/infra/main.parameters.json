@@ -1,0 +1,21 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": {
+      "value": "${AZURE_ENV_NAME}"
+    },
+    "location": {
+      "value": "${AZURE_LOCATION}"
+    },
+    "researchModelName": {
+      "value": "${RESEARCH_MODEL=gpt-6.1-sol}"
+    },
+    "researchModelVersion": {
+      "value": "${RESEARCH_MODEL_VERSION=2026-09-29}"
+    },
+    "routingMode": {
+      "value": "${ROUTING_MODE=conditions}"
+    }
+  }
+}

@@ -12,7 +12,7 @@ tags: [OpenTelemetry, token claims, chargeback, estimated cost, KQL, PromQL, Pro
 objectives:
   - Choose which JWT claims the gateway exports to logs, root traces, and token and cost metrics
   - Check which claims your callers' tokens actually carry before you rely on them
-  - Build a chargeback report from request logs by tenant, client app, and API key
+  - Build a chargeback report from request logs by tenant, client app, and API key, with failed requests and the gateway's cost estimate
   - Query token and cost metrics with PromQL without double counting token types
 prereqs:
   - 13-monitoring
@@ -35,7 +35,7 @@ prereqs:
 
 - Choose which JWT claims the gateway exports to logs, root traces, and token and cost metrics
 - Check which claims your callers' tokens actually carry before you rely on them
-- Build a chargeback report from request logs by tenant, client app, and API key
+- Build a chargeback report from request logs by tenant, client app, and API key, with failed requests and the gateway's cost estimate
 - Query token and cost metrics with PromQL without double counting token types
 
 **Follow along:** 🌐 [Interactive version](https://azure.github.io/aigateway/labs/14-otel-chargeback/) with your own values filled in · 📁 [Lab files](infra/)
@@ -66,7 +66,7 @@ Application Insights already collects.
 > assignment, so you can skip this section. You need only the one-time setup above, and permission to create role
 > assignments, for example **Owner** on the subscription. The later sections also use Python 3.10 or later.
 
-- Complete [Monitor usage, cost, and traces](../13-monitoring/README.md) with **Configure telemetry**, so the
+- Complete [Connect Application Insights](../13-monitoring/README.md#connect-application-insights) in lab 13, so the
   gateway exports all three signals to Application Insights with an OpenTelemetry exporter.
 - Complete [Go keyless with Microsoft Entra ID and RBAC](../11-entra-rbac/README.md), or make sure your signed-in
   user has **AI Gateway Models User** (or **AI Gateway User**) on the gateway or on the model alias.
@@ -76,7 +76,9 @@ Application Insights already collects.
 - Run the scripts and samples from the lab's folder, `~/aigateway/labs/14-otel-chargeback`.
 
 Set these variables once. If you named the Application Insights resource differently in lab 13, change
-`$GATEWAY-insights`.
+`$GATEWAY-insights`. The portal's setup adds a short random suffix when that name is taken, such as
+`<gateway>-insights-ak7s`: list your components with
+`az resource list -g "$RG" --resource-type Microsoft.Insights/components --query "[].name" -o tsv`.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -92,7 +94,7 @@ export AI_GATEWAY_URL="https://$(az aigateway show -g "$RG" -n "$GATEWAY" --quer
 echo "🌐 Runtime URL: $AI_GATEWAY_URL"
 
 # Read your API key without showing it, and export it for the scripts
-read -rsp "AI Gateway API key: " AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
+printf "AI Gateway API key: " && read -rs AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 
 # Find the Application Insights resource from lab 13, and the Log Analytics workspace behind it
@@ -135,12 +137,14 @@ Every request already carries its caller. An API key call is attributed by the k
 copy the claims you pick into telemetry as `azure.ai_gateway.identity.claims.<claim>`. For each claim you choose the
 signals independently: **logs**, **root traces**, and **observed token and cost metrics**.
 
-Logs hold the per-request token usage the backend reported, so they're the best source for a detailed report.
-Metrics are cheaper to query over long ranges, but every exported claim value becomes a label, so keep metrics to
-claims with a bounded number of values.
+Logs hold the per-request token usage the backend reported, so they're the best source for a detailed report. Traces
+add the failures that HTTP status codes miss: a span gets the status **Error** when a model stream or an MCP call
+fails, even after HTTP 200. Metrics are cheaper to query over long ranges, but every exported claim value becomes
+a label, so keep metrics to claims with a bounded number of values.
 
-Estimated cost is **observed tokens × public pricing**. Treat it as an allocation key and reconcile the total with
-provider billing or Azure Cost Management.
+Estimated cost is **observed tokens × public pricing**. The gateway exports its estimate with each request as
+`azure.ai_gateway.client.token.cost`, also for streamed responses whose logs report no token usage. Treat it as an
+allocation key and reconcile the total with provider billing or Azure Cost Management.
 
 | Claim | Identifies | Recommended preset | Use it for |
 |---|---|---|---|
@@ -658,7 +662,8 @@ Expected output: `aud` is AI Gateway's app ID, `18550318-e177-4205-a743-6816d6fc
 ### Call the gateway as two callers
 
 Run the script for your shell. It sends five requests with your API key and five with your Entra token, each with an
-`x-correlation-id` header.
+`x-correlation-id` header that you can match in your client's own logs. The gateway doesn't add that header to its
+telemetry, so in Monitoring you find the calls by caller and time.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -688,12 +693,13 @@ rows means your role assignment is missing or hasn't propagated yet.
 
 Wait a few minutes, then open **Monitoring** › **Models** with **1H** selected. In
 **Model usage by caller identity**, your API key and your Entra identity appear as separate rows with their own
-tokens and estimated cost. Entra callers are resolved from `tid` and `oid`. Callers with neither an API key nor
-those claims show as **Unattributed**.
+estimated cost, tokens, and calls: `app-first-call` as an **API key**, and your name as a **User** with your tenant.
+Entra callers are resolved from `tid` and `oid`. Callers with neither an API key nor those claims show as
+**Unattributed**.
 
-Then select **Traces**, open one of the Entra requests, and expand its log under **Correlated logs**. Look for
-`azure.ai_gateway.identity.claims.tid`, `...oid`, and `...appid` or `...azp`. An API key request shows
-`azure.ai_gateway.api_key_id` instead.
+Then select **Traces**. The **Caller identities** column shows the key or your name. Open one of your Entra requests:
+under **Correlated logs**, its log shows `azure.ai_gateway.identity.claims.tid`, `...oid`, and `...appid` or `...azp`.
+An API key request shows `azure.ai_gateway.api_key_id` instead.
 
 <!-- /steps -->
 
@@ -702,18 +708,20 @@ Then select **Traces**, open one of the Entra requests, and expand its log under
 
 ## Build a chargeback report
 
-The report groups the token usage in request logs by owner and prices it with a price list you control. The query
-is in [infra/chargeback.kql](infra/chargeback.kql):
+The report groups the request logs by owner: requests, failed requests, token usage, and the gateway's own cost
+estimate. It then prices the tokens with a price list you control. The query is in
+[infra/chargeback.kql](infra/chargeback.kql):
 
 <!-- include: infra/chargeback.kql kusto -->
 <!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
 📄 [`infra/chargeback.kql`](infra/chargeback.kql)
 
-<details><summary>Show all 41 lines</summary>
+<details><summary>Show all 57 lines</summary>
 
 ```kusto
-// Chargeback starter: tokens per tenant, caller, client app, API key, and model, from AI Gateway request logs.
-// This is a starting point. Check the attribute names in one request's correlated log before you rely on a column.
+// Chargeback starter: requests, tokens, and cost per tenant, caller, client app, API key, and model, from AI Gateway
+// request logs. This is a starting point. Check the attribute names in one request's correlated log before you rely
+// on a column.
 //
 // Where to run it: the Log Analytics workspace behind your Application Insights resource, Logs, KQL mode.
 // Then export the result as CSV, or call the query API, and price it with chargeback_report.py.
@@ -723,19 +731,28 @@ is in [infra/chargeback.kql](infra/chargeback.kql):
 //   Token claim attributes. Claims are exported as azure.ai_gateway.identity.claims.<claim>.
 // - Token usage that the backend reported, exported as azure.ai_gateway.client.usage.*. Chat Completions reports
 //   prompt_tokens and completion_tokens, and cached input tokens are part of the prompt tokens. The input_tokens and
-//   output_tokens fallbacks cover APIs that use those names.
-// Requests without reported usage, such as calls a policy rejected, aren't counted. Missing usage means "unknown",
-// not zero.
+//   output_tokens fallbacks cover APIs that use those names. Missing usage means "unknown", not zero: streamed
+//   responses and failed calls often have none, and RequestsWithoutUsage counts them.
+// - The gateway's own estimate, azure.ai_gateway.client.token.cost: observed tokens x public prices, in
+//   azure.ai_gateway.currency. It's also there for streamed responses, so GatewayCost can exceed your token totals.
+// - The Traces signal, for FailedRequests: a request failed if it answered HTTP 4xx or 5xx, or if any of its spans
+//   has the status Error, such as a model stream that reported an error after HTTP 200.
+// Calls to an alias that doesn't exist have no model in their log, so they aren't counted.
 let lookback = 30d;
+let failedTraces = OTelSpans
+    | where TimeGenerated > ago(lookback) and StatusCode == "Error"
+    | distinct TraceId;
 OTelLogs
 | where TimeGenerated > ago(lookback)
+// Request logs of model calls. Tool calls have no gen_ai.request.model.
+| where isnotempty(Attributes["gen_ai.request.model"])
 | extend InputTokens = coalesce(tolong(Attributes["azure.ai_gateway.client.usage.prompt_tokens"]),
                                 tolong(Attributes["azure.ai_gateway.client.usage.input_tokens"])),
          CachedInputTokens = coalesce(tolong(Attributes["azure.ai_gateway.client.usage.prompt_tokens_details.cached_tokens"]),
                                       tolong(Attributes["azure.ai_gateway.client.usage.input_tokens_details.cached_tokens"])),
          OutputTokens = coalesce(tolong(Attributes["azure.ai_gateway.client.usage.completion_tokens"]),
-                                 tolong(Attributes["azure.ai_gateway.client.usage.output_tokens"]))
-| where isnotnull(InputTokens) or isnotnull(OutputTokens)
+                                 tolong(Attributes["azure.ai_gateway.client.usage.output_tokens"])),
+         Failed = toint(Attributes["http.response.status_code"]) >= 400 or TraceId in (failedTraces)
 | extend Tenant = tostring(Attributes["azure.ai_gateway.identity.claims.tid"]),
          ObjectId = tostring(Attributes["azure.ai_gateway.identity.claims.oid"]),
          // v2 tokens carry azp, v1 tokens carry appid. Both identify the client application.
@@ -745,11 +762,17 @@ OTelLogs
          CostCenter = tostring(Attributes["azure.ai_gateway.identity.claims.cost_center"]),
          ApiKeyId = tostring(Attributes["azure.ai_gateway.api_key_id"]),
          Alias = tostring(Attributes["gen_ai.request.model"]),
+         // The model that answered, such as a versioned name. A call that failed before an answer has only the alias.
          Model = coalesce(tostring(Attributes["gen_ai.response.model"]), tostring(Attributes["gen_ai.request.model"]))
 | summarize Requests = count(),
+            FailedRequests = countif(Failed),
+            RequestsWithoutUsage = countif(isnull(InputTokens) and isnull(OutputTokens)),
             InputTokens = sum(coalesce(InputTokens, long(0))),
             CachedInputTokens = sum(coalesce(CachedInputTokens, long(0))),
-            OutputTokens = sum(coalesce(OutputTokens, long(0)))
+            OutputTokens = sum(coalesce(OutputTokens, long(0))),
+            GatewayCost = round(sum(coalesce(todouble(Attributes["azure.ai_gateway.client.token.cost"]), 0.0)), 6),
+            Currency = take_anyif(tostring(Attributes["azure.ai_gateway.currency"]),
+                                  isnotempty(Attributes["azure.ai_gateway.currency"]))
     by Tenant, ObjectId, ClientApp, CostCenter, ApiKeyId, Alias, Model
 | extend TotalTokens = InputTokens + OutputTokens
 | order by TotalTokens desc
@@ -780,12 +803,14 @@ prices per million tokens from your provider's pricing page or agreement. A vers
 ### Run the query
 
 In the [Azure portal](https://portal.azure.com), open the Log Analytics workspace behind your Application Insights
-resource and select **Logs**. Switch to **KQL mode**, paste the contents of `infra/chargeback.kql`, and select
-**Run**. You get one row per tenant, object ID, client app, API key, alias, and model.
+resource and select **Logs**. Switch from **Simple mode** to **KQL mode**, paste the contents of
+`infra/chargeback.kql`, and select **Run**. You get one row per tenant, object ID, client app, API key, alias, and
+model.
 
 ### Export it
 
-Select **Export** and choose CSV with all columns. Save the file as `usage.csv` in the lab folder.
+Select **Share** › **Export to CSV (all columns)**. The browser downloads `query_data.csv`: move it to the lab folder
+and rename it `usage.csv`.
 
 ### Price it
 
@@ -870,12 +895,33 @@ if ($?) { Write-Host "📄 Report saved to chargeback.csv" }
 </details> <!-- gh -->
 <!-- /tracks -->
 
-On GitHub, open [infra/chargeback_report.py](infra/chargeback_report.py). It sums requests and tokens per group,
-prices uncached input, cached input, and output tokens separately, and lists any model without a price. Group by
-any column from the query, for example `--by CostCenter` or `--by ApiKeyId,Model`.
+On GitHub, open [infra/chargeback_report.py](infra/chargeback_report.py). It sums requests, failed requests, and
+tokens per group, prices uncached input, cached input, and output tokens separately, and lists any model without a
+price. Group by any column from the query, for example `--by CostCenter` or `--by ApiKeyId,Model`.
 
-Expected output: a table with one row for your API key (`(none)` in `Tenant` and `ClientApp`) and one for your
-Entra identity (your tenant ID and the Azure CLI's client ID), followed by a total.
+Expected output: one row for your API key (`(none)` in `Tenant` and `ClientApp`) and one for your Entra identity
+(your tenant ID and the Azure CLI's client ID), followed by a total. For five calls per caller, the report looks like
+this, with your own token counts and costs:
+
+```text
+Tenant     ClientApp  ApiKeyId        Requests  FailedRequests  InputTokens  CachedInputTokens  OutputTokens  UnpricedTokens  EstimatedCost (USD)  GatewayCost (USD)
+(none)     (none)     app-first-call  5         0               85           0                  797           0               0.003273             0.001615
+<tenant>   <app-id>   (none)          5         0               85           0                  706           0               0.002909             0.001433
+
+Total: 1,673 tokens, estimated 0.006182 USD
+```
+
+Two columns come from the gateway rather than from your price list:
+
+- **FailedRequests** counts calls that answered HTTP 4xx or 5xx, and calls whose trace has a span with the status
+  **Error**. A model stream or an MCP call can fail after HTTP 200; see
+  [Operation failures](https://ai.gateway.azure.com/docs/observability/telemetry-reference#operation-failures).
+  Decide whether you charge for them: a failed stream can still have consumed tokens.
+- **GatewayCost** sums `azure.ai_gateway.client.token.cost`, the gateway's estimate from public prices. The logs of
+  streamed responses carry this cost but no token usage, so they add nothing to **EstimatedCost**. If you sent
+  streamed or failing traffic, for example with lab 13's traffic script, the API key row counts those calls too, and
+  the report ends with a line such as
+  `14 request(s) reported no token usage, such as streamed responses or failed calls.`
 
 > [!TIP]
 > The report shows IDs. Resolve a client app's name with
@@ -924,22 +970,34 @@ Write-Host "👤 Token acquired: in PROM_TOKEN ($($PROM_TOKEN.Length) characters
 
 ### Query token usage for the last day
 
-The metric names contain dots, so the selector uses quoted names. The `microsoft.appresourceid` label limits the
-query to your Application Insights resource.
+The metric and label names contain dots, so the query quotes them. The `microsoft.appresourceid` label limits it to
+your Application Insights resource.
+
+Each gateway instance exports its own cumulative counters, labeled with `service.instance.id`, so the query takes the
+highest value of each series in the last day and adds up the instances. `increase()` doesn't fit lab traffic: it
+measures growth between samples, and a new series often appears with its first burst already counted, so a short
+burst reads as 0.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
 # Select the token usage metric of your Application Insights resource, with quoted names because they contain dots
-SELECTOR="{__name__=\"azure.ai_gateway.client.token.usage\",\"microsoft.appresourceid\"=\"$(echo "$APPI_ID" | tr '[:upper:]' '[:lower:]')\"}"
+APPI_LABEL="$(echo "$APPI_ID" | tr '[:upper:]' '[:lower:]')"
+SELECTOR="{__name__=\"azure.ai_gateway.client.token.usage\",\"microsoft.appresourceid\"=\"$APPI_LABEL\"}"
 
-# Query the tokens of the last day, and print one row per model, token type, API key, tenant, and client app
+# Group by model, token type, API key, tenant, and client app
+BY='"gen_ai.response.model","gen_ai.token.type","azure.ai_gateway.api_key_id"'
+BY+=',"azure.ai_gateway.identity.claims.tid","azure.ai_gateway.identity.claims.appid"'
+BY+=',"azure.ai_gateway.identity.claims.azp"'
+
+# Query the tokens of the last day, and print one row per group. v1 tokens carry appid, v2 tokens carry azp
 echo "📊 Tokens in the last day, by model, token type, API key, tenant, and client app:"
 curl -sS -G "${PROM_URL%/}/api/v1/query" -H "Authorization: Bearer $PROM_TOKEN" \
-  --data-urlencode "query=increase(${SELECTOR}[1d])" \
+  --data-urlencode "query=sum by ($BY) (max_over_time(${SELECTOR}[1d])) > 0" \
   | jq -r '.data.result[] | [.metric["gen_ai.response.model"], .metric["gen_ai.token.type"],
-      (.metric["azure.ai_gateway.api_key_id"] // "-"), (.metric["azure.ai_gateway.identity.claims.tid"] // "-"),
-      (.metric["azure.ai_gateway.identity.claims.appid"] // .metric["azure.ai_gateway.identity.claims.azp"] // "-"),
+      .metric["azure.ai_gateway.api_key_id"], .metric["azure.ai_gateway.identity.claims.tid"],
+      ((.metric["azure.ai_gateway.identity.claims.appid"] | select(. != "n/a"))
+        // .metric["azure.ai_gateway.identity.claims.azp"] // "-"),
       (.value[1] | tonumber | round)] | @tsv'
 ```
 </details> <!-- gh -->
@@ -948,25 +1006,49 @@ curl -sS -G "${PROM_URL%/}/api/v1/query" -H "Authorization: Bearer $PROM_TOKEN" 
 
 ```powershell title="PowerShell"
 # Select the token usage metric of your Application Insights resource, with quoted names because they contain dots
-$selector = '{__name__="azure.ai_gateway.client.token.usage","microsoft.appresourceid"="' + $APPI_ID.ToLower() + '"}'
+$APPI_LABEL = $APPI_ID.ToLower()
+$selector = '{__name__="azure.ai_gateway.client.token.usage","microsoft.appresourceid"="' + $APPI_LABEL + '"}'
+
+# Group by model, token type, API key, tenant, and client app
+$by = '"gen_ai.response.model","gen_ai.token.type","azure.ai_gateway.api_key_id",' +
+  '"azure.ai_gateway.identity.claims.tid","azure.ai_gateway.identity.claims.appid",' +
+  '"azure.ai_gateway.identity.claims.azp"'
 
 # Query the tokens of the last day from the Prometheus query API
+$query = 'sum by (' + $by + ') (max_over_time(' + $selector + '[1d])) > 0'
 $result = Invoke-RestMethod -Uri "$($PROM_URL.TrimEnd('/'))/api/v1/query" `
-  -Headers @{ Authorization = "Bearer $PROM_TOKEN" } -Body @{ query = 'increase(' + $selector + '[1d])' }
+  -Headers @{ Authorization = "Bearer $PROM_TOKEN" } -Body @{ query = $query }
 
-# Print one row per model, token type, API key, tenant, and client app
+# Print one row per group. v1 tokens carry appid, v2 tokens carry azp
 if ($?) { Write-Host "📊 Tokens in the last day, by model, token type, API key, tenant, and client app:" }
-$result.data.result | ForEach-Object { [pscustomobject]@{
-  Model     = $_.metric.'gen_ai.response.model'
-  TokenType = $_.metric.'gen_ai.token.type'
-  ApiKeyId  = $_.metric.'azure.ai_gateway.api_key_id'
-  Tenant    = $_.metric.'azure.ai_gateway.identity.claims.tid'
-  ClientApp = $_.metric.'azure.ai_gateway.identity.claims.appid' ?? $_.metric.'azure.ai_gateway.identity.claims.azp'
-  Tokens    = [math]::Round([double]$_.value[1]) } } | Format-Table
+$result.data.result | ForEach-Object {
+  $appid = $_.metric.'azure.ai_gateway.identity.claims.appid'
+  $azp = $_.metric.'azure.ai_gateway.identity.claims.azp'
+  [pscustomobject]@{
+    Model     = $_.metric.'gen_ai.response.model'
+    TokenType = $_.metric.'gen_ai.token.type'
+    ApiKeyId  = $_.metric.'azure.ai_gateway.api_key_id'
+    Tenant    = $_.metric.'azure.ai_gateway.identity.claims.tid'
+    ClientApp = if ($appid -and $appid -ne 'n/a') { $appid } elseif ($azp) { $azp } else { '-' }
+    Tokens    = [long][double]$_.value[1] } } | Format-Table
 ```
 </details> <!-- gh -->
 
-Expected output: rows per model, token type, and caller. Your Entra rows carry your tenant ID and the client app.
+Expected output: rows per model, token type, and caller, in any order. A claim that a caller doesn't have shows
+`n/a`, so your API key rows show `n/a` for the tenant and client app, and your Entra rows show `unknown` for the API
+key. A `-` for the client app marks series from before you exported `appid` and `azp` to metrics, such as lab 13's
+traffic.
+
+```text
+gpt-5-mini-2025-08-07  prompt_tokens                               app-first-call  n/a       n/a       85
+gpt-5-mini-2025-08-07  completion_tokens                           app-first-call  n/a       n/a       809
+gpt-5-mini-2025-08-07  completion_tokens_details.reasoning_tokens  app-first-call  n/a       n/a       512
+gpt-5-mini-2025-08-07  total_tokens                                app-first-call  n/a       n/a       894
+gpt-5-mini-2025-08-07  prompt_tokens                               unknown         <tenant>  <app-id>  85
+gpt-5-mini-2025-08-07  completion_tokens                           unknown         <tenant>  <app-id>  958
+gpt-5-mini-2025-08-07  total_tokens                                unknown         <tenant>  <app-id>  1043
+gpt-5-mini-2025-08-07  total_tokens                                app-first-call  n/a       -         2202
+```
 
 > [!WARNING]
 > Don't add up every token type. A model reports totals and details (for example `total_tokens` and
@@ -976,18 +1058,93 @@ Expected output: rows per model, token type, and caller. Your Entra rows carry y
 The names follow the API of each call: Chat Completions reports `prompt_tokens` and `completion_tokens`, while
 Responses reports `input_tokens` and `output_tokens`. `gen_ai.response.model` is the model name that the provider
 returned, so one deployment can show up as `gpt-5-mini-2025-08-07` for Chat Completions and `gpt-5-mini` for Responses.
+Streamed calls report no token usage, so they have no series here, but they have a cost.
 
 ### Query estimated cost
 
-Replace `azure.ai_gateway.client.token.usage` with `azure.ai_gateway.client.token.cost` and run the query again. Each
-series carries `azure.ai_gateway.currency`. Series with `azure.ai_gateway.price_missing="true"` had no public price,
-so their cost isn't counted.
+`azure.ai_gateway.client.token.cost` has one series per token type and one that covers the whole call, with an empty
+`gen_ai.token.type`. Select that one, so you don't add up the same cost twice.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Select the cost series that cover a whole call: their gen_ai.token.type label is empty
+COST_SELECTOR="{__name__=\"azure.ai_gateway.client.token.cost\",\"gen_ai.token.type\"=\"\","
+COST_SELECTOR+="\"microsoft.appresourceid\"=\"$APPI_LABEL\"}"
+
+# Group by model, API key, tenant, client app, currency, and whether a price was missing
+COST_BY='"gen_ai.response.model","azure.ai_gateway.api_key_id","azure.ai_gateway.identity.claims.tid"'
+COST_BY+=',"azure.ai_gateway.identity.claims.appid","azure.ai_gateway.identity.claims.azp"'
+COST_BY+=',"azure.ai_gateway.currency","azure.ai_gateway.price_missing"'
+
+# Query the cost of the last day, and print one row per group
+echo "📊 Estimated cost in the last day, by model, API key, tenant, client app, and price status:"
+curl -sS -G "${PROM_URL%/}/api/v1/query" -H "Authorization: Bearer $PROM_TOKEN" \
+  --data-urlencode "query=sum by ($COST_BY) (max_over_time(${COST_SELECTOR}[1d])) > 0" \
+  | jq -r '.data.result[] | [.metric["gen_ai.response.model"], .metric["azure.ai_gateway.api_key_id"],
+      .metric["azure.ai_gateway.identity.claims.tid"],
+      ((.metric["azure.ai_gateway.identity.claims.appid"] | select(. != "n/a"))
+        // .metric["azure.ai_gateway.identity.claims.azp"] // "-"),
+      .metric["azure.ai_gateway.price_missing"], .metric["azure.ai_gateway.currency"],
+      (.value[1] | tonumber * 1000000 | round / 1000000)] | @tsv'
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Select the cost series that cover a whole call: their gen_ai.token.type label is empty
+$costSelector = '{__name__="azure.ai_gateway.client.token.cost","gen_ai.token.type"="",' +
+  '"microsoft.appresourceid"="' + $APPI_LABEL + '"}'
+
+# Group by model, API key, tenant, client app, currency, and whether a price was missing
+$costBy = '"gen_ai.response.model","azure.ai_gateway.api_key_id","azure.ai_gateway.identity.claims.tid",' +
+  '"azure.ai_gateway.identity.claims.appid","azure.ai_gateway.identity.claims.azp",' +
+  '"azure.ai_gateway.currency","azure.ai_gateway.price_missing"'
+
+# Query the cost of the last day from the Prometheus query API
+$query = 'sum by (' + $costBy + ') (max_over_time(' + $costSelector + '[1d])) > 0'
+$result = Invoke-RestMethod -Uri "$($PROM_URL.TrimEnd('/'))/api/v1/query" `
+  -Headers @{ Authorization = "Bearer $PROM_TOKEN" } -Body @{ query = $query }
+
+# Print one row per group
+if ($?) { Write-Host "📊 Estimated cost in the last day, by model, API key, tenant, client app, and price status:" }
+$result.data.result | ForEach-Object {
+  $appid = $_.metric.'azure.ai_gateway.identity.claims.appid'
+  $azp = $_.metric.'azure.ai_gateway.identity.claims.azp'
+  [pscustomobject]@{
+    Model        = $_.metric.'gen_ai.response.model'
+    ApiKeyId     = $_.metric.'azure.ai_gateway.api_key_id'
+    Tenant       = $_.metric.'azure.ai_gateway.identity.claims.tid'
+    ClientApp    = if ($appid -and $appid -ne 'n/a') { $appid } elseif ($azp) { $azp } else { '-' }
+    PriceMissing = $_.metric.'azure.ai_gateway.price_missing'
+    Currency     = $_.metric.'azure.ai_gateway.currency'
+    Cost         = '{0:0.######}' -f [double]$_.value[1] } } | Format-Table
+```
+</details> <!-- gh -->
+
+Expected output: one row per model and caller, in the currency `usd`. Add up a caller's rows: the total matches its
+**GatewayCost** in the chargeback report. Lab 13's traffic adds API key rows for `gpt-5-mini`, from streamed
+Responses calls that have a cost but no token series, and for `unknown`, from streams that failed before a model
+answered.
+
+```text
+gpt-5-mini-2025-08-07  app-first-call  n/a       n/a       true   usd  0.001639
+gpt-5-mini-2025-08-07  unknown         <tenant>  <app-id>  true   usd  0.001937
+gpt-5-mini-2025-08-07  app-first-call  n/a       -         true   usd  0.004248
+gpt-5-mini             app-first-call  n/a       -         false  usd  0.002518
+unknown                app-first-call  n/a       -         false  usd  0.000338
+```
+
+`azure.ai_gateway.price_missing` is `true` when a token type of the call has no public price, so the cost is a lower
+bound. Chat Completions calls can show `true` even when every token you used has a price: the call also reports
+categories such as `completion_tokens_details.accepted_prediction_tokens`, which have no price, even at 0 tokens.
 
 <!-- /steps -->
 
 > [!NOTE]
-> Counters are cumulative, and `increase()` extrapolates and can miss the first sample of a brand new series, so
-> treat short-range metric results as approximate. The docs show PromQL in its underscore form,
+> The query above is exact for series that started in the last day, and also counts the earlier traffic of an
+> instance that ran longer. The docs show PromQL in its underscore form,
 > `sum by (gen_ai_request_model) (gen_ai_client_token_usage)`, which is how some OTLP backends store these names.
 > If a query returns nothing, list the names your backend stored with `count by (__name__) ({__name__=~".*token.*"})`.
 
@@ -997,13 +1154,14 @@ so their cost isn't counted.
 
 ### Compare the report with the dashboard
 
-Open **Monitoring** › **Models** with **24H** selected. The input and output tokens of your two callers in
-**Model usage by caller identity** are in the same range as their rows in `chargeback.csv`.
+Open **Monitoring** › **Models** with **24H** selected. The cost, tokens, and calls of your two callers in
+**Model usage by caller identity** are in the same range as their **GatewayCost** and token columns in
+`chargeback.csv`.
 
 ### Confirm the client app label
 
-Run the PromQL query again. Your Entra rows show a client app ID, which comes from the **Metrics** signal you
-enabled for `appid` and `azp`.
+Run the PromQL queries again. Your Entra rows show a client app ID, which comes from the **Metrics** signal you
+enabled for `appid` and `azp`, and each caller's cost adds up to its **GatewayCost**.
 
 <!-- /steps -->
 
@@ -1014,9 +1172,11 @@ enabled for `appid` and `azp`.
   [Enforce cost budgets with per-caller overrides](../07-cost-budgets/README.md).
 - **Send telemetry to another backend.** In the setup wizard, **Custom OpenTelemetry destination** takes a
   **Metrics endpoint**, **Logs endpoint**, and **Traces endpoint**, such as a collector, Grafana, Datadog, or any
-  OTLP service. Authenticate with **Custom headers** (values are masked and never shown again after saving) or a
-  **Managed identity** with a token audience. Claims are exported the same way. The built-in dashboard only reads
-  Application Insights, so with a custom destination you build these views in that platform.
+  OTLP service. Authenticate with **Custom headers**, whose saved values the API doesn't return, or a
+  **Managed identity** with the receiver's token audience. Claims are exported the same way. The built-in dashboard
+  only reads Application Insights, so with a custom destination you build these views in that platform. See
+  [Send telemetry to a custom destination](https://ai.gateway.azure.com/docs/observability/custom-destination) and
+  [Attribute estimated model costs](https://ai.gateway.azure.com/docs/finops/attribute-costs).
 - **Fan out with a collector.** To keep claims in one place and send them to several backends, point the gateway at
   your own OpenTelemetry Collector and route from there.
 - **Keep metric cardinality in check.** Every distinct claim value is a new series. Put high-cardinality claims such
@@ -1033,8 +1193,9 @@ The exported files contain tenant and object IDs. Treat them as personal data.
 
 ### Restore the preset
 
-In **Monitoring** › **Settings** › **Logging** › **Token claim attributes**, clear **Metrics** for `appid` and
-`azp`. Remove any custom claim you added.
+In **Monitoring** › **Settings** › **Logging** › **Token claim attributes**, clear **Include appid in metrics** and
+**Include azp in metrics**. **Saving changes…** shows while the portal saves each change. Remove any custom claim you
+added with its row's **More actions** menu › **Remove**. Close and reopen **Settings** to confirm.
 
 ### Delete the exported files
 
@@ -1104,8 +1265,9 @@ Write-Host "🚮 The exported files are deleted"
 
 In the same folder, delete the resource group with the gateway, the Foundry account, the Application Insights
 component, the Log Analytics workspace, and your role assignment on the gateway. Azure deletes the component's managed
-resource group with it. [`--purge`](../SETUP.md#delete-what-azd-created) also purges the soft-deleted Foundry account.
-It takes about ten minutes.
+resource group too, once the Azure Monitor workspace in it is gone, which can take longer than `azd down`.
+[`--purge`](../SETUP.md#delete-what-azd-created) also purges the soft-deleted Foundry account. It takes about ten
+minutes.
 
 ```bash
 # Delete everything that azd up created, and purge the Foundry account
@@ -1131,7 +1293,9 @@ gateway and monitoring from the earlier labs, because the Bicep + azd track crea
   identity so the report shows it.
 - [Go keyless with Microsoft Entra ID and RBAC](../11-entra-rbac/README.md): move callers from keys to identities
   that carry claims.
-- Docs: [Observability](https://ai.gateway.azure.com/docs/observability)
+- Docs: [Observability](https://ai.gateway.azure.com/docs/observability),
+  [Export Microsoft Entra token claims](https://ai.gateway.azure.com/docs/observability/entra-claims), and
+  [Attribute estimated model costs](https://ai.gateway.azure.com/docs/finops/attribute-costs)
 
 <!-- gh:begin footer: generated by "npm run sync" from the metadata, do not edit -->
 
@@ -1143,5 +1307,5 @@ gateway and monitoring from the earlier labs, because the Bicep + azd track crea
 | :-- | :-: | --: |
 | [13 · Monitoring](../13-monitoring/README.md) | [All labs](../README.md) | [15 · Agent frameworks](../15-agent-frameworks/README.md) |
 
-<sub>Learning paths: [FinOps & operations](../README.md#learning-paths) (5 of 5)</sub>
+<sub>Learning paths: [FinOps & operations](../README.md#learning-paths) (6 of 6)</sub>
 <!-- gh:end -->

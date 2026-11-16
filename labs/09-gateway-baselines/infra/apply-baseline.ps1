@@ -52,7 +52,7 @@ $gatewayId = az aigateway show -g $ResourceGroup -n $Gateway --query id -o tsv
 if ($LASTEXITCODE -ne 0 -or -not $gatewayId) {
   throw "Couldn't find gateway $Gateway. Sign in with az login and install the aigateway extension first."
 }
-$url = "https://management.azure.com$gatewayId/workspaces/default?api-version=2025-09-01-preview"
+$url = "https://management.azure.com$gatewayId/workspaces/default?api-version=2026-11-01"
 
 # A PATCH replaces the whole properties.policies array, so always merge with the current array.
 $current = az rest --method get --url $url | ConvertFrom-Json

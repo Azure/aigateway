@@ -92,7 +92,7 @@ Add a `## <Month D, YYYY>` section at the top of `labs/RELEASE-NOTES.md`, as des
 [Release notes](labs/AUTHORING.md#release-notes):
 
 - An `### <title>` heading that matches the product changelog title.
-- A one-sentence summary and a link to `https://ai.gateway.azure.com/docs/releases/<YYYY-MM-DD>`.
+- A one-sentence summary and a link to `https://ai.gateway.azure.com/docs/releases#release-<YYYY-MM-DD>`.
 - The mapping table, linking to the lab sections.
 - The date added to the `**Releases:**` jump line.
 

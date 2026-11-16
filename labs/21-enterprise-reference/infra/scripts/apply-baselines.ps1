@@ -22,7 +22,7 @@ if (-not $env:RG) { throw 'Set $env:RG to the gateway resource group' }
 if (-not $env:GATEWAY) { throw 'Set $env:GATEWAY to the gateway name' }
 
 $baselinePolicies = @(Get-Content -Raw -Path $Baselines | ConvertFrom-Json -AsHashtable)
-$apiVersion = '2025-09-01-preview'
+$apiVersion = '2026-11-01'
 $sub = az account show --query id -o tsv
 $url = "https://management.azure.com/subscriptions/$sub/resourceGroups/$($env:RG)/providers/Microsoft.ApiManagement/aigateways/$($env:GATEWAY)/workspaces/default?api-version=$apiVersion"
 

@@ -1,5 +1,6 @@
-// Grants an AI Gateway data-plane role to a Microsoft Entra identity at the gateway, a model alias, or an MCP server.
-// Data-plane roles let callers invoke models and call tools. They don't grant gateway administration.
+// Grants an AI Gateway runtime role to a Microsoft Entra identity on all assets (the default workspace), the gateway,
+// a model alias, or an MCP server. Runtime roles let callers invoke models and call tools. They don't grant gateway
+// management.
 // The assignment name is derived from the scope, principal, and role, so redeploying the template is safe.
 
 @description('Name of the existing AI Gateway (Microsoft.ApiManagement/aigateways).')
@@ -16,9 +17,9 @@ param principalType string = 'User'
 @allowed([ 'user', 'models', 'tools' ])
 param role string = 'models'
 
-@description('Where to grant it: the whole gateway, one model alias, or one MCP server.')
-@allowed([ 'gateway', 'alias', 'mcp' ])
-param scope string = 'gateway'
+@description('Where to grant it: all assets (the default workspace, like the portal), the gateway, one model alias, or one MCP server.')
+@allowed([ 'workspace', 'gateway', 'alias', 'mcp' ])
+param scope string = 'workspace'
 
 @description('Alias name when scope is alias, or MCP server name when scope is mcp.')
 param scopeName string = ''
@@ -32,24 +33,24 @@ var roleDefinitionId = subscriptionResourceId('Microsoft.Authorization/roleDefin
 var childName = empty(scopeName) ? 'unused' : scopeName
 
 #disable-next-line BCP081
-resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
+resource gateway 'Microsoft.ApiManagement/aigateways@2026-11-01' existing = {
   name: gatewayName
 }
 
 #disable-next-line BCP081
-resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' existing = {
+resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2026-11-01' existing = {
   parent: gateway
   name: 'default'
 }
 
 #disable-next-line BCP081
-resource alias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2025-09-01-preview' existing = {
+resource alias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01' existing = {
   parent: workspace
   name: childName
 }
 
 #disable-next-line BCP081
-resource toolServer 'Microsoft.ApiManagement/aigateways/workspaces/toolServers@2025-09-01-preview' existing = {
+resource toolServer 'Microsoft.ApiManagement/aigateways/workspaces/toolServers@2026-11-01' existing = {
   parent: workspace
   name: childName
 }
@@ -57,6 +58,16 @@ resource toolServer 'Microsoft.ApiManagement/aigateways/workspaces/toolServers@2
 resource onGateway 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (scope == 'gateway') {
   scope: gateway
   name: guid(gateway.id, principalId, roleDefinitionId)
+  properties: {
+    principalId: principalId
+    principalType: principalType
+    roleDefinitionId: roleDefinitionId
+  }
+}
+
+resource onWorkspace 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (scope == 'workspace') {
+  scope: workspace
+  name: guid(workspace.id, principalId, roleDefinitionId)
   properties: {
     principalId: principalId
     principalType: principalType
@@ -84,5 +95,9 @@ resource onToolServer 'Microsoft.Authorization/roleAssignments@2022-04-01' = if 
   }
 }
 
-output roleAssignmentId string = scope == 'gateway' ? onGateway.id : (scope == 'alias' ? onAlias.id : onToolServer.id)
-output scopeId string = scope == 'gateway' ? gateway.id : (scope == 'alias' ? alias.id : toolServer.id)
+output roleAssignmentId string = scope == 'workspace'
+  ? onWorkspace.id
+  : (scope == 'gateway' ? onGateway.id : (scope == 'alias' ? onAlias.id : onToolServer.id))
+output scopeId string = scope == 'workspace'
+  ? workspace.id
+  : (scope == 'gateway' ? gateway.id : (scope == 'alias' ? alias.id : toolServer.id))

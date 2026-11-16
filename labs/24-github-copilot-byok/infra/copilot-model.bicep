@@ -56,30 +56,29 @@ module deployment 'deployment.bicep' = {
 }
 
 #disable-next-line BCP081
-resource aiGateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
+resource aiGateway 'Microsoft.ApiManagement/aigateways@2026-11-01' existing = {
   name: gatewayName
 }
 
 #disable-next-line BCP081
-resource defaultWorkspace 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' existing = {
+resource defaultWorkspace 'Microsoft.ApiManagement/aigateways/workspaces@2026-11-01' existing = {
   parent: aiGateway
   name: 'default'
 }
 
 #disable-next-line BCP081
-resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2025-09-01-preview' existing = {
+resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2026-11-01' existing = {
   parent: defaultWorkspace
   name: providerName
 }
 
 #disable-next-line BCP081
-resource model 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2025-09-01-preview' = {
+resource model 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2026-11-01' = {
   parent: provider
   name: modelName
   properties: {
     displayName: modelName
     description: 'Foundry deployment ${modelName} published through AI Gateway for GitHub Copilot.'
-    apiFormat: 'OpenAIChatCompletions'
     supportedEndpoints: [
       '/openai/v1/chat/completions'
       '/openai/v1/responses'
@@ -103,7 +102,7 @@ resource model 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/mod
 }
 
 #disable-next-line BCP081
-resource alias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2025-09-01-preview' = {
+resource alias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01' = {
   parent: defaultWorkspace
   name: modelName
   properties: {
@@ -114,7 +113,7 @@ resource alias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2025-09-01
 }
 
 #disable-next-line BCP081
-resource apiKey 'Microsoft.ApiManagement/aigateways/apiKeys@2025-09-01-preview' = {
+resource apiKey 'Microsoft.ApiManagement/aigateways/apiKeys@2026-11-01' = {
   parent: aiGateway
   name: apiKeyName
   properties: {

@@ -104,7 +104,7 @@ echo "🆔 Foundry account: $FOUNDRY_ID"
 echo "🌐 Runtime URL: $AI_GATEWAY_URL"
 
 # Paste the gateway runtime key from lab 02 without showing it, and don't commit it or write it to a file
-read -rsp "AI Gateway API key: " AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
+printf "AI Gateway API key: " && read -rs AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 ```
 </details> <!-- gh -->
@@ -192,12 +192,21 @@ An alias holds a list of backend models. Each one has a priority and a weight:
 
 | Setting | Values | Default | What it does |
 |---|---|---|---|
-| **Priority** | Whole number from 0 to 100 | `0` | Lower numbers are preferred. Requests go to the backend models with the lowest priority number. |
-| **Weight** | Whole number from 1 to 100 | `1` | Splits traffic among the backend models that share a priority, in proportion to their weights. |
+| **Priority** | Whole number from 0 to 100 | `0` | Lower numbers are preferred. Backend models with the same priority form a group, and requests go to the available group with the lowest number. |
+| **Weight** | Whole number from 1 to 100 | `1` | Splits the requests within a group in proportion to the weights. Weights count requests, not tokens or cost. |
 
 A backend model's **Share within priority** is its weight divided by the sum of the weights at its priority.
-Weights `80` and `20` give 80% and 20%; weights `3` and `1` give 75% and 25%. With one backend model, the alias
-behaves like the single-target aliases of labs 02 and 03.
+Weights `80` and `20` give 80% and 20%; weights `3` and `1` give 75% and 25%. Weights are relative, so `5` and
+`1` split the requests like `50` and `10`. With one backend model, the alias behaves like the single-target aliases
+of labs 02 and 03.
+
+Priority and weight are two steps of the alias's
+[routing order](https://ai.gateway.azure.com/docs/models/routing-order). The gateway first drops the backend
+models whose [backend condition](https://ai.gateway.azure.com/docs/models/conditional-backends) doesn't match the
+request. Then it applies priority, [auto model selection](https://ai.gateway.azure.com/docs/models/auto-model-selection),
+and [session affinity](https://ai.gateway.azure.com/docs/models/session-affinity) in the order that the alias sets.
+Weights choose among the backend models that remain. This lab uses only priority and weight, so the gateway picks
+the lowest priority group, then a backend model in it by weight.
 
 Pick the values from the job you need to do:
 
@@ -212,15 +221,16 @@ A few rules keep every request answerable:
 
 - Each backend model can appear only once in an alias.
 - All backend models must support at least one interface in common, for example **OpenAI Chat Completions**.
-  Mixing an Anthropic Messages model with an OpenAI model in one alias fails.
+  Mixing an Anthropic Messages model with an OpenAI model in one alias fails with `Active-priority models must
+  share at least one supported endpoint.`
 - The response tells you which backend served the request: the `model` field holds the backend's model name and
   version, for example `gpt-6.1-sol-2026-09-29`, and Foundry models also return an `x-ms-served-model` header.
 
 > [!IMPORTANT]
-> Priority sets a preference, not a guaranteed failover. In our tests, when the preferred backend returned an error
-> such as `429` or `404`, the gateway passed that error to the client instead of retrying a lower-priority
-> backend. Test how your gateway behaves under throttling before you rely on priority for
-> availability, and keep retries in your clients.
+> Priority sets a preference, not a failover. Without failure rules on the alias, when the preferred backend
+> returns an error such as `429` or `404`, the gateway passes that error to the client and doesn't try a
+> lower-priority backend for that request. To retry the backend or switch to the next one, add failure rules to the
+> alias, as in [Fail over to a backup model when a backend fails](../29-model-failover/README.md).
 
 ## Split traffic 80/20 between two models
 
@@ -234,26 +244,30 @@ weights `80` and `20`.
 
 1. Open the [AI Gateway portal](https://ai.gateway.azure.com) and select your gateway in the top bar.
 2. Select **Models** › **Add** › **Models from Microsoft Foundry**.
-3. Select the subscription and resource group of your Foundry account, then select the `gpt-6.1-sol`
-   deployment. Keep **Managed identity** as the **Authentication method**.
-4. Select **Add models**. If the wizard also creates an alias named after the model, keep it; this lab doesn't
-   use it.
+3. In **Subscriptions** and **Resource groups**, select those of your Foundry account. Keep **Managed identity**
+   as the **Authentication method**.
+4. Clear **Create an alias for each model**: this lab publishes the model through the `chat` alias.
+5. In **Models**, select only the `gpt-6.1-sol` deployment of your Foundry account, then select **Add models**.
 
 ### Create the chat alias
 
-1. Select **Models** › **Aliases** › **Add alias**.
+1. Select **Models** › **Add** › **Alias for existing models**.
 2. On **Basics**, set **Alias name** to `chat` and **Description** to `Canary: 80/20 between the current and the
    new model`. Select **Next**.
-3. On **Select models**, select `gpt-5-mini` and `gpt-6.1-sol` in **Available backend models**. Select **Next**.
-4. On **Priority and weights**, keep **Priority** at `0` for both models. Set **Weight** to `80` for
+3. On **Auto model selection (preview)**, leave **Choose a model based on the prompt** off. Select **Next**.
+4. On **Select models**, select `gpt-5-mini` and `gpt-6.1-sol` in the grid. Select **Next**.
+5. On **Session affinity**, clear **Enable session affinity**, which is on by default, so that the weights alone
+   split the requests. Select **Next**.
+6. On **Priorities and weights**, keep **Priority** at `0` for both models. Set **Weight** to `80` for
    `gpt-5-mini` and `20` for `gpt-6.1-sol`. **Share within priority** shows `80%` and `20%`. Select **Next**.
-5. On **Review**, check the shares, then select **Create**.
+7. On **Failure handling**, keep **No custom failure rules configured.** Select **Next**.
+8. On **Review**, check the shares, then select **Create**.
 
-![The Priority and weights step of Create alias, with Priority, Weight, and Share within priority columns for each backend model](../assets/screens/models-alias-routing.png "Priority and weights. This example from the product documentation uses three GPT-4o deployments: one at priority 0, and two at priority 1 that split 75/25.")
+![The Priorities and weights step of Create alias: gpt-5-mini and gpt-6.1-sol at priority 0, with weights 80 and 20 and shares of 80% and 20%](../assets/screens/model-routing-01-priorities-weights.webp "Priorities and weights. Both models share priority 0, so the weights split the requests 80/20.")
 
 > **Checkpoint**
-> **Models** › **Aliases** lists `chat`. Its **Backend models** tab shows `gpt-5-mini` and `gpt-6.1-sol`, both at
-> priority `0`, with weights `80` and `20`.
+> The alias's **Overview** shows **Session affinity** `Disabled` and **Routing order** `Priorities only`. Its
+> **Backend models** tab shows `gpt-5-mini` and `gpt-6.1-sol`, both at priority `0`, with weights `80` and `20`.
 
 </details> <!-- gh -->
 <!-- track: cli | Azure CLI -->
@@ -511,7 +525,7 @@ between a weighted split and a priority preference. You can also deploy it on it
 <!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
 📄 [`infra/alias-routing.bicep`](infra/alias-routing.bicep)
 
-<details><summary>Show all 136 lines</summary>
+<details><summary>Show all 135 lines</summary>
 
 ```bicep
 // Routes one callable alias across two Foundry backend models. main.bicep calls it after the quick start's template,
@@ -570,36 +584,35 @@ type route = {
 }
 
 #disable-next-line BCP081
-resource aiGateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
+resource aiGateway 'Microsoft.ApiManagement/aigateways@2026-11-01' existing = {
   name: gatewayName
 }
 
 #disable-next-line BCP081
-resource defaultWorkspace 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' existing = {
+resource defaultWorkspace 'Microsoft.ApiManagement/aigateways/workspaces@2026-11-01' existing = {
   parent: aiGateway
   name: 'default'
 }
 
 #disable-next-line BCP081
-resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2025-09-01-preview' existing = {
+resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2026-11-01' existing = {
   parent: defaultWorkspace
   name: providerName
 }
 
 #disable-next-line BCP081
-resource primary 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2025-09-01-preview' existing = {
+resource primary 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2026-11-01' existing = {
   parent: provider
   name: primaryModelName
 }
 
 #disable-next-line BCP081
-resource candidate 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2025-09-01-preview' = {
+resource candidate 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2026-11-01' = {
   parent: provider
   name: candidateDeploymentName
   properties: {
     displayName: candidateDeploymentName
     description: 'Candidate deployment that the ${aliasName} alias routes to.'
-    apiFormat: 'OpenAIChatCompletions'
     supportedEndpoints: [
       '/openai/v1/chat/completions'
       '/openai/v1/responses'
@@ -623,7 +636,7 @@ var routes route[] = strategy == 'weighted'
     ]
 
 #disable-next-line BCP081
-resource alias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2025-09-01-preview' = {
+resource alias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01' = {
   parent: defaultWorkspace
   name: aliasName
   properties: {
@@ -658,7 +671,7 @@ output chatCompletionsUrl string = 'https://${aiGateway.properties.frontend.defa
 ### Deploy with azd up
 
 Move into the lab's folder, create an azd environment named `aigw-lab22` in your current subscription, then provision
-everything. It takes about five minutes.
+everything. It takes about three minutes.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -841,11 +854,11 @@ Give `gpt-6.1-sol` priority `1`. It stays in the alias, ready to promote, but re
 
 ### Edit the alias
 
-1. In **Models** › **Aliases**, open `chat` and select **Edit**.
-2. Select **Next** until you reach **Priority and weights**.
-3. Set **Priority** to `1` for `gpt-6.1-sol` and set both weights to `1`. `gpt-5-mini` now shows `100%` at
-   priority `0`, and `gpt-6.1-sol` shows `100%` at priority `1`.
-4. Select **Next**, then **Save**. New requests use the new settings within a few seconds.
+1. In **Models** › **Aliases**, select `chat`, then select **Edit**.
+2. In **Priorities and weights**, set **Priority** to `1` for `gpt-6.1-sol` and set both weights to `1`.
+   **Share within priority** shows `100%` for each model: `gpt-5-mini` at priority `0`, and `gpt-6.1-sol` at
+   priority `1`.
+3. Select **Save**. New requests use the new settings within a few seconds.
 
 > **Checkpoint**
 > The alias **Backend models** tab shows `gpt-5-mini` at priority `0` and `gpt-6.1-sol` at priority `1`.
@@ -999,8 +1012,9 @@ never change.
   and cost per model in [Monitor usage, cost, and traces](../13-monitoring/README.md). Weights must be at least
   `1`, so to stop sending traffic to a model, give it a higher priority number or remove it from the alias.
 - **Prefer provisioned throughput.** Put a provisioned deployment at priority `0` and a pay-as-you-go
-  deployment of the same model at priority `1`, so purchased capacity is used first. Test what happens when the
-  provisioned deployment is saturated before you depend on it.
+  deployment of the same model at priority `1`, so purchased capacity is used first. Add a failure rule for
+  `429` so that requests switch to the pay-as-you-go deployment when the provisioned one is saturated, as in
+  [Fail over to a backup model when a backend fails](../29-model-failover/README.md).
 - **Balance regions or providers.** Register the same model from two Foundry accounts, or from Foundry and a
   custom provider, and give them weights in proportion to their quota.
 - **Limit each model and the alias.** A token limit on a backend model, as in
@@ -1017,10 +1031,10 @@ this lab: the alias first, then the backend model, then the Foundry deployment.
 
 ### Remove the alias and the candidate model
 
-Open `chat` in **Models** › **Aliases** and select **Delete**. Requests that use the alias fail immediately; the
-backend models stay in the gateway. Then delete the `gpt-6.1-sol` model, and any alias that the import created for
-it, from **Models**. Finally, delete the `gpt-6.1-sol` deployment from your Foundry account, for example with the
-last command of the CLI track.
+In **Models** › **Aliases**, select **More actions** on the `chat` row, then **Delete** and **Delete alias**.
+Requests that use the alias fail immediately; the backend models stay in the gateway. Then delete the
+`gpt-6.1-sol` model, and any alias that the import created for it, from **Models**. Finally, delete the
+`gpt-6.1-sol` deployment from your Foundry account, for example with the last command of the CLI track.
 
 </details> <!-- gh -->
 <!-- track: cli | Azure CLI -->
@@ -1072,7 +1086,7 @@ If an alias that the portal import created still points to `gpt-6.1-sol`, delete
 
 In the `aigateway/labs/22-model-routing` folder, delete the resource group with the gateway, the Foundry account and
 its two deployments, and the `chat` alias. [`--purge`](../SETUP.md#delete-what-azd-created) also purges the
-soft-deleted Foundry account. It takes about ten minutes.
+soft-deleted Foundry account. It takes about three minutes.
 
 ```bash
 # Delete everything that azd up created in this lab, purge the soft-deleted Foundry account, and skip the prompt
@@ -1088,10 +1102,12 @@ own gateway.
 
 ## Next steps
 
-- [Monitor usage, cost, and traces](../13-monitoring/README.md)
-- [Throttle tokens per caller with token limits](../06-token-limits/README.md)
-- [Publish models from any provider behind stable aliases](../03-multi-provider-aliases/README.md)
-- [October 16 release: priority and weighted model routing](https://ai.gateway.azure.com/docs/releases/2026-10-16)
+- [Route alias requests with conditions and session affinity](../27-conditional-routing/README.md)
+- [Let the gateway choose the model for each request](../28-auto-model-selection/README.md)
+- [Fail over to a backup model when a backend fails](../29-model-failover/README.md)
+- Docs: [Priorities and weights](https://ai.gateway.azure.com/docs/models/priorities-and-weights),
+  [Routing order](https://ai.gateway.azure.com/docs/models/routing-order), and
+  [October 16 release: priority and weighted model routing](https://ai.gateway.azure.com/docs/releases#release-2026-10-16).
 
 <!-- gh:begin footer: generated by "npm run sync" from the metadata, do not edit -->
 
@@ -1101,7 +1117,7 @@ own gateway.
 
 | ⬅️ Previous | 🏠 | Next ➡️ |
 | :-- | :-: | --: |
-| [03 · Multi-provider aliases](../03-multi-provider-aliases/README.md) | [All labs](../README.md) | [23 · Streaming responses](../23-streaming-responses/README.md) |
+| [03 · Multi-provider aliases](../03-multi-provider-aliases/README.md) | [All labs](../README.md) | [27 · Conditions & session affinity](../27-conditional-routing/README.md) |
 
-<sub>Learning paths: [Platform engineer](../README.md#learning-paths) (4 of 9) · [App & agent developer](../README.md#learning-paths) (3 of 10)</sub>
+<sub>Learning paths: [Platform engineer](../README.md#learning-paths) (4 of 11) · [App & agent developer](../README.md#learning-paths) (4 of 13)</sub>
 <!-- gh:end -->

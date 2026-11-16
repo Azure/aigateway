@@ -3,7 +3,7 @@
 #      minutes after OTLP ingestion turns on, so they can still be empty when the deployment ends.
 #   2. Grants the gateway's managed identity Monitoring Metrics Publisher on the rule. Bicep can't: the rule lives in a
 #      managed resource group whose deny assignment blocks deployments.
-#   3. Deletes an earlier exporter of the legacy applicationInsights kind, because an exporter's kind can't change.
+#   3. Deletes an earlier exporter of the legacy ApplicationInsights type, because an exporter's type can't change.
 #      Then deploys modules/telemetry.bicep, and retries while the role assignment propagates.
 # Running it twice gives the same result.
 #
@@ -46,13 +46,13 @@ az role assignment create --assignee-object-id $principalId --assignee-principal
 if ($LASTEXITCODE -ne 0) { throw 'The Monitoring Metrics Publisher role assignment failed' }
 Write-Host '🔐 The gateway can publish to the Data Collection Rule'
 
-# 3. Replace a legacy applicationInsights exporter, then create or update the OpenTelemetry exporter, retrying for up
-#    to 5 minutes while the role assignment propagates. Azure returns no properties.kind for a legacy exporter, and
-#    OpenTelemetry for an OpenTelemetry exporter.
+# 3. Replace a legacy ApplicationInsights exporter, then create or update the OpenTelemetry exporter, retrying for up
+#    to 5 minutes while the role assignment propagates. The exporter type is properties.telemetryExporterType in the
+#    2026-11-01 API and properties.kind in the CLI's preview API, which returns no kind for a legacy exporter.
 $legacy = az aigateway telemetry-exporter show -g $env:RG --gateway-name $env:GATEWAY -n $exporter `
-  --query "properties.kind != 'OpenTelemetry'" -o tsv 2>$null
+  --query "(properties.telemetryExporterType || properties.kind) != 'OpenTelemetry'" -o tsv 2>$null
 if ($legacy -eq 'true') {
-  Write-Host "🧹 Deleting the applicationInsights exporter $exporter, because an exporter's kind can't change"
+  Write-Host "🧹 Deleting the ApplicationInsights exporter $exporter, because an exporter's type can't change"
   az aigateway telemetry-exporter delete -g $env:RG --gateway-name $env:GATEWAY -n $exporter --yes -o none
 }
 for ($attempt = 1; $attempt -le 10; $attempt++) {

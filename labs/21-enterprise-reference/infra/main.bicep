@@ -187,7 +187,6 @@ module models './modules/models.bicep' = {
       modelName: deployment.modelName
       modelVersion: deployment.modelVersion
       tokenLimit: tokensPerMinutePerCaller
-      apiFormat: 'OpenAIChatCompletions'
       supportedEndpoints: [
         '/openai/v1/chat/completions'
         '/openai/v1/responses'

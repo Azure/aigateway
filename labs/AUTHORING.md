@@ -316,6 +316,9 @@ short status line with an emoji, so that readers see at a glance what happened. 
   `echo "<emoji> …"` with no variables on the next line. `&&` works in Bash and in PowerShell 7, which the labs
   need.
 - **Pitfalls:** no `!` in Bash echo strings, and write `"${VAR}:"` instead of `"$VAR:"` in PowerShell strings.
+- **Secret prompts:** read a secret with `printf "AI Gateway API key: " && read -rs AI_GATEWAY_API_KEY && echo` in Bash,
+  never `read -rsp` or `read -p`, which zsh rejects with `-p: no coprocess`. In PowerShell, use
+  `Read-Host -AsSecureString` and convert the value only where a command needs it.
 - **Paste-safe Bash:** readers paste blocks into macOS zsh, often with oh-my-zsh. When a paste arrives line by line,
   its `url-quote-magic` backslash-escapes `}`, `]`, `)`, `*`, `?`, and the other glob characters that follow a URL
   on a line that continues an open quote or heredoc, so a JSON value or a jq filter breaks. Keep such a value on one
@@ -364,19 +367,29 @@ Kinds: `NOTE`, `TIP`, `IMPORTANT`, `WARNING`, `CAUTION`. A blockquote starting w
 - Paths are relative to the README: `![Alt text](../assets/screens/monitoring-overview.png "Caption")`.
 - SVG diagrams in `../assets/diagrams/` are inlined on the site (theme-aware, animated).
 - Screens available in `assets/screens/`: `monitoring-overview.png`, `monitoring-trace.png`,
-  `policy-cost-limit-details.png`, `monitoring-token-claim-attributes.png`, `models-aliases.png`,
-  `mcp-tool-controls.png`, `policy-add-wizard.png`, `policy-gateway-scope.png`,
-  `policy-cost-limit-entra-overrides.png`, `policy-tool-threat-protection.jpeg`,
-  `access-entra-role-assignments.webp`, `managed-identities.png`, `models-alias-routing.png`. The
-  `quickstart-01…15-*.webp` set walks the whole portal flow: the gateway switcher, Create AI gateway, provisioning,
-  Home, the Foundry import, aliases, Access › API keys, the Create API key dialogs, Catalog, the playground,
-  Continue in code, and deleting the gateway from All gateways.
+  `policy-cost-limit-details.png`, `monitoring-token-claim-attributes.png`,
+  `gateway-baselines-01-scope.webp` (**Add policy** › **Scope** › **Gateway**), `policy-cost-limit-entra-overrides.png`,
+  `tool-threat-protection-01-policy-type.webp` (**Add policy** › **Type** › **Agent 365 tool threat protection**),
+  `access-entra-role-assignments.webp`, `managed-identities.png`,
+  `mcp-tool-controls-05-tools.webp` (an MCP server's **Tools** with name patterns and blocked tools),
+  `token-limits-01-policy-type.webp` and `streaming-responses-01-policy-type.webp` (the **Add policy** › **Type**
+  step), `content-safety-01-edit-policy.webp`, `model-routing-01-priorities-weights.webp` (**Create alias** ›
+  **Priorities and weights**), `monitoring-13-failed-tool-call.webp`, `networking-inbound-public-access.webp`,
+  `networking-outbound-vnet.webp`, and `access-control-plane-01…03-*.webp` (**Add role assignment** › **Manage
+  gateway assets**, Review, and the Access list). The `quickstart-01…15-*.webp` set walks the whole portal flow:
+  the gateway switcher, Create AI gateway, provisioning, Home, the Foundry import, aliases, Access › API keys, the
+  Create API key dialogs, Catalog, the playground, Continue in code, and deleting the gateway from All gateways.
+  Each new lab has its own set: `embeddings-01…08-*.webp` (lab 26), `routing-conditions-01…05-*.webp` (lab 27),
+  `auto-selection-01…10-*.webp` (lab 28), `failover-01…07-*.webp` (lab 29), `agent-hooks-01…06-*.webp` (lab 30),
+  and `jev-01…15-*.webp` (lab 31).
 - New screenshots: crop to the relevant area, replace real names, emails, and IDs with Contoso placeholders, mask
   every key, highlight the controls to select with magenta (`#e3008c`) boxes, and save as WebP, 1600 px wide at most.
 - Diagrams in `assets/diagrams/`: `architecture.svg`, `request-lifecycle.svg`, `aliases.svg`,
   `mcp-federation.svg`, `policy-scopes.svg`, `identity-boundaries.svg`, `observability.svg`,
   `private-networking.svg`, `hosted-agent.svg`, `agent-365.svg`, `threat-protection.svg`, `token-limits.svg`,
-  `alias-routing.svg`, `streaming-usage.svg`, `quickstart.svg`, `github-copilot-byok.svg`, `claude-code.svg`.
+  `alias-routing.svg`, `streaming-usage.svg`, `quickstart.svg`, `github-copilot-byok.svg`, `claude-code.svg`,
+  `embeddings.svg`, `conditional-routing.svg`, `auto-model-selection.svg`, `model-failover.svg`, `agent-hooks.svg`,
+  `jev-decisions.svg`.
 - Provider logos in `assets/providers/`: `microsoft-foundry.png`, `azure-openai.png`, `openai.png`,
   `anthropic.png`, `aws-bedrock.png`, `google-vertex.png`, `custom-models.png`.
 
@@ -438,7 +451,13 @@ Keep the video optional: every step it shows must also be written in the lab.
   `az bicep build --file infra/<file>.bicep --stdout > /dev/null`. Bicep has no types yet for
   `Microsoft.ApiManagement/aigateways`, so put `#disable-next-line BCP081` on the line before each of its `resource`
   declarations, including `existing` ones.
-- Use API version `2025-09-01-preview` for `Microsoft.ApiManagement/*` resources.
+- Use API version `2026-11-01` for `Microsoft.ApiManagement/aigateways` resources, with its field names:
+  `modelProviderType`, `{ url: … }` endpoints, a top-level `authentication`, models without `apiFormat`, tool
+  servers with `toolServerType`, `blockList`, and an endpoint `mode`, and `requestRateLimit` with `count` and
+  `period`. Model providers and models need a `displayName`, or the deployment fails with `400` "The displayName
+  property is required."; give API keys one too, or the portal lists them as *All APIs subscription*. The service
+  silently drops some preview names, such as a tool server's `blocked` or an endpoint's
+  `required`, so check each resource after a deployment rather than trusting a green deployment.
 - Gateways are the dedicated `Microsoft.ApiManagement/aigateways` type, never `Microsoft.ApiManagement/service`.
   Follow the product's [reference sample](https://github.com/Azure-Samples/simple-foundry-hosted-agent-python-aigateway/blob/main/infra/ai-gateway/main.bicep), as
   [lab 01's template](01-provision-gateway/infra/gateway.bicep) does: omit `sku`, so the service default, `Standard`, applies,
@@ -450,20 +469,26 @@ Keep the video optional: every step it shows must also be written in the lab.
   `https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com` for `aigw-labs-001`. Always read it from the
   gateway, never build it from the name, and write it as `<gateway-url>` in commands and code.
 - Policy `counterKey` values are arrays: `counterKey: [ 'identity' ]` or `[ 'ipAddress' ]`.
-- CLI tracks use the `az aigateway` extension (1.0.0b22 or later, see
-  [Install the aigateway extension](SETUP.md#install-the-aigateway-extension)) for gateways (including
+- CLI tracks use the `az aigateway` extension (1.0.0b31 or later, see
+  [Install the aigateway extension](SETUP.md#install-the-aigateway-extension)). The extension still calls API
+  version `2025-09-01-preview`, so its output shows the preview field names (`kind`, `foundry.endpoint`, `blocked`,
+  `required`, `callsPerPeriod`): CLI checkpoints quote those, and REST and Bicep checkpoints quote the
+  `2026-11-01` names. Use the extension for gateways (including
   `network update`), providers, models, aliases, model policies (`model policy set-token-limit`,
   `set-content-safety`, `set-cost-limit`, `remove`), Gateway scope policies (`az aigateway policy`), telemetry
   exporters, API keys (including `api-key update --state` and `api-key regenerate --key-type secondary`), and MCP
   servers (including `mcp update --versions`). Don't pass `--sku` to `az aigateway create`: the service default,
-  `Standard`, is the only SKU it accepts. `api-key create` doesn't need `--display-name`. Create models with
+  `Standard`, is the only SKU it accepts. `api-key create` doesn't need `--display-name`, but pass one so the portal
+  doesn't list the key as *All APIs subscription*. Create models with
   `--deployment-config "{resourceId:…,modelName:…}"`, because `model create --foundry-resource-id --deployment`
-  crashes in 1.0.0b22, or import every deployment with `model-provider import --foundry-resource-id`. Call ARM with
-  `az rest` only for what the extension can't do yet: MCP tool rules (`allowList`, `blocked`, `accessState`) and
-  writing a whole policy array from a file. A tool server has no top-level `failureMode`: the service drops it, and
-  only an endpoint's `required` setting persists. Say why in one sentence. Set
+  still crashes in 1.0.0b31, or import every deployment with `model-provider import --foundry-resource-id`.
+  `--api-format` can't express embeddings or decision models: pass `--supported-endpoints /openai/v1/embeddings`
+  or `typesafe/v1/systemone` instead. Call ARM with `az rest` only for what the extension can't do yet: MCP tool
+  rules (`allowList`, `blockList`, `accessState`), backend conditions, session affinity, failover, auto model
+  selection, agent hooks, and writing a whole policy array from a file. A tool server has no top-level
+  `failureMode`: an endpoint's `mode` (`failClosed` or `failOpen`) decides. Say why in one sentence. Set
   `GATEWAY_ID` with `az aigateway show`, plus `WS` (`https://management.azure.com$GATEWAY_ID/workspaces/default`)
-  and `API` (`api-version=2025-09-01-preview`), only in tracks that still call `az rest`. Publish aliases with
+  and `API` (`api-version=2026-11-01`), only in tracks that still call `az rest`. Publish aliases with
   `model-alias set`, which creates the alias or updates it, so a step can run again. `--token-counter-key` takes one
   or more values (`Identity IPAddress`). `model-provider update --foundry` and `--custom` merge a partial JSON value
   into the provider's settings. `PATCH` and `--policies` replace whole arrays such as `properties.policies`, so
@@ -481,10 +506,13 @@ Keep the video optional: every step it shows must also be written in the lab.
 
 - Send a runtime key as `Authorization: Bearer <key>`, as the product docs and the portal's snippets do, to the
   model endpoint (`<gateway URL>/default/models/openai/v1`) and to the MCP endpoint
-  (`<gateway URL>/default/toolservers/<name>/mcp`) alike. With an OpenAI SDK, pass the key as the client's API key.
+  (`<gateway URL>/default/toolservers/<name>/mcp`) alike. The gateway also accepts the key alone in an `api-key`
+  header, but the labs use the bearer form. With an OpenAI SDK, pass the key as the client's API key.
   With an Anthropic SDK, pass it as the auth token (`auth_token` or `authToken`): as the API key, the SDK sends it
-  in `x-api-key`, which answers `401`. Never add an `api-key` header as well: a request with both headers fails
+  in `x-api-key`, which answers `401`. Never send both headers: such a request fails
   with `400` "Specify either an API key or an Authorization header, not both".
+- A new API key or alias can answer `401` or `404` for about 15 seconds after it's created. Say so in the
+  checkpoint, or retry in scripts and notebooks.
 - Microsoft Entra tokens use the delegated scope `https://ai.gateway.azure.com/Data.All`
   (`az account get-access-token --scope https://ai.gateway.azure.com/Data.All`), or
   `https://ai.gateway.azure.com/.default` from an SDK credential. The token's `aud` is the AI Gateway app ID
@@ -584,7 +612,7 @@ at `/release-notes/` on the site, links it from the top navigation and the foote
 as a pill on the home page. On GitHub it renders as is.
 
 - Add one `## <Month D, YYYY>` section per product release, newest first, with an `### <product title>` heading
-  that matches the product's changelog title and a link to `https://ai.gateway.azure.com/docs/releases/<YYYY-MM-DD>`.
+  that matches the product's changelog title and a link to `https://ai.gateway.azure.com/docs/releases#release-<YYYY-MM-DD>`.
   Then add the date to the `**Releases:**` jump line at the top (it ends with `<!-- gh -->`, so the site, which has
   its own release list, hides it).
 - Under it, a table maps each product change to the lab that practices it: `| In the product | Practice it in

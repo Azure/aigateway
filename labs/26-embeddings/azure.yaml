@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+# Lab 26: "azd up" creates the quick start's gateway, chat model, and runtime API key, then deploys text-embedding-3-small and publishes it with its own alias and token limit.
+# The lab clones the repo's main branch from GitHub and runs azd up in this folder.
+name: aigw-lab26
+metadata:
+  template: aigw-lab26@1.0.0
+infra:
+  provider: bicep
+  path: infra

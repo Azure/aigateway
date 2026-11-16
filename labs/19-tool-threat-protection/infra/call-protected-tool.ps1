@@ -89,7 +89,7 @@ Write-Host "tools/list: HTTP $($listResponse.StatusCode), $(@($list.result.tools
 
 if (-not $Tool) {
   $names = @($list.result.tools | ForEach-Object { $_.name })
-  $Tool = @(($names | Where-Object { $_ -match 'docs_search' }) + ($names | Where-Object { $_ -match 'search' }))[0]
+  $Tool = (@($names | Where-Object { $_ -match 'docs_search' }) + @($names | Where-Object { $_ -match 'search' }))[0]
 }
 if (-not $Tool) { throw "No tool name contains 'search'. Pass -Tool with the tool to call." }
 

@@ -16,11 +16,11 @@ param location string = 'eastus2'
 @description('Tags applied to the gateway.')
 param tags object = {}
 
-@description('Optional subnet resource ID for outbound virtual network integration. It can only be set when the gateway is created.')
+@description('Optional delegated subnet resource ID for outbound virtual network integration. You can also add, change, or remove it after the gateway is created.')
 param backendSubnetId string = ''
 
 #disable-next-line BCP081
-resource aiGateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' = {
+resource aiGateway 'Microsoft.ApiManagement/aigateways@2026-11-01' = {
   name: gatewayName
   location: location
   tags: tags

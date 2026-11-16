@@ -3,9 +3,9 @@
 //
 // The lab's main.bicep calls it with azd and sets enableOtlpIngestion. azure.yaml then connects the gateway with
 // connect-telemetry.sh and otel-exporter.bicep. You can also deploy it on its own to the resource group of an existing
-// gateway, then connect the gateway in the portal: Monitoring › Configure telemetry › Existing Azure Application
-// Insights resource. The portal enables OTLP ingestion on the component, grants the gateway's managed identity the
-// Monitoring Metrics Publisher role, and creates an OpenTelemetry exporter.
+// gateway, then connect the gateway in the portal: Monitoring › Configure › Existing Azure Application Insights
+// resource. The portal enables OTLP ingestion on the component, grants the gateway's managed identity the Monitoring
+// Metrics Publisher role, and creates an OpenTelemetry exporter.
 
 @description('Name of the existing AI Gateway (Microsoft.ApiManagement/aigateways).')
 param gatewayName string

@@ -7,7 +7,8 @@ Input is the result of chargeback.kql, in any of these forms:
 
 Prices come from a JSON price list (see prices.example.json). The report is an estimate:
 observed tokens x the prices you supply. Reconcile it with provider billing or Azure Cost Management before you
-use it for financial reporting.
+use it for financial reporting. Next to it, GatewayCost sums the gateway's own estimate (observed tokens x public
+prices), which also covers requests whose logs report no token usage, such as streamed responses.
 
 Usage:
     python chargeback_report.py <usage.csv|usage.json> <prices.json> [--by Tenant,ClientApp] [--out report.csv]
@@ -24,7 +25,8 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-NUMERIC = ("Requests", "InputTokens", "CachedInputTokens", "OutputTokens")
+NUMERIC = ("Requests", "FailedRequests", "RequestsWithoutUsage", "InputTokens", "CachedInputTokens", "OutputTokens")
+DECIMAL = ("GatewayCost",)
 
 
 def load_usage(path: Path) -> list[dict]:
@@ -40,11 +42,15 @@ def load_usage(path: Path) -> list[dict]:
     else:
         rows = list(csv.DictReader(text.splitlines()))
     for row in rows:
+        # Columns that an older version of chargeback.kql doesn't return count as 0.
         for key in NUMERIC:
             value = row.get(key)
             row[key] = int(float(str(value).replace(",", ""))) if value not in (None, "") else 0
+        for key in DECIMAL:
+            value = row.get(key)
+            row[key] = float(str(value).replace(",", "")) if value not in (None, "") else 0.0
         for key, value in row.items():
-            if key not in NUMERIC:
+            if key not in NUMERIC + DECIMAL:
                 row[key] = "" if value is None else str(value)
     return rows
 
@@ -86,14 +92,17 @@ def main() -> None:
     if missing:
         sys.exit(f"Column(s) not in the usage file: {', '.join(missing)}. Columns: {', '.join(rows[0])}")
 
-    totals = defaultdict(lambda: {"Requests": 0, "InputTokens": 0, "CachedInputTokens": 0, "OutputTokens": 0,
-                                  "UnpricedTokens": 0, "EstimatedCost": 0.0})
+    totals = defaultdict(lambda: {**{name: 0 for name in NUMERIC}, "UnpricedTokens": 0, "EstimatedCost": 0.0,
+                                  "GatewayCost": 0.0})
     unpriced_models = set()
+    gateway_currency = next((row["Currency"] for row in rows if row.get("Currency")), "")
     for row in rows:
         key = tuple(row[c] or "(none)" for c in group_by)
         group = totals[key]
-        for name in NUMERIC:
+        for name in NUMERIC + DECIMAL:
             group[name] += row[name]
+        if row["InputTokens"] + row["OutputTokens"] == 0:
+            continue
         price = find_price(row["Model"], prices)
         if price is None:
             group["UnpricedTokens"] += row["InputTokens"] + row["OutputTokens"]
@@ -101,13 +110,15 @@ def main() -> None:
         else:
             group["EstimatedCost"] += estimate_cost(row, price, per_tokens)
 
-    columns = group_by + ["Requests", "InputTokens", "CachedInputTokens", "OutputTokens", "UnpricedTokens",
-                          f"EstimatedCost{f' ({currency})' if currency else ''}"]
+    columns = group_by + ["Requests", "FailedRequests", "InputTokens", "CachedInputTokens", "OutputTokens",
+                          "UnpricedTokens", f"EstimatedCost{f' ({currency})' if currency else ''}",
+                          f"GatewayCost{f' ({gateway_currency})' if gateway_currency else ''}"]
     report = []
     for key, group in sorted(totals.items(), key=lambda kv: (-kv[1]["EstimatedCost"],
                                                               -(kv[1]["InputTokens"] + kv[1]["OutputTokens"]))):
-        report.append(list(key) + [group["Requests"], group["InputTokens"], group["CachedInputTokens"],
-                                   group["OutputTokens"], group["UnpricedTokens"], round(group["EstimatedCost"], 6)])
+        report.append(list(key) + [group["Requests"], group["FailedRequests"], group["InputTokens"],
+                                   group["CachedInputTokens"], group["OutputTokens"], group["UnpricedTokens"],
+                                   round(group["EstimatedCost"], 6), round(group["GatewayCost"], 6)])
 
     widths = [max(len(str(v)) for v in [c] + [r[i] for r in report]) for i, c in enumerate(columns)]
     print("  ".join(str(c).ljust(w) for c, w in zip(columns, widths)))
@@ -116,6 +127,10 @@ def main() -> None:
     total_cost = sum(g["EstimatedCost"] for g in totals.values())
     total_tokens = sum(g["InputTokens"] + g["OutputTokens"] for g in totals.values())
     print(f"\nTotal: {total_tokens:,} tokens, estimated {total_cost:,.6f} {currency}".rstrip())
+    without_usage = sum(g["RequestsWithoutUsage"] for g in totals.values())
+    if without_usage:
+        print(f"{without_usage} request(s) reported no token usage, such as streamed responses or failed calls. "
+              "Their tokens aren't in the estimated cost; GatewayCost includes the gateway's estimate for them.")
     if unpriced_models:
         print(f"No price for: {', '.join(sorted(unpriced_models))}. Add them to {args.prices.name}; "
               "their tokens are in UnpricedTokens and not in the estimated cost.")

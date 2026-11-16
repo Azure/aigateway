@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# Grants an AI Gateway data-plane role to a Microsoft Entra identity at the gateway, a model alias, or an MCP server.
+# Grants an AI Gateway runtime role to a Microsoft Entra identity on all assets, a model alias, or an MCP server.
 #
 # Usage: ./assign-roles.sh <role> [scope] [principal-object-id] [principal-type]
 #   role                 user | models | tools
 #                          user   = AI Gateway User        (models and tools)
 #                          models = AI Gateway Models User (models only)
 #                          tools  = AI Gateway Tools User  (tools only)
-#   scope                gateway (default) | alias:<alias-name> | mcp:<mcp-server-name>
+#   scope                workspace (default: all assets, the default workspace) | gateway | alias:<alias-name>
+#                        | mcp:<mcp-server-name>
 #   principal-object-id  defaults to the signed-in user
 #   principal-type       User (default) | Group | ServicePrincipal
 #
@@ -17,8 +18,8 @@ set -euo pipefail
 : "${RG:?Set RG to the resource group of the gateway}"
 : "${GATEWAY:?Set GATEWAY to the gateway name}"
 
-ROLE="${1:?Usage: ./assign-roles.sh <user|models|tools> [gateway|alias:<name>|mcp:<name>] [principal-object-id] [principal-type]}"
-TARGET="${2:-gateway}"
+ROLE="${1:?Usage: ./assign-roles.sh <user|models|tools> [workspace|gateway|alias:<name>|mcp:<name>] [principal-object-id] [principal-type]}"
+TARGET="${2:-workspace}"
 PRINCIPAL_ID="${3:-}"
 PRINCIPAL_TYPE="${4:-User}"
 
@@ -32,6 +33,7 @@ esac
 GATEWAY_ID="$(az aigateway show -g "$RG" -n "$GATEWAY" --query id -o tsv)"
 
 case "$TARGET" in
+  workspace) SCOPE="$GATEWAY_ID/workspaces/default" ;;
   gateway) SCOPE="$GATEWAY_ID" ;;
   alias:?*)
     [[ "$ROLE" != "tools" ]] || { echo "AI Gateway Tools User can't be assigned on a model alias." >&2; exit 2; }
@@ -39,7 +41,7 @@ case "$TARGET" in
   mcp:?*)
     [[ "$ROLE" != "models" ]] || { echo "AI Gateway Models User can't be assigned on an MCP server." >&2; exit 2; }
     SCOPE="$GATEWAY_ID/workspaces/default/toolServers/${TARGET#mcp:}" ;;
-  *) echo "Unknown scope '$TARGET'. Use gateway, alias:<name>, or mcp:<name>." >&2; exit 2 ;;
+  *) echo "Unknown scope '$TARGET'. Use workspace, gateway, alias:<name>, or mcp:<name>." >&2; exit 2 ;;
 esac
 
 if [[ -z "$PRINCIPAL_ID" ]]; then

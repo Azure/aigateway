@@ -91,7 +91,7 @@ export AI_GATEWAY_URL="https://$(az aigateway show -g "$RG" -n "$GATEWAY" --quer
 echo "🌐 Runtime URL: $AI_GATEWAY_URL"
 
 # Paste the runtime key you created in Access › API keys. Don't commit it or write it to a file.
-read -rsp "AI Gateway API key: " AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
+printf "AI Gateway API key: " && read -rs AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 ```
 </details> <!-- gh -->
@@ -122,24 +122,25 @@ publishes all their tools at one Streamable HTTP endpoint:
 
 | Backend type | What you provide | What clients see |
 |---|---|---|
-| **MCP server** (remote) | A URL that speaks SSE or Streamable HTTP | The server's tools |
-| **OpenAPI spec** | A JSON or YAML OpenAPI document (upload, URL, or inline) | Selected operations as tools. The operation summary or description becomes the tool description. |
-| **Foundry Toolbox** | A Microsoft Foundry Toolbox source | The toolbox's tools |
-| **From Azure** | An existing MCP server in Azure, such as one in a Connector Namespace that wraps SaaS connectors like Microsoft 365, SharePoint, GitHub, or Salesforce | The source server's tools |
+| **MCP server** (remote) | The **Endpoint URL** of a server that speaks Streamable HTTP | The server's tools |
+| **OpenAPI specification** | A JSON or YAML OpenAPI document (upload, URL, or inline) | Selected operations as tools. The operation summary or description becomes the tool description. |
+| **From Azure** | An existing API or MCP server in Azure: an API Management API, an Azure Functions MCP tool trigger, a Logic Apps or API Center MCP server, a Container Apps session pool, or an MCP server hosted in a Connector Namespace that wraps SaaS connectors like Microsoft 365, SharePoint, GitHub, or Salesforce | The source's tools |
 
 Connector tools come from an Azure Connector Namespace. Create the MCP server there and authorize its connections in
-Azure, then choose **Import from Azure** on **MCP servers** and select it, as in the product's
-[Connector Namespace walkthrough](https://ai.gateway.azure.com/docs/mcp-access#mcp-connectors). The gateway
-references the source without owning it, so removing the backend or the gateway leaves the namespace and its
-connections in place.
+Azure, then choose **Import from Azure** on **MCP servers**, or **Add backend** › **From Azure** in an MCP server,
+and select it, as in the product's
+[Discover and import Azure-hosted MCP servers](https://ai.gateway.azure.com/docs/toolservers/import-from-azure)
+walkthrough. The gateway references the source without owning it, so removing the backend or the gateway leaves
+the namespace and its connections in place.
 
 Each backend can have a **namespace**. The gateway prefixes that backend's tools with it, as in
 `learn_microsoft_docs_search`, so two backends can expose tools with the same name without conflict.
 
 The gateway authenticates **clients**. In this lab they send a runtime key as `Authorization: Bearer <key>`.
-It authenticates to each **backend** separately, with **None**, **API key** (a header name and value),
-**OAuth 2.0**, or **Managed identity**. Backend credentials are stored securely, are never exposed to clients,
-and appear under **Connections**.
+It authenticates to each **backend** separately, with **None**, **API Key** (one or more header names and
+values), **OAuth 2.0** (a **Single shared application**, or **On behalf of** each caller with their Microsoft
+Entra permissions), or **Managed identity**. Backend credentials are stored securely, are never exposed to
+clients, and appear under **Connections**.
 
 > [!NOTE]
 > Registering a backend doesn't mean that AI Gateway translates every backend protocol into MCP. Pick the
@@ -169,36 +170,41 @@ On **Basic info**, set:
 | **Name** | `learn` (part of the endpoint URL; it can't be changed after creation) |
 | **Display name** | `Microsoft Learn` |
 | **Description** | `Search and fetch official Microsoft documentation and code samples.` |
+| **Supported MCP versions** | `2025-06-18` (required: select at least one version that every backend supports) |
 
-Agents and people read the description to decide when to use the server, so keep it specific. Select **Next**.
+Agents and people read the description to decide when to use the server, so keep it specific. The display name
+must be unique among the MCP servers of the gateway. You learn more about the versions in
+[Choose supported MCP versions](#choose-supported-mcp-versions). Select **Next**.
 
 ### Add the Learn backend
 
-On **Backends**, select **Add backend**. In **Choose a backend type**, select **MCP server**, then set:
+On **Backends**, select **Add backend** › **MCP server**. In **Add MCP backend**, set:
 
 | Field | Value |
 |---|---|
-| **URL** | `https://learn.microsoft.com/api/mcp` |
-| **Namespace** | `learn` |
+| **Endpoint URL** | `https://learn.microsoft.com/api/mcp` |
 | **Authentication** | **None** |
+| **Namespace** | `learn` |
 
-The backend appears in the table with its **URL**, **Type**, **Authentication**, **Namespace**, and
-**Required** columns. Leave **Required** on. Select **Next**.
+Select **Add**. The backend appears in the table with its **URL**, **Type**, **Authentication**, **Namespace**,
+and **Required** columns. Leave **Required** on.
 
 ### Publish all tools
 
-On **Tools**, under **Tool availability**, keep **Allow all tools** ("Expose every tool from these backends,
-including tools added in the future."). You narrow this down in
-[Control which tools agents can call](../05-mcp-tool-controls/README.md). Select **Create**.
+Select **Next**. The portal saves the server with **Allow all tools**, which publishes every current and future
+tool from its backends. You narrow this down in
+[Control which tools agents can call](../05-mcp-tool-controls/README.md). If the **Tools** step opens, keep
+**Allow all tools** and select **Create**.
 
 ### Copy the endpoint
 
-The server's details page opens. When **Provisioning** shows that the server is ready, copy the
-**Endpoint URL**. It ends in `/default/toolservers/learn/mcp`.
+Open `Microsoft Learn` from **MCP servers**. Under **Basics**, check the **Description**: if it reads
+"Federated MCP server providing tools from: learn", select **Edit**, enter the description again, and select
+**Save**. Under **Endpoints**, copy the **Endpoint URL**. It ends in `/default/toolservers/learn/mcp`.
 
 > **Checkpoint**
-> **MCP servers** lists `learn`, and its details page shows an **Endpoint URL** and one backend with the
-> namespace `learn`.
+> **MCP servers** lists `Microsoft Learn` with the namespace `learn`, and its details page shows an
+> **Endpoint URL**, **Supported MCP versions** `2025-06-18`, and one backend with the namespace `learn`.
 
 </details> <!-- gh -->
 <!-- track: cli | Azure CLI -->
@@ -264,6 +270,12 @@ az aigateway mcp show -g "$RG" --gateway-name "$GATEWAY" -n learn --query "prope
 > The table shows `learn` with `Microsoft Learn` in the **DisplayName** column and `1` in the **Sources** column.
 > The second command returns one endpoint with `"namespace": "learn"` and `"kind": "mcp"`, and a `url` that ends
 > in `/default/toolservers/learn/mcp`.
+
+> [!NOTE]
+> The `az aigateway` extension still speaks the preview property names: `required` and `mcp.url`. The generally
+> available management API (`2026-11-01`), which the Bicep track uses, stores the same backend as
+> `"mode": "failClosed"` (`"failOpen"` for an optional backend) and `mcp.endpoint.url`. In Bash, read the stored shape with
+> `az rest --method get --url "https://management.azure.com$(az aigateway show -g "$RG" -n "$GATEWAY" --query id -o tsv)/workspaces/default/toolServers/learn?api-version=2026-11-01" --query properties.endpoints`.
 
 </details> <!-- gh -->
 <!-- track: iac | Bicep + azd -->
@@ -358,7 +370,7 @@ the module on its own to a gateway you already have, with `az deployment group c
 <!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
 📄 [`infra/tool-server.bicep`](infra/tool-server.bicep)
 
-<details><summary>Show all 93 lines</summary>
+<details><summary>Show all 99 lines</summary>
 
 ```bicep
 // Registers the public Microsoft Learn MCP server as a federated MCP server in an existing AI Gateway. main.bicep calls
@@ -366,6 +378,8 @@ the module on its own to a gateway you already have, with `az deployment group c
 // Clients call one governed endpoint, <gateway-url>/default/toolservers/<serverName>/mcp,
 // and the gateway publishes each backend's tools with a namespace prefix (<namespace>_<tool>).
 // Set secondNamespace to add the same public server as a second, optional backend and see namespacing at work.
+// A required backend has mode failClosed: tool discovery fails if it fails. An optional one has mode failOpen: the
+// gateway skips it. displayName must be unique among the MCP servers of the gateway.
 // Set supportedVersions to pin the MCP protocol versions that clients can negotiate.
 // Set apiKeyName to also create a runtime API key for your clients. Its value is never an output.
 
@@ -404,48 +418,52 @@ var versions = empty(supportedVersions) ? {} : { versions: split(replace(support
 var primaryEndpoint = {
   namespace: namespace
   kind: 'mcp'
+  mode: 'failClosed'
   mcp: {
-    url: mcpUrl
+    endpoint: {
+      url: mcpUrl
+    }
     transport: 'streamableHttp'
   }
-  required: true
 }
 
 var secondEndpoint = {
   namespace: secondNamespace
   kind: 'mcp'
+  mode: 'failOpen'
   mcp: {
-    url: secondMcpUrl
+    endpoint: {
+      url: secondMcpUrl
+    }
     transport: 'streamableHttp'
   }
-  required: false
 }
 
 #disable-next-line BCP081
-resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
+resource gateway 'Microsoft.ApiManagement/aigateways@2026-11-01' existing = {
   name: gatewayName
 }
 
 #disable-next-line BCP081
-resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' existing = {
+resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2026-11-01' existing = {
   parent: gateway
   name: 'default'
 }
 
 #disable-next-line BCP081
-resource toolServer 'Microsoft.ApiManagement/aigateways/workspaces/toolServers@2025-09-01-preview' = {
+resource toolServer 'Microsoft.ApiManagement/aigateways/workspaces/toolServers@2026-11-01' = {
   parent: workspace
   name: serverName
   properties: union({
     displayName: displayName
     description: serverDescription
-    type: 'mcp'
+    toolServerType: 'mcp'
     endpoints: empty(secondNamespace) ? [ primaryEndpoint ] : [ primaryEndpoint, secondEndpoint ]
   }, versions)
 }
 
 #disable-next-line BCP081
-resource apiKey 'Microsoft.ApiManagement/aigateways/apiKeys@2025-09-01-preview' = if (!empty(apiKeyName)) {
+resource apiKey 'Microsoft.ApiManagement/aigateways/apiKeys@2026-11-01' = if (!empty(apiKeyName)) {
   parent: gateway
   name: apiKeyName
   properties: {}
@@ -571,9 +589,10 @@ optional backend is unavailable, the gateway skips it instead of failing the who
 
 ### Add the backend
 
-On the `learn` details page, select **Edit**, then go to **Backends**. Select **Add backend** › **MCP server**
-and set **URL** to `https://learn.microsoft.com/api/mcp`, **Namespace** to `docs`, and **Authentication** to
-**None**. In the backends table, turn **Required** off for the new row. Select **Save**.
+On the `learn` details page, select **Edit**. Under **Backends**, select **Add backend** › **MCP server**. In
+**Add MCP backend**, set **Endpoint URL** to `https://learn.microsoft.com/api/mcp`, **Authentication** to **None**,
+and **Namespace** to `docs`, then select **Add**. In the backends table, turn **Required** off for the new row.
+Select **Save**.
 
 </details> <!-- gh -->
 <!-- track: cli | Azure CLI -->
@@ -622,7 +641,8 @@ exists on this MCP server registration." if you run it twice. For a backend that
 
 ### Add the second namespace
 
-When `secondNamespace` isn't empty, the template adds a second endpoint with `required: false`. Set it in the azd
+When `secondNamespace` isn't empty, the template adds a second endpoint with `mode: 'failOpen'`, the optional
+backend. Set it in the azd
 environment and provision again. Only the MCP server changes.
 
 <details open><summary>Bash</summary> <!-- gh -->
@@ -655,10 +675,9 @@ if ($?) { Write-Host "🔌 MCP server learn now has the optional docs backend" }
 <!-- /tracks -->
 
 > [!TIP]
-> In production, the second backend is a different service. For an internal REST API, choose **OpenAPI spec**
-> and point **Spec source** › **Fetch from URL** at its OpenAPI document. For an API that needs a key, set
-> **Authentication** to **API key** with the **Header name** and **Key value** the backend expects. Clients
-> never see that key.
+> In production, the second backend is a different service. For an internal REST API, choose **OpenAPI
+> specification** and point it at its OpenAPI document. For an API that needs a key, set **Authentication** to
+> **API Key** with the **Header name** and **Value** the backend expects. Clients never see that key.
 
 > **Checkpoint**
 > The `learn` server has two backends: `learn` (required) and `docs` (optional).
@@ -671,7 +690,7 @@ that version must work with **every backend** behind it.
 
 | Supported MCP versions | What clients get |
 |---|---|
-| Not configured | The legacy defaults: `2025-06-18`, `2025-03-26`, and `2024-11-05`. The portal labels them **Legacy defaults**. |
+| Not configured | The legacy defaults: `2025-06-18`, `2025-03-26`, and `2024-11-05`. The details page lists them, and **Edit** shows **Not configured**. Servers that you create with the CLI or Bicep without a list get them. |
 | A list that you choose | Version restrictions. Clients negotiate only a version in the list, and a request whose `MCP-Protocol-Version` header names any other version is rejected with `400`. |
 
 You can choose `2026-07-28`, `2025-11-25`, `2025-06-18`, `2025-03-26`, and `2024-11-05`. Version
@@ -688,13 +707,14 @@ server negotiates, so both backends, `learn` and `docs`, support it.
 
 ### Pin the version
 
-1. On the `learn` details page, find **Supported MCP versions**. Unless you changed it, it lists the legacy
-   defaults.
-2. Select **Edit**. On **Basic info**, open **Supported MCP versions** and keep only `2025-06-18` selected.
-3. Go to **Backends**. Because the list changed, the portal asks you to recheck the backends: "Supported MCP
-   versions changed. Edit and save each external MCP backend before saving this server." For each backend row,
-   select **Edit**, then **Save** in **Edit MCP backend**. The portal checks which versions the backend
-   supports before it saves the row.
+1. On the `learn` details page, under **MCP configuration**, find **Supported MCP versions**. If you created the
+   server in the portal with `2025-06-18`, it's already pinned: go to
+   [Check the negotiated version](#check-the-negotiated-version). If it lists the legacy defaults, continue.
+2. Select **Edit**. Under **Basic info**, open **Supported MCP versions** and keep only `2025-06-18` selected.
+3. Under **Backends**, the portal asks you to recheck the backends: "Backend compatibility must be rechecked.
+   Supported MCP versions changed. Edit and save each external MCP backend before saving this server." For each
+   backend row, open its actions menu, select **Edit**, then **Save** in **Edit MCP backend**. The portal checks
+   which versions the backend supports before it saves the row, and the message goes away after the last row.
 4. Select **Save**.
 
 If a backend doesn't support a selected version, **Edit MCP backend** shows "Backend isn't compatible with all
@@ -857,11 +877,13 @@ secret store, never in a file that you commit.
 <!-- track: portal | Portal -->
 <details open><summary><b>🖥️ Portal</b></summary> <!-- gh -->
 
-### Use the Connect panel
+### Continue in code
 
-On the `learn` details page, select **Connect**. The panel offers **VS Code** and **Cursor** (install through a
-deep link) and **mcp.json** (raw configuration for any MCP-aware client). Replace any key placeholder with your
-runtime key in the client's secret prompt, not in a committed file.
+On the `learn` details page, select **Test in catalog**, then **Continue in code**. The panel shows the
+**Endpoint URL** and offers **Quick install** for **VS Code** and **Cursor** (install through a deep link), and
+**Manual configuration** for **mcp.json** (any MCP-aware client), **Claude Desktop**, **Microsoft Foundry**, and
+**Microsoft 365 Agents**. The `mcp.json` sample sends `Authorization: Bearer <your-api-key>`. Replace the
+placeholder with your runtime key in the client's secret prompt, not in a committed file.
 
 </details> <!-- gh -->
 <!-- track: code | Code -->
@@ -1156,8 +1178,14 @@ but your MCP endpoint isn't.
 - **Watch tool traffic.** When Application Insights is configured, tool executions appear in **Monitoring** ›
   **Tools**. See [Monitor usage, cost, and traces](../13-monitoring/README.md).
 - **Onboard GitHub.** Add the GitHub MCP server, `https://api.githubcopilot.com/mcp/`, as an **MCP server**
-  backend with **API key** authentication: **Header name** `Authorization` and **Key value**
+  backend with **API Key** authentication: **Header name** `Authorization` and **Value**
   `Bearer <your-github-token>`. The gateway stores the token, and clients never see it.
+- **Use OAuth backends.** Sign in once for a shared backend account with
+  [Connect shared OAuth backends](https://ai.gateway.azure.com/docs/toolservers/connect-shared-oauth-backends), or
+  call the backend with each caller's own Microsoft Entra permissions with
+  [Access MCP server backends with user credentials](https://ai.gateway.azure.com/docs/toolservers/access-backends-with-user-credentials).
+- **Import from Azure.** Add API Management APIs, Azure Functions MCP tools, and Connector Namespace servers with
+  [Discover and import Azure-hosted MCP servers](https://ai.gateway.azure.com/docs/toolservers/import-from-azure).
 - **Give tools to an agent.** Point an agent framework at the endpoint in [Connect agent frameworks to models and tools](../15-agent-frameworks/README.md).
 
 ## Clean up
@@ -1170,8 +1198,8 @@ MCP servers don't add charges beyond the gateway itself. Keep `learn` if you con
 
 ### Remove the second backend or the server
 
-To remove only the `docs` backend, select **Edit** on the `learn` details page, delete its row on **Backends**,
-and select **Save**. To remove the whole server, select **Delete** on the details page.
+To remove only the `docs` backend, open the actions menu of its row under **Backends** on the `learn` details page
+and select **Delete**. To remove the whole server, select **More actions** › **Delete** on the details page.
 
 </details> <!-- gh -->
 <!-- track: cli | Azure CLI -->
@@ -1247,8 +1275,11 @@ created its own gateway.
   rate-limit the server.
 - [Connect agent frameworks to models and tools](../15-agent-frameworks/README.md): give an agent your governed tools and models.
 - [Set gateway-wide policy baselines](../09-gateway-baselines/README.md): apply defaults to every MCP server and model.
-- Docs: [Connect to MCP tools through AI Gateway](https://ai.gateway.azure.com/docs/mcp-access).
-- Release: [October 16 release: MCP 2026-07-28 protocol versions](https://ai.gateway.azure.com/docs/releases/2026-10-16).
+- Docs: [Federate MCP servers and tools](https://ai.gateway.azure.com/docs/toolservers/federate-tool-servers),
+  [Create a federated MCP server](https://ai.gateway.azure.com/docs/toolservers/create-federated-mcp-server), and
+  [Required and optional backends](https://ai.gateway.azure.com/docs/toolservers/required-optional-backends).
+- Releases: [October 16 release: MCP 2026-07-28 protocol versions](https://ai.gateway.azure.com/docs/releases#release-2026-10-16)
+  and [November 6 release: on-behalf-of authentication for MCP backends](https://ai.gateway.azure.com/docs/releases#release-2026-11-06).
 
 <!-- gh:begin footer: generated by "npm run sync" from the metadata, do not edit -->
 
@@ -1258,7 +1289,7 @@ created its own gateway.
 
 | ⬅️ Previous | 🏠 | Next ➡️ |
 | :-- | :-: | --: |
-| [23 · Streaming responses](../23-streaming-responses/README.md) | [All labs](../README.md) | [05 · Tool allow & block lists](../05-mcp-tool-controls/README.md) |
+| [31 · Jev decisions](../31-jev-decisions/README.md) | [All labs](../README.md) | [05 · Tool allow & block lists](../05-mcp-tool-controls/README.md) |
 
-<sub>Learning paths: [30-minute essentials](../README.md#learning-paths) (4 of 4) · [Platform engineer](../README.md#learning-paths) (5 of 9) · [App & agent developer](../README.md#learning-paths) (5 of 10)</sub>
+<sub>Learning paths: [30-minute essentials](../README.md#learning-paths) (4 of 4) · [Platform engineer](../README.md#learning-paths) (7 of 11) · [App & agent developer](../README.md#learning-paths) (8 of 13)</sub>
 <!-- gh:end -->

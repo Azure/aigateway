@@ -15,17 +15,17 @@ param apiKeyNames array = [
 ]
 
 #disable-next-line BCP081
-resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
+resource gateway 'Microsoft.ApiManagement/aigateways@2026-11-01' existing = {
   name: gatewayName
 }
 
 // Redeploying keeps each key's values: rotation and revocation are operations, not part of the template.
 #disable-next-line BCP081
-resource apiKeys 'Microsoft.ApiManagement/aigateways/apiKeys@2025-09-01-preview' = [for name in apiKeyNames: {
+resource apiKeys 'Microsoft.ApiManagement/aigateways/apiKeys@2026-11-01' = [for name in apiKeyNames: {
   parent: gateway
   name: name
   properties: {
-    // The service replaces the display name with its own, so identify keys by name.
+    // Keep the display name the same as the key's name, which the CLI and the scripts use.
     displayName: name
   }
 }]

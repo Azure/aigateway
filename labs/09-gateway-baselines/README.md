@@ -96,7 +96,7 @@ export AI_GATEWAY_MODEL="$(az aigateway model show -g "$RG" --gateway-name "$GAT
 echo "🔖 Model alias: $AI_GATEWAY_MODEL"
 
 # Paste the runtime key you created in Access › API keys, without showing it: don't commit it or write it to a file
-read -rsp "AI Gateway API key: " AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
+printf "AI Gateway API key: " && read -rs AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 
 # Read the public IP address that this machine uses on the internet
@@ -162,6 +162,12 @@ A Gateway scope **Cost limit** is one budget across all models; you can add it i
 [Enforce cost budgets with per-caller overrides](../07-cost-budgets/README.md). Agent 365 tool threat
 protection can't be set at Gateway scope; it applies to individual MCP servers.
 
+> [!NOTE]
+> At the time of writing, AI Gateway resources save the content safety policy but don't block calls with it yet,
+> as [Screen prompts and responses with content safety](../08-content-safety/README.md) explains. Keep it in the
+> baseline so it applies once the gateway enforces it, and rely on your Foundry deployments' content filters
+> until then.
+
 > [!WARNING]
 > The IP filter applies to **runtime** calls. You keep managing the gateway in the portal and with the Azure
 > CLI, so you can always fix the list. But every caller outside it gets `403`: teammates, CI pipelines, hosted
@@ -184,15 +190,15 @@ Select **Policies** › **Add policy**. On the **Type** step, select **Token rat
 On the **Scope** step, select **Gateway** ("Apply to the entire gateway workspace, including applicable assets
 added later."), then **Next**.
 
-![The Add policy wizard on the Scope step with Gateway selected](../assets/screens/policy-gateway-scope.png "On the Scope step, Gateway applies the policy to every compatible asset, including assets added later.")
+![The Add policy wizard on the Scope step with Gateway selected](../assets/screens/gateway-baselines-01-scope.webp "On the Scope step, Gateway applies the policy to every compatible asset, including assets added later.")
 
-On the **Details** step (**Configure** in some portal versions), under **Parameters**, set:
+On the **Details** step, under **Parameters**, set:
 
 | Field | Value |
 |---|---|
 | **Time period** | **Per minute** |
 | **Allowed tokens** | `100000` |
-| **Counter dimensions** | **Caller identity** |
+| **Counter dimensions** | **Identity** |
 
 Select **Create**.
 
@@ -204,14 +210,37 @@ Select **Add policy** again. Select **Request rate limit**, then **Gateway** sco
 |---|---|
 | **Calls** | `600` |
 | **Renewal period** | **60 seconds** |
-| **Counter dimensions** | **Caller identity** |
+| **Counter dimensions** | **Identity** |
 
 Select **Create**.
 
 ### Add content safety
 
-Select **Add policy**. Under **Security**, select **Content safety**, then **Gateway** scope. Set **Hate**,
-**Violence**, **Self-harm**, and **Sexual** to **Balanced**, then select **Create**.
+The **Add policy** wizard doesn't list **Content safety** for AI Gateway resources, so create this policy with
+one Azure CLI command, for example in [Azure Cloud Shell](https://shell.azure.com), with the variables from
+[Before you begin](#before-you-begin). The command puts **Balanced** (`Medium`) on all four categories at
+**Gateway** scope and keeps every other Gateway scope policy:
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Add content safety at Gateway scope, Medium (Balanced) in all four categories
+az aigateway policy set-content-safety -g "$RG" --gateway-name "$GATEWAY" --content-safety Medium --output none &&
+  echo "🔐 Content safety on $GATEWAY is Balanced (Medium) for all four categories at Gateway scope"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Add content safety at Gateway scope, Medium (Balanced) in all four categories
+az aigateway policy set-content-safety -g $RG --gateway-name $GATEWAY --content-safety Medium --output none
+if ($?) { Write-Host "🔐 Content safety on $GATEWAY is Balanced (Medium) for all four categories at Gateway scope" }
+```
+</details> <!-- gh -->
+
+Reload **Policies**. The policy shows as **Content safety** with **Gateway** scope. To change a category later,
+open its **More actions** menu and select **Edit**.
 
 ### Add the IP filter
 
@@ -291,7 +320,7 @@ az aigateway policy list -g $RG --gateway-name $GATEWAY --query "[].{Policy: typ
 ```
 </details> <!-- gh -->
 
-Expected output, plus a row for every other Gateway scope policy you already had:
+Expected output, in any order, plus a row for every other Gateway scope policy you already had:
 
 ```text
 🔐 Gateway scope policies on aigw-contoso:
@@ -306,7 +335,9 @@ ipFilter          resource
 > [!NOTE]
 > Run `az aigateway policy list` without `--query` to see each policy's settings. The token and request rate
 > limits have `"counterKey": ["identity"]`, which gives each API key or Entra caller its own counter. The CLI
-> stores the IP filter action as `"allow"` in lowercase, and the portal shows it as **Allow listed IPs only**.
+> shows the request rate limit as `callsPerPeriod` and `periodSeconds`; the management API version `2026-11-01`,
+> which the Policy as code track calls, names them `count` and `period`. The CLI stores the IP filter action as
+> `"allow"` in lowercase, and the portal shows it as **Allow listed IPs only**.
 > To change one policy later, use `az aigateway policy set-token-limit`, `set-rate-limit`,
 > `set-content-safety`, or `set-ip-filter`. Each keeps the other policies.
 
@@ -333,6 +364,8 @@ into it, and writes the array back.
 <!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
 📄 [`infra/baseline-policies.json`](infra/baseline-policies.json)
 
+<details><summary>Show all 30 lines</summary>
+
 ```json
 [
   {
@@ -344,13 +377,14 @@ into it, and writes the array back.
   },
   {
     "type": "requestRateLimit",
-    "callsPerPeriod": 600,
-    "periodSeconds": 60,
+    "count": 600,
+    "period": "minute",
     "counterKey": ["identity"],
     "scope": "workspace"
   },
   {
     "type": "contentSafety",
+    "scope": "resource",
     "hateSeverity": "Medium",
     "violenceSeverity": "Medium",
     "sexualSeverity": "Medium",
@@ -358,14 +392,22 @@ into it, and writes the array back.
   },
   {
     "type": "ipFilter",
+    "scope": "resource",
     "action": "Allow",
     "cidrRanges": ["203.0.113.10/32"]
   }
 ]
 ```
+
+</details>
 <!-- gh:end -->
 
 On GitHub, open [infra/baseline-policies.json](infra/baseline-policies.json).
+
+The file uses the fields of the management API version `2026-11-01`, which the script calls. Both rate limits
+take a `count` and a `period`: `minute`, or for the request rate limit a duration from `PT1S` to `PT300S`, such as
+`PT30S`. Content safety and the IP filter take `"scope": "resource"` at Gateway scope; the API rejects
+`"workspace"` for them.
 
 The `ipFilter` entry holds a placeholder from the `203.0.113.0/24` documentation range. The script never applies
 it: it replaces `cidrRanges` with your `ALLOWED_CIDRS` value and stops if that value is missing or isn't in CIDR
@@ -474,7 +516,7 @@ fi
 # The az aigateway policy commands set policies from flags, so to apply the whole file the script calls the
 # management API with az rest.
 GATEWAY_ID="$(az aigateway show -g "$RG" -n "$GATEWAY" --query id -o tsv)"
-URL="https://management.azure.com$GATEWAY_ID/workspaces/default?api-version=2025-09-01-preview"
+URL="https://management.azure.com$GATEWAY_ID/workspaces/default?api-version=2026-11-01"
 
 # A PATCH replaces the whole properties.policies array, so always merge with the current array.
 CURRENT="$(az rest --method get --url "$URL")"
@@ -571,9 +613,11 @@ limits, and the prompt is benign.
 > [!WARNING]
 > If `check-call` keeps returning `403`, the gateway sees a different public IP address than `api.ipify.org`
 > reported. A VPN, a corporate proxy, or a client such as Global Secure Access can send your Azure traffic
-> through another egress address. Add your organization's egress ranges to `ALLOWED_CIDRS` and apply the
-> baseline again, or run the lab from Azure Cloud Shell, where both addresses match. If you completed
-[Federate MCP tools behind one endpoint](../04-federate-mcp-tools/README.md), run
+> through another egress address, and some networks rotate through a pool of egress addresses, so a `/32` can
+> pass one call and block the next. Add your organization's egress ranges to `ALLOWED_CIDRS` and apply the
+> baseline again, or run the lab from Azure Cloud Shell, where both addresses match.
+
+If you completed [Federate MCP tools behind one endpoint](../04-federate-mcp-tools/README.md), run
 `../04-federate-mcp-tools/infra/list-tools.sh learn` (PowerShell:
 `../04-federate-mcp-tools/infra/list-tools.ps1 -Server learn`). The MCP server is covered by the same IP
 filter, request rate limit, and content safety policies, and it still lists its tools.
@@ -686,10 +730,11 @@ If you configured Application Insights in [Monitor usage, cost, and traces](../1
 - **Tighten tool traffic.** Keep the baseline and add stricter controls to individual MCP servers in
   [Control which tools agents can call](../05-mcp-tool-controls/README.md) and
   [Protect tool calls with Agent 365 threat protection](../19-tool-threat-protection/README.md).
-- **Keep the allow list for inbound traffic.** Inbound private endpoints and turning off public network access
-  aren't available for AI Gateway yet, so the IP filter is how you restrict who can call the gateway. To keep
-  the gateway's traffic to your backends private, see
-  [Lock down backend traffic with private networking](../18-private-networking/README.md).
+- **Keep the allow list for inbound traffic.** Inbound private endpoints, with public network access turned off,
+  are in preview and need approval: see
+  [Configure inbound access](https://ai.gateway.azure.com/docs/networking/private-endpoints). Until you have
+  them, the IP filter is how you restrict who can call the gateway. To keep the gateway's traffic to your
+  backends private, see [Lock down backend traffic with private networking](../18-private-networking/README.md).
 - **Count Entra callers.** With `identity` counters, each Entra caller gets its own allowance. Move clients to
   keyless calls in [Go keyless with Microsoft Entra ID and RBAC](../11-entra-rbac/README.md).
 
@@ -775,7 +820,9 @@ Keep the gateway, model, and key. The next labs reuse them.
   policy.
 - [Lock down backend traffic with private networking](../18-private-networking/README.md): route the gateway's
   backend traffic through your virtual network.
-- Docs: [Policies in AI Gateway](https://ai.gateway.azure.com/docs/policies).
+- Docs: [Policies in AI Gateway](https://ai.gateway.azure.com/docs/policies),
+  [Request rate limit](https://ai.gateway.azure.com/docs/policies/request-rate-limit), and
+  [IP filter](https://ai.gateway.azure.com/docs/policies/ip-filter).
 
 <!-- gh:begin footer: generated by "npm run sync" from the metadata, do not edit -->
 
@@ -787,5 +834,5 @@ Keep the gateway, model, and key. The next labs reuse them.
 | :-- | :-: | --: |
 | [08 · Content safety](../08-content-safety/README.md) | [All labs](../README.md) | [10 · Runtime API keys](../10-api-keys/README.md) |
 
-<sub>Learning paths: [Platform engineer](../README.md#learning-paths) (6 of 9) · [Security & compliance](../README.md#learning-paths) (5 of 7)</sub>
+<sub>Learning paths: [Platform engineer](../README.md#learning-paths) (8 of 11) · [Security & compliance](../README.md#learning-paths) (5 of 8)</sub>
 <!-- gh:end -->

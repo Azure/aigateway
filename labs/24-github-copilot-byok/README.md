@@ -85,8 +85,8 @@ surfaces its tools, with the same key, so Copilot's tool calls get the same cont
   | Surface | Version tested | Needs |
   |---|---|---|
   | [VS Code](https://code.visualstudio.com/download) with GitHub Copilot | 1.143 | Nothing else. Chat and agent mode work with your own model without a GitHub sign-in. |
-  | [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli) | 1.0.103 | Nothing else. A GitHub sign-in is optional with your own model. |
-  | [GitHub Copilot SDK](https://github.com/github/copilot-sdk) | 1.0.26 (TypeScript), 1.0.22 (Python) | Node.js 22.18 or later, or Python 3.11 or later, and a clone of this repository. |
+  | [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli) | 1.0.112 | Nothing else. A GitHub sign-in is optional with your own model. |
+  | [GitHub Copilot SDK](https://github.com/github/copilot-sdk) | 1.0.34 (TypeScript), 1.0.31 (Python) | Node.js 22.18 or later, or Python 3.11 or later, and a clone of this repository. |
   | [GitHub Copilot app](https://docs.github.com/en/copilot/get-started/quickstart-copilot-app) | Public preview | A GitHub sign-in. A Copilot plan isn't required for your own models. |
 - Run the scripts and samples from the lab's folder, `~/aigateway/labs/24-github-copilot-byok`.
 
@@ -240,27 +240,30 @@ with the deployment name `gpt-6.1-sol`. Or paste the command from the **Azure CL
 
 1. Open the [AI Gateway portal](https://ai.gateway.azure.com) and select your gateway in the top bar.
 2. Select **Models** › **Add** › **Models from Microsoft Foundry**.
-3. Select the subscription and resource group of your Foundry account, then select the `gpt-6.1-sol` deployment.
-   Keep **Managed identity** as the **Authentication method**.
-4. Under **Aliases**, keep **Create an alias for each model** selected, then select **Add models**.
+3. In **Subscriptions** and **Resource groups**, select those of your Foundry account. Keep **Managed identity** as
+   the **Authentication method**.
+4. In **Models**, select only the `gpt-6.1-sol` deployment: the page can preselect other deployments of the account.
+5. Under **Aliases**, keep **Create an alias for each model** selected, then select **Add models**.
 
 ### Publish the gpt-6.1-sol alias
 
 The import names its alias after the provider and the deployment, for example `<foundry-account-name>/gpt-6.1-sol`.
 Copilot needs the plain model name, so add an alias called `gpt-6.1-sol`:
 
-1. Select **Models** › **Aliases** › **Add alias**.
+1. Select **Models** › **Add** › **Alias for existing models**.
 2. On **Basics**, set **Alias name** to `gpt-6.1-sol`. Select **Next**.
-3. On **Select models**, select `gpt-6.1-sol` in **Available backend models**. Select **Next**.
-4. Keep the defaults on **Priority and weights**, select **Next**, then select **Create** on **Review**.
+3. On **Select models**, select the `gpt-6.1-sol` backend model in the grid. Select **Next**.
+4. Keep the defaults on **Auto model selection (preview)**, **Session affinity**, **Priorities and weights**, and
+   **Failure handling**, selecting **Next** on each, then select **Create** on **Review**.
 
 ### Add the token limit
 
-1. Select **Policies** › **Add policy**. On the **Type** step, under **Cost & Rate Limits**, select
+1. Select **Policies** › **Add policy**. On the **Type** step, under **Cost and rate limits**, select
    **Token rate limit**, then **Next**.
-2. On the **Scope** step, select **Individual assets**, select the `gpt-6.1-sol` alias, then **Next**.
-3. On the **Details** step, set **Time period** to **Per minute**, **Allowed tokens** to `100000`, and
-   **Counter dimensions** to **Caller identity**. Select **Create**.
+2. On the **Scope** step, select **Individual assets**, select the `gpt-6.1-sol` asset of type **Alias**, then
+   **Next**.
+3. On the **Details** step, set **Time period** to **Per minute** and **Allowed tokens** to `100000`. Keep
+   **Counter dimensions** at **Identity**, so that each key gets its own counter. Select **Create**.
 
 ### Create the key for Copilot
 
@@ -273,7 +276,7 @@ Copilot needs the plain model name, so add an alias called `gpt-6.1-sol`:
 
 ```bash title="Bash"
 # Paste the key without showing it, and export it for the test calls and the Copilot surfaces
-read -rsp "AI Gateway API key: " AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
+printf "AI Gateway API key: " && read -rs AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 ```
 </details> <!-- gh -->
@@ -334,7 +337,9 @@ az cognitiveservices account deployment create -g $FOUNDRY_RG -n $FOUNDRY_ACCOUN
 ### Register the model with its token limit
 
 Register the deployment under the provider, then give the backend model a token limit of 100,000 tokens per minute
-for each caller. `az aigateway model policy set-token-limit` keeps any other policy that's already on the model.
+for each caller. `az aigateway model policy set-token-limit` keeps any other policy that's already on the model. If
+you registered `gpt-6.1-sol` under this provider in another lab, `model create` fails with
+`The model already exists`: carry on with the token limit, which applies to the existing model.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -394,9 +399,7 @@ az aigateway model-alias set -g $RG --gateway-name $GATEWAY -n $MODEL `
 ```
 </details> <!-- gh -->
 
-`az aigateway model-alias set` creates the alias, or updates it if it exists, so you can run the step again. When
-it creates the alias, it warns that the service doesn't enforce atomic alias creation. That's expected: it only
-matters when two people create the same alias at the same time.
+`az aigateway model-alias set` creates the alias, or updates it if it exists, so you can run the step again.
 
 ### Create the key for Copilot
 
@@ -569,7 +572,7 @@ to your gateway from lab 02.
 <!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
 📄 [`infra/copilot-model.bicep`](infra/copilot-model.bicep)
 
-<details><summary>Show all 127 lines</summary>
+<details><summary>Show all 126 lines</summary>
 
 ```bicep
 // Publishes gpt-6.1-sol through an existing AI Gateway so GitHub Copilot can use it as a bring-your-own-key model.
@@ -630,30 +633,29 @@ module deployment 'deployment.bicep' = {
 }
 
 #disable-next-line BCP081
-resource aiGateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
+resource aiGateway 'Microsoft.ApiManagement/aigateways@2026-11-01' existing = {
   name: gatewayName
 }
 
 #disable-next-line BCP081
-resource defaultWorkspace 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' existing = {
+resource defaultWorkspace 'Microsoft.ApiManagement/aigateways/workspaces@2026-11-01' existing = {
   parent: aiGateway
   name: 'default'
 }
 
 #disable-next-line BCP081
-resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2025-09-01-preview' existing = {
+resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2026-11-01' existing = {
   parent: defaultWorkspace
   name: providerName
 }
 
 #disable-next-line BCP081
-resource model 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2025-09-01-preview' = {
+resource model 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2026-11-01' = {
   parent: provider
   name: modelName
   properties: {
     displayName: modelName
     description: 'Foundry deployment ${modelName} published through AI Gateway for GitHub Copilot.'
-    apiFormat: 'OpenAIChatCompletions'
     supportedEndpoints: [
       '/openai/v1/chat/completions'
       '/openai/v1/responses'
@@ -677,7 +679,7 @@ resource model 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/mod
 }
 
 #disable-next-line BCP081
-resource alias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2025-09-01-preview' = {
+resource alias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01' = {
   parent: defaultWorkspace
   name: modelName
   properties: {
@@ -688,7 +690,7 @@ resource alias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2025-09-01
 }
 
 #disable-next-line BCP081
-resource apiKey 'Microsoft.ApiManagement/aigateways/apiKeys@2025-09-01-preview' = {
+resource apiKey 'Microsoft.ApiManagement/aigateways/apiKeys@2026-11-01' = {
   parent: aiGateway
   name: apiKeyName
   properties: {
@@ -749,7 +751,7 @@ output deploymentName string = deployment.name
 ### Deploy with azd up
 
 Move into the lab's folder, create an azd environment named `aigw-lab24` in your current subscription, then provision
-everything. It takes about four minutes.
+everything. It takes two to four minutes.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -1107,9 +1109,11 @@ I'm powered by gpt-6.1-sol (model ID: gpt-6.1-sol).
 Changes    +0 -0
 Duration   6s
 Tokens     ↑ 14.4k (14.4k written) • ↓ 24
+Resume     copilot --resume=<session-id>
 ```
 
-The **Tokens** line shows how much context even a short question carries.
+The **Tokens** line shows how much context even a short question carries. **Resume** reopens the session in
+interactive mode.
 
 ### Run an agent task
 
@@ -1411,9 +1415,11 @@ Learn server is public, so the backend needs no credentials. Pick a track.
 1. Open the [AI Gateway portal](https://ai.gateway.azure.com), select your gateway, and select **MCP servers** ›
    **Add MCP server**.
 2. On **Basic info**, set **Name** to `learn`, **Display name** to `Microsoft Learn`, and **Description** to
-   `Search and fetch official Microsoft documentation and code samples.` Select **Next**.
-3. On **Backends**, select **Add backend** › **MCP server**. Set **URL** to `https://learn.microsoft.com/api/mcp`,
-   **Namespace** to `learn`, and **Authentication** to **None**. Select **Next**.
+   `Search and fetch official Microsoft documentation and code samples.` In **Supported MCP versions**, select
+   `2025-06-18`, the version that the Learn server reports. Select **Next**.
+3. On **Backends**, select **Add backend** › **MCP server**. Set **Endpoint URL** to
+   `https://learn.microsoft.com/api/mcp`, keep **Authentication** at **None**, and set **Namespace** to `learn`.
+   Select **Add**, then **Next**, which saves the server and opens **Tools**.
 4. On **Tools**, keep **Allow all tools**, and select **Create**.
 
 [Register the Learn MCP server](../04-federate-mcp-tools/README.md#register-the-learn-mcp-server) in lab 04
@@ -1690,7 +1696,7 @@ copilot mcp list
 ```
 </details> <!-- gh -->
 
-Expected output:
+Expected output (your built-in servers can differ):
 
 ```text
 Added server "ai-gateway-learn"
@@ -1706,6 +1712,10 @@ ai-gateway-learn
 🔌 MCP servers in the Copilot CLI:
 User servers:
   ai-gateway-learn (http)
+
+Builtin servers:
+  computer-use (local)
+  github-mcp-server (http)
 ```
 
 ![copilot mcp add, list, and get show ai-gateway-learn with its URL and a masked Authorization header](../assets/screens/copilot-mcp-06-cli-add.webp "The CLI masks header values. Run copilot mcp get ai-gateway-learn to see the server again.")
@@ -1792,6 +1802,7 @@ the HTTP function URL printed in the terminal; see [Microsoft Learn](https://lea
 Changes    +0 -0
 Duration   18s
 Tokens     ↑ 50.8k (30.4k cached, 20.4k written) • ↓ 204
+Resume     copilot --resume=<session-id>
 ```
 
 Compare the **Tokens** line with the 14,400 tokens of the plain question in
@@ -1966,6 +1977,7 @@ Expected output, after the CLI retries twice:
 Request failed due to a transient API error. Retrying...
 Request failed due to a transient API error. Retrying...
 Authentication failed with provider at https://<gateway-host>/default/models/openai/v1 (HTTP 401).
+  Check your COPILOT_PROVIDER_API_KEY, COPILOT_PROVIDER_API_KEY_COMMAND, or COPILOT_PROVIDER_BEARER_TOKEN.
 ```
 
 VS Code, the SDK, and the app get the same `401`. One key change cuts off every Copilot surface that uses the key, on
@@ -2206,5 +2218,5 @@ gateway.
 | :-- | :-: | --: |
 | [17 · Coding-agent plugin](../17-coding-agent-plugin/README.md) | [All labs](../README.md) | [25 · Claude Code](../25-claude-code/README.md) |
 
-<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (9 of 10)</sub>
+<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (12 of 13)</sub>
 <!-- gh:end -->

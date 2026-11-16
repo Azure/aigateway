@@ -41,12 +41,12 @@ var foundryResourceGroup = split(foundryAccountId, '/')[4]
 var deploymentId = '${foundryAccountId}/deployments/${deploymentName}'
 
 #disable-next-line BCP081
-resource aiGateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
+resource aiGateway 'Microsoft.ApiManagement/aigateways@2026-11-01' existing = {
   name: gatewayName
 }
 
 #disable-next-line BCP081
-resource defaultWorkspace 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' existing = {
+resource defaultWorkspace 'Microsoft.ApiManagement/aigateways/workspaces@2026-11-01' existing = {
   parent: aiGateway
   name: 'default'
 }
@@ -70,39 +70,39 @@ module foundryUserRole './foundry-user-role.bicep' = {
 }
 
 #disable-next-line BCP081
-resource foundryProvider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2025-09-01-preview' = {
+resource foundryProvider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2026-11-01' = {
   parent: defaultWorkspace
   name: providerName
   dependsOn: [
     foundryUserRole
   ]
   properties: {
-    kind: 'Foundry'
+    modelProviderType: 'Foundry'
     displayName: 'Foundry models'
     description: 'Managed-identity Foundry provider created by the first-model-call lab.'
     foundry: {
-      endpoint: normalizedFoundryEndpoint
+      endpoint: {
+        url: normalizedFoundryEndpoint
+      }
       resourceIds: [
         foundryAccountId
       ]
-      authentication: {
-        kind: 'ManagedIdentity'
-        managedIdentity: {
-          resource: 'https://cognitiveservices.azure.com/'
-        }
+    }
+    authentication: {
+      managedIdentity: {
+        resource: 'https://cognitiveservices.azure.com/'
       }
     }
   }
 }
 
 #disable-next-line BCP081
-resource model 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2025-09-01-preview' = {
+resource model 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2026-11-01' = {
   parent: foundryProvider
   name: deploymentName
   properties: {
     displayName: deploymentName
     description: 'Foundry deployment ${deploymentName} published through AI Gateway.'
-    apiFormat: 'OpenAIChatCompletions'
     supportedEndpoints: [
       '/openai/v1/chat/completions'
       '/openai/v1/responses'
@@ -126,7 +126,7 @@ resource model 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/mod
 }
 
 #disable-next-line BCP081
-resource alias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2025-09-01-preview' = {
+resource alias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01' = {
   parent: defaultWorkspace
   name: aliasName
   properties: {
@@ -137,7 +137,7 @@ resource alias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2025-09-01
 }
 
 #disable-next-line BCP081
-resource runtimeApiKey 'Microsoft.ApiManagement/aigateways/apiKeys@2025-09-01-preview' = {
+resource runtimeApiKey 'Microsoft.ApiManagement/aigateways/apiKeys@2026-11-01' = {
   parent: aiGateway
   name: apiKeyName
   properties: {

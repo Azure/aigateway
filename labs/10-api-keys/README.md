@@ -42,7 +42,7 @@ prereqs:
 
 **Follow along:** 🌐 [Interactive version](https://azure.github.io/aigateway/labs/10-api-keys/) with your own values filled in · 📁 [Lab files](infra/)
 
-**On this page:** [Before you begin](#before-you-begin) · [How it works](#how-it-works) · [Create a key for each app](#create-a-key-for-each-app) · [Store the key outside your code](#store-the-key-outside-your-code) · [Rotate a key without downtime](#rotate-a-key-without-downtime) · [Revoke a leaked key](#revoke-a-leaked-key) · [See usage and cost per key](#see-usage-and-cost-per-key) · [When to move to Microsoft Entra ID](#when-to-move-to-microsoft-entra-id) · [Verify](#verify) · [Go further](#go-further) · [Clean up](#clean-up) · [Next steps](#next-steps)
+**On this page:** [Before you begin](#before-you-begin) · [How it works](#how-it-works) · [Create a key for each app](#create-a-key-for-each-app) · [Send the key in either header](#send-the-key-in-either-header) · [Store the key outside your code](#store-the-key-outside-your-code) · [Rotate a key without downtime](#rotate-a-key-without-downtime) · [Revoke a leaked key](#revoke-a-leaked-key) · [See usage and cost per key](#see-usage-and-cost-per-key) · [When to move to Microsoft Entra ID](#when-to-move-to-microsoft-entra-id) · [Verify](#verify) · [Go further](#go-further) · [Clean up](#clean-up) · [Next steps](#next-steps)
 <!-- gh:end -->
 
 Three callers now use your gateway: the `app-dev` web app, the `support-bot` agent, and a data scientist's
@@ -169,9 +169,11 @@ if ($?) { Write-Host "🔐 You're a Key Vault Secrets Officer on the vault (it c
 
 A runtime API key is a gateway resource with a name and two values, **primary** and **secondary**.
 Both values work at the same time, which is what makes rotation without downtime possible. Clients send either
-value as `Authorization: Bearer <key>`, which is how OpenAI SDKs send their API key. The gateway validates the key
-before it applies policies or forwards the request, so a missing, wrong, rotated, or deleted value, or a suspended
-key, gets `401 Unauthorized` and never reaches a model.
+value as `Authorization: Bearer <key>`, which is how OpenAI SDKs send their API key, or in an `api-key` header. The
+gateway validates the key before it applies policies or forwards the request, so a missing, wrong, rotated, or
+deleted value, or a suspended key, gets `401 Unauthorized` and never reaches a model. The `401` message is the same
+one that Microsoft Entra ID callers get: `Unauthorized. Missing or invalid Entra ID token, or missing Data.All
+scope.`
 
 A key is gateway-scoped: it grants access to every published model and MCP server on the gateway. Each key is
 also a separate caller identity, which token limits, cost limits, and Monitoring use to tell callers apart.
@@ -200,7 +202,7 @@ for the key that leaked. Pick one track.
 1. In the [AI Gateway portal](https://ai.gateway.azure.com), open your gateway and select **Access** › **API keys**.
 2. Select **Create API key**.
 3. In **Key name**, enter `app-dev`, and select **Create**.
-4. The **API key created successfully** dialog shows the value. Select **Copy & done**.
+4. The **API key created** dialog shows the value. Select **Copy & done**.
 
 Store the value right away; the next section shows where. After you close the dialog, only people with the
 `apiKeys/listSecrets/action` permission, such as Contributors, can display the value again, with **View keys**.
@@ -220,7 +222,7 @@ into your shell for the checks in this lab:
 
 ```bash title="Bash"
 # Paste the key without showing it, and export it for the checks in this lab
-read -rsp "AI Gateway API key: " AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
+printf "AI Gateway API key: " && read -rs AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 ```
 </details> <!-- gh -->
@@ -418,17 +420,17 @@ param apiKeyNames array = [
 ]
 
 #disable-next-line BCP081
-resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
+resource gateway 'Microsoft.ApiManagement/aigateways@2026-11-01' existing = {
   name: gatewayName
 }
 
 // Redeploying keeps each key's values: rotation and revocation are operations, not part of the template.
 #disable-next-line BCP081
-resource apiKeys 'Microsoft.ApiManagement/aigateways/apiKeys@2025-09-01-preview' = [for name in apiKeyNames: {
+resource apiKeys 'Microsoft.ApiManagement/aigateways/apiKeys@2026-11-01' = [for name in apiKeyNames: {
   parent: gateway
   name: name
   properties: {
-    // The service replaces the display name with its own, so identify keys by name.
+    // Keep the display name the same as the key's name, which the CLI and the scripts use.
     displayName: name
   }
 }]
@@ -661,6 +663,62 @@ printf '%-14s %-8s HTTP %s  %s\n' "$LABEL" "$HINT" "$STATUS" "$RESULT"
 > **Access** › **API keys** lists `app-dev`, `support-bot`, and `old-notebook`, and the check prints
 > `HTTP 200  accepted` for `app-dev`.
 
+## Send the key in either header
+
+The gateway reads a runtime key from one of two headers. Use one per request; a request with both gets `400`.
+
+| Header | Used by |
+|---|---|
+| `Authorization: Bearer <key>` | The docs, OpenAI SDKs, and the checks in this lab |
+| `api-key: <key>` | Azure OpenAI SDKs and tools that send an Azure OpenAI key |
+
+Send the same request with each header, and then with both:
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Send the same request once with each header, and print only the HTTP status
+URL="${AI_GATEWAY_URL%/}/default/models/openai/v1/chat/completions"
+BODY="$(printf '{"model":"%s","messages":[{"role":"user","content":"ping"}]}' "$AI_GATEWAY_MODEL")"
+for HEADER in "Authorization: Bearer" "api-key:"; do
+  # Read the header from stdin, so that the key doesn't appear in the process list
+  STATUS="$(printf '%s %s\n' "$HEADER" "$AI_GATEWAY_API_KEY" | curl -sS -o /dev/null -w '%{http_code}' "$URL" \
+    -H @- -H "Content-Type: application/json" -d "$BODY")"
+  echo "🔑 ${HEADER%%:*} header: HTTP $STATUS"
+done
+
+# Send both headers in one request: the gateway rejects it with 400
+echo "🚦 Expect 400 Bad Request for both headers:"
+printf 'Authorization: Bearer %s\napi-key: %s\n' "$AI_GATEWAY_API_KEY" "$AI_GATEWAY_API_KEY" |
+  curl -sS "$URL" -H @- -H "Content-Type: application/json" -d "$BODY" -w '\nHTTP %{http_code}\n'
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Send the same request once with each header, and print only the HTTP status
+$uri  = "$($env:AI_GATEWAY_URL.TrimEnd('/'))/default/models/openai/v1/chat/completions"
+$body = @{ model = $env:AI_GATEWAY_MODEL; messages = @(@{ role = "user"; content = "ping" }) } | ConvertTo-Json -Depth 5
+foreach ($headers in @{ "Authorization" = "Bearer $env:AI_GATEWAY_API_KEY" }, @{ "api-key" = $env:AI_GATEWAY_API_KEY }) {
+  $response = Invoke-WebRequest -Method Post -Uri $uri -Headers $headers -ContentType "application/json" `
+    -Body $body -SkipHttpErrorCheck
+  Write-Host "🔑 $($headers.Keys) header: HTTP $($response.StatusCode)"
+}
+
+# Send both headers in one request: the gateway rejects it with 400
+Write-Host "🚦 Expect 400 Bad Request for both headers:"
+$both = @{ "Authorization" = "Bearer $env:AI_GATEWAY_API_KEY"; "api-key" = $env:AI_GATEWAY_API_KEY }
+$response = Invoke-WebRequest -Method Post -Uri $uri -Headers $both -ContentType "application/json" `
+  -Body $body -SkipHttpErrorCheck
+Write-Host "$($response.Content)`nHTTP $($response.StatusCode)"
+```
+</details> <!-- gh -->
+
+> **Checkpoint**
+> Both headers print `HTTP 200`, and the request with both prints `HTTP 400` with
+> `"Specify either an API key or an Authorization header, not both."`
+
 ## Store the key outside your code
 
 A runtime key opens every model and MCP server on the gateway, so treat it like a password:
@@ -750,7 +808,7 @@ You use the old value later to prove that it stopped working. On the `support-bo
 
 ```bash title="Bash"
 # Paste the current support-bot value without showing it, to prove later that the rotation retired it
-read -rsp "Current support-bot value: " OLD_SUPPORT_BOT && echo
+printf "Current support-bot value: "; read -rs OLD_SUPPORT_BOT; echo
 echo "🔑 Current support-bot value: in OLD_SUPPORT_BOT (${#OLD_SUPPORT_BOT} characters, not shown)"
 ```
 </details> <!-- gh -->
@@ -767,9 +825,9 @@ Write-Host "🔑 Current support-bot value: in OLD_SUPPORT_BOT ($($OLD_SUPPORT_B
 ### Rotate the key
 
 1. On the `support-bot` row, select **…** (**More actions**) › **Rotate key**.
-2. The `Rotate "support-bot" key?` dialog warns that the current value stops working immediately and that the
-   new value is displayed once. Select **Rotate**.
-3. In **API key rotated successfully**, copy the new value and update the client, or the `support-bot-api-key`
+2. The `Rotate "support-bot" key?` dialog warns that clients using the old value get `401 Unauthorized` until
+   you update them. Select **Rotate**.
+3. In **API key rotated**, copy the new value and update the client, or the `support-bot-api-key`
    secret in Key Vault.
 
 > [!NOTE]
@@ -987,7 +1045,7 @@ You use it to prove that the key no longer works. On the `old-notebook` row, sel
 
 ```bash title="Bash"
 # Paste the leaked value without showing it, to prove later that the gateway rejects it
-read -rsp "Leaked value: " LEAKED_KEY && echo
+printf "Leaked value: "; read -rs LEAKED_KEY; echo
 echo "🔑 Leaked value: in LEAKED_KEY (${#LEAKED_KEY} characters, not shown)"
 ```
 </details> <!-- gh -->
@@ -1043,8 +1101,8 @@ if ($?) { Write-Host "🚮 API key old-notebook is deleted" }
 
 ### Suspend a key instead
 
-To block a key while you investigate, without deleting it, set its `state` to `suspended`. About 20 seconds
-later, calls with the key get `401` until you set it back to `active`. The **Verify** section expects
+To block a key while you investigate, without deleting it, set its `state` to `suspended`. Within about 10
+seconds, calls with the key get `401` until you set it back to `active`. The **Verify** section expects
 `support-bot` to work, so set it back to `active` before you continue:
 
 <details open><summary>Bash</summary> <!-- gh -->
@@ -1106,7 +1164,7 @@ Each key is a caller identity, so Monitoring can break usage down by key. This n
 The same identity drives enforcement. A **Cost limit** counted by **Caller identity** gives each key its own
 budget:
 
-![A Cost limit policy with a $100 monthly budget counted by caller identity](../assets/screens/policy-cost-limit-details.png "A Cost limit counted by caller identity: each API key gets its own $100 monthly budget, and a caller that reaches it gets 403 LlmCostQuotaExceeded.")
+![A Cost limit policy with a $5 daily budget counted by caller identity](../assets/screens/policy-cost-limit-details.png "A Cost limit counted by caller identity: each API key gets its own $5 daily budget, and a caller that reaches it gets 403 LlmCostQuotaExceeded.")
 
 To set budgets and limits per key, continue with
 [Enforce cost budgets with per-caller overrides](../07-cost-budgets/README.md).
@@ -1118,7 +1176,7 @@ API keys are the fastest way to start, but the docs don't recommend them for pro
 | | Runtime API key | Microsoft Entra ID with Azure RBAC |
 |---|---|---|
 | What the gateway sees | One named key | A user, agent, or workload identity in your tenant |
-| What it can call | Every published model and MCP server | What its role grants: **AI Gateway User** (models and tools), **AI Gateway Models User**, or **AI Gateway Tools User**, at gateway, alias, or MCP server scope |
+| What it can call | Every published model and MCP server | What its role grants: **AI Gateway User** (models and tools), **AI Gateway Models User**, or **AI Gateway Tools User**, on all assets, one alias, or one MCP server |
 | Secret to protect | The key value | None with a managed identity; tokens are short-lived |
 | Rotation | You rotate and redistribute values | Microsoft Entra ID issues new tokens |
 | Good fit | Prototypes, labs, and tools that only accept a key | Production apps, agents, and per-user access |
@@ -1191,7 +1249,7 @@ the check again. After the CLI flow, both the new primary and the new secondary 
 
 ```bash title="Bash"
 # Paste a current support-bot value without showing it
-read -rsp "Current support-bot value: " SUPPORT_BOT && echo
+printf "Current support-bot value: "; read -rs SUPPORT_BOT; echo
 echo "🔑 Current support-bot value: in SUPPORT_BOT (${#SUPPORT_BOT} characters, not shown)"
 
 # Check it: after the rotation, the gateway accepts both the new primary and the new secondary value
@@ -1300,7 +1358,8 @@ Bicep + azd track created its own gateway.
 - [Enforce cost budgets with per-caller overrides](../07-cost-budgets/README.md): give `app-dev` and
   `support-bot` different budgets.
 - [Monitor usage, cost, and traces](../13-monitoring/README.md): see usage and cost for each key.
-- Docs: [Security and identity in AI Gateway](https://ai.gateway.azure.com/docs/security-identity).
+- Docs: [Security and identity in AI Gateway](https://ai.gateway.azure.com/docs/security-identity) and
+  [Authenticate with an API key](https://ai.gateway.azure.com/docs/security/authenticate-keys).
 
 <!-- gh:begin footer: generated by "npm run sync" from the metadata, do not edit -->
 
@@ -1312,5 +1371,5 @@ Bicep + azd track created its own gateway.
 | :-- | :-: | --: |
 | [09 · Gateway-wide baselines](../09-gateway-baselines/README.md) | [All labs](../README.md) | [11 · Entra ID & RBAC](../11-entra-rbac/README.md) |
 
-<sub>Learning paths: [Security & compliance](../README.md#learning-paths) (1 of 7)</sub>
+<sub>Learning paths: [Security & compliance](../README.md#learning-paths) (1 of 8)</sub>
 <!-- gh:end -->

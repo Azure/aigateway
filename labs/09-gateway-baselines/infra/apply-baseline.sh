@@ -50,7 +50,7 @@ fi
 # The az aigateway policy commands set policies from flags, so to apply the whole file the script calls the
 # management API with az rest.
 GATEWAY_ID="$(az aigateway show -g "$RG" -n "$GATEWAY" --query id -o tsv)"
-URL="https://management.azure.com$GATEWAY_ID/workspaces/default?api-version=2025-09-01-preview"
+URL="https://management.azure.com$GATEWAY_ID/workspaces/default?api-version=2026-11-01"
 
 # A PATCH replaces the whole properties.policies array, so always merge with the current array.
 CURRENT="$(az rest --method get --url "$URL")"

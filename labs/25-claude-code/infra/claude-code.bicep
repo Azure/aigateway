@@ -46,12 +46,12 @@ var foundrySubscriptionId = split(foundryAccountId, '/')[2]
 var foundryResourceGroup = split(foundryAccountId, '/')[4]
 
 #disable-next-line BCP081
-resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
+resource gateway 'Microsoft.ApiManagement/aigateways@2026-11-01' existing = {
   name: gatewayName
 }
 
 #disable-next-line BCP081
-resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' existing = {
+resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2026-11-01' existing = {
   parent: gateway
   name: 'default'
 }
@@ -81,25 +81,26 @@ module foundryUserRole '../../02-first-model-call/infra/foundry-user-role.bicep'
 }
 
 #disable-next-line BCP081
-resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2025-09-01-preview' = if (createProvider) {
+resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2026-11-01' = if (createProvider) {
   parent: workspace
   name: foundryAccountName
   dependsOn: [
     foundryUserRole
   ]
   properties: {
-    kind: 'Foundry'
+    modelProviderType: 'Foundry'
     displayName: foundryAccountName
     foundry: {
-      endpoint: endsWith(foundryEndpoint, '/') ? foundryEndpoint : '${foundryEndpoint}/'
+      endpoint: {
+        url: endsWith(foundryEndpoint, '/') ? foundryEndpoint : '${foundryEndpoint}/'
+      }
       resourceIds: [
         foundryAccountId
       ]
-      authentication: {
-        kind: 'ManagedIdentity'
-        managedIdentity: {
-          resource: 'https://cognitiveservices.azure.com/'
-        }
+    }
+    authentication: {
+      managedIdentity: {
+        resource: 'https://cognitiveservices.azure.com/'
       }
     }
   }
@@ -107,14 +108,16 @@ resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@
 
 // The models go under the provider, whether the template created it or the gateway already had it.
 #disable-next-line BCP081
-resource accountProvider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2025-09-01-preview' existing = {
+resource accountProvider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2026-11-01' existing = {
   parent: workspace
   name: foundryAccountName
 }
 
-// Claude deployments speak the Anthropic Messages API, so the gateway serves them on /default/models/anthropic.
+// Claude deployments speak the Anthropic Messages API. A Foundry account serves them on /anthropic/v1/messages, so the
+// models declare that path: with /v1/messages, every call fails with "Resource not found". The gateway serves them on
+// /default/models/anthropic/v1/messages, the route that Claude Code uses, and on /default/models/v1/messages.
 #disable-next-line BCP081
-resource models 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2025-09-01-preview' = [for (m, i) in claudeModels: {
+resource models 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2026-11-01' = [for (m, i) in claudeModels: {
   parent: accountProvider
   name: m.name
   dependsOn: [
@@ -144,7 +147,7 @@ var budgetPolicy = {
 
 // Each caller identity, a key or a Microsoft Entra identity, gets its own counters.
 #disable-next-line BCP081
-resource aliases 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2025-09-01-preview' = [for (m, i) in claudeModels: {
+resource aliases 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01' = [for (m, i) in claudeModels: {
   parent: workspace
   name: '${foundryAccountName}-${m.name}'
   properties: {
@@ -164,7 +167,7 @@ resource aliases 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2025-09-
 }]
 
 #disable-next-line BCP081
-resource apiKey 'Microsoft.ApiManagement/aigateways/apiKeys@2025-09-01-preview' = {
+resource apiKey 'Microsoft.ApiManagement/aigateways/apiKeys@2026-11-01' = {
   parent: gateway
   name: apiKeyName
   properties: {

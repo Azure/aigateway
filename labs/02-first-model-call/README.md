@@ -151,7 +151,7 @@ unchanged to Foundry. The response comes back as is, and the gateway records tok
 
 | Step | What happens | Where you set it |
 |---|---|---|
-| Inbound authentication | An active runtime key as `Authorization: Bearer <key>`, which is what the OpenAI SDKs send, or the call fails with `401` | **Access** › **API keys** |
+| Inbound authentication | An active runtime key as `Authorization: Bearer <key>`, which is what the OpenAI SDKs send, or in an `api-key` header. Without a valid key the call fails with `401`, and with both headers it fails with `400` | **Access** › **API keys** |
 | Routing | `/default/models/openai/v1/chat/completions` or `/responses`, and `model` must equal an alias | Model details and its **Aliases** tab |
 | Policies | Token limits, cost limits, and content safety run before the backend call | **Policies** (labs 06–09) |
 | Backend authentication | The gateway's managed identity, with the **Foundry User** role on the account | Model provider |
@@ -175,10 +175,12 @@ The Bicep + azd track also creates its own gateway and Foundry deployment, so it
 1. Open the [AI Gateway portal](https://ai.gateway.azure.com) and select your gateway in the top bar.
 2. Select **Models** › **Add** › **Models from Microsoft Foundry**. (On **Home**, **Add from Microsoft Foundry** in
    the **Set up your gateway** guide starts the same import.)
-3. Select the subscription and resource group of your Foundry account. The wizard discovers the deployments
-   automatically. Deployments that are already in this gateway can't be selected again.
+3. In **Subscriptions** and **Resource groups**, select the subscription and resource group of your Foundry account.
+   The page discovers the deployments automatically. Deployments that are already in this gateway can't be selected
+   again.
 4. Select the `gpt-5-mini` deployment and keep **Managed identity** as the **Authentication method**.
-5. Under **Aliases**, keep **Create an alias for each model** selected, then select **Add models**.
+5. Under **Aliases**, keep **Create an alias for each model** selected, then select **Add models**. When the banner
+   **Models and aliases imported** shows, select **Close**.
 
 > [!NOTE]
 > The gateway calls Foundry with its system-assigned managed identity, which needs the **Foundry User** role on
@@ -199,10 +201,10 @@ The Bicep + azd track also creates its own gateway and Foundry deployment, so it
 
 ### Copy the callable alias
 
-Open the imported model on **Models**. The model details show its base URL and supported interfaces, such as
-**OpenAI Chat Completions** and **OpenAI Responses**. Open the **Aliases** tab and copy the alias exactly as
-shown, then save it in your shell. Portal imports usually name it after the provider and the deployment, for
-example `<foundry-account-name>/gpt-5-mini`.
+On **Models**, the **Backend models** tab lists `gpt-5-mini` with its alias. Select the model: its **Overview**
+lists the **Endpoints** that it supports, such as **Chat completions** and **Responses**, and its **Aliases** tab
+lists the aliases that route to it. Copy the alias exactly as shown, then save it in your shell. Portal imports name
+it after the provider and the deployment, for example `<foundry-account-name>/gpt-5-mini`.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -224,19 +226,18 @@ Write-Host "🔖 Model alias: $env:AI_GATEWAY_MODEL"
 
 ### Create a runtime API key
 
-1. Select **Access** › **API keys** › **Create API key**. Some portal versions show **Keys** in the left
-   navigation, or a **Keys** tab instead of **API keys**.
+1. Select **Access**, then the **API keys** tab, then **Create API key**.
 2. In **Key name**, enter a name for the app that will use it, for example `app-first-call`, and select
    **Create**.
-3. Copy the value from **API key created successfully**, for example with **Copy & done**. Copy it now: treat
-   the value as shown only once.
+3. In **API key created**, select **Copy & done** to copy the key. You can view, rotate, or delete it later in
+   **Access** › **API keys**.
 4. Paste it into your shell without echoing it or writing it to a file:
 
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
 # Paste the key without showing it, and export it for the calls and samples that follow
-read -rsp "AI Gateway API key: " AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
+printf "AI Gateway API key: " && read -rs AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 ```
 </details> <!-- gh -->
@@ -426,9 +427,7 @@ if ($?) { Write-Host "🔖 Alias $env:AI_GATEWAY_MODEL is ready" }
 ```
 </details> <!-- gh -->
 
-`az aigateway model-alias set` creates the alias, or updates it if it exists, so you can run the step again. When
-it creates the alias, it warns that the service doesn't enforce atomic alias creation. That's expected: it only
-matters when two people create the same alias at the same time.
+`az aigateway model-alias set` creates the alias, or updates it if it exists, so you can run the step again.
 
 ### Create a runtime API key
 
@@ -720,12 +719,12 @@ var foundryResourceGroup = split(foundryAccountId, '/')[4]
 var deploymentId = '${foundryAccountId}/deployments/${deploymentName}'
 
 #disable-next-line BCP081
-resource aiGateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
+resource aiGateway 'Microsoft.ApiManagement/aigateways@2026-11-01' existing = {
   name: gatewayName
 }
 
 #disable-next-line BCP081
-resource defaultWorkspace 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' existing = {
+resource defaultWorkspace 'Microsoft.ApiManagement/aigateways/workspaces@2026-11-01' existing = {
   parent: aiGateway
   name: 'default'
 }
@@ -749,39 +748,39 @@ module foundryUserRole './foundry-user-role.bicep' = {
 }
 
 #disable-next-line BCP081
-resource foundryProvider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2025-09-01-preview' = {
+resource foundryProvider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2026-11-01' = {
   parent: defaultWorkspace
   name: providerName
   dependsOn: [
     foundryUserRole
   ]
   properties: {
-    kind: 'Foundry'
+    modelProviderType: 'Foundry'
     displayName: 'Foundry models'
     description: 'Managed-identity Foundry provider created by the first-model-call lab.'
     foundry: {
-      endpoint: normalizedFoundryEndpoint
+      endpoint: {
+        url: normalizedFoundryEndpoint
+      }
       resourceIds: [
         foundryAccountId
       ]
-      authentication: {
-        kind: 'ManagedIdentity'
-        managedIdentity: {
-          resource: 'https://cognitiveservices.azure.com/'
-        }
+    }
+    authentication: {
+      managedIdentity: {
+        resource: 'https://cognitiveservices.azure.com/'
       }
     }
   }
 }
 
 #disable-next-line BCP081
-resource model 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2025-09-01-preview' = {
+resource model 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2026-11-01' = {
   parent: foundryProvider
   name: deploymentName
   properties: {
     displayName: deploymentName
     description: 'Foundry deployment ${deploymentName} published through AI Gateway.'
-    apiFormat: 'OpenAIChatCompletions'
     supportedEndpoints: [
       '/openai/v1/chat/completions'
       '/openai/v1/responses'
@@ -805,7 +804,7 @@ resource model 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/mod
 }
 
 #disable-next-line BCP081
-resource alias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2025-09-01-preview' = {
+resource alias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01' = {
   parent: defaultWorkspace
   name: aliasName
   properties: {
@@ -816,7 +815,7 @@ resource alias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2025-09-01
 }
 
 #disable-next-line BCP081
-resource runtimeApiKey 'Microsoft.ApiManagement/aigateways/apiKeys@2025-09-01-preview' = {
+resource runtimeApiKey 'Microsoft.ApiManagement/aigateways/apiKeys@2026-11-01' = {
   parent: aiGateway
   name: apiKeyName
   properties: {
@@ -835,6 +834,13 @@ output foundryUserRoleAssignmentName string = foundryUserRole.outputs.roleAssign
 
 </details>
 <!-- gh:end -->
+
+The templates use the `2026-11-01` management API. The provider sets `modelProviderType: 'Foundry'`, the account's
+endpoint in `foundry.endpoint.url`, and the managed identity in a top-level `authentication` object. The model lists
+the API paths it serves in `supportedEndpoints`, and points to the deployment with `deployment.resourceId`,
+`deployment.modelName`, and an optional `deployment.modelVersion`. The provider and the model both need a
+`displayName`. The CLI track's `az aigateway` commands still call the preview API, so their output shows the
+preview names, such as `kind` and `foundry.endpoint`.
 
 ### Deploy with azd up
 
@@ -990,8 +996,11 @@ Use the same alias and key everywhere. The gateway exposes the OpenAI-compatible
 ### Try the model in Catalog
 
 1. Select **Catalog** and pick your model.
-2. Send a prompt in the built-in playground, for example `Write a one-sentence status update.`
-3. Copy the endpoint and the code samples (cURL, PowerShell 7+, Python, TypeScript, and .NET) for your app.
+2. Under **Authentication**, check that **Method** is **API key**, and choose your key as the **API key**, for
+   example `app-first-call`.
+3. Send a prompt in the built-in playground, for example `Write a one-sentence status update.`
+4. Select **Continue in code** for the endpoint URL and snippets for your app: cURL, the OpenAI SDK, LangChain,
+   Vercel AI, the GitHub Copilot SDK, and Microsoft Agent Framework.
 
 > [!TIP]
 > If the playground asks you to **Sign in again**, your portal session expired. Sign in and resend the prompt.
@@ -1176,6 +1185,8 @@ echo "📦 The .NET sample is restored"
 
 The OpenAI SDKs send their API key as `Authorization: Bearer <key>`, which is where the gateway reads the runtime
 key, so the key goes straight into the SDK. The .NET sample uses `HttpClient`, so it sets the same header itself.
+The gateway also accepts the key in an `api-key` header, which Azure OpenAI clients send, but not both headers in
+one request: that returns `400` `Specify either an API key or an Authorization header, not both.`
 
 <details open><summary>Python</summary> <!-- gh -->
 
@@ -1399,7 +1410,7 @@ aren't callable unless an alias with that name exists.
 - **Add a per-caller token limit.** The Bicep + azd track already sets `tokensPerMinute`, and its **Change the
   token limit** step changes it. Learn how limits behave in
   [Throttle tokens per caller with token limits](../06-token-limits/README.md).
-- **Publish models from other providers.** Put OpenAI, Anthropic, AWS Bedrock, or Google Vertex AI models behind
+- **Publish models from other providers.** Put OpenAI, Anthropic, Amazon Bedrock, or Google Vertex AI models behind
   the same gateway in [Publish models from any provider behind stable aliases](../03-multi-provider-aliases/README.md).
 
 ## Clean up
@@ -1504,7 +1515,8 @@ azd down --purge --force &&
 - [Publish models from any provider behind stable aliases](../03-multi-provider-aliases/README.md): add other providers and retarget aliases.
 - [Issue and rotate runtime API keys](../10-api-keys/README.md): give each app its own key and rotate it safely.
 - [Throttle tokens per caller with token limits](../06-token-limits/README.md): protect the deployment from noisy neighbors.
-- Docs: [Access models through AI Gateway](https://ai.gateway.azure.com/docs/model-access) and
+- Docs: [Connect agents to AI Gateway](https://ai.gateway.azure.com/docs/agent-access),
+  [Authenticate with an API key](https://ai.gateway.azure.com/docs/security/authenticate-keys), and
   [Microsoft Foundry and AI Gateway](https://ai.gateway.azure.com/docs/foundry).
 
 <!-- gh:begin footer: generated by "npm run sync" from the metadata, do not edit -->
@@ -1517,5 +1529,5 @@ azd down --purge --force &&
 | :-- | :-: | --: |
 | [01 · Provision a gateway](../01-provision-gateway/README.md) | [All labs](../README.md) | [03 · Multi-provider aliases](../03-multi-provider-aliases/README.md) |
 
-<sub>Learning paths: [30-minute essentials](../README.md#learning-paths) (3 of 4) · [Platform engineer](../README.md#learning-paths) (2 of 9) · [App & agent developer](../README.md#learning-paths) (1 of 10)</sub>
+<sub>Learning paths: [30-minute essentials](../README.md#learning-paths) (3 of 4) · [Platform engineer](../README.md#learning-paths) (2 of 11) · [App & agent developer](../README.md#learning-paths) (1 of 13)</sub>
 <!-- gh:end -->

@@ -105,7 +105,7 @@ export AI_GATEWAY_MODEL="$(az aigateway model show -g "$RG" --gateway-name "$GAT
 echo "🔖 Model alias: $AI_GATEWAY_MODEL"
 
 # Paste the runtime key that you created in Access › API keys, without showing it: don't commit it or write it to a file
-read -rsp "AI Gateway API key: " AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
+printf "AI Gateway API key: " && read -rs AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 ```
 </details> <!-- gh -->
@@ -168,16 +168,19 @@ stream starts. Once a stream starts, it runs to the end, even if it takes the co
 is throttled. While the stream flows, the gateway records its token usage for token limits, cost limits, and
 Monitoring.
 
-**Usage without `include_usage`.** Since the [September 24, 2026 release](https://ai.gateway.azure.com/docs/releases/2026-09-24),
+**Usage without `include_usage`.** Since the [September 24, 2026 release](https://ai.gateway.azure.com/docs/releases#release-2026-09-24),
 the gateway makes sure it has a usage record for every streamed Chat Completions response, even when the client
 doesn't set `stream_options.include_usage`, so the counters stay accurate. The release notes ask clients that parse
 the events themselves to accept a usage-only chunk before `[DONE]`, even when they didn't ask for one. In our test
-run in October 2026, a client that didn't set `include_usage` received no usage chunk, yet the token limit counted its
-tokens exactly as it did for a client that asked. So write your client to work either way: skip chunks with an empty
-`choices` array, and take usage from whichever chunk carries it.
+run in November 2026, a client that didn't set `include_usage` received no usage chunk, yet the token limit counted
+its tokens exactly as it did for a client that asked. So write your client to work either way: skip chunks with an
+empty `choices` array, and take usage from whichever chunk carries it.
 
 The Responses API streams typed events instead: each `data:` line follows an `event:` line, and the last event,
-`response.completed`, always carries the usage.
+`response.completed`, always carries the usage. A streamed response is stored like any other, so you can continue
+it with `previous_response_id`. The gateway sends that follow-up to the backend that stores the response, even
+when the alias has several backend models. See
+[Session affinity](https://ai.gateway.azure.com/docs/models/session-affinity).
 
 ## Stream a response
 
@@ -629,24 +632,26 @@ lab 02, so clients that call that alias aren't affected.
 ### Create the alias
 
 1. Open the [AI Gateway portal](https://ai.gateway.azure.com) and select your gateway in the top bar.
-2. Select **Models** › **Aliases** › **Add alias**.
+2. Select **Models** › **Aliases** › **Add** › **Alias for existing models**.
 3. On **Basics**, set **Alias name** to `<model-name>-stream`, for example `gpt-5-mini-stream`. Select **Next**.
-4. On **Select models**, select your model in **Available backend models**. Select **Next**.
-5. Keep the defaults on **Priority and weights**, select **Next**, then select **Create** on **Review**.
+4. Keep the defaults on **Auto model selection (preview)**, and select **Next**.
+5. On **Select models**, select your model in the list. Select **Next**.
+6. Keep the defaults on **Session affinity**, **Priorities and weights**, and **Failure handling**, then select
+   **Create** on **Review**.
 
 ### Add the token limit
 
-1. Select **Policies** › **Add policy**. On the **Type** step, under **Cost & Rate Limits**, select
+1. Select **Policies** › **Add policy**. On the **Type** step, under **Cost and rate limits**, select
    **Token rate limit**, then **Next**.
 2. On the **Scope** step, select **Individual assets**, select the `<model-name>-stream` alias, then **Next**.
-3. On the **Details** step, set **Time period** to **Per minute**, **Allowed tokens** to `1000`, and
-   **Counter dimensions** to **Caller identity**. Select **Create**.
+3. On the **Details** step, keep **Time period** at **Per minute** and **Counter dimensions** at **Identity**, set
+   **Allowed tokens** to `1000`, and select **Create**.
 
-![The Add policy wizard on the Type step](../assets/screens/policy-add-wizard.png "Policies › Add policy opens a three-step wizard: Type, Scope, Configure.")
+![The Add policy wizard on the Type step, with Token rate limit and Next highlighted](../assets/screens/streaming-responses-01-policy-type.webp "Policies › Add policy opens a three-step wizard: Type, Scope, Details.")
 
 > **Checkpoint**
-> **Models** › **Aliases** lists `<model-name>-stream`, and **Policies** lists a **Token rate limit** of 1,000
-> tokens per minute scoped to it.
+> **Models** › **Aliases** lists `<model-name>-stream`, and **Policies** lists **1,000 tokens / minute per caller
+> identity**, a **Token rate limit** on that alias.
 
 </details> <!-- gh -->
 <!-- track: cli | Azure CLI -->
@@ -980,18 +985,18 @@ Expected output:
 ⏳ Waiting 60 seconds for the token limit's window to reset
 🚦 Expect 429 Too Many Requests at the same point, now with usage chunks:
 Request  Status  Retry-After  Events  Usage chunk
-1        200     -            196     218 tokens
-2        200     -            186     208 tokens
-3        200     -            196     218 tokens
-4        200     -            191     213 tokens
-5        200     -            211     233 tokens
-6        200     -            191     213 tokens
-7        429     1            -       Token limit is exceeded. Try again in 1 seconds.
-8        200     -            193     215 tokens
+1        200     -            183     211 tokens
+2        200     -            186     214 tokens
+3        200     -            202     230 tokens
+4        200     -            181     209 tokens
+5        200     -            180     208 tokens
+6        200     -            188     216 tokens
+7        429     5            -       Token limit is exceeded. Try again in 5 seconds.
+8        429     5            -       Token limit is exceeded. Try again in 5 seconds.
 ```
 
 The throttle point is the same: the gateway counted the streams the same way whether or not the client asked for
-usage. Request 8 succeeds again because it was sent after the `Retry-After` wait.
+usage. If a request after the `429` returns `200`, it was sent after the `Retry-After` wait.
 
 ### Inspect a throttled streaming request
 
@@ -1022,9 +1027,11 @@ the model. Check the status code before you start reading events, and honor `Ret
 
 ### Find the streamed calls in Monitoring
 
-If you configured Application Insights in [Monitor usage, cost, and traces](../13-monitoring/README.md), open
-**Monitoring**. The streamed requests show their token counts next to the non-streamed ones, and the throttled
-requests appear as `429` outcomes.
+If you set up telemetry in [Monitor usage, cost, and traces](../13-monitoring/README.md), open **Monitoring**. On
+**Overview**, **Top models** lists the streaming alias with its calls and estimated cost next to the non-streamed
+calls, and **Top blocking policies** counts the throttled requests under **Token limit**. On **Traces**, the
+throttled requests show the outcome **Blocked by policy**, and the streams before them show **Token limit** under
+**Applied policies**.
 
 <!-- /steps -->
 
@@ -1042,6 +1049,10 @@ requests appear as `429` outcomes.
   [Connect agent frameworks to models and tools](../15-agent-frameworks/README.md).
 - **Check your proxies.** Anything between the client and the gateway, such as a reverse proxy or an API layer of your
   own, must pass `text/event-stream` responses through without buffering.
+- **Find streams that fail after they start.** A stream that fails partway, for example with a Responses
+  `response.failed` event, has already returned HTTP `200`. With tracing on, the gateway marks the span as `Error`
+  and keeps the status code. See
+  [Operation failures](https://ai.gateway.azure.com/docs/observability/telemetry-reference#operation-failures).
 
 ## Clean up
 
@@ -1105,7 +1116,7 @@ the Bicep + azd track created its own gateway.
 - [Throttle tokens per caller with token limits](../06-token-limits/README.md): give every caller its own allowance.
 - [Enforce cost budgets with per-caller overrides](../07-cost-budgets/README.md): cap spend in dollars.
 - [Monitor usage, cost, and traces](../13-monitoring/README.md): see streamed and throttled requests side by side.
-- [September 24 release: usage for streamed Chat Completions responses](https://ai.gateway.azure.com/docs/releases/2026-09-24)
+- [September 24 release: usage for streamed Chat Completions responses](https://ai.gateway.azure.com/docs/releases#release-2026-09-24)
 
 <!-- gh:begin footer: generated by "npm run sync" from the metadata, do not edit -->
 
@@ -1115,7 +1126,7 @@ the Bicep + azd track created its own gateway.
 
 | ⬅️ Previous | 🏠 | Next ➡️ |
 | :-- | :-: | --: |
-| [22 · Priority & weighted routing](../22-model-routing/README.md) | [All labs](../README.md) | [04 · Federate MCP tools](../04-federate-mcp-tools/README.md) |
+| [29 · Model failover](../29-model-failover/README.md) | [All labs](../README.md) | [26 · Embeddings](../26-embeddings/README.md) |
 
-<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (4 of 10) · [FinOps & operations](../README.md#learning-paths) (2 of 5)</sub>
+<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (6 of 13) · [FinOps & operations](../README.md#learning-paths) (2 of 6)</sub>
 <!-- gh:end -->

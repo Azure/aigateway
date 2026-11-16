@@ -74,7 +74,7 @@ Before you create, change, or delete Azure resources, confirm the subscription a
 | Track | Marker id | How to use it |
 | :-- | :-- | :-- |
 | Portal | `portal` | Click-by-click steps in the AI Gateway portal. You can't run them from a shell, so guide the user through them one screen at a time. |
-| Azure CLI | `cli` | `az aigateway` commands (extension 1.0.0b22 or later), plus `az rest` calls to Azure Resource Manager for what the extension can't do yet, in Bash and PowerShell variants. This is the easiest track for an agent to run. |
+| Azure CLI | `cli` | `az aigateway` commands (extension 1.0.0b31 or later), plus `az rest` calls to Azure Resource Manager for what the extension can't do yet, in Bash and PowerShell variants. This is the easiest track for an agent to run. |
 | REST API | `rest` | Raw Azure Resource Manager requests, for users who script against the API themselves. |
 | Bicep + azd | `iac` | A self-contained azd template in the lab folder (`azure.yaml` and `infra/main.bicep`): clone the repo, run `azd up` in the lab folder to create a new resource group with its own gateway, model, and the lab's feature, read the outputs with `azd env get-value`, change settings with `azd env set` and `azd provision`, and delete everything with `azd down --purge --force`. Lab 09 labels its track **Policy as code** (JSON policies applied by a script), and lab 21 **Bicep** (`az deployment sub create` with parameter files). |
 | Code | `code` | Python, TypeScript, and .NET clients, and agent frameworks, calling the gateway at runtime. |
@@ -82,7 +82,13 @@ Before you create, change, or delete Azure resources, confirm the subscription a
 
 ## Facts to rely on
 
-- The gateway is the `Microsoft.ApiManagement/aigateways` resource, API version `2025-09-01-preview`. Never use
+- The gateway is the `Microsoft.ApiManagement/aigateways` resource, API version `2026-11-01` (generally
+  available). Providers use `modelProviderType` (`Foundry`, `Custom`, `GitHub`), `{ url: … }` endpoints, and a
+  top-level `authentication` (`managedIdentity` or exactly one header). Providers and models need a `displayName`;
+  give API keys one too, or the portal shows them as *All APIs subscription*. Models have no `apiFormat`:
+  `supportedEndpoints` decides the format. Tool servers use `toolServerType`, `blockList`, and an endpoint `mode`
+  (`failClosed` or `failOpen`). `requestRateLimit` takes `count` and `period`. The service silently drops some
+  preview names (`blocked`, `required`, `apiFormat`), so read a resource back after you write it. Never use
   `Microsoft.ApiManagement/service`. In Bicep, omit `sku`, so the service default `Standard` applies (as with
   `az aigateway create`), and set no publisher properties. Don't declare a `Microsoft.Web/connectorGateways`
   resource. Put `#disable-next-line BCP081` before each `aigateways` resource declaration, because Bicep has no
@@ -93,7 +99,9 @@ Before you create, change, or delete Azure resources, confirm the subscription a
   (display names; `az account list-locations` maps them to `--location` names), as in the Setup guide's
   **Find the available regions**. The portal can offer fewer regions than the CLI and Bicep. Templates that deploy
   Foundry models need a region where those models are available too.
-- The CLI track uses the `az aigateway` extension 1.0.0b22 or later (the Setup guide installs it) for gateways
+- The CLI track uses the `az aigateway` extension 1.0.0b31 or later (the Setup guide installs it). It still calls
+  API version `2025-09-01-preview`, so its output shows the preview names (`kind`, `foundry.endpoint`, `blocked`,
+  `required`, `callsPerPeriod`). Use it for gateways
   (including `network update`), providers, models (`model create --deployment-config "{resourceId:…,modelName:…}"`),
   aliases, model policies (`model policy set-token-limit`, `set-content-safety`, `set-cost-limit`, `remove`),
   Gateway scope policies (`az aigateway policy`), telemetry exporters (`az aigateway telemetry-exporter`), API keys,
@@ -102,23 +110,30 @@ Before you create, change, or delete Azure resources, confirm the subscription a
   `model-alias set` creates an alias or updates the existing one. `--token-counter-key` takes one or more values,
   such as `Identity IPAddress`. `model-provider update --foundry` and `--custom` merge a partial JSON value into the
   provider's settings, and `mcp update --versions` and `--endpoints` change only what you pass. Don't use
-  `model create --foundry-resource-id --deployment`: it crashes in 1.0.0b22. The track keeps `az rest` for what the
-  extension can't do yet: MCP tool rules (`allowList`, `blocked`, `accessState`) and writing a whole policy array
-  from a file. Tool servers have no top-level `failureMode`: the service drops it, and only an endpoint's
-  `required` setting persists. Connector tools come from an existing Azure Connector Namespace
+  `model create --foundry-resource-id --deployment`: it still crashes in 1.0.0b31. `--api-format` can't express
+  embeddings or decision models: pass `--supported-endpoints /openai/v1/embeddings` or `typesafe/v1/systemone`.
+  The track keeps `az rest` for what the
+  extension can't do yet: MCP tool rules (`allowList`, `blockList`, `accessState`), backend conditions, session
+  affinity, failover, auto model selection, agent hooks, request rate limits on a model or alias (the Gateway
+  scope has `policy set-rate-limit`), and writing a whole policy array from a file. In zsh, read secrets with
+  `printf "Prompt: " && read -rs VAR && echo`, never `read -rsp`. Tool servers have no top-level `failureMode`: an
+  endpoint's `mode` (`failClosed` or `failOpen`) decides, and it defaults to `failOpen`. Connector tools come from an existing Azure Connector Namespace
   (`Microsoft.Web/connectorGateways`): create its MCP server and authorize its connections in Azure, then import it
   with **MCP servers** › **Import from Azure** and a gateway managed identity (audience `https://apihub.azure.com`).
   Creating or deleting a gateway never creates or deletes a namespace.
   Tracks that call `az rest` set `GATEWAY_ID` (from `az aigateway show`),
   `WS` (`https://management.azure.com$GATEWAY_ID/workspaces/default`), and `API`
-  (`api-version=2025-09-01-preview`) once. A `PATCH` replaces whole arrays such as `properties.policies`, so read,
+  (`api-version=2026-11-01`) once. A `PATCH` replaces whole arrays such as `properties.policies`, so read,
   edit, then write.
 - The runtime URL is `https://` plus `properties.frontend.defaultHostname`: the name's first 10 characters
   (without a trailing hyphen), a hyphen, a 13-character hash, and `.<region>-01.ai.gateway.azure.com`, for example
   `https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com` for `aigw-labs-001`. Always read it from the
   gateway, never build it from the name, and the labs write it as `<gateway-url>`. A new gateway with no models answers `404`.
-- Models: `<runtime URL>/default/models/openai/v1` serves OpenAI Chat Completions and Responses.
-  `<runtime URL>/default/models/anthropic/v1/messages` serves Anthropic Messages.
+- Models: `<runtime URL>/default/models/openai/v1` serves OpenAI Chat Completions, Responses, and embeddings
+  (`/embeddings`). `<runtime URL>/default/models/anthropic/v1/messages` serves Anthropic Messages: Foundry Claude
+  models declare `supportedEndpoints: ["/anthropic/v1/messages"]` (`/v1/messages` is accepted but answers `404`).
+  An alias accepts only its backend models' endpoints, and can't mix chat, embedding, and decision models. A new
+  key or alias can answer `401` or `404` for about 15 seconds.
 - The labs use `gpt-5-mini` (version `2025-08-07`, `GlobalStandard`) from Foundry, and `gpt-6.1-sol` (version
   `2026-09-29`) where a lab needs a second or stronger model. `gpt-5-mini` is a reasoning model: Chat Completions
   rejects `max_tokens` (send `max_completion_tokens`) and any `temperature` other than the default, `1`, so leave
@@ -128,14 +143,54 @@ Before you create, change, or delete Azure resources, confirm the subscription a
   think by default, so read the `text` blocks in `content` and leave headroom in `max_tokens`.
 - MCP tools: `<runtime URL>/default/toolservers/<name>/mcp`. Federated tools are named `<namespace>_<tool>`, for
   example `learn_microsoft_docs_search`.
-- Runtime auth for models and MCP tools: `Authorization: Bearer` with a runtime API key or a Microsoft Entra token.
-  Never add an `api-key` header as well, or the gateway answers `400`. With an OpenAI SDK, pass the key as the
-  client's API key; with an Anthropic SDK, pass it as the auth token, because `x-api-key` answers `401`.
+- Runtime auth for models and MCP tools: a runtime API key as `Authorization: Bearer <key>` or `api-key: <key>`
+  (one of them; both answer `400`), or a Microsoft Entra token as a bearer token. With an OpenAI SDK, pass the key as
+  the client's API key; with an Anthropic SDK, pass it as the auth token, because `x-api-key` answers `401`.
+  With `publicNetworkAccess: Disabled`, runtime calls from the internet answer `403`. The backend subnet stays
+  editable after creation (`properties.backend.subnet`, `null` removes it).
+- Inbound private endpoints (group ID `Gateway`) need access for the subscription; until then, creating one fails
+  with `SubscriptionNotRegisteredForFeature`. The private DNS zone is the one in
+  `GET {gateway}/privateLinkResources` (`privatelink.<region>-01.ai.gateway.azure.com`), not `privatelink.azure-api.net`.
+- MCP tool controls: a blocked tool stays in `tools/list`, and a call returns HTTP `200` with `isError: true` and
+  `ToolNotAvailable`. With **MCP server access** set to **Blocked**, `initialize` returns HTTP `200` with JSON-RPC
+  error `-32000` and `data.code` `AccessBlockedByGateway`. Agent 365 needs a static allowed-tool list: exact names
+  under **Match tools by name pattern**, without wildcards.
+- Tool threat protection evaluates only `tools/call`, with a delegated user token (OBO). A runtime key alone fails
+  closed with `ToolEvaluationIdentityRequired` (HTTP `200`, `isError: true`).
 - Entra tokens use the scope `https://ai.gateway.azure.com/Data.All` (`https://ai.gateway.azure.com/.default` from
-  an SDK credential), and their `aud` is the app ID `18550318-e177-4205-a743-6816d6fcdc3f`. The data-plane roles
-  are **AI Gateway User** (models and tools), **AI Gateway Models User**, and **AI Gateway Tools User**.
-- Policy changes take 20 to 60 seconds to apply. A token or request rate limit answers `429` with `Retry-After`, a
-  cost budget answers `403` `LlmCostQuotaExceeded`, and content safety blocks with `400`.
+  an SDK credential), and their `aud` is the app ID `18550318-e177-4205-a743-6816d6fcdc3f`. The runtime roles
+  are **AI Gateway User** (models and tools), **AI Gateway Models User**, and **AI Gateway Tools User**, assigned
+  on all assets (`<gateway id>/workspaces/default`), a model alias, or an MCP server. Control-plane roles are
+  separate and grant no runtime access: **AI Gateway Developer** (read aliases and MCP servers), **AI Gateway
+  Contributor** (model providers, models, aliases, and MCP servers at `/workspaces/default`; no gateway read, keys,
+  or Gateway scope policies), and **Contributor** on the gateway. None of them can create role assignments.
+- Policy changes take 20 to 60 seconds to apply. A token or request rate limit answers `429` with `Retry-After`, and
+  a cost budget answers `403` `LlmCostQuotaExceeded`. At the time of writing, content safety is saved but not
+  enforced on AI Gateway resources: only the Foundry deployment's content filter blocks, with `400` `content_filter`.
+- Alias routing at `2026-11-01` (the CLI has no flags for it, so use `az rest`; a `PATCH` replaces the whole
+  `backendModels` array and the whole `autoModelSelection` object):
+  - Backend conditions: `backendModels[].when: "@cel(…)"` over `request.headers` and the caller. Guard header reads
+    with `'h' in request.headers`; an unguarded read fails the request with `500`.
+  - Session affinity: `sessionBackendPreference.key: "@cel(…)"` keeps a session on one backend model. Responses
+    continuations (`previous_response_id`) always go to the backend that stored the response.
+  - Failover: ordered, first-match failure rules with a CEL condition over the backend response, same-backend
+    `retryAttempts`, `excludeFor` (ISO 8601, up to `P1D`), and the per-request `maxRetryAttempts`. The API default
+    of `0` makes a matching request fail with an empty `503`; the portal suggests `3`. Without rules, priority
+    passes a backend's error to the client.
+  - Auto model selection (preview): `autoModelSelection.{objective: Balanced|Cost|Quality,
+    allowedRequestOverrides}`, `backendModels[].selectorModelName` (the unversioned model the deployment serves),
+    and `selectionOrder`. Callers send `auto_model_selection: {objective, models}` only when the alias allows it.
+    `x-ms-served-model`, `x-ms-model-router-model`, and `x-ms-model-router-mode` show the choice.
+- Agent hooks (preview) attach only to MCP servers, at `preToolCall` and `postToolCall`, with an HTTPS
+  `endpoint.url` and a managed identity audience. The gateway POSTs an Agent Hooks v0.1 `AgentContext` for each
+  `tools/call` and expects `{"decision":"allow"|"deny","reason":"…"}`. A deny reaches the caller as HTTP `200` with
+  `isError: true`, without the reason; with `failClosed`, a failure or a timeout of about 30 seconds looks the same.
+  The portal edits one intervention point per policy, and the CLI can't set it.
+- Jev decision models: a Custom provider with base URL `https://api.typesafe.ai` and one header,
+  `Authorization: Bearer <TypeSafe key>`; the model declares `supportedEndpoints: ["typesafe/v1/systemone"]`. Call
+  `POST <runtime URL>/default/models/typesafe/v1/systemone` with the alias in `model` and a gateway key or Entra
+  token, never the TypeSafe key. The TypeSafe SDK needs `base_url = <runtime URL>/default/models/typesafe` and
+  `compression=False` (a compressed body answers `415`). Request and token limits apply.
 - Streaming (`"stream": true`) returns `text/event-stream` chunks and ends with `data: [DONE]`. Chat Completions
   sends a usage chunk with empty `choices` only when the client sets `stream_options.include_usage`, and
   `stream_options` without `stream` answers `400`. The gateway counts the tokens of every stream for limits,
@@ -181,12 +236,18 @@ Each entry shows the level, time, tracks, and the labs it needs.
 
 - **03** [Publish models from any provider behind stable aliases](https://azure.github.io/aigateway/labs/03-multi-provider-aliases/index.md) `03-multi-provider-aliases` (Intermediate, 30 min · Portal, CLI, Bicep · needs 02): Connect Anthropic or another non-Azure provider with a credential that stays in the gateway, publish its models behind callable aliases, call Claude with the native Messages API, and retarget an alias to a different backend model without changing a single client.
 - **22** [Route an alias across models by priority and weight](https://azure.github.io/aigateway/labs/22-model-routing/index.md) `22-model-routing` (Intermediate, 25 min · Portal, CLI, Bicep · needs 02): Put two Foundry models behind one alias, canary a new model version with an 80/20 weighted split, then prefer one model by priority, all without changing the model name that clients send.
+- **27** [Route alias requests with conditions and session affinity](https://azure.github.io/aigateway/labs/27-conditional-routing/index.md) `27-conditional-routing` (Intermediate, 30 min · Portal, CLI, Bicep · needs 02): Send the requests that carry a research header to a larger model with a CEL backend condition, then split traffic between two models and keep every conversation on one of them with session affinity, all behind one alias.
+- **28** [Let the gateway choose the model for each request](https://azure.github.io/aigateway/labs/28-auto-model-selection/index.md) `28-auto-model-selection` (Intermediate, 25 min · Portal, CLI, Bicep, Notebook · needs 02): Put gpt-5-mini and gpt-5.5 behind one alias and let Model Router pick one of them for each prompt. Prove which model served each request, switch the objective between cost and quality, and let callers override it per request.
+- **29** [Fail over to a backup model when a backend fails](https://azure.github.io/aigateway/labs/29-model-failover/index.md) `29-model-failover` (Intermediate, 30 min · Portal, CLI, Bicep · needs 02): Put a deliberately tiny deployment and a healthy backup behind one alias, watch throttling errors reach clients, then add a failure rule that retries on the backup and keeps the throttled backend out for 30 seconds, so every request succeeds.
 - **23** [Stream responses and count every token](https://azure.github.io/aigateway/labs/23-streaming-responses/index.md) `23-streaming-responses` (Intermediate, 20 min · CLI, Code, Portal, Bicep, Notebook · needs 02): Stream Chat Completions and Responses API replies through the gateway, read the server-sent events that your client receives, and prove that a token limit counts streamed tokens even when the client never asks for usage.
+- **26** [Publish embedding models for search and RAG](https://azure.github.io/aigateway/labs/26-embeddings/index.md) `26-embeddings` (Intermediate, 30 min · Portal, CLI, Bicep, Code, Notebook · needs 02): Publish a Foundry embedding model through the gateway behind its own alias, generate vectors with curl, the OpenAI SDK, and the portal playground, build a mini RAG app on one gateway URL and key, and cap ingestion with a token limit.
+- **31** [Publish Jev decision models for typed answers](https://azure.github.io/aigateway/labs/31-jev-decisions/index.md) `31-jev-decisions` (Intermediate, 25 min · Portal, CLI, Bicep, Code, Notebook · needs 01): Publish TypeSafe's Jev decision model through the gateway with a Custom provider, triage support tickets with typed answers and confidences from curl, PowerShell, the TypeSafe Python SDK, and the portal playground, and cap decision requests per caller with a request rate limit.
 
 ### MCP & tools
 
 - **04** [Federate MCP tools behind one endpoint](https://azure.github.io/aigateway/labs/04-federate-mcp-tools/index.md) `04-federate-mcp-tools` (Beginner, 30 min · Portal, CLI, Bicep, Code, Notebook · needs 01): Register a remote MCP server in Azure AI Gateway, add a second backend under its own namespace, and connect curl, VS Code, and Python to one governed MCP endpoint.
 - **05** [Control which tools agents can call](https://azure.github.io/aigateway/labs/05-mcp-tool-controls/index.md) `05-mcp-tool-controls` (Intermediate, 20 min · Portal, CLI, Bicep · needs 04): Publish only approved MCP tools with name patterns, block risky tools, take a whole MCP server offline, and cap tool traffic per caller with a request rate limit.
+- **30** [Govern MCP tool calls with agent hooks](https://azure.github.io/aigateway/labs/30-agent-hooks/index.md) `30-agent-hooks` (Advanced, 40 min · Portal, CLI, Bicep · needs 04): Run your own allow-or-deny rules on every MCP tool call. An agent hooks policy asks an Azure function before the tool runs and again before the result reaches the agent, authenticated with the gateway's managed identity.
 
 ### Governance & cost
 
@@ -198,7 +259,7 @@ Each entry shows the level, time, tracks, and the labs it needs.
 ### Security & identity
 
 - **10** [Issue and rotate runtime API keys](https://azure.github.io/aigateway/labs/10-api-keys/index.md) `10-api-keys` (Beginner, 15 min · Portal, CLI, Bicep · needs 01): Give every app its own runtime API key, keep the value out of your code, rotate it without downtime with the primary and secondary values, revoke a leaked key, and see usage and cost per key in Monitoring.
-- **11** [Go keyless with Microsoft Entra ID and RBAC](https://azure.github.io/aigateway/labs/11-entra-rbac/index.md) `11-entra-rbac` (Intermediate, 35 min · Portal, CLI, Bicep, Code, Notebook · needs 02): Replace shared gateway API keys with Microsoft Entra ID tokens. Grant users, groups, apps, and managed identities an AI Gateway data-plane role at the gateway, a model alias, or an MCP server, then call models from the playground, curl, Python, TypeScript, and C# with no secret in code.
+- **11** [Go keyless with Microsoft Entra ID and RBAC](https://azure.github.io/aigateway/labs/11-entra-rbac/index.md) `11-entra-rbac` (Intermediate, 45 min · Portal, CLI, Bicep, Code, Notebook · needs 02): Replace shared gateway API keys with Microsoft Entra ID tokens. Grant users, groups, apps, and managed identities an AI Gateway runtime role on all assets, a model alias, or an MCP server, call models from the playground, curl, Python, TypeScript, and C# with no secret in code, and grant management access separately with the control-plane roles.
 - **12** [Call backends with managed identities](https://azure.github.io/aigateway/labs/12-backend-identity/index.md) `12-backend-identity` (Intermediate, 20 min · Portal, CLI, Bicep · needs 02): Let the gateway reach Microsoft Foundry with a managed identity instead of stored keys. Check the system-assigned identity, then create a user-assigned identity you can share across gateways, grant it Foundry User, attach it, and point a model provider at it from the portal, the Azure CLI, or Bicep.
 
 ### Observability & FinOps
@@ -216,7 +277,7 @@ Each entry shows the level, time, tracks, and the labs it needs.
 
 ### Production & emerging
 
-- **18** [Lock down backend traffic with private networking](https://azure.github.io/aigateway/labs/18-private-networking/index.md) `18-private-networking` (Advanced, 45 min · Portal, CLI, Bicep · needs 01, 12): Create an Azure AI Gateway with private routing through your virtual network, reach a Foundry backend over a private endpoint with its public access turned off, and learn which inbound options aren't available yet.
+- **18** [Lock down backend traffic with private networking](https://azure.github.io/aigateway/labs/18-private-networking/index.md) `18-private-networking` (Advanced, 60 min · Portal, CLI, Bicep · needs 01, 12): Create an Azure AI Gateway with private routing through your virtual network, reach a Foundry backend over a private endpoint with its public access turned off, change the routing of the running gateway, and turn off the gateway's own public access.
 - **19** [Protect tool calls with Agent 365 threat protection](https://azure.github.io/aigateway/labs/19-tool-threat-protection/index.md) `19-tool-threat-protection` (Advanced, 30 min · Portal, Bicep · needs 04, 11): Have Microsoft Defender and Microsoft Purview evaluate every tool call on an MCP server, before the tool runs, after it returns, or both, and see how a fail-closed denial reaches the caller.
 - **20** [Govern MCP servers with Agent 365](https://azure.github.io/aigateway/labs/20-agent-365-governance/index.md) `20-agent-365-governance` (Intermediate, 20 min · Portal · needs 04, 05): Connect Microsoft Agent 365 to your gateways, find their MCP servers in one inventory, block a single tool or a whole server from the Microsoft 365 admin center, and see exactly what agents get back.
 - **21** [Deploy an enterprise reference architecture](https://azure.github.io/aigateway/labs/21-enterprise-reference/index.md) `21-enterprise-reference` (Advanced, 60 min · Bicep · needs 09, 13, 12): Deploy a production-shaped Azure AI Gateway environment from modular Bicep, with a keyless Foundry backend, models and MCP tools behind RBAC, a key per app, layered policies, and monitoring. Then promote it from dev to prod with a GitHub Actions workflow that signs in with OpenID Connect and smoke-tests every deployment.
@@ -228,10 +289,10 @@ Each entry shows the level, time, tracks, and the labs it needs.
 | Path | For | Labs, in order |
 | :-- | :-- | :-- |
 | 30-minute essentials | Everyone | 00 → 01 → 02 → 04 |
-| Platform engineer | Build the shared AI platform | 01 → 02 → 03 → 22 → 04 → 09 → 12 → 18 → 21 |
-| App & agent developer | Ship apps and agents on governed endpoints | 02 → 03 → 22 → 23 → 04 → 15 → 16 → 17 → 24 → 25 |
-| Security & compliance | Protect data, identities, and tools | 10 → 11 → 08 → 05 → 09 → 19 → 20 |
-| FinOps & operations | Control spend and run the gateway | 06 → 23 → 07 → 13 → 14 |
+| Platform engineer | Build the shared AI platform | 01 → 02 → 03 → 22 → 27 → 29 → 04 → 09 → 12 → 18 → 21 |
+| App & agent developer | Ship apps and agents on governed endpoints | 02 → 03 → 26 → 22 → 28 → 23 → 31 → 04 → 15 → 16 → 17 → 24 → 25 |
+| Security & compliance | Protect data, identities, and tools | 10 → 11 → 08 → 05 → 09 → 19 → 30 → 20 |
+| FinOps & operations | Control spend and run the gateway | 06 → 23 → 07 → 28 → 13 → 14 |
 <!-- gh:end -->
 
 ## Use-case map
@@ -240,17 +301,23 @@ Each entry shows the level, time, tracks, and the labs it needs.
 | Use case | Start with |
 | :-- | :-- |
 | One endpoint for every model: Foundry, Azure OpenAI, OpenAI, Anthropic, Bedrock, and Vertex AI behind stable aliases | 03 Multi-provider aliases |
+| Embeddings for search & RAG: Publish embedding models behind aliases, build RAG on one URL and key, and cap ingestion with token limits | 26 Embeddings |
 | Priority & weighted routing: Canary a new model, run A/B tests, or prefer purchased capacity behind one alias | 22 Priority & weighted routing |
+| Conditions & session affinity: Send matching requests to a different model with CEL conditions, and keep each conversation on one backend | 27 Conditions & session affinity |
+| Failover & retry: Retry or switch a request to a backup model on 429 or 5xx, and keep a failing backend out for a while | 29 Model failover |
 | Token limits & quotas: Cap tokens per minute, hour, or day for each caller | 06 Token limits |
 | Budgets & cost control: Dollar budgets per key, per Entra identity, or across the gateway | 07 Cost budgets |
 | Federated MCP tools: One governed MCP endpoint for remote servers, APIs, and connectors | 04 Federate MCP tools |
 | Keyless access with Entra ID: RBAC for users, apps, and managed identities down to a single alias | 11 Entra ID & RBAC |
 | Observability & tracing: Tokens, cost, outcomes, and policy spans in one dashboard | 13 Monitoring |
 | Content safety: Screen prompts, tool inputs, and responses before they reach a backend | 08 Content safety |
+| Auto model selection: Let the gateway send each prompt to a lower-cost or a higher-quality model behind one alias | 28 Auto model selection |
+| Typed decisions with Jev: Get yes/no probabilities, choices, and rubric scores from decision models behind a governed alias | 31 Jev decisions |
 | Agent frameworks & hosted agents: Route every model and tool call an agent makes through one control point | 16 Foundry hosted agent |
 | Tool allow and block lists: Expose only approved tools with exact lists and patterns | 05 Tool allow & block lists |
 | Chargeback with token claims: Attribute tokens and cost to tenants, apps, and cost centers | 14 OpenTelemetry chargeback |
 | Tool threat protection: Defender and Purview evaluate tool calls for injection and data risk | 19 Tool threat protection |
+| Agent hooks: Run your own allow-or-deny rules on every MCP tool call and result, in an Azure function | 30 Agent hooks |
 | Agent 365 governance: Inventory and block MCP servers and tools from the Microsoft 365 admin center | 20 Agent 365 governance |
 | Coding-agent plugin: Let Copilot, Claude Code, Cursor, or Gemini build on your gateway | 17 Coding-agent plugin |
 | GitHub Copilot on your models and tools: Run Copilot in VS Code, the CLI, the SDK, and the app on models and MCP tools your gateway governs | 24 GitHub Copilot BYOK |

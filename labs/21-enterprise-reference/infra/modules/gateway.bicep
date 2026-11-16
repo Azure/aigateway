@@ -13,14 +13,14 @@ param gatewayName string
 @description('Tags applied to the gateway.')
 param tags object = {}
 
-@description('Optional subnet resource ID for outbound virtual network integration. It can only be set when the gateway is created.')
+@description('Optional subnet resource ID for outbound virtual network integration. The subnet must be delegated to Microsoft.App/environments. You can add, change, or remove it after the gateway is created.')
 param backendSubnetId string = ''
 
 @description('Resource IDs of the Foundry accounts the gateway calls with its managed identity.')
 param foundryResourceIds array = []
 
 #disable-next-line BCP081
-resource aiGateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' = {
+resource aiGateway 'Microsoft.ApiManagement/aigateways@2026-11-01' = {
   name: gatewayName
   location: location
   tags: tags

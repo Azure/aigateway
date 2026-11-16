@@ -1,5 +1,6 @@
-// Chargeback starter: tokens per tenant, caller, client app, API key, and model, from AI Gateway request logs.
-// This is a starting point. Check the attribute names in one request's correlated log before you rely on a column.
+// Chargeback starter: requests, tokens, and cost per tenant, caller, client app, API key, and model, from AI Gateway
+// request logs. This is a starting point. Check the attribute names in one request's correlated log before you rely
+// on a column.
 //
 // Where to run it: the Log Analytics workspace behind your Application Insights resource, Logs, KQL mode.
 // Then export the result as CSV, or call the query API, and price it with chargeback_report.py.
@@ -9,19 +10,28 @@
 //   Token claim attributes. Claims are exported as azure.ai_gateway.identity.claims.<claim>.
 // - Token usage that the backend reported, exported as azure.ai_gateway.client.usage.*. Chat Completions reports
 //   prompt_tokens and completion_tokens, and cached input tokens are part of the prompt tokens. The input_tokens and
-//   output_tokens fallbacks cover APIs that use those names.
-// Requests without reported usage, such as calls a policy rejected, aren't counted. Missing usage means "unknown",
-// not zero.
+//   output_tokens fallbacks cover APIs that use those names. Missing usage means "unknown", not zero: streamed
+//   responses and failed calls often have none, and RequestsWithoutUsage counts them.
+// - The gateway's own estimate, azure.ai_gateway.client.token.cost: observed tokens x public prices, in
+//   azure.ai_gateway.currency. It's also there for streamed responses, so GatewayCost can exceed your token totals.
+// - The Traces signal, for FailedRequests: a request failed if it answered HTTP 4xx or 5xx, or if any of its spans
+//   has the status Error, such as a model stream that reported an error after HTTP 200.
+// Calls to an alias that doesn't exist have no model in their log, so they aren't counted.
 let lookback = 30d;
+let failedTraces = OTelSpans
+    | where TimeGenerated > ago(lookback) and StatusCode == "Error"
+    | distinct TraceId;
 OTelLogs
 | where TimeGenerated > ago(lookback)
+// Request logs of model calls. Tool calls have no gen_ai.request.model.
+| where isnotempty(Attributes["gen_ai.request.model"])
 | extend InputTokens = coalesce(tolong(Attributes["azure.ai_gateway.client.usage.prompt_tokens"]),
                                 tolong(Attributes["azure.ai_gateway.client.usage.input_tokens"])),
          CachedInputTokens = coalesce(tolong(Attributes["azure.ai_gateway.client.usage.prompt_tokens_details.cached_tokens"]),
                                       tolong(Attributes["azure.ai_gateway.client.usage.input_tokens_details.cached_tokens"])),
          OutputTokens = coalesce(tolong(Attributes["azure.ai_gateway.client.usage.completion_tokens"]),
-                                 tolong(Attributes["azure.ai_gateway.client.usage.output_tokens"]))
-| where isnotnull(InputTokens) or isnotnull(OutputTokens)
+                                 tolong(Attributes["azure.ai_gateway.client.usage.output_tokens"])),
+         Failed = toint(Attributes["http.response.status_code"]) >= 400 or TraceId in (failedTraces)
 | extend Tenant = tostring(Attributes["azure.ai_gateway.identity.claims.tid"]),
          ObjectId = tostring(Attributes["azure.ai_gateway.identity.claims.oid"]),
          // v2 tokens carry azp, v1 tokens carry appid. Both identify the client application.
@@ -31,11 +41,17 @@ OTelLogs
          CostCenter = tostring(Attributes["azure.ai_gateway.identity.claims.cost_center"]),
          ApiKeyId = tostring(Attributes["azure.ai_gateway.api_key_id"]),
          Alias = tostring(Attributes["gen_ai.request.model"]),
+         // The model that answered, such as a versioned name. A call that failed before an answer has only the alias.
          Model = coalesce(tostring(Attributes["gen_ai.response.model"]), tostring(Attributes["gen_ai.request.model"]))
 | summarize Requests = count(),
+            FailedRequests = countif(Failed),
+            RequestsWithoutUsage = countif(isnull(InputTokens) and isnull(OutputTokens)),
             InputTokens = sum(coalesce(InputTokens, long(0))),
             CachedInputTokens = sum(coalesce(CachedInputTokens, long(0))),
-            OutputTokens = sum(coalesce(OutputTokens, long(0)))
+            OutputTokens = sum(coalesce(OutputTokens, long(0))),
+            GatewayCost = round(sum(coalesce(todouble(Attributes["azure.ai_gateway.client.token.cost"]), 0.0)), 6),
+            Currency = take_anyif(tostring(Attributes["azure.ai_gateway.currency"]),
+                                  isnotempty(Attributes["azure.ai_gateway.currency"]))
     by Tenant, ObjectId, ClientApp, CostCenter, ApiKeyId, Alias, Model
 | extend TotalTokens = InputTokens + OutputTokens
 | order by TotalTokens desc

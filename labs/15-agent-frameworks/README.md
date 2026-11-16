@@ -157,7 +157,7 @@ Copy `.env.example` to `.env` and fill in your values. The samples build both en
 AI_GATEWAY_URL=<gateway-url>
 # A callable model alias, for example the one you used in lab 02.
 AI_GATEWAY_MODEL=<model-name>
-# A runtime key from Access > Keys. Prefer one key per agent so Monitoring can tell agents apart.
+# A runtime key from Access > API keys. Prefer one key per agent so Monitoring can tell agents apart.
 AI_GATEWAY_API_KEY=<runtime-access-key>
 # The MCP server you published in lab 04.
 AI_GATEWAY_MCP_SERVER=learn
@@ -693,8 +693,13 @@ usually makes at least two model calls: one that asks for a tool and one that wr
 - **Use .NET.** The [.NET hosted agent sample](https://github.com/Azure-Samples/simple-foundry-hosted-agent-dotnet-aigateway)
   connects Microsoft Agent Framework for .NET to a gateway. With Azure AI Gateway, pass the runtime key as the
   client's API key, which the client sends as a bearer token.
-- **Other SDKs.** For the GitHub Copilot SDK and other frameworks, use their model and MCP configuration points with
-  the same endpoints, and confirm the endpoint formats and authentication they support.
+- **Use the GitHub Copilot SDK.** Give `create_session` a `provider` of type `openai` with the model endpoint as
+  `base_url`, `wire_api` set to `responses`, and the key in an `Authorization: Bearer` header, and list the MCP
+  endpoint under `mcp_servers`, as in the Copilot SDK tab of the
+  [agent access docs](https://ai.gateway.azure.com/docs/agent-access). Its requests carry the Copilot system prompt
+  and tools, so one request can exceed a small token limit, such as 10,000 tokens per minute, and get `429`.
+- **Other SDKs.** For other frameworks, use their model and MCP configuration points with the same endpoints, and
+  confirm the endpoint formats and authentication they support.
 
 ## Clean up
 
@@ -723,5 +728,5 @@ Keep the gateway, the alias, and the `learn` MCP server. Other labs reuse them.
 | :-- | :-: | --: |
 | [14 · OpenTelemetry chargeback](../14-otel-chargeback/README.md) | [All labs](../README.md) | [16 · Foundry hosted agent](../16-foundry-hosted-agent/README.md) |
 
-<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (6 of 10)</sub>
+<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (9 of 13)</sub>
 <!-- gh:end -->

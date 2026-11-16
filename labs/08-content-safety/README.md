@@ -96,7 +96,7 @@ export AI_GATEWAY_MODEL="$(az aigateway model show -g "$RG" --gateway-name "$GAT
 echo "🔖 Model alias: $AI_GATEWAY_MODEL"
 
 # Paste the runtime key you created in Access › API keys, without showing it: don't commit it or write it to a file
-read -rsp "AI Gateway API key: " AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
+printf "AI Gateway API key: " && read -rs AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 ```
 </details> <!-- gh -->
@@ -141,9 +141,10 @@ The threshold is the lowest severity that gets blocked, so a **lower** threshold
 | **Lenient** | `High` | Only the most concerning, high-severity content |
 | **Off** | `None` | Nothing in this category |
 
-You can attach content safety to **models** and **MCP servers**. On an MCP server, it screens the tool inputs
-that agents send and the results that tools return. Every applicable policy is evaluated, and any one of them
-can block the call.
+You can attach content safety to **models**, **aliases**, and **MCP servers**, or set it gateway-wide so that it
+covers every compatible asset, including ones added later. On an MCP server, it screens the tool inputs that
+agents send and the results that tools return. Every applicable policy is evaluated, and any one of them can
+block the call.
 
 > [!NOTE]
 > Foundry deployments have their own **Content filter**, shown on the model's details page in **Models**. That
@@ -161,23 +162,41 @@ creates a new gateway and puts it on a new alias of the model. The stricter Viol
 <!-- track: portal | Portal -->
 <details open><summary><b>🖥️ Portal</b></summary> <!-- gh -->
 
-### Start the policy wizard
+### Create the policy
 
-Open the [AI Gateway portal](https://ai.gateway.azure.com) and select your gateway from the gateway switcher.
-Select **Policies** › **Add policy**. On the **Type** step, under **Security**, select **Content safety**, then
-**Next**.
+The **Add policy** wizard doesn't list **Content safety** for AI Gateway resources, so create the policy with
+one Azure CLI command, for example in [Azure Cloud Shell](https://shell.azure.com), with the variables from
+**Before you begin**. Then set the thresholds in the portal. The command puts **Balanced** (`Medium`) on all
+four categories and keeps every other policy on the model:
 
-![The Add policy wizard on the Type step](../assets/screens/policy-add-wizard.png "Policies › Add policy opens a three-step wizard: Type, Scope, Details.")
+<details open><summary>Bash</summary> <!-- gh -->
 
-### Choose the model
+```bash title="Bash"
+# Add content safety to the model at Medium (Balanced) in all four categories
+az aigateway model policy set-content-safety -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL" \
+  --content-safety Medium --output none &&
+  echo "🔐 Content safety on $MODEL is Balanced (Medium) for all four categories"
+```
+</details> <!-- gh -->
 
-On the **Scope** step, select **Individual assets** ("Apply only to selected models, aliases, or MCP servers").
-Select your model, then **Next**.
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Add content safety to the model at Medium (Balanced) in all four categories
+az aigateway model policy set-content-safety -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER -n $MODEL `
+  --content-safety Medium --output none
+if ($?) { Write-Host "🔐 Content safety on $MODEL is Balanced (Medium) for all four categories" }
+```
+</details> <!-- gh -->
 
 ### Set the thresholds
 
-On the **Details** step (**Configure** in some portal versions), under **Parameters**, choose how strictly
-each category is filtered:
+Open the [AI Gateway portal](https://ai.gateway.azure.com) and select your gateway from the gateway switcher.
+Select **Policies**. The list shows a **Content safety** policy with your model under **Scope** and
+**Balanced filtering** under **Configuration**. Select **Balanced filtering** to open the policy, then select
+**Edit**.
+
+In the **Edit policy** panel, choose how strictly each category is filtered:
 
 | Field | Value |
 |---|---|
@@ -186,10 +205,15 @@ each category is filtered:
 | **Self-harm** | **Balanced** |
 | **Sexual** | **Balanced** |
 
-Select **Create**. The policy appears in the **Policies** list with your model as its scope.
+![The Edit policy panel of a Content safety policy, with Violence set to Strict](../assets/screens/content-safety-01-edit-policy.webp "Edit policy sets a level for each category: Strict, Balanced, Lenient, or Off.")
+
+Select **Save**. The portal confirms **Policy updated**.
 
 > **Checkpoint**
-> **Policies** lists a **Content safety** policy for your model.
+> Under **Configuration**, the policy shows **Hate Filtering**: **Balanced**, **Violence Filtering**: **Strict**,
+> **Sexual Filtering**: **Balanced**, and **Self Harm Filtering**: **Balanced**, with your model under
+> **Applies to**. In **Policies**, its configuration now reads **Strict filtering**, the strictest level among
+> the categories.
 
 </details> <!-- gh -->
 <!-- track: cli | Azure CLI -->
@@ -261,7 +285,7 @@ always read it first and keep the policies you didn't mean to change.
 ```bash
 # Read your subscription ID, and build the management URL of your model, which holds its policies
 SUB="$(az account show --query id -o tsv)"
-URL="https://management.azure.com/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.ApiManagement/aigateways/$GATEWAY/workspaces/default/modelProviders/$PROVIDER/models/$MODEL?api-version=2025-09-01-preview"
+URL="https://management.azure.com/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.ApiManagement/aigateways/$GATEWAY/workspaces/default/modelProviders/$PROVIDER/models/$MODEL?api-version=2026-11-01"
 echo "🆔 Subscription: $SUB"
 
 # Read the model's current policies, so that you know what the merge must keep
@@ -290,7 +314,7 @@ az rest --method patch --url "$URL" --body "{\"properties\":{\"policies\":$POLIC
 ```powershell title="PowerShell"
 # Read your subscription ID, and build the management URL of your model, which holds its policies
 $SUB = az account show --query id -o tsv
-$URL = "https://management.azure.com/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.ApiManagement/aigateways/$GATEWAY/workspaces/default/modelProviders/$PROVIDER/models/$MODEL`?api-version=2025-09-01-preview"
+$URL = "https://management.azure.com/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.ApiManagement/aigateways/$GATEWAY/workspaces/default/modelProviders/$PROVIDER/models/$MODEL`?api-version=2026-11-01"
 Write-Host "🆔 Subscription: $SUB"
 
 # Read the policies, drop any content safety policy, and add the new one: Medium, with Low for Violence
@@ -467,30 +491,30 @@ param sexualSeverity string = 'Medium'
 param violenceSeverity string = 'Low'
 
 #disable-next-line BCP081
-resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
+resource gateway 'Microsoft.ApiManagement/aigateways@2026-11-01' existing = {
   name: gatewayName
 }
 
 #disable-next-line BCP081
-resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' existing = {
+resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2026-11-01' existing = {
   parent: gateway
   name: 'default'
 }
 
 #disable-next-line BCP081
-resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2025-09-01-preview' existing = {
+resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2026-11-01' existing = {
   parent: workspace
   name: providerName
 }
 
 #disable-next-line BCP081
-resource model 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2025-09-01-preview' existing = {
+resource model 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2026-11-01' existing = {
   parent: provider
   name: modelName
 }
 
 #disable-next-line BCP081
-resource safeAlias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2025-09-01-preview' = {
+resource safeAlias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01' = {
   parent: workspace
   name: aliasName
   properties: {
@@ -663,14 +687,23 @@ Example output:
 ```text
 🚦 Expect 200 for the neutral prompt, and 200 or 400 for the fiction prompt:
 Prompt    Status  Finish reason   Response or error
-neutral   200     stop            Teams put an API gateway in front of AI models to centralize access con
-fiction   400     -               <the gateway's content safety error message>
+neutral   200     stop            Teams put an API gateway in front of AI models to centralize access co
+fiction   200     stop            The two armies massed on either side of the muddy approach, banners sn
 ```
 
 The neutral prompt returns `200`. The fiction prompt can go either way, and your results will vary: Content
 Safety rates both the prompt and the model's response, and a mild battle scene sits close to the **Strict**
 Violence threshold. If it returns `400`, the gateway blocked it and the error message says why. If it returns
 `200`, the content was rated below the threshold.
+
+> [!NOTE]
+> The Foundry deployment's own filter can act too. A `400` that starts with "The response was filtered due to the
+> prompt triggering Azure OpenAI's content management policy", or a `200` with the finish reason
+> `content_filter`, comes from Foundry, not from the gateway. At the time of writing, AI Gateway resources save
+> the content safety policy but don't block calls with it yet, so only Foundry results show up, even at
+> **Strict**. Until the gateway enforces the policy, rely on the deployment's content filter, as described in
+> [Check the Foundry content filter](#check-the-foundry-content-filter), and see
+> [Troubleshooting](../TROUBLESHOOTING.md#lab-08-content-safety).
 
 > [!IMPORTANT]
 > If the fiction prompt passes, don't make it more graphic to force a block. The point of this test is to
@@ -735,9 +768,10 @@ A prompt that **Strict** blocked is more likely to pass at **Balanced**. Prompts
 
 ### Check the Foundry content filter
 
-Open **Models**, select your model, and find **Content filter** on its details page. That is the Foundry
-deployment's own filter, separate from the gateway policy. When Foundry's filter acts instead of the gateway,
-the error or the `finish_reason` comes from the backend, and it can mention `content_filter`.
+Open **Models** › **Backend models** and select your model. On its **Overview** tab, **Content filter** under
+**Model deployment** names the Foundry deployment's own filter, for example `Microsoft.DefaultV2`. It's separate
+from the gateway policy. When Foundry's filter acts instead of the gateway, the error or the `finish_reason` comes
+from the backend, and it can mention `content_filter`.
 
 ### Find blocked calls in Monitoring
 
@@ -753,9 +787,8 @@ If you configured Application Insights in [Monitor usage, cost, and traces](../1
 ## Go further
 
 - **Screen tool traffic.** Add a **Content safety** policy to the `learn` MCP server from
-  [Federate MCP tools behind one endpoint](../04-federate-mcp-tools/README.md). In the wizard, pick the MCP
-  server on the **Scope** step. With REST, use the same `contentSafety` object on
-  `.../workspaces/default/toolServers/learn`.
+  [Federate MCP tools behind one endpoint](../04-federate-mcp-tools/README.md). With REST, use the same
+  `contentSafety` object on `.../workspaces/default/toolServers/learn`.
 - **Make it the default.** Apply **Balanced** content safety to every model and MCP server, including future
   ones, in [Set gateway-wide policy baselines](../09-gateway-baselines/README.md).
 - **Tune per category.** Start every category at **Balanced**, tighten the ones that matter most for your
@@ -771,7 +804,8 @@ lab sets a gateway-wide baseline instead.
 
 ### Remove the policy
 
-Select **Policies**, open the **Content safety** policy that's scoped to your model, and delete it.
+Select **Policies**. On the **Content safety** policy's row, select **More actions** (⋮) › **Delete**, then
+**Delete** again in **Delete this policy?**. The other policies on the model stay.
 
 </details> <!-- gh -->
 <!-- track: cli | Azure CLI -->
@@ -856,5 +890,5 @@ the Bicep + azd track created its own gateway.
 | :-- | :-: | --: |
 | [07 · Cost budgets](../07-cost-budgets/README.md) | [All labs](../README.md) | [09 · Gateway-wide baselines](../09-gateway-baselines/README.md) |
 
-<sub>Learning paths: [Security & compliance](../README.md#learning-paths) (3 of 7)</sub>
+<sub>Learning paths: [Security & compliance](../README.md#learning-paths) (3 of 8)</sub>
 <!-- gh:end -->

@@ -331,7 +331,8 @@ function syncSources(labs, catalog, { check = false } = {}) {
 }
 
 // Renders labs/RELEASE-NOTES.md. Each "## <date>" section is one product release: an "### <title>" heading and a
-// link to https://ai.gateway.azure.com/docs/releases/YYYY-MM-DD, then the table that maps each change to a lab.
+// link to https://ai.gateway.azure.com/docs/releases#release-YYYY-MM-DD (or the older /docs/releases/YYYY-MM-DD),
+// then the table that maps each change to a lab.
 async function renderReleaseNotes(site, known, rendered, guides) {
   if (!fs.existsSync(RELEASE_NOTES)) return null;
   const source = stripGitHub(fs.readFileSync(RELEASE_NOTES, 'utf8'));
@@ -354,7 +355,7 @@ async function renderReleaseNotes(site, known, rendered, guides) {
   for (const section of source.split(/^(?=## )/m).slice(1)) {
     const date = section.match(/^## (.+)/)[1].trim();
     const title = section.match(/^### (.+)/m)?.[1].trim();
-    const product = section.match(/https:\/\/ai\.gateway\.azure\.com\/docs\/releases\/(\d{4}-\d{2}-\d{2})/)?.[1];
+    const product = section.match(/https:\/\/ai\.gateway\.azure\.com\/docs\/releases(?:\/|#release-)(\d{4}-\d{2}-\d{2})/)?.[1];
     if (!title || !product) continue;
     const id = toc.find((t) => t.text === date)?.id;
     releases.push({ date, title: title.replace(/[*`_]/g, ''), product, id });

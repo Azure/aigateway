@@ -139,11 +139,11 @@ echo "✅ Create the gateway in $RG, and import gpt-5-mini from $FOUNDRY"
 
    ![The Create AI gateway dialog with a name, the Existing resource group rg-aigw-quickstart, and the East US 2 region](../assets/screens/quickstart-02-create.webp "Create AI gateway: a generated name, the existing resource group of the Foundry account, and East US 2.")
 
-3. Keep the **Advanced** defaults and select **Create gateway**. **All gateways** opens and shows the provisioning
-   status, which moves from **Activating** to **Succeeded** in a few minutes. Then the portal selects your new
-   gateway.
+3. Keep the **Advanced** defaults and select **Create gateway**. **All gateways** opens and shows the
+   **Provisioning** status, such as **Created** or **InProgress**, which moves to **Succeeded** in a few minutes.
+   Then select your gateway's name to open it.
 
-   ![All gateways with the banner Gateway creation is in progress and the new gateway in the Activating state](../assets/screens/quickstart-03-provisioning.webp "All gateways while the gateway provisions. You can keep using other gateways in the meantime.")
+   ![All gateways with the banner Gateway creation is in progress and the new gateway in the InProgress state](../assets/screens/quickstart-03-provisioning.webp "All gateways while the gateway provisions. You can use other gateways while it runs.")
 
 ### Import the model from Foundry
 
@@ -154,18 +154,19 @@ echo "✅ Create the gateway in $RG, and import gpt-5-mini from $FOUNDRY"
 
    You can also start from **Models** › **Add** › **Models from Microsoft Foundry**.
 
-   ![The Models page with the Add menu open on Models from Microsoft Foundry](../assets/screens/quickstart-05-add-menu.webp "Models › Add imports models from Microsoft Foundry or a custom provider, or creates an alias for a model that you already added.")
+   ![The Models page with the Add menu open on Models from Microsoft Foundry](../assets/screens/quickstart-05-add-menu.webp "Models › Add imports models from Microsoft Foundry, AWS Bedrock, TypeSafe (Jev), or a custom provider, or creates an alias for models that you already added.")
 
-2. **Add models from Microsoft Foundry** discovers the model deployments in your subscriptions and selects all of
-   them. In **Resource groups**, select only the resource group of your Foundry account. Then check that **Models**
-   selects only your Foundry account with `gpt-5-mini`.
+2. **Add models from Microsoft Foundry** opens. It discovers the model deployments in your subscriptions and
+   selects all of them. In **Resource groups**, select only the resource group of your Foundry account. Then check
+   that **Models** shows **1 selected**: your Foundry account with `gpt-5-mini`.
 3. Keep **Managed identity** as the **Authentication method**, with the system-assigned managed identity, and keep
    **Create an alias for each model** selected. Then select **Add models**.
 
    ![Add models from Microsoft Foundry, filtered to one resource group, with Managed identity, Create an alias for each model, one selected Foundry account with gpt-5-mini, and the Add models button highlighted](../assets/screens/quickstart-06-import.webp "Filter by resource group, so that you import only the deployment that you need. The gateway calls Foundry with its managed identity.")
 
-4. **Models** opens. The **Backend models** tab lists `gpt-5-mini`, and the **Aliases** tab shows the alias that
-   apps call: `<foundry-account-name>/gpt-5-mini`. Note the alias.
+4. A banner confirms **Models and aliases imported**. Select **Close**: **Models** opens on the **Backend models**
+   tab, which lists `gpt-5-mini`. The **Aliases** tab shows the alias that apps call:
+   `<foundry-account-name>/gpt-5-mini`. Note the alias.
 
    ![The Aliases tab of Models with the alias aigwb92bd1/gpt-5-mini, its backend model gpt-5-mini, and its provider](../assets/screens/quickstart-07-alias.webp "Each alias is named after the Foundry account and the deployment, and routes to the backend model gpt-5-mini.")
 
@@ -177,16 +178,16 @@ key. [Go keyless with Microsoft Entra ID and RBAC](../11-entra-rbac/README.md) s
 
 1. Select **Access**, then the **API keys** tab, then **Create API key**.
 
-   ![Access with the API keys tab, the Create API key button, and the new key app-first-call in the list](../assets/screens/quickstart-08-keys.webp "Access › API keys lists the built-in all-access subscription and your keys. After the next step, app-first-call appears here.")
+   ![Access with the API keys tab, the Create API key button, and the new key app-first-call in the list](../assets/screens/quickstart-08-keys.webp "Access › API keys lists the Built-in all-access API key and your keys. After the next step, app-first-call appears here.")
 
 2. Enter `app-first-call` as the **Key name**, then select **Create**.
 
    ![The Create API key dialog with the key name app-first-call and the Create button](../assets/screens/quickstart-09-key-create.webp "Give the key a name that identifies the app. Limits, cost, and monitoring use it.")
 
-3. In **API key created successfully**, select **Copy & done** to copy the key. Keep it somewhere safe: you paste it
-   in the next steps. You can view, rotate, or delete it later in **Access** › **API keys**.
+3. In **API key created**, select **Copy & done** to copy the key. Keep it somewhere safe: you paste it in the next
+   steps. You can view, rotate, or delete it later in **Access** › **API keys**.
 
-   ![The API key created successfully dialog with a masked key, the key name, and the Copy & done button](../assets/screens/quickstart-10-key-done.webp "The key stays masked until you select Show. Copy & done copies it and closes the dialog.")
+   ![The API key created dialog with a masked key, the key name, and the Copy & done button](../assets/screens/quickstart-10-key-done.webp "The key stays masked until you select Show. Copy & done copies it and closes the dialog.")
 
 ### Make your first call
 
@@ -196,15 +197,15 @@ Call the model through the gateway in the playground, with your new key, the way
 
    ![The Catalog with the model card aigwb92bd1/gpt-5-mini](../assets/screens/quickstart-11-catalog.webp "The Catalog lists the models and MCP servers that apps can call through this gateway.")
 
-2. Under **Authentication**, set **Method** to **API key** if it shows **Microsoft Entra ID**. Then choose
-   `app-first-call` as the **API key**, so that the playground calls the gateway with your new key. Send a prompt,
-   for example `In one sentence, what does an AI gateway do?`.
+2. Under **Authentication**, check that **Method** is **API key**. Then change the **API key** from
+   **Built-in all-access API key** to `app-first-call`, so that the playground calls the gateway with your new key.
+   Send a prompt, for example `In one sentence, what does an AI gateway do?`.
 
-   ![The model page with Method set to API key, the API key app-first-call, the prompt, and the model's reply](../assets/screens/quickstart-12-playground.webp "The playground calls the gateway's endpoint with the key that you choose, and shows the reply, the latency, and the tokens.")
+   ![The model page with Method set to API key, the API key app-first-call, the prompt, and the model's reply](../assets/screens/quickstart-12-playground.webp "The playground calls the gateway's endpoint with the key that you choose, and shows the reply, the latency, the tokens, and the backend model.")
 
-3. Optional: to make the same call from code, select **Continue in code**. It shows the endpoint URL and snippets
-   for cURL, the OpenAI SDK, LangChain, Vercel AI, the GitHub Copilot SDK, and Microsoft Agent Framework, plus a
-   prompt that installs the AI Gateway plugin in your coding agent.
+3. Optional: to make the same call from code, select **Continue in code**, then **cURL**. It shows the endpoint
+   URL, your key masked, and snippets for cURL, the OpenAI SDK, LangChain, Vercel AI, the GitHub Copilot SDK, and
+   Microsoft Agent Framework, plus a **Coding agent** prompt that installs the AI Gateway plugin.
 
    ![Continue in code with the cURL snippet selected, which calls the alias with the key as a bearer token](../assets/screens/quickstart-13-code.webp "The cURL snippet has your gateway's URL and alias, and reads the key from the AI_GATEWAY_API_KEY environment variable.")
 
@@ -213,7 +214,7 @@ that it never shows on screen, and then paste the snippet:
 
 ```bash title="Bash"
 # Read the key without showing it, and export it for the snippet
-read -rsp "AI Gateway API key: " AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
+printf "AI Gateway API key: " && read -rs AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 ```
 
@@ -228,14 +229,14 @@ gateway.
 
 1. Open the gateway switcher in the top bar and select **View all gateways**.
 
-2. On your gateway's row, select **More actions** (**⋮**), and then select **Delete**.
+2. On your gateway's row, select **More actions** (**…**), and then select **Delete**.
 
    ![All gateways filtered to lucky-brook, with the More actions menu open on its row and Delete marked](../assets/screens/quickstart-14-delete.webp "The More actions menu on a gateway's row: open the gateway in the Azure portal, copy its resource ID, or delete it.")
 
 3. To confirm, select **Delete** in the dialog. The row shows **Deleting** until Azure removes the gateway, in about
    five minutes.
 
-   ![The dialog Delete "lucky-brook-5340"? with the Cancel and Delete buttons, and Delete marked](../assets/screens/quickstart-15-delete-confirm.webp "Deleting a gateway removes its models, aliases, keys, and policies. It can't be undone.")
+   ![The dialog Delete "lucky-brook-5340"? with the Cancel and Delete buttons, and Delete marked](../assets/screens/quickstart-15-delete-confirm.webp "Deleting a gateway removes its data: its models, aliases, keys, and policies. You can't undo it.")
 
 Deleting the gateway keeps its resource group and your Foundry account. If you created them in Cloud Shell for this
 quick start, delete the resource group and purge the Foundry account there too: deleted Foundry accounts stay
@@ -508,8 +509,8 @@ if ($?) { Write-Host "🤖 $($reply.choices[0].message.content)" }
 </details> <!-- gh -->
 
 > **Checkpoint:** the model answers in one sentence. Your gateway is live, and your app never needed a Foundry key:
-> only the gateway's managed identity calls Foundry. If you get `403` or `404` in the first minute, the gateway's new
-> role on the Foundry account is still taking effect. Wait a minute and run the call again.
+> only the gateway's managed identity calls Foundry. If you get `401`, `403`, or `404` in the first minute, the new
+> key, alias, or role on the Foundry account is still taking effect. Wait a minute and run the call again.
 
 To see what you created, open the [AI Gateway portal](https://ai.gateway.azure.com) and select your gateway in the top
 bar: **Models**, **Access** › **API keys**, and the **Catalog** playground.
@@ -570,7 +571,7 @@ unique names to `infra/resources.bicep`, which creates the building blocks in th
 <!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
 📄 [`infra/resources.bicep`](infra/resources.bicep)
 
-<details><summary>Show all 169 lines</summary>
+<details><summary>Show all 172 lines</summary>
 
 ```bicep
 // The building blocks of the quick start, the same ones that the portal and Azure CLI tracks create:
@@ -601,7 +602,7 @@ var foundryUserRoleId = '53ca6127-db72-4b80-b1b0-d745d6d5456d'
 
 // 1. The gateway, with a system-assigned managed identity. It omits sku, so it gets the default SKU.
 #disable-next-line BCP081
-resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' = {
+resource gateway 'Microsoft.ApiManagement/aigateways@2026-11-01' = {
   name: gatewayName
   location: location
   tags: tags
@@ -612,7 +613,7 @@ resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' = {
 }
 
 #disable-next-line BCP081
-resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' existing = {
+resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2026-11-01' existing = {
   parent: gateway
   name: 'default'
 }
@@ -662,24 +663,26 @@ resource foundryUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
 
 // 3. A model provider that points at the Foundry account and signs in with the managed identity.
 #disable-next-line BCP081
-resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2025-09-01-preview' = {
+resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2026-11-01' = {
   parent: workspace
   name: providerName
   dependsOn: [
     foundryUser
   ]
   properties: {
-    kind: 'Foundry'
+    modelProviderType: 'Foundry'
+    displayName: 'Foundry models'
     foundry: {
-      endpoint: 'https://${foundryName}.cognitiveservices.azure.com/'
+      endpoint: {
+        url: 'https://${foundryName}.cognitiveservices.azure.com/'
+      }
       resourceIds: [
         foundry.id
       ]
-      authentication: {
-        kind: 'ManagedIdentity'
-        managedIdentity: {
-          resource: 'https://cognitiveservices.azure.com/'
-        }
+    }
+    authentication: {
+      managedIdentity: {
+        resource: 'https://cognitiveservices.azure.com/'
       }
     }
   }
@@ -687,12 +690,11 @@ resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@
 
 // 4. The deployment as a backend model, and an alias that apps send in the "model" field.
 #disable-next-line BCP081
-resource model 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2025-09-01-preview' = {
+resource model 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2026-11-01' = {
   parent: provider
   name: modelName
   properties: {
     displayName: modelName
-    apiFormat: 'OpenAIChatCompletions'
     supportedEndpoints: [
       '/openai/v1/chat/completions'
       '/openai/v1/responses'
@@ -706,7 +708,7 @@ resource model 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/mod
 }
 
 #disable-next-line BCP081
-resource alias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2025-09-01-preview' = {
+resource alias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01' = {
   parent: workspace
   name: modelName
   properties: {
@@ -722,10 +724,12 @@ resource alias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2025-09-01
 // 5. A runtime API key for your first app. Read its value with az aigateway api-key list-secrets; it's never a
 //    deployment output.
 #disable-next-line BCP081
-resource apiKey 'Microsoft.ApiManagement/aigateways/apiKeys@2025-09-01-preview' = {
+resource apiKey 'Microsoft.ApiManagement/aigateways/apiKeys@2026-11-01' = {
   parent: gateway
   name: apiKeyName
-  properties: {}
+  properties: {
+    displayName: apiKeyName
+  }
 }
 
 output gatewayName string = gateway.name
@@ -865,8 +869,8 @@ if ($?) { Write-Host "🤖 $($reply.choices[0].message.content)" }
 </details> <!-- gh -->
 
 > **Checkpoint:** the model answers in one sentence. Your gateway is live, and your app never needed a Foundry key:
-> only the gateway's managed identity calls Foundry. If you get `403` or `404` in the first minute, the gateway's new
-> role on the Foundry account is still taking effect. Wait a minute and run the call again.
+> only the gateway's managed identity calls Foundry. If you get `401`, `403`, or `404` in the first minute, the new
+> key, alias, or role on the Foundry account is still taking effect. Wait a minute and run the call again.
 
 To see what you created, open the [AI Gateway portal](https://ai.gateway.azure.com) and select your gateway in the top
 bar: **Models**, **Access** › **API keys**, and the **Catalog** playground.
