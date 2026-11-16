@@ -1,7 +1,7 @@
 {
   "name": "aigateway",
   "description": "Create, configure, manage, and build applications on Azure AI Gateway. Includes read-only developer integration, gateway administration, migration from API Management, and local feedback packaging.",
-  "version": "3.1.0",
+  "version": "3.1.1",
   "author": {
     "name": "Microsoft",
     "url": "https://www.microsoft.com"

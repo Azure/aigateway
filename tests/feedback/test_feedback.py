@@ -9,7 +9,8 @@ import unittest
 
 
 SPEC = importlib.util.spec_from_file_location(
-    "feedback", Path(__file__).parents[1] / "scripts" / "feedback.py"
+    "feedback",
+    Path(__file__).parents[2] / "skills" / "feedback-ai-gateway" / "scripts" / "feedback.py",
 )
 feedback = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(feedback)

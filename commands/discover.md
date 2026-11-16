@@ -1,6 +1,6 @@
 ---
-description: Discover authorized Azure AI Gateway model and MCP endpoints, or identify the exact details an asset owner must provide.
-argument-hint: [gateway resource ID, runtime endpoint, or connection details]
+description: "Discover authorized Azure AI Gateway model and MCP endpoints, or identify the exact details an asset owner must provide."
+argument-hint: "[gateway resource ID, runtime endpoint, or connection details]"
 ---
 
 # /aigateway:discover
