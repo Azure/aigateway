@@ -1,6 +1,6 @@
 # Azure AI Gateway CLI command reference
 
-This is the human-readable reference for the published **1.0.0b31** extension.
+This is the human-readable reference for the published **1.0.0b33** extension.
 Start with [installation and quickstart](README.md). Use this page to find a
 command, understand its purpose, and copy a configuration example. Use the
 installed command's `--help` for all arguments and allowed values; help
@@ -121,12 +121,15 @@ az aigateway model-provider create --subscription "$SUBSCRIPTION" \
 az aigateway model create --subscription "$SUBSCRIPTION" \
   -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL" \
   --deployment-config @deployment.json --api-format OpenAIChatCompletions \
-  --supported-endpoints /v1/chat/completions
+  --supported-endpoints /openai/v1/chat/completions
 ```
 
-Use the selected backend's actual protocol/operation path, not this example
-for every model. Low-level create uses `--deployment-config`; general
-`model update` uses `--deployment` with a JSON object.
+Use the selected backend's actual protocol/operation path (for Foundry / Azure
+OpenAI providers, `--supported-endpoints` defaults to `/openai/v1/...` or
+`/anthropic/v1/messages` when omitted). Low-level create uses
+`--deployment-config`; general `model update` uses `--deployment` with a JSON
+object (`modelName` must match the `/deployments/<name>` suffix in
+`resourceId` when both are supplied).
 
 The convenience `model-provider import --foundry-resource-id "<account-id>"`
 imports every deployment, enables gateway identity, and grants **Foundry User**
@@ -210,8 +213,13 @@ Content-safety flags are visible but are **not supported on typed
 
 ## MCP servers
 
-`mcp create --endpoints @endpoints.json` registers an endpoint array; see the
-[quickstart](README.md#2-register-a-public-mcp-server) for a complete example.
+`mcp create --url <endpoint-url>` registers a single MCP source directly, and
+`mcp create --endpoints @endpoints.json` registers a multi-source endpoint
+array; see the [quickstart](README.md#2-register-a-public-mcp-server) for a
+complete example. Use `--allow-list` and `--blocked` with namespace-prefixed
+tool names or glob patterns (`<namespace>_<toolName>`, such as `learn_*`);
+pass `--allow-list null` on `mcp update` to clear an allow-list and expose all
+tools (`"[]"` allows zero tools).
 Use `mcp source add/list/remove` to edit individual sources. A full endpoint
 array update changes complete membership and may involve credentials.
 
