@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { initHighlighter, renderLab, escapeHtml } from './site/markdown.mjs';
 import { parseLab, stripGitHub, syncLab, syncIndex, syncSkill, findVideo, ghSlug } from './site/github.mjs';
 import { readSetupTasks, inlineMd } from './site/setup.mjs';
-import { layout, homePage, catalogPage, labPage, releaseNotesPage, setupPage, troubleshootingPage, notFoundPage } from './site/templates.mjs';
+import { layout, heroLabs, homePage, catalogPage, labPage, releaseNotesPage, setupPage, troubleshootingPage, notFoundPage } from './site/templates.mjs';
 
 const LABS = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(LABS, '..');
@@ -626,6 +626,9 @@ export async function build({ strict = false } = {}) {
     write('release-notes/index.md', notes.source);
   }
 
+  const onMap = heroLabs();
+  for (const l of labs) if (!onMap.has(l.slug)) warn(`${l.slug}: isn't on the home page's architecture map; add it to HX in site/templates.mjs`);
+  for (const s of onMap) if (!known.has(s)) warn(`site/templates.mjs: the architecture map links to ${s}, which isn't a lab`);
   write('index.html', layout({ rel: '', site, kind: 'home', title: '', description: site.tagline, body: homePage({ rel: '', site, catalog, labs, totals, latest: notes?.releases[0] }), canonical: BASE_URL, data: shared }));
   write('labs/index.html', layout({ rel: '../', site, kind: 'catalog', title: 'All labs', description: `${labs.length} hands-on labs for Azure AI Gateway.`, body: catalogPage({ rel: '../', catalog, labs }), canonical: `${BASE_URL}labs/`, data: shared }));
   write('404.html', layout({ rel: BASE_PATH, site, kind: 'notfound', title: 'Page not found', body: notFoundPage({ rel: BASE_PATH }), data: shared }));

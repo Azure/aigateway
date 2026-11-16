@@ -60,6 +60,15 @@ its `azure.yaml` and `infra/` (see [azd templates](#azd-templates)). It uses lab
 labs 03 onward work on its gateway. Each track ends with the first call and then its own **Clean up** step, so the lab
 has no separate call, verify, or clean up section. Teach the details in labs 00 to 02 instead.
 
+### The home page's architecture map
+
+The hero on the home page is a map of the gateway: its workloads, capabilities, backends, and the Azure services
+around it. Clicking a
+part opens a preview of its first lab and lists the rest under **Related labs**. `HX` in
+[`site/templates.mjs`](site/templates.mjs) maps each part to its labs, most relevant first. When you add a lab, add it
+to every part it teaches; the provider logos belong to **Model providers** (`be-models`), so a lab about one provider
+goes there. Keep each list to about seven labs. `npm run check` warns about a lab that isn't on the map.
+
 ### The Setup guide
 
 [`SETUP.md`](SETUP.md) holds the tasks that every lab shares, and the site renders it at `/setup/` and in a panel

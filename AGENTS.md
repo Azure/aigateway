@@ -72,7 +72,7 @@ For each product change, search the labs (`grep -il "<feature>" labs/[0-9][0-9]-
 |---|---|---|
 | ✅ Covered | A lab already teaches it as released | Nothing, beyond checking that the labels still match |
 | ✏️ Update | It extends or changes a feature that a lab teaches: a new option, a new wizard step, a renamed label | Update every affected track (portal, CLI, REST, Bicep, code, notebook), the checkpoints, the lab's section in `labs/TROUBLESHOOTING.md`, next steps, and the metadata (`duration`, `tags`, `objectives`) |
-| 🆕 New lab | A new use case with its own outcome and at least 15 minutes of hands-on work | Use the next free number, follow the lab anatomy in `AUTHORING.md`, and add it to `catalog.json` (`paths`, `usecases`, `shortTitles`). Add a diagram in `labs/tools/diagrams/` and, when it helps, a widget |
+| 🆕 New lab | A new use case with its own outcome and at least 15 minutes of hands-on work | Use the next free number, follow the lab anatomy in `AUTHORING.md`, and add it to `catalog.json` (`paths`, `usecases`, `shortTitles`) and to the home page's architecture map (`HX` in `labs/site/templates.mjs`). Add a diagram in `labs/tools/diagrams/` and, when it helps, a widget |
 | ➖ Not covered | It can't be practiced, or it's too minor for a lab | Say so in the release notes |
 
 Show the user the mapping as a table and confirm it before you write, unless they asked you to go ahead.

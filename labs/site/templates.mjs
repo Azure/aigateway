@@ -225,27 +225,27 @@ const HX = {
     ['ctl-entra', 'Microsoft Entra ID', ['11-entra-rbac', '10-api-keys', '12-backend-identity', '07-cost-budgets', '14-otel-chargeback', '16-foundry-hosted-agent']],
     ['ctl-cs', 'Azure AI Content Safety', ['08-content-safety', '09-gateway-baselines', '19-tool-threat-protection', '05-mcp-tool-controls', '21-enterprise-reference']],
     ['ctl-a365', 'Microsoft Agent 365', ['20-agent-365-governance', '19-tool-threat-protection', '05-mcp-tool-controls', '04-federate-mcp-tools', '21-enterprise-reference']],
-    ['ctl-mi', 'Managed identities', ['12-backend-identity', '11-entra-rbac', '16-foundry-hosted-agent', '18-private-networking', '21-enterprise-reference']],
+    ['ctl-mi', 'Managed identities', ['12-backend-identity', '11-entra-rbac', '16-foundry-hosted-agent', '30-agent-hooks', '18-private-networking', '21-enterprise-reference']],
   ],
   workloads: [
-    ['wl-apps', 'AI apps', ['02-first-model-call', 'quickstart', '03-multi-provider-aliases', '22-model-routing', '23-streaming-responses', '10-api-keys'], 'apps'],
-    ['wl-agents', 'AI agents', ['15-agent-frameworks', '16-foundry-hosted-agent', '04-federate-mcp-tools', '05-mcp-tool-controls', '20-agent-365-governance', '19-tool-threat-protection'], 'agents'],
+    ['wl-apps', 'AI apps', ['02-first-model-call', 'quickstart', '03-multi-provider-aliases', '26-embeddings', '31-jev-decisions', '22-model-routing', '23-streaming-responses'], 'apps'],
+    ['wl-agents', 'AI agents', ['15-agent-frameworks', '16-foundry-hosted-agent', '04-federate-mcp-tools', '05-mcp-tool-controls', '30-agent-hooks', '20-agent-365-governance', '19-tool-threat-protection'], 'agents'],
     ['wl-coding', 'Coding agents', ['24-github-copilot-byok', '25-claude-code', '17-coding-agent-plugin', '04-federate-mcp-tools', '06-token-limits', '07-cost-budgets'], 'code'],
   ],
   gateway: ['gw', 'Azure AI Gateway', ['00-how-ai-gateway-works', 'quickstart', '01-provision-gateway', '02-first-model-call', '03-multi-provider-aliases', '21-enterprise-reference']],
   managed: ['gw-managed', 'Azure-managed', ['01-provision-gateway', 'quickstart', '00-how-ai-gateway-works', '18-private-networking', '21-enterprise-reference']],
   caps: [
     ['cap-id', 'Identity & access', ['10-api-keys', '11-entra-rbac', '12-backend-identity', '07-cost-budgets', '14-otel-chargeback'], 'keys'],
-    ['cap-budget', 'Budgets & quotas', ['06-token-limits', '07-cost-budgets', '09-gateway-baselines', '14-otel-chargeback', '23-streaming-responses'], 'money'],
-    ['cap-route', 'Routing & failover', ['22-model-routing', '03-multi-provider-aliases', '23-streaming-responses', '02-first-model-call', '06-token-limits'], 'flow'],
-    ['cap-policy', 'Policies & baselines', ['09-gateway-baselines', '05-mcp-tool-controls', '06-token-limits', '07-cost-budgets', '08-content-safety', '21-enterprise-reference'], 'codeFilled'],
-    ['cap-mcp', 'MCP federation', ['04-federate-mcp-tools', '05-mcp-tool-controls', '15-agent-frameworks', '20-agent-365-governance', '19-tool-threat-protection', '24-github-copilot-byok'], 'plugFilled'],
-    ['cap-guard', 'Content guardrails', ['08-content-safety', '19-tool-threat-protection', '05-mcp-tool-controls', '09-gateway-baselines', '20-agent-365-governance'], 'shield'],
+    ['cap-budget', 'Budgets & quotas', ['06-token-limits', '07-cost-budgets', '28-auto-model-selection', '09-gateway-baselines', '14-otel-chargeback', '23-streaming-responses'], 'money'],
+    ['cap-route', 'Routing & failover', ['22-model-routing', '29-model-failover', '27-conditional-routing', '28-auto-model-selection', '03-multi-provider-aliases', '23-streaming-responses'], 'flow'],
+    ['cap-policy', 'Policies & baselines', ['09-gateway-baselines', '05-mcp-tool-controls', '30-agent-hooks', '06-token-limits', '07-cost-budgets', '08-content-safety', '21-enterprise-reference'], 'codeFilled'],
+    ['cap-mcp', 'MCP federation', ['04-federate-mcp-tools', '05-mcp-tool-controls', '30-agent-hooks', '15-agent-frameworks', '20-agent-365-governance', '19-tool-threat-protection', '24-github-copilot-byok'], 'plugFilled'],
+    ['cap-guard', 'Content guardrails', ['08-content-safety', '19-tool-threat-protection', '30-agent-hooks', '05-mcp-tool-controls', '09-gateway-baselines', '20-agent-365-governance'], 'shield'],
     ['cap-usage', 'Usage & cost tracking', ['14-otel-chargeback', '13-monitoring', '07-cost-budgets', '06-token-limits', '23-streaming-responses'], 'dataLine'],
     ['cap-net', 'Private networking', ['18-private-networking', '21-enterprise-reference', '12-backend-identity', '09-gateway-baselines'], 'lock'],
   ],
-  models: ['be-models', 'Model providers', ['03-multi-provider-aliases', '22-model-routing', '02-first-model-call', '12-backend-identity', '23-streaming-responses']],
-  mcp: ['be-mcp', 'MCP servers & APIs', ['04-federate-mcp-tools', '05-mcp-tool-controls', '20-agent-365-governance', '19-tool-threat-protection', '15-agent-frameworks']],
+  models: ['be-models', 'Model providers', ['03-multi-provider-aliases', '31-jev-decisions', '26-embeddings', '22-model-routing', '29-model-failover', '12-backend-identity', '02-first-model-call']],
+  mcp: ['be-mcp', 'MCP servers & APIs', ['04-federate-mcp-tools', '05-mcp-tool-controls', '30-agent-hooks', '20-agent-365-governance', '19-tool-threat-protection', '15-agent-frameworks']],
   providers: [['microsoft-foundry', 'Microsoft Foundry'], ['openai', 'OpenAI', 1], ['anthropic', 'Anthropic'], ['amazon-bedrock', 'Amazon Bedrock'], ['google-gemini', 'Google Gemini', 1], ['typesafe-ai', 'TypeSafe AI', 1]],
   observability: [
     ['obs-monitor', 'Azure Monitor', ['13-monitoring', '14-otel-chargeback', '07-cost-budgets', '21-enterprise-reference']],
@@ -253,6 +253,9 @@ const HX = {
     ['obs-otlp', 'Any OTLP endpoint', ['14-otel-chargeback', '13-monitoring', '21-enterprise-reference']],
   ],
 };
+
+// Every lab the map links to, so the build can flag a lab that has no place on it.
+export const heroLabs = () => new Set(Object.values(HX).flatMap((v) => (Array.isArray(v[0]) ? v : [v])).flatMap((n) => (Array.isArray(n[2]) ? n[2] : [])));
 
 // What the preview needs: each part's labs, and a compact record per lab. All text is escaped here.
 function heroPreviewData(rel, byId, cats) {
