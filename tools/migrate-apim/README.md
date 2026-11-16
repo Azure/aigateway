@@ -3,15 +3,12 @@
 Inventory the AI assets of an Azure API Management instance, shaped for migration to
 [Azure AI Gateway](https://ai.gateway.azure.com) (`Microsoft.ApiManagement/aigateways`).
 
-This is the source-side half of a migration. It answers three questions a coding agent has to
-answer before it can move anything:
+It answers two questions a coding agent has to answer before it can move anything:
 
 1. **What AI workload is actually running in this APIM?** Models, MCP servers, and A2A agents —
    and nothing else.
 2. **What would it take to reproduce it on AI Gateway?** Every asset is captured decomposed into
    the target's building blocks, so the gap is a comparison rather than an interpretation.
-3. **How does an automated migration get the credentials without anyone reading them?** Every
-   secret becomes a reference plus the exact command that retrieves it at apply time.
 
 Status: `collect`, `resolve-models`, `discover-tools`, `plan`, `apply` and `validate` are
 implemented and verified against live APIM instances.
@@ -22,7 +19,7 @@ implemented and verified against live APIM instances.
 
 An agent cannot do a migration like this in one pass. It collects, proposes, asks the operator
 about the parts that do not translate, records what they decide, and only then emits something
-executable. The tool is therefore a **pipeline of pure functions over files**, not one command:
+executable:
 
 ```
           ┌─────────────┐
