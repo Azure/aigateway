@@ -386,7 +386,7 @@ export function homePage({ rel, site, catalog, labs, totals, latest }) {
         ${latest ? `<a class="hero-news" href="${rel}release-notes/#${latest.id}"><span class="hero-news-tag">New</span><span class="hero-news-text">${esc(latest.title)}</span>${I.arrowR}</a>` : ''}
         <p class="eyebrow">Azure AI Gateway labs</p>
         <h1>Learn AI Gateway by <span class="grad-text">building with it</span></h1>
-        <p class="hero-lead">${esc(site.tagline)} Guided labs for customers and field teams: publish models from any provider, federate MCP tools, enforce limits and budgets, go keyless, observe every token, and govern agents.</p>
+        <p class="hero-lead">${esc(site.tagline)} Publish models from any provider, federate MCP tools, enforce limits and budgets, go keyless, observe every token, and govern agents.</p>
         <div class="hero-cta">
           <a class="btn btn-primary btn-lg" href="${startHref}">${I.bolt}Start the 5-minute quick start</a>
           <a class="btn btn-secondary btn-lg" href="${rel}labs/">Browse all ${totals.labs} labs</a>
