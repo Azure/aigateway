@@ -8,7 +8,7 @@
 #   export AI_GATEWAY_API_KEY="..."                 # the key to test; never commit it
 #   ./check-key.sh ["label"]                        # test AI_GATEWAY_API_KEY
 #   AI_GATEWAY_API_KEY="$OLD_KEY" ./check-key.sh "old value"
-#   ./check-key.sh --no-key                         # send the request without an api-key header
+#   ./check-key.sh --no-key                         # send the request without an Authorization header
 # Requires curl.
 set -euo pipefail
 
@@ -28,7 +28,7 @@ else
   LABEL="${1:-current key}"
   HINT="...${AI_GATEWAY_API_KEY: -4}"
   # The header is read from stdin so the key doesn't appear in the process list.
-  RESPONSE=$(printf 'api-key: %s\n' "$AI_GATEWAY_API_KEY" | curl -sS -w '\n%{http_code}' "$URL" \
+  RESPONSE=$(printf 'Authorization: Bearer %s\n' "$AI_GATEWAY_API_KEY" | curl -sS -w '\n%{http_code}' "$URL" \
     -H @- -H "Content-Type: application/json" -d "$BODY" || true)
 fi
 STATUS="${RESPONSE##*$'\n'}"

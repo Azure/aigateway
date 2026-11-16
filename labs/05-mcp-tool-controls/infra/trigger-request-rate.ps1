@@ -19,7 +19,7 @@ if (-not $uri) {
   if (-not $env:AI_GATEWAY_URL) { throw 'Set $env:AI_GATEWAY_URL to the gateway runtime URL, for example https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com' }
   $uri = "$($env:AI_GATEWAY_URL.TrimEnd('/'))/default/toolservers/$Server/mcp"
 }
-$headers = @{ 'api-key' = $env:AI_GATEWAY_API_KEY; Accept = 'application/json, text/event-stream' }
+$headers = @{ Authorization = "Bearer $env:AI_GATEWAY_API_KEY"; Accept = 'application/json, text/event-stream' }
 $script:count = 0
 $rows = [System.Collections.Generic.List[object]]::new()
 

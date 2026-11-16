@@ -19,7 +19,7 @@ $body = @{
 
 Write-Host "Sending $Count requests with `"model`": `"$Alias`""
 $served = for ($i = 1; $i -le $Count; $i++) {
-  $r = Invoke-WebRequest -Uri $url -Method Post -Headers @{ 'api-key' = $env:AI_GATEWAY_API_KEY } `
+  $r = Invoke-WebRequest -Uri $url -Method Post -Headers @{ Authorization = "Bearer $env:AI_GATEWAY_API_KEY" } `
     -ContentType 'application/json' -Body $body -SkipHttpErrorCheck
   $name = if ($r.StatusCode -eq 200) { ($r.Content | ConvertFrom-Json).model } else {
     $code = try { ($r.Content | ConvertFrom-Json).error.code } catch { '' }

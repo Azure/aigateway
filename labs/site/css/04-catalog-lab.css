@@ -89,7 +89,7 @@
 .lab-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 18px; }
 .meta-pill { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--stroke); background: var(--bg-elev); font-size: 13px; color: var(--fg-2); }
 .meta-pill .i { width: 16px; height: 16px; color: var(--fg-3); }
-.meta-tracks { padding: 0 4px; }
+.meta-tracks { height: auto; min-height: 30px; padding: 3px 4px; border-radius: 15px; }
 .meta-tracks .track-chip { background: transparent; height: 22px; }
 .meta-updated { font-size: 13px; color: var(--fg-4); margin-left: 4px; }
 .lab-actions { display: flex; flex-wrap: wrap; gap: 6px; }

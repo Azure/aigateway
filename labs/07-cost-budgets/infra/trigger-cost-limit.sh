@@ -27,7 +27,7 @@ printf '%-8s %-7s %-24s %-12s %s\n' "Request" "Status" "Error code" "Tokens used
 for i in $(seq 1 "$REQUESTS"); do
   headers=$(mktemp)
   response=$(curl -sS -D "$headers" -o - "$URL" \
-    -H "api-key: $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" -d "$BODY")
+    -H "Authorization: Bearer $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" -d "$BODY")
   status=$(awk 'toupper($1) ~ /^HTTP/ {code=$2} END {print code}' "$headers")
   budget=$(awk -F': ' 'tolower($1) ~ /budget|cost|remaining/ {gsub("\r","",$2); printf "%s%s=%s", sep, $1, $2; sep="; "}' "$headers")
   used="" code=""

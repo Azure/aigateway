@@ -21,7 +21,7 @@ if [ -z "${AI_GATEWAY_MCP_ENDPOINT:-}" ]; then
 fi
 command -v jq >/dev/null || { echo "This script needs jq." >&2; exit 1; }
 
-HEADERS=(-H "api-key: $AI_GATEWAY_API_KEY" -H "Content-Type: application/json"
+HEADERS=(-H "Authorization: Bearer $AI_GATEWAY_API_KEY" -H "Content-Type: application/json"
   -H "Accept: application/json, text/event-stream")
 COUNT=0 STATUS="" BODY="" SESSION_ID=""
 

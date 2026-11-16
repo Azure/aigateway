@@ -47,7 +47,7 @@ $chatBody = @{
 $chat = $null
 foreach ($attempt in 1..15) {
   try {
-    $chat = Invoke-WebRequest -Method Post -Uri $chatUrl -Headers @{ 'api-key' = $apiKey } `
+    $chat = Invoke-WebRequest -Method Post -Uri $chatUrl -Headers @{ Authorization = "Bearer $apiKey" } `
       -ContentType 'application/json' -Body $chatBody -TimeoutSec 60 -SkipHttpErrorCheck
   } catch { $chat = $null }
   if ($chat -and $chat.StatusCode -ge 200 -and $chat.StatusCode -le 299) { break }
@@ -67,7 +67,7 @@ Write-Host ("Model  : HTTP {0}, model={1}, reply={2}, total_tokens={3}" -f $chat
 
 # 2. MCP route: initialize -> notifications/initialized -> tools/list (Streamable HTTP).
 $uri = "$($runtimeUrl.TrimEnd('/'))/default/toolservers/$Server/mcp"
-$headers = @{ 'api-key' = $apiKey; Accept = 'application/json, text/event-stream' }
+$headers = @{ Authorization = "Bearer $apiKey"; Accept = 'application/json, text/event-stream' }
 
 # Sends one JSON-RPC message and returns the raw HTTP response. Prints the gateway's answer and stops on non-2xx.
 function Send-Mcp([hashtable]$Message, [string]$Step) {

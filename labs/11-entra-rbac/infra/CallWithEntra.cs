@@ -16,7 +16,7 @@ using Azure.Core;
 using Azure.Identity;
 
 // App-only and managed identity callers must use /.default. It also works for an Azure CLI sign-in.
-const string AiGatewayScope = "https://azure-api.net/aigateway/.default";
+const string AiGatewayScope = "https://ai.gateway.azure.com/.default";
 
 static string Required(string name) =>
     Environment.GetEnvironmentVariable(name) is { Length: > 0 } value

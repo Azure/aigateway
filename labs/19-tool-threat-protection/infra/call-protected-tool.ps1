@@ -9,7 +9,7 @@
 #   ./call-protected-tool.ps1 -Auth key   [-Server learn] [-Query "..."]   # runtime key in $env:AI_GATEWAY_API_KEY
 #
 # -Auth token uses $env:AI_GATEWAY_TOKEN when set, otherwise it runs
-#   az account get-access-token --resource https://azure-api.net/aigateway
+#   az account get-access-token --scope https://ai.gateway.azure.com/Data.All
 # The script calls the Learn docs search tool (or the first tool whose name contains "search") unless you
 # pass -Tool, and sends the query as {"query": "..."}. Use a benign query.
 param(
@@ -26,7 +26,7 @@ $headers = @{ Accept = 'application/json, text/event-stream' }
 if ($Auth -eq 'token') {
   $token = $env:AI_GATEWAY_TOKEN
   if (-not $token) {
-    $token = az account get-access-token --resource https://azure-api.net/aigateway --query accessToken -o tsv
+    $token = az account get-access-token --scope https://ai.gateway.azure.com/Data.All --query accessToken -o tsv
     if ($LASTEXITCODE -ne 0 -or -not $token) { throw 'Could not get a token. Run az login first.' }
   }
   # Delegated (user) tokens carry an scp claim. App-only tokens carry roles instead and can't be used for evaluation.
@@ -40,7 +40,7 @@ if ($Auth -eq 'token') {
   $headers['Authorization'] = "Bearer $token"
 } else {
   if (-not $env:AI_GATEWAY_API_KEY) { throw 'Set $env:AI_GATEWAY_API_KEY to a runtime key from Access > Keys' }
-  $headers['api-key'] = $env:AI_GATEWAY_API_KEY
+  $headers['Authorization'] = "Bearer $env:AI_GATEWAY_API_KEY"
 }
 
 function Get-Body($Response) {

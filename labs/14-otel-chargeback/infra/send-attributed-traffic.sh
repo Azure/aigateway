@@ -19,7 +19,7 @@ REQUESTS="${2:-5}"
 
 URL="${AI_GATEWAY_URL%/}/default/models/openai/v1/chat/completions"
 RUN_ID="lab14-$(date +%s)"
-TOKEN="$(az account get-access-token --resource https://azure-api.net/aigateway --query accessToken -o tsv)"
+TOKEN="$(az account get-access-token --scope https://ai.gateway.azure.com/Data.All --query accessToken -o tsv)"
 BODY=$(printf '{"model":"%s","messages":[{"role":"user","content":"In one sentence, what is a chargeback report?"}]}' "$MODEL")
 
 send() { # <auth-header> <correlation-id>
@@ -29,8 +29,8 @@ send() { # <auth-header> <correlation-id>
 
 printf '%-10s %-8s %-7s %s\n' "Caller" "Request" "Status" "x-correlation-id"
 for i in $(seq 1 "$REQUESTS"); do
-  status=$(send "api-key: $AI_GATEWAY_API_KEY" "$RUN_ID-key-$i")
-  printf '%-10s %-8s %-7s %s\n' "api-key" "$i" "$status" "$RUN_ID-key-$i"
+  status=$(send "Authorization: Bearer $AI_GATEWAY_API_KEY" "$RUN_ID-key-$i")
+  printf '%-10s %-8s %-7s %s\n' "key" "$i" "$status" "$RUN_ID-key-$i"
   status=$(send "Authorization: Bearer $TOKEN" "$RUN_ID-entra-$i")
   printf '%-10s %-8s %-7s %s\n' "entra" "$i" "$status" "$RUN_ID-entra-$i"
   sleep 1

@@ -15,7 +15,7 @@ if (-not $env:AI_GATEWAY_MODEL) { throw 'Set $env:AI_GATEWAY_MODEL to the callab
 if (-not $env:AI_GATEWAY_API_KEY) { throw 'Set $env:AI_GATEWAY_API_KEY to a runtime key from Access > Keys' }
 
 $base = "$($env:AI_GATEWAY_URL.TrimEnd('/'))/default/models/openai/v1"
-$headers = @{ 'api-key' = $env:AI_GATEWAY_API_KEY }
+$headers = @{ Authorization = "Bearer $env:AI_GATEWAY_API_KEY" }
 
 function Invoke-Model([string]$Path, [hashtable]$Body) {
   Invoke-WebRequest -Method Post -Uri "$base$Path" -Headers $headers -ContentType 'application/json' `

@@ -1483,7 +1483,7 @@ The dev parameters gave you **AI Gateway Models User** on the alias, so you can 
 ```bash title="Bash"
 # Get a Microsoft Entra token for AI Gateway, for your own identity
 export AI_GATEWAY_TOKEN="$(az account get-access-token \
-  --resource https://azure-api.net/aigateway --query accessToken -o tsv)"
+  --scope https://ai.gateway.azure.com/Data.All --query accessToken -o tsv)"
 echo "👤 Token acquired: in AI_GATEWAY_TOKEN (${#AI_GATEWAY_TOKEN} characters, not shown)"
 
 # Call the alias with the token instead of a key: your AI Gateway Models User role on the alias lets you in
@@ -1500,7 +1500,7 @@ curl -sS "${AI_GATEWAY_URL%/}/default/models/openai/v1/chat/completions" \
 ```powershell title="PowerShell"
 # Get a Microsoft Entra token for AI Gateway, for your own identity
 $env:AI_GATEWAY_TOKEN = az account get-access-token `
-  --resource https://azure-api.net/aigateway --query accessToken -o tsv
+  --scope https://ai.gateway.azure.com/Data.All --query accessToken -o tsv
 Write-Host "👤 Token acquired: in AI_GATEWAY_TOKEN ($($env:AI_GATEWAY_TOKEN.Length) characters, not shown)"
 
 # Build the request: the alias in model, and one user message

@@ -1098,7 +1098,7 @@ not the live role assignment on the Foundry account, so a missing role still sho
 # Call the alias through the gateway with your runtime key, and print only the HTTP status code
 echo "🤖 HTTP status of a call to $AI_GATEWAY_MODEL through the gateway:"
 curl -sS -o /dev/null -w "HTTP %{http_code}\n" "${AI_GATEWAY_URL%/}/default/models/openai/v1/chat/completions" \
-  -H "api-key: $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
   -d "{\"model\":\"$AI_GATEWAY_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}]}"
 ```
 </details> <!-- gh -->
@@ -1112,7 +1112,7 @@ $body = @{ model = $env:AI_GATEWAY_MODEL; messages = @(@{ role = "user"; content
 # Call the alias through the gateway with your runtime key, and print only the HTTP status code
 Write-Host "🤖 HTTP status of a call to $env:AI_GATEWAY_MODEL through the gateway:"
 (Invoke-WebRequest -Method Post -Uri "$($env:AI_GATEWAY_URL.TrimEnd('/'))/default/models/openai/v1/chat/completions" `
-  -Headers @{ "api-key" = $env:AI_GATEWAY_API_KEY } -ContentType "application/json" -Body $body -SkipHttpErrorCheck).StatusCode
+  -Headers @{ Authorization = "Bearer $env:AI_GATEWAY_API_KEY" } -ContentType "application/json" -Body $body -SkipHttpErrorCheck).StatusCode
 ```
 </details> <!-- gh -->
 

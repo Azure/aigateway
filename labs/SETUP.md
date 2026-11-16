@@ -26,7 +26,7 @@ Application Insights, are billed normally.
 
 | To | You need, for example |
 | :-- | :-- |
-| Create a gateway in the portal or with the Azure CLI | **Contributor** on the resource group, or on the subscription if you create a new resource group. In the portal, you also need write access to `Microsoft.Web/connectorGateways`, because the portal creates a connector gateway with the same name for connector-based MCP tools. |
+| Create a gateway in the portal or with the Azure CLI | **Contributor** on the resource group, or on the subscription if you create a new resource group. The portal's subscription picker checks for Azure AI Gateway write access on the subscription, such as **Contributor**, and disables subscriptions without it. |
 | Change a gateway that already exists | **Contributor** on its resource group |
 | Give the gateway a role on a Foundry account, as most Bicep + azd tracks do | **Owner**, or **Contributor** plus **Role Based Access Control Administrator**, on the subscription. The templates create a resource group and role assignments, so that the gateway can call your models with its own identity. |
 
@@ -144,8 +144,7 @@ az aigateway version
 
 The gateway lives in the `Microsoft.ApiManagement` resource provider. Most labs also create a Foundry account, in
 `Microsoft.CognitiveServices`. Register them once per subscription. Registering returns quickly when a provider is
-already registered. The portal registers the providers it needs when you create a gateway there, including
-`Microsoft.Web` for its connector gateway.
+already registered. The portal registers the providers it needs when you create a gateway there.
 
 <details open><summary>Bash</summary> <!-- gh -->
 

@@ -334,7 +334,7 @@ short status line with an emoji, so that readers see at a glance what happened. 
   | ✨ | Model or deployment | 🌐 | URL or endpoint |
   | 🚀 | Gateway ready, deployment done, or app started | 🆔 | Resource or subscription ID |
   | ⏳ | Waiting or provisioning in the background | 📍 | Region |
-  | 🔌 | Model provider, connector gateway, backend, or MCP server | 🤖 | Model or agent reply |
+  | 🔌 | Model provider, backend, or MCP server | 🤖 | Model or agent reply |
   | 🔖 | Alias | 🚦 | Expected 429, 403, or 400 from a policy |
   | 🔧 | MCP tools | 📊 | Metrics, logs, queries, or a listing |
   | 📂 | Folder or clone | 🔒 | Private networking or DNS |
@@ -376,7 +376,7 @@ Kinds: `NOTE`, `TIP`, `IMPORTANT`, `WARNING`, `CAUTION`. A blockquote starting w
 - Diagrams in `assets/diagrams/`: `architecture.svg`, `request-lifecycle.svg`, `aliases.svg`,
   `mcp-federation.svg`, `policy-scopes.svg`, `identity-boundaries.svg`, `observability.svg`,
   `private-networking.svg`, `hosted-agent.svg`, `agent-365.svg`, `threat-protection.svg`, `token-limits.svg`,
-  `alias-routing.svg`, `streaming-usage.svg`, `quickstart.svg`.
+  `alias-routing.svg`, `streaming-usage.svg`, `quickstart.svg`, `github-copilot-byok.svg`, `claude-code.svg`.
 - Provider logos in `assets/providers/`: `microsoft-foundry.png`, `azure-openai.png`, `openai.png`,
   `anthropic.png`, `aws-bedrock.png`, `google-vertex.png`, `custom-models.png`.
 
@@ -442,9 +442,9 @@ Keep the video optional: every step it shows must also be written in the lab.
 - Gateways are the dedicated `Microsoft.ApiManagement/aigateways` type, never `Microsoft.ApiManagement/service`.
   Follow the product's [reference sample](https://github.com/Azure-Samples/simple-foundry-hosted-agent-python-aigateway/blob/main/infra/ai-gateway/main.bicep), as
   [lab 01's template](01-provision-gateway/infra/gateway.bicep) does: omit `sku`, so the service default, `Standard`, applies,
-  and set no publisher properties. Don't declare a `Microsoft.Web/connectorGateways` resource: only the portal creates
-  one, for connector-based MCP tools, and the labs' IaC and CLI tracks don't need it. A subscription can have at most
-  five gateways in each region.
+  and set no publisher properties. Don't declare a `Microsoft.Web/connectorGateways` resource (a Connector
+  Namespace): creating a gateway doesn't create one, and connector tools are imported from an existing namespace.
+  A subscription can have at most five gateways in each region.
   Gateway names have 24 characters or fewer. The runtime URL is `https://` plus `properties.frontend.defaultHostname`: the name's first 10 characters
   (without a trailing hyphen), a hyphen, a 13-character hash, and `.<region>-01.ai.gateway.azure.com`, for example
   `https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com` for `aigw-labs-001`. Always read it from the
@@ -479,12 +479,16 @@ Keep the video optional: every step it shows must also be written in the lab.
 
 ## Runtime calls
 
-- The model endpoint (`<gateway URL>/default/models/openai/v1`) accepts a runtime key in the `api-key` header, the
-  same key as `Authorization: Bearer <key>`, or a Microsoft Entra token. With an OpenAI SDK, pass the key as the
-  client's API key and add no `api-key` header: a request with both headers fails with `400` "Specify either an API
-  key or an Authorization header, not both".
-- The MCP endpoint (`<gateway URL>/default/toolservers/<name>/mcp`) reads keys only from the `api-key` header. A
-  bearer token there must be a Microsoft Entra token.
+- Send a runtime key as `Authorization: Bearer <key>`, as the product docs and the portal's snippets do, to the
+  model endpoint (`<gateway URL>/default/models/openai/v1`) and to the MCP endpoint
+  (`<gateway URL>/default/toolservers/<name>/mcp`) alike. With an OpenAI SDK, pass the key as the client's API key.
+  With an Anthropic SDK, pass it as the auth token (`auth_token` or `authToken`): as the API key, the SDK sends it
+  in `x-api-key`, which answers `401`. Never add an `api-key` header as well: a request with both headers fails
+  with `400` "Specify either an API key or an Authorization header, not both".
+- Microsoft Entra tokens use the delegated scope `https://ai.gateway.azure.com/Data.All`
+  (`az account get-access-token --scope https://ai.gateway.azure.com/Data.All`), or
+  `https://ai.gateway.azure.com/.default` from an SDK credential. The token's `aud` is the AI Gateway app ID
+  `18550318-e177-4205-a743-6816d6fcdc3f`.
 - The gateway publishes federated tools as `<namespace>_<tool>`, with one underscore, for example
   `learn_microsoft_docs_search`.
 

@@ -264,7 +264,7 @@ export function homePage({ rel, site, catalog, labs, totals, latest }) {
     ['qs-st', '🔖 Alias <span class="qs-hl">gpt-5-mini</span> is ready'],
     ['qs-st', '🔑 API key <span class="qs-nb">app-first-call</span> is ready'],
     ['qs-st qs-url', '🌐 Runtime URL: <span class="qs-hl">https://aigw-54078-q2mv7x4kz9hpt.eastus2-01.ai.gateway.azure.com</span>'],
-    ['qs-gap qs-hang', '<span class="qs-prompt">$</span> curl $AI_GATEWAY_URL/…/chat/completions -H "api-key: …"'],
+    ['qs-gap qs-hang', '<span class="qs-prompt">$</span> curl $AI_GATEWAY_URL/…/chat/completions -H "Authorization: Bearer …"'],
     ['qs-st', '🤖 An AI gateway sits between applications and AI models, routing requests while managing access, security, and usage.'],
   ].map(([c, h]) => `<span class="qs-line${c ? ` ${c}` : ''}">${h}</span>`).join('');
 

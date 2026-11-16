@@ -168,14 +168,14 @@ also add it later under **Networking**. [Lab 18](../18-private-networking/README
 ![What to choose in Create AI gateway: a unique name, a subscription, a resource group, and a region, with the Advanced defaults kept](../assets/diagrams/create-gateway.svg "Fill in the basics, keep the Advanced defaults, then select Create gateway.")
 
 > [!NOTE]
-> The subscription picker lists every subscription you can see. Subscriptions where you lack write permission
-> for API Management and connector gateways are disabled, and the portal explains why.
+> The subscription picker lists every subscription you can see. Subscriptions where you lack Azure AI Gateway
+> write access, such as the **Contributor** role on the subscription, are disabled, and the portal explains why.
 
 ### Watch it provision
 
 Select **Create gateway**. The portal shows provisioning progress in place, and a new gateway is typically ready
-in a few minutes. The portal also creates a `Microsoft.Web/connectorGateways` resource with the same name, which
-connector-based MCP tools use. The Azure CLI and Bicep + azd tracks don't need it.
+in a few minutes. Creating a gateway provisions only the AI Gateway runtime, as the Azure CLI and Bicep + azd
+tracks do.
 
 ### Open the setup guide on Home
 
@@ -582,7 +582,7 @@ do.
 ### Delete the resource group
 
 When you're done with all the labs, delete the resource group. That removes the gateway and everything else in the
-group, including the connector gateway that the portal creates. The command asks for confirmation.
+group. The command asks for confirmation.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -606,7 +606,7 @@ if ($?) { Write-Host "🚮 Resource group $RG is deleted" }
 
 To keep the resource group, delete only the AI gateway. Deleting the gateway also deletes everything you published
 on it. If you created the gateway in the portal, delete it there instead: on **All gateways**, select **More actions**
-(**⋮**) on its row, then **Delete**. The portal also deletes the connector gateway that it created.
+(**⋮**) on its row, then **Delete**.
 
 <details open><summary>Bash</summary> <!-- gh -->
 

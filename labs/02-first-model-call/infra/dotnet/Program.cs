@@ -1,11 +1,12 @@
 // Calls a model through AI Gateway with HttpClient: once with the Responses API and once with
-// Chat Completions. The api-key header stays explicit, as in the .NET samples in the AI Gateway docs.
+// Chat Completions. The runtime key goes in the Authorization header as a bearer token.
 //
 // Usage:
 //   export AI_GATEWAY_URL="<gateway-url>"
 //   export AI_GATEWAY_MODEL="<model-name>"
 //   export AI_GATEWAY_API_KEY="..."      // never commit this value
 //   dotnet run
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
@@ -19,7 +20,7 @@ var gatewayUrl = Required("AI_GATEWAY_URL").TrimEnd('/');
 var model = Required("AI_GATEWAY_MODEL");
 
 using var http = new HttpClient { BaseAddress = new Uri($"{gatewayUrl}/default/models/openai/v1/") };
-http.DefaultRequestHeaders.Add("api-key", Required("AI_GATEWAY_API_KEY"));
+http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Required("AI_GATEWAY_API_KEY"));
 
 // Responses API: the text is in output[] items of type "message", in content parts of type "output_text".
 using (var reply = await http.PostAsJsonAsync("responses", new

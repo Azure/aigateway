@@ -76,9 +76,8 @@ governed and observable in the same place.
 ## How it works
 
 Agent frameworks talk to models through an OpenAI-compatible client and to tools through an MCP client. Point both at
-the gateway. The model client takes the runtime key as its API key, which it sends as a bearer token that the
-model endpoint accepts. The MCP client sends the same key in the `api-key` header, the only place the MCP endpoint
-reads it.
+the gateway. The model client takes the runtime key as its API key, which it sends as `Authorization: Bearer <key>`.
+The MCP client sends the same key in the same header.
 
 The framework still owns orchestration, memory, and state. The gateway authenticates each call, applies the policies
 on the alias, the MCP server, and the gateway, routes the alias to its provider, and records telemetry for every call
@@ -207,7 +206,7 @@ as its API key.
 <details open><summary>Agent Framework</summary> <!-- gh -->
 
 ```python title="Agent Framework"
-# The model endpoint accepts the key as the SDK's bearer token. Adding an api-key header as well gets a 400.
+# The SDK sends the key as a bearer token. Adding an api-key header as well gets a 400.
 client = OpenAIChatClient(
     model=model,
     base_url=f"{gateway_url}/default/models/openai/v1/",
@@ -264,7 +263,7 @@ the server publishes, after the gateway's tool controls.
 mcp_tool = MCPStreamableHTTPTool(
     name="gateway-tools",
     url=f"{gateway_url}/default/toolservers/{server}/mcp",
-    static_headers={"api-key": api_key},
+    static_headers={"Authorization": f"Bearer {api_key}"},
     approval_mode="never_require",
     request_timeout=60,
 )
@@ -278,7 +277,7 @@ async with MCPServerStreamableHttp(
     name="gateway-tools",
     params={
         "url": f"{gateway_url}/default/toolservers/{server}/mcp",
-        "headers": {"api-key": api_key},
+        "headers": {"Authorization": f"Bearer {api_key}"},
         "timeout": 60,
     },
     cache_tools_list=True,
@@ -295,7 +294,7 @@ mcp_client = MultiServerMCPClient(
         "gateway-tools": {
             "transport": "streamable_http",
             "url": f"{gateway_url}/default/toolservers/{server}/mcp",
-            "headers": {"api-key": api_key},
+            "headers": {"Authorization": f"Bearer {api_key}"},
         }
     }
 )
@@ -400,7 +399,7 @@ Microsoft Learn URLs. The answer differs between runs and frameworks.
 """A Microsoft Agent Framework agent whose model and MCP tool calls both go through AI Gateway.
 
 An OpenAIChatClient (Responses API) points at the gateway's OpenAI-compatible endpoint and sends the runtime key as
-its API key. Tools come from the gateway's MCP endpoint for one MCP server, with the key in the api-key header.
+its API key. Tools come from the gateway's MCP endpoint for one MCP server, with the same key as a bearer token.
 
 Usage:
     cp .env.example .env      # then fill in the values
@@ -436,7 +435,7 @@ async def main() -> None:
     gateway_url, model, api_key, server = settings()
     question = " ".join(sys.argv[1:]) or QUESTION
 
-    # The model endpoint accepts the key as the SDK's bearer token. Adding an api-key header as well gets a 400.
+    # The SDK sends the key as a bearer token. Adding an api-key header as well gets a 400.
     client = OpenAIChatClient(
         model=model,
         base_url=f"{gateway_url}/default/models/openai/v1/",
@@ -446,7 +445,7 @@ async def main() -> None:
     mcp_tool = MCPStreamableHTTPTool(
         name="gateway-tools",
         url=f"{gateway_url}/default/toolservers/{server}/mcp",
-        static_headers={"api-key": api_key},
+        static_headers={"Authorization": f"Bearer {api_key}"},
         approval_mode="never_require",
         request_timeout=60,
     )
@@ -476,7 +475,7 @@ if __name__ == "__main__":
 
 The agent uses the Responses model class with an AsyncOpenAI client pointed at the gateway's
 OpenAI-compatible endpoint, and an MCP server connection to the gateway's MCP endpoint. The client sends the runtime
-key as its API key, and the MCP connection sends it in the api-key header.
+key as its API key, and the MCP connection sends it as a bearer token.
 
 Usage:
     cp .env.example .env      # then fill in the values
@@ -525,7 +524,7 @@ async def main() -> None:
         name="gateway-tools",
         params={
             "url": f"{gateway_url}/default/toolservers/{server}/mcp",
-            "headers": {"api-key": api_key},
+            "headers": {"Authorization": f"Bearer {api_key}"},
             "timeout": 60,
         },
         cache_tools_list=True,
@@ -560,7 +559,7 @@ if __name__ == "__main__":
 
 ChatOpenAI points at the gateway's OpenAI-compatible endpoint, and langchain-mcp-adapters loads tools from the
 gateway's MCP endpoint over streamable HTTP. The model takes the runtime key as its API key, and the MCP client
-sends it in the api-key header. LangGraph keeps orchestration and state; the gateway applies policies and records
+sends it as a bearer token. LangGraph keeps orchestration and state; the gateway applies policies and records
 telemetry for every call that leaves the agent.
 
 Usage:
@@ -610,7 +609,7 @@ async def main() -> None:
             "gateway-tools": {
                 "transport": "streamable_http",
                 "url": f"{gateway_url}/default/toolservers/{server}/mcp",
-                "headers": {"api-key": api_key},
+                "headers": {"Authorization": f"Bearer {api_key}"},
             }
         }
     )
@@ -682,7 +681,7 @@ usually makes at least two model calls: one that asks for a tool and one that wr
 
 - **Give each agent an identity.** Create one runtime key per agent, as in
   [Issue and rotate runtime API keys](../10-api-keys/README.md), so Monitoring and cost limits can tell agents apart.
-  For production, drop keys: send a Microsoft Entra token for `https://azure-api.net/aigateway` from the agent's
+  For production, drop keys: send a Microsoft Entra token for `https://ai.gateway.azure.com` from the agent's
   managed identity or agent identity, with the **AI Gateway User** role, as in
   [Go keyless with Microsoft Entra ID and RBAC](../11-entra-rbac/README.md).
 - **Govern the agent, not the code.** Add a token limit to the alias with
@@ -693,7 +692,7 @@ usually makes at least two model calls: one that asks for a tool and one that wr
   working with the same `AI_GATEWAY_MODEL`.
 - **Use .NET.** The [.NET hosted agent sample](https://github.com/Azure-Samples/simple-foundry-hosted-agent-dotnet-aigateway)
   connects Microsoft Agent Framework for .NET to a gateway. With Azure AI Gateway, pass the runtime key as the
-  client's API key and don't add an `api-key` header to model calls.
+  client's API key, which the client sends as a bearer token.
 - **Other SDKs.** For the GitHub Copilot SDK and other frameworks, use their model and MCP configuration points with
   the same endpoints, and confirm the endpoint formats and authentication they support.
 
@@ -724,5 +723,5 @@ Keep the gateway, the alias, and the `learn` MCP server. Other labs reuse them.
 | :-- | :-: | --: |
 | [14 · OpenTelemetry chargeback](../14-otel-chargeback/README.md) | [All labs](../README.md) | [16 · Foundry hosted agent](../16-foundry-hosted-agent/README.md) |
 
-<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (6 of 9)</sub>
+<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (6 of 10)</sub>
 <!-- gh:end -->

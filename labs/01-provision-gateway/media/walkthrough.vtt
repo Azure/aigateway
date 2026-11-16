@@ -22,7 +22,7 @@ You choose a name, a resource group, and a region.
 
 6
 00:00:18.693 --> 00:00:25.013
-Azure creates a connector gateway, then the AI Gateway, with a system-assigned managed identity.
+Azure creates the AI Gateway, with a system-assigned managed identity, and there's nothing to size.
 
 7
 00:00:25.013 --> 00:00:29.213

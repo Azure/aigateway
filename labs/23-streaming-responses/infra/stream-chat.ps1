@@ -34,7 +34,7 @@ if ($Usage) { $body.stream_options = @{ include_usage = $true } }
 $http = [System.Net.Http.HttpClient]::new()
 $request = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Post,
   "$($env:AI_GATEWAY_URL.TrimEnd('/'))/default/models/openai/v1/chat/completions")
-$request.Headers.Add('api-key', $env:AI_GATEWAY_API_KEY)
+$request.Headers.Add('Authorization', "Bearer $env:AI_GATEWAY_API_KEY")
 $request.Content = [System.Net.Http.StringContent]::new(($body | ConvertTo-Json -Depth 5), [Text.Encoding]::UTF8, 'application/json')
 
 $clock = [Diagnostics.Stopwatch]::StartNew()

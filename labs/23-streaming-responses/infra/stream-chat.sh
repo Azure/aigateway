@@ -40,7 +40,7 @@ trap 'rm -f "$headers"' EXIT
 
 # -N turns off curl's output buffering. jq reads the raw lines as they arrive and keeps running totals.
 curl -sSN -D "$headers" "${AI_GATEWAY_URL%/}/default/models/openai/v1/chat/completions" \
-  -H "api-key: $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" -d "$BODY" \
+  -H "Authorization: Bearer $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" -d "$BODY" \
 | jq -nRrj --unbuffered --argjson raw "$RAW" '
     def secs: (. * 100 | round) / 100 | tostring + " s";
     def summary:

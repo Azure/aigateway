@@ -959,7 +959,7 @@ headers. If it returns `200`, the window has already renewed. Run the burst agai
 # Send one raw tools/list request, and show its status line, headers, and body
 echo "🚦 Expect HTTP 429 with a retry-after header:"
 curl -i "${AI_GATEWAY_URL%/}/default/toolservers/learn/mcp" \
-  -H "api-key: $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```

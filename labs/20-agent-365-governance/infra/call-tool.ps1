@@ -23,7 +23,7 @@ if (-not $env:AI_GATEWAY_API_KEY) { throw 'Set $env:AI_GATEWAY_API_KEY to a runt
 $toolArguments = $Arguments | ConvertFrom-Json -AsHashtable
 if ($toolArguments -isnot [System.Collections.IDictionary]) { throw '-Arguments must be a JSON object.' }
 $uri = "$($env:AI_GATEWAY_URL.TrimEnd('/'))/default/toolservers/$Server/mcp"
-$headers = @{ 'api-key' = $env:AI_GATEWAY_API_KEY; Accept = 'application/json, text/event-stream' }
+$headers = @{ Authorization = "Bearer $env:AI_GATEWAY_API_KEY"; Accept = 'application/json, text/event-stream' }
 
 function Get-Body($Response) {
   if ($Response.Content -is [byte[]]) { [Text.Encoding]::UTF8.GetString($Response.Content) } else { [string]$Response.Content }

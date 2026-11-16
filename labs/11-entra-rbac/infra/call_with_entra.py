@@ -19,7 +19,7 @@ from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from openai import OpenAI
 
 # App-only and managed identity callers must use /.default. It also works for an Azure CLI sign-in.
-AI_GATEWAY_SCOPE = "https://azure-api.net/aigateway/.default"
+AI_GATEWAY_SCOPE = "https://ai.gateway.azure.com/.default"
 
 gateway_url = os.environ["AI_GATEWAY_URL"].rstrip("/")
 model = os.environ["AI_GATEWAY_MODEL"]

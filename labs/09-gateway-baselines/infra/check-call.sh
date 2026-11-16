@@ -21,7 +21,7 @@ BODY="$(jq -cn --arg model "$MODEL" \
   '{model:$model,max_completion_tokens:60,reasoning_effort:"none",messages:[{role:"user",content:"In one sentence, what is a gateway-wide policy baseline?"}]}')"
 
 response="$(curl -sS --max-time 120 -w $'\n%{http_code}' "$URL" \
-  -H "api-key: $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" -d "$BODY")"
+  -H "Authorization: Bearer $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" -d "$BODY")"
 status="${response##*$'\n'}"
 response="${response%$'\n'*}"
 

@@ -39,7 +39,7 @@ CHAT_BODY="$(jq -cn --arg model "$ALIAS" \
 STATUS="" BODY=""
 for attempt in $(seq 1 15); do
   RAW="$(curl -sS --max-time 60 -w $'\n%{http_code}' -X POST "$CHAT_URL" \
-    -H "api-key: $API_KEY" -H "Content-Type: application/json" --data "$CHAT_BODY" || true)"
+    -H "Authorization: Bearer $API_KEY" -H "Content-Type: application/json" --data "$CHAT_BODY" || true)"
   STATUS="${RAW##*$'\n'}"
   BODY="${RAW%$'\n'*}"
   case "$STATUS" in 2??) break ;; esac
@@ -62,7 +62,7 @@ esac
 
 # 2. MCP route: initialize -> notifications/initialized -> tools/list (Streamable HTTP).
 ENDPOINT="${GATEWAY_URL%/}/default/toolservers/${SERVER}/mcp"
-HEADERS=(-H "api-key: $API_KEY" -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream")
+HEADERS=(-H "Authorization: Bearer $API_KEY" -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream")
 SESSION_ID=""
 
 # post <json>: sends one JSON-RPC message and sets STATUS, BODY, and SESSION_ID (when returned).

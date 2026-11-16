@@ -35,7 +35,7 @@ if ($NoKey) {
   $hint  = "-"
 } else {
   if (-not $ApiKey) { throw "Pass -ApiKey or set `$env:AI_GATEWAY_API_KEY to the runtime key to test" }
-  $headers["api-key"] = $ApiKey
+  $headers["Authorization"] = "Bearer $ApiKey"
   $hint = "..." + $ApiKey.Substring([Math]::Max(0, $ApiKey.Length - 4))
 }
 

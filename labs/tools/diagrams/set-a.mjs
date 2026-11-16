@@ -18,7 +18,7 @@ export const architecture = () => svgDoc('architecture', {
     o += zone(714, 20, 230, 220, 'Model providers', { ic: 'models', tone: 'azure' });
     o += list(732, 64, ['Microsoft Foundry', 'Azure OpenAI', 'OpenAI', 'Anthropic', 'AWS Bedrock', 'Google Vertex AI', 'Custom endpoints'], { tone: 'azure', gap: 23, cls: 'dg-t' });
     o += zone(714, 252, 230, 178, 'Tool sources', { ic: 'tools', tone: 'amber' });
-    o += list(732, 296, ['Remote MCP servers', 'OpenAPI specifications', 'Built-in connectors', 'Foundry Toolbox'], { tone: 'amber', gap: 25, cls: 'dg-t' });
+    o += list(732, 296, ['Remote MCP servers', 'OpenAPI specifications', 'Connector Namespaces', 'Foundry Toolbox'], { tone: 'amber', gap: 25, cls: 'dg-t' });
     o += arrow('M672 130 H710', { tone: 'azure' }) + arrow('M672 341 H710', { tone: 'amber' });
     return o;
   },
@@ -60,7 +60,7 @@ export const quickstart = () => svgDoc('quickstart', {
     o += zone(16, 228, 928, 224, '2 · Call the model · seconds', { ic: 'bolt', tone: 'violet' });
     o += node(90, 312, 'app', 'Your app', { tone: 'azure', sub: 'curl or OpenAI SDK', accent: false });
     o += zone(176, 264, 560, 172, 'AI Gateway', { gw: true, ic: 'sparkle' });
-    o += node(276, 312, 'key', 'Check the key', { sub: 'api-key header' });
+    o += node(276, 312, 'key', 'Check the key', { sub: 'Bearer key' });
     o += node(456, 312, 'route', 'Route the alias', { sub: 'gpt-5-mini → model' });
     o += node(636, 312, 'lock', 'Managed identity', { sub: 'Foundry User role' });
     o += node(860, 312, 'models', 'Foundry', { tone: 'azure', sub: 'gpt-5-mini deployment', accent: false });
@@ -74,7 +74,7 @@ export const quickstart = () => svgDoc('quickstart', {
 
 export const createGateway = () => svgDoc('create-gateway', {
   title: 'What to choose in Create AI gateway',
-  desc: 'Basics: a globally unique name of 24 characters or fewer, a subscription where you can create API Management and connector gateways, a new or existing resource group, and a region where AI Gateway is available. Advanced: keep the system-assigned managed identity enabled, public network access enabled, and public routing. Private routing is for virtual network backends, and you can also add it later under Networking. Then select Create gateway; provisioning takes a few minutes and Home opens with a setup guide.',
+  desc: 'Basics: a globally unique name of 24 characters or fewer, a subscription where you have Azure AI Gateway write access, a new or existing resource group, and a region where AI Gateway is available. Advanced: keep the system-assigned managed identity enabled, public network access enabled, and public routing. Private routing is for virtual network backends, and you can also add it later under Networking. Then select Create gateway; provisioning takes a few minutes and Home opens with a setup guide.',
   h: 424,
   body: () => {
     const row = (x, y, lbl, chips, help) => {
@@ -84,7 +84,7 @@ export const createGateway = () => svgDoc('create-gateway', {
     };
     let o = zone(16, 20, 456, 304, 'Basics', { ic: 'doc', tone: 'azure' });
     o += row(36, 74, 'Name', [['<gateway>', 'azure', true]], 'Globally unique, 24 characters or fewer');
-    o += row(36, 140, 'Subscription', [], 'Needs write access to API Management and connector gateways');
+    o += row(36, 140, 'Subscription', [], 'Needs Azure AI Gateway write access, such as Contributor');
     o += row(36, 206, 'Resource group', [['New', 'azure'], ['Existing', 'azure']], 'Holds the gateway');
     o += row(36, 272, 'Region', [], 'One where AI Gateway is available, as listed by the CLI');
     o += zone(488, 20, 456, 304, 'Advanced · keep the defaults', { ic: 'shield', tone: 'green' });
@@ -230,7 +230,7 @@ export const streamingUsage = () => svgDoc('streaming-usage', {
 
 export const mcpFederation = () => svgDoc('mcp-federation', {
   title: 'MCP tool federation through Azure AI Gateway',
-  desc: 'MCP clients connect to one MCP server endpoint on the gateway. The server federates tools from remote MCP servers, OpenAPI specifications, built-in connectors and Foundry Toolbox. Tool names are namespaced per backend, tool availability rules decide which tools clients see, and policies apply to every call.',
+  desc: 'MCP clients connect to one MCP server endpoint on the gateway. The server federates tools from remote MCP servers, OpenAPI specifications, Connector Namespaces imported from Azure, and Foundry Toolbox. Tool names are namespaced per backend, tool availability rules decide which tools clients see, and policies apply to every call.',
   h: 420,
   body: () => {
     let o = zone(16, 20, 214, 380, 'MCP clients', { ic: 'users', tone: 'azure' });
@@ -246,7 +246,7 @@ export const mcpFederation = () => svgDoc('mcp-federation', {
     o += text(290, 332, 'Tools are namespaced per backend:', 'dg-s');
     o += text(290, 354, 'aigw-github_github_list_issues', 'dg-m') + text(290, 374, 'learn_microsoft_docs_search', 'dg-m');
     o += zone(714, 20, 230, 380, 'Tool sources', { ic: 'tools', tone: 'amber' });
-    [['globe', 'Remote MCP server', 'SSE or Streamable HTTP'], ['doc', 'OpenAPI spec', 'Operations as tools'], ['plug', 'Connector', 'Microsoft 365, GitHub'], ['toolbox', 'Foundry Toolbox', 'Tools from Foundry']].forEach(([ic, t, s], i) => {
+    [['globe', 'Remote MCP server', 'SSE or Streamable HTTP'], ['doc', 'OpenAPI spec', 'Operations as tools'], ['plug', 'From Azure', 'Connector Namespaces'], ['toolbox', 'Foundry Toolbox', 'Tools from Foundry']].forEach(([ic, t, s], i) => {
       const y = 60 + i * 86;
       o += box(726, y, 206, 64, { t, s, icon: ic, tone: 'amber' });
       o += arrow(`M672 210 C700 210 694 ${y + 32} 722 ${y + 32}`, { tone: 'amber' });
@@ -296,7 +296,7 @@ export const identityBoundaries = () => svgDoc('identity-boundaries', {
     let o = pill(286, 10, 'Inbound: who is calling?', { tone: 'azure', anchor: 'middle' }) + pill(674, 10, 'Outbound: the gateway identity', { tone: 'green', anchor: 'middle' });
     o += `<path class="dg-ghost" d="M286 38 V324 M674 38 V324"/>`;
     o += zone(16, 44, 250, 280, 'Callers', { ic: 'users', tone: 'azure' });
-    [['key', 'App with API key', 'api-key header'], ['user', 'User or agent', 'Entra token (delegated)'], ['cloud', 'Workload', 'Managed identity token']].forEach(([ic, t, s], i) => {
+    [['key', 'App with API key', 'Bearer key'], ['user', 'User or agent', 'Entra token (delegated)'], ['cloud', 'Workload', 'Managed identity token']].forEach(([ic, t, s], i) => {
       const y = 82 + i * 80;
       o += box(28, y, 226, 64, { t, s, icon: ic, tone: 'azure' });
     });

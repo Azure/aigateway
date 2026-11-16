@@ -20,7 +20,7 @@ BASE="${AI_GATEWAY_URL%/}/default/models/openai/v1"
 call() {
   local label="$1" path="$2" body="$3" filter="$4" out status reply
   out=$(curl -sS -w '\n%{http_code}' "$BASE$path" \
-    -H "api-key: $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" -d "$body")
+    -H "Authorization: Bearer $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" -d "$body")
   status="${out##*$'\n'}"
   reply="${out%$'\n'*}"
   if [[ "$status" == 2* ]]; then

@@ -29,7 +29,7 @@ function Send-Chat([string]$ModelName, [string]$Prompt, [string]$CorrelationId) 
     messages = @(@{ role = 'user'; content = $Prompt })
   } | ConvertTo-Json -Depth 5
   $r = Invoke-WebRequest -Method Post -Uri $uri -Body $body -ContentType 'application/json' -SkipHttpErrorCheck `
-    -Headers @{ 'api-key' = $env:AI_GATEWAY_API_KEY; 'x-correlation-id' = $CorrelationId }
+    -Headers @{ Authorization = "Bearer $env:AI_GATEWAY_API_KEY"; 'x-correlation-id' = $CorrelationId }
   [pscustomobject]@{ Request = $null; Model = $ModelName; Status = $r.StatusCode; 'x-correlation-id' = $CorrelationId }
 }
 

@@ -26,7 +26,7 @@ printf '%-8s %-7s %-12s %-12s %s\n' "Request" "Status" "Retry-After" "Tokens use
 for i in $(seq 1 "$REQUESTS"); do
   headers=$(mktemp)
   response=$(curl -sS -D "$headers" -o - "$URL" \
-    -H "api-key: $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" -d "$BODY")
+    -H "Authorization: Bearer $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" -d "$BODY")
   status=$(awk 'toupper($1) ~ /^HTTP/ {code=$2} END {print code}' "$headers")
   backend=$(awk -F': ' 'tolower($1)=="x-ratelimit-remaining-tokens" {gsub("\r","",$2); print $2}' "$headers")
   retry=$(awk -F': ' 'tolower($1)=="retry-after" {gsub("\r","",$2); print $2}' "$headers")

@@ -31,7 +31,7 @@ trap 'rm -f "$headers" "$body"' EXIT
 printf '%-8s %-7s %-12s %-7s %s\n' "Request" "Status" "Retry-After" "Events" "Usage chunk"
 for i in $(seq 1 "$REQUESTS"); do
   curl -sSN -D "$headers" -o "$body" "$URL" \
-    -H "api-key: $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" -d "$BODY"
+    -H "Authorization: Bearer $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" -d "$BODY"
   status=$(awk 'toupper($1) ~ /^HTTP/ {code=$2} END {print code}' "$headers")
   retry=$(awk -F': ' 'tolower($1)=="retry-after" {gsub("\r","",$2); print $2}' "$headers")
   if [[ "$status" == 200 ]]; then

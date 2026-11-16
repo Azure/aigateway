@@ -12,7 +12,7 @@
       "type": "http",
       "url": "<gateway-url>/default/toolservers/learn/mcp",
       "headers": {
-        "api-key": "${input:aigw-key}"
+        "Authorization": "Bearer ${input:aigw-key}"
       }
     }
   }

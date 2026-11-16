@@ -106,7 +106,8 @@
         "15-agent-frameworks",
         "16-foundry-hosted-agent",
         "17-coding-agent-plugin",
-        "24-github-copilot-byok"
+        "24-github-copilot-byok",
+        "25-claude-code"
       ]
     },
     {
@@ -235,6 +236,12 @@
         "text": "Run Copilot in VS Code, the CLI, the SDK, and the app on models and MCP tools your gateway governs."
       },
       {
+        "title": "Claude Code on your models and tools",
+        "lab": "25-claude-code",
+        "icon": "cli",
+        "text": "Run Claude Code on Claude models from Foundry, with MCP tools, token limits, and budgets your gateway governs."
+      },
+      {
         "title": "Streaming with accurate usage",
         "lab": "23-streaming-responses",
         "icon": "stream",
@@ -268,6 +275,7 @@
     "21-enterprise-reference": "Enterprise reference",
     "22-model-routing": "Priority & weighted routing",
     "23-streaming-responses": "Streaming responses",
-    "24-github-copilot-byok": "GitHub Copilot BYOK"
+    "24-github-copilot-byok": "GitHub Copilot BYOK",
+    "25-claude-code": "Claude Code"
   }
 }

@@ -206,7 +206,7 @@ Call the model through the gateway in the playground, with your new key, the way
    for cURL, the OpenAI SDK, LangChain, Vercel AI, the GitHub Copilot SDK, and Microsoft Agent Framework, plus a
    prompt that installs the AI Gateway plugin in your coding agent.
 
-   ![Continue in code with the cURL snippet selected, which calls the alias with the api-key header](../assets/screens/quickstart-13-code.webp "The cURL snippet has your gateway's URL and alias, and reads the key from the AI_GATEWAY_API_KEY environment variable.")
+   ![Continue in code with the cURL snippet selected, which calls the alias with the key as a bearer token](../assets/screens/quickstart-13-code.webp "The cURL snippet has your gateway's URL and alias, and reads the key from the AI_GATEWAY_API_KEY environment variable.")
 
 To run the cURL snippet, open [Azure Cloud Shell](https://shell.azure.com) in Bash, paste your key at this prompt so
 that it never shows on screen, and then paste the snippet:
@@ -478,14 +478,14 @@ Write-Host "🔖 Model alias: $env:AI_GATEWAY_MODEL"
 ### Make your first call
 
 Send a Chat Completions request to the gateway's OpenAI-compatible base URL, the way an app does: the alias in the
-`model` field and the key in the `api-key` header.
+`model` field and the key as a bearer token.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# Call the model through the gateway, the way an app does: the alias in model, and the key in the api-key header
+# Call the model through the gateway, the way an app does: the alias in model, and the key as a bearer token
 curl -sS "$AI_GATEWAY_URL/default/models/openai/v1/chat/completions" \
-  -H "api-key: $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
   -d "{\"model\":\"$AI_GATEWAY_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"In one sentence, what does an AI gateway do?\"}]}" \
   | jq -r 'if .choices then "🤖 \(.choices[0].message.content)" else "🚨 \(.error.message // .)" end'
 ```
@@ -500,9 +500,9 @@ $body = @{
   messages = @(@{ role = "user"; content = "In one sentence, what does an AI gateway do?" })
 } | ConvertTo-Json -Depth 5
 
-# Call the model through the gateway, the way an app does: with the key in the api-key header
+# Call the model through the gateway, the way an app does: with the key as a bearer token
 $reply = Invoke-RestMethod -Method Post -Uri "$env:AI_GATEWAY_URL/default/models/openai/v1/chat/completions" `
-  -Headers @{ "api-key" = $env:AI_GATEWAY_API_KEY } -ContentType "application/json" -Body $body
+  -Headers @{ Authorization = "Bearer $env:AI_GATEWAY_API_KEY" } -ContentType "application/json" -Body $body
 if ($?) { Write-Host "🤖 $($reply.choices[0].message.content)" }
 ```
 </details> <!-- gh -->
@@ -835,14 +835,14 @@ Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) c
 ### Make your first call
 
 Send a Chat Completions request to the gateway's OpenAI-compatible base URL, the way an app does: the alias in the
-`model` field and the key in the `api-key` header.
+`model` field and the key as a bearer token.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# Call the model through the gateway, the way an app does: the alias in model, and the key in the api-key header
+# Call the model through the gateway, the way an app does: the alias in model, and the key as a bearer token
 curl -sS "$AI_GATEWAY_URL/default/models/openai/v1/chat/completions" \
-  -H "api-key: $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" \
   -d "{\"model\":\"$AI_GATEWAY_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"In one sentence, what does an AI gateway do?\"}]}" \
   | jq -r 'if .choices then "🤖 \(.choices[0].message.content)" else "🚨 \(.error.message // .)" end'
 ```
@@ -857,9 +857,9 @@ $body = @{
   messages = @(@{ role = "user"; content = "In one sentence, what does an AI gateway do?" })
 } | ConvertTo-Json -Depth 5
 
-# Call the model through the gateway, the way an app does: with the key in the api-key header
+# Call the model through the gateway, the way an app does: with the key as a bearer token
 $reply = Invoke-RestMethod -Method Post -Uri "$env:AI_GATEWAY_URL/default/models/openai/v1/chat/completions" `
-  -Headers @{ "api-key" = $env:AI_GATEWAY_API_KEY } -ContentType "application/json" -Body $body
+  -Headers @{ Authorization = "Bearer $env:AI_GATEWAY_API_KEY" } -ContentType "application/json" -Body $body
 if ($?) { Write-Host "🤖 $($reply.choices[0].message.content)" }
 ```
 </details> <!-- gh -->

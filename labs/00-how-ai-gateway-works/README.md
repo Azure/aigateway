@@ -91,7 +91,7 @@ you can keep business APIs in API Management and send model and tool traffic thr
 | **Alias** | The stable, gateway-wide name clients send in the `model` field | `chat` |
 | **MCP server** | One governed MCP endpoint that federates tools from one or more sources | `/default/toolservers/<server-name>/mcp` |
 | **Policy** | A rule on the gateway or on one asset: limits, budgets, safety, filters | Token rate limit, Cost limit |
-| **Access** | How callers authenticate: API keys or Microsoft Entra ID roles | `api-key` header or Entra token |
+| **Access** | How callers authenticate: API keys or Microsoft Entra ID roles | `Authorization: Bearer` with a key or an Entra token |
 | **Managed identity** | How the gateway authenticates to backends | Foundry User role on the Foundry account |
 | **Monitoring** | OpenTelemetry metrics, logs, and traces for every call | Application Insights or any OTLP endpoint |
 
@@ -142,8 +142,9 @@ custom OpenAI-compatible endpoints behind aliases. You try it in
 ## MCP servers and tools
 
 Agents need tools as much as models. An **MCP server** on the gateway gives agents one endpoint and one credential
-for tools from remote MCP servers, OpenAPI specifications, built-in connectors, and Foundry Toolbox. Tool names are
-namespaced per source, and **tool availability** decides which tools clients can see and call.
+for tools from remote MCP servers, OpenAPI specifications, Foundry Toolbox, and MCP servers you import from Azure,
+such as the connector tools of a Connector Namespace. Tool names are namespaced per source, and
+**tool availability** decides which tools clients can see and call.
 
 ![MCP tool federation](../assets/diagrams/mcp-federation.svg "One MCP endpoint federates tools from several sources. Tool availability and policies apply to every call.")
 

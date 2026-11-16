@@ -11,7 +11,7 @@ tags: [Entra ID, RBAC, keyless, DefaultAzureCredential, managed identity, bearer
 objectives:
   - Choose between AI Gateway User, AI Gateway Models User, and AI Gateway Tools User, and pick the narrowest scope
   - Assign a data-plane role in the portal or with az role assignment create
-  - Acquire a token for the https://azure-api.net/aigateway audience and send it as a bearer token
+  - Acquire a token for the https://ai.gateway.azure.com resource and send it as a bearer token
   - Call a model from Python, TypeScript, and C# with DefaultAzureCredential and no API key
   - Tell a 401 from a 403 and fix each one
 prereqs:
@@ -34,7 +34,7 @@ prereqs:
 
 - Choose between AI Gateway User, AI Gateway Models User, and AI Gateway Tools User, and pick the narrowest scope
 - Assign a data-plane role in the portal or with az role assignment create
-- Acquire a token for the https://azure-api.net/aigateway audience and send it as a bearer token
+- Acquire a token for the https://ai.gateway.azure.com resource and send it as a bearer token
 - Call a model from Python, TypeScript, and C# with DefaultAzureCredential and no API key
 - Tell a 401 from a 403 and fix each one
 
@@ -151,7 +151,7 @@ Access to AI Gateway crosses two trust boundaries. **Inbound**, your app authent
 endpoint. **Outbound**, the gateway authenticates to each model or tool with its own credential, which you
 set up in [Call backends with managed identities](../12-backend-identity/README.md).
 
-For inbound Entra access, the caller gets an access token for the audience `https://azure-api.net/aigateway`
+For inbound Entra access, the caller gets an access token for AI Gateway's resource, `https://ai.gateway.azure.com`,
 and sends it in the `Authorization: Bearer <token>` header. The gateway validates the token at its edge, then
 checks the caller's Azure RBAC role assignments for the model alias or MCP server in the request. Without a
 matching role, it answers `403` before any policy or backend runs. These roles grant **runtime** access only,
@@ -165,9 +165,9 @@ not gateway administration.
 
 | Caller | Token type | Scope to request |
 |---|---|---|
-| App that signs users in with MSAL | Delegated (on behalf of the user) | `https://azure-api.net/aigateway/Data.All` |
-| Service principal, managed identity, or agent identity | App-only | `https://azure-api.net/aigateway/.default` |
-| You, signed in to the Azure CLI | Delegated | `az account get-access-token --resource https://azure-api.net/aigateway` |
+| App that signs users in with MSAL | Delegated (on behalf of the user) | `https://ai.gateway.azure.com/Data.All` |
+| Service principal, managed identity, or agent identity | App-only | `https://ai.gateway.azure.com/.default` |
+| You, signed in to the Azure CLI | Delegated | `az account get-access-token --scope https://ai.gateway.azure.com/Data.All` |
 
 Policies that count by **Caller identity**, such as the token limits and budgets in labs 06 and 07, keep
 working: for Entra callers, the gateway combines the token's tenant ID (`tid`) and object ID (`oid`), so each
@@ -828,7 +828,7 @@ The Azure CLI can issue a token for the AI Gateway audience with your sign-in:
 ```bash title="Bash"
 # Get an access token for the AI Gateway audience, with your Azure CLI sign-in
 export AI_GATEWAY_TOKEN="$(az account get-access-token \
-  --resource https://azure-api.net/aigateway --query accessToken -o tsv)"
+  --scope https://ai.gateway.azure.com/Data.All --query accessToken -o tsv)"
 echo "👤 Token acquired: in AI_GATEWAY_TOKEN (${#AI_GATEWAY_TOKEN} characters, not shown)"
 ```
 </details> <!-- gh -->
@@ -838,7 +838,7 @@ echo "👤 Token acquired: in AI_GATEWAY_TOKEN (${#AI_GATEWAY_TOKEN} characters,
 ```powershell title="PowerShell"
 # Get an access token for the AI Gateway audience, with your Azure CLI sign-in
 $env:AI_GATEWAY_TOKEN = az account get-access-token `
-  --resource https://azure-api.net/aigateway --query accessToken -o tsv
+  --scope https://ai.gateway.azure.com/Data.All --query accessToken -o tsv
 Write-Host "👤 Token acquired: in AI_GATEWAY_TOKEN ($($env:AI_GATEWAY_TOKEN.Length) characters, not shown)"
 ```
 </details> <!-- gh -->
@@ -855,7 +855,7 @@ Decode the token's payload (the middle segment) to see what the gateway checks:
 # Decode the token's payload, its middle segment, and show the claims that the gateway checks
 echo "👤 Token claims:"
 jq -R 'split(".")[1] | gsub("-";"+") | gsub("_";"/") | @base64d | fromjson
-  | {aud, tid, oid, scp, appid}' <<< "$AI_GATEWAY_TOKEN"
+  | {aud, tid, oid, scp, azp}' <<< "$AI_GATEWAY_TOKEN"
 ```
 </details> <!-- gh -->
 
@@ -869,19 +869,20 @@ $payload = $payload.PadRight($payload.Length + (4 - $payload.Length % 4) % 4, '=
 # Decode the payload, and show the claims that the gateway checks
 Write-Host "👤 Token claims:"
 [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($payload)) |
-  ConvertFrom-Json | Select-Object aud, tid, oid, scp, appid
+  ConvertFrom-Json | Select-Object aud, tid, oid, scp, azp
 ```
 </details> <!-- gh -->
 
-`aud` is `https://azure-api.net/aigateway`, `scp` includes `Data.All` because the CLI gets a delegated token
-for you, and `tid` plus `oid` identify you to per-caller policies.
+`aud` is `18550318-e177-4205-a743-6816d6fcdc3f`, AI Gateway's app ID. `scp` is `Data.All` because the CLI gets a
+delegated token for you, `azp` is the Azure CLI's client ID, and `tid` plus `oid` identify you to per-caller
+policies.
 
 ### Call the model with the bearer token
 
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# Call the model with your token in the Authorization header, and no api-key header
+# Call the model with your token in the Authorization header, where a key would go
 curl -sS "${AI_GATEWAY_URL%/}/default/models/openai/v1/chat/completions" \
   -H "Authorization: Bearer $AI_GATEWAY_TOKEN" \
   -H "Content-Type: application/json" \
@@ -899,7 +900,7 @@ $body = @{
   messages = @(@{ role = "user"; content = "Say hello in five words." })
 } | ConvertTo-Json -Depth 5
 
-# Call the model with your token in the Authorization header, and no api-key header
+# Call the model with your token in the Authorization header, where a key would go
 $response = Invoke-RestMethod -Method Post `
   -Uri "$($env:AI_GATEWAY_URL.TrimEnd('/'))/default/models/openai/v1/chat/completions" `
   -Headers @{ Authorization = "Bearer $env:AI_GATEWAY_TOKEN" } `
@@ -909,10 +910,11 @@ if ($?) { Write-Host "🤖 $($response.choices[0].message.content)" }
 </details> <!-- gh -->
 
 > [!WARNING]
-> Send a token or a key, never both. A request with an `Authorization` header and an `api-key` header gets `400`.
+> A token takes the key's place in the same `Authorization` header. Remove any `api-key` header that older code
+> adds: a request with both gets `400`.
 
 > **Checkpoint**
-> The model replies, and no `api-key` header was sent.
+> The model replies, and no runtime key was sent.
 
 </details> <!-- gh -->
 <!-- track: code | Code -->
@@ -977,7 +979,7 @@ from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from openai import OpenAI
 
 token_provider = get_bearer_token_provider(
-    DefaultAzureCredential(), "https://azure-api.net/aigateway/.default")
+    DefaultAzureCredential(), "https://ai.gateway.azure.com/.default")
 
 client = OpenAI(
     base_url=f"{gateway_url}/default/models/openai/v1",
@@ -993,7 +995,7 @@ import { DefaultAzureCredential, getBearerTokenProvider } from "@azure/identity"
 import OpenAI from "openai";
 
 const getToken = getBearerTokenProvider(
-  new DefaultAzureCredential(), "https://azure-api.net/aigateway/.default");
+  new DefaultAzureCredential(), "https://ai.gateway.azure.com/.default");
 
 const client = new OpenAI({
   baseURL: `${gatewayUrl}/default/models/openai/v1`,
@@ -1007,7 +1009,7 @@ const client = new OpenAI({
 ```csharp title="C#"
 var credential = new DefaultAzureCredential();
 AccessToken token = await credential.GetTokenAsync(
-    new TokenRequestContext(new[] { "https://azure-api.net/aigateway/.default" }));
+    new TokenRequestContext(new[] { "https://ai.gateway.azure.com/.default" }));
 
 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.Token);
 ```
@@ -1050,7 +1052,7 @@ from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from openai import OpenAI
 
 # App-only and managed identity callers must use /.default. It also works for an Azure CLI sign-in.
-AI_GATEWAY_SCOPE = "https://azure-api.net/aigateway/.default"
+AI_GATEWAY_SCOPE = "https://ai.gateway.azure.com/.default"
 
 gateway_url = os.environ["AI_GATEWAY_URL"].rstrip("/")
 model = os.environ["AI_GATEWAY_MODEL"]
@@ -1097,7 +1099,7 @@ import { DefaultAzureCredential, getBearerTokenProvider } from "@azure/identity"
 import OpenAI from "openai";
 
 // App-only and managed identity callers must use /.default. It also works for an Azure CLI sign-in.
-const AI_GATEWAY_SCOPE = "https://azure-api.net/aigateway/.default";
+const AI_GATEWAY_SCOPE = "https://ai.gateway.azure.com/.default";
 
 function required(name: string): string {
   const value = process.env[name];
@@ -1151,7 +1153,7 @@ using Azure.Core;
 using Azure.Identity;
 
 // App-only and managed identity callers must use /.default. It also works for an Azure CLI sign-in.
-const string AiGatewayScope = "https://azure-api.net/aigateway/.default";
+const string AiGatewayScope = "https://ai.gateway.azure.com/.default";
 
 static string Required(string name) =>
     Environment.GetEnvironmentVariable(name) is { Length: > 0 } value
