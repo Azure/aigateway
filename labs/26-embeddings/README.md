@@ -1373,5 +1373,5 @@ because the Bicep + azd track created its own gateway.
 | :-- | :-: | --: |
 | [23 · Streaming responses](../23-streaming-responses/README.md) | [All labs](../README.md) | [31 · Jev decisions](../31-jev-decisions/README.md) |
 
-<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (3 of 13)</sub>
+<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (3 of 14)</sub>
 <!-- gh:end -->

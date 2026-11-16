@@ -220,14 +220,14 @@ const PX = {
 // Each part lists its icon (if any) and its labs: the first is the lab it previews, the rest are related labs, most related first.
 const HX = {
   controls: [
-    ['ctl-entra', 'Microsoft Entra ID', ['11-entra-rbac', '10-api-keys', '12-backend-identity', '07-cost-budgets', '14-otel-chargeback', '16-foundry-hosted-agent']],
+    ['ctl-entra', 'Microsoft Entra ID', ['11-entra-rbac', '10-api-keys', '12-backend-identity', '07-cost-budgets', '14-otel-chargeback', '16-foundry-hosted-agent', '32-foundry-gateway-connection']],
     ['ctl-cs', 'Azure AI Content Safety', ['08-content-safety', '09-gateway-baselines', '19-tool-threat-protection', '05-mcp-tool-controls', '21-enterprise-reference']],
     ['ctl-a365', 'Microsoft Agent 365', ['20-agent-365-governance', '19-tool-threat-protection', '05-mcp-tool-controls', '04-federate-mcp-tools', '21-enterprise-reference']],
-    ['ctl-mi', 'Managed identities', ['12-backend-identity', '11-entra-rbac', '16-foundry-hosted-agent', '30-agent-hooks', '18-private-networking', '21-enterprise-reference']],
+    ['ctl-mi', 'Managed identities', ['12-backend-identity', '11-entra-rbac', '16-foundry-hosted-agent', '32-foundry-gateway-connection', '30-agent-hooks', '18-private-networking', '21-enterprise-reference']],
   ],
   workloads: [
     ['wl-apps', 'AI apps', ['02-first-model-call', 'quickstart', '03-multi-provider-aliases', '26-embeddings', '31-jev-decisions', '22-model-routing', '23-streaming-responses'], 'apps'],
-    ['wl-agents', 'AI agents', ['15-agent-frameworks', '16-foundry-hosted-agent', '04-federate-mcp-tools', '05-mcp-tool-controls', '30-agent-hooks', '20-agent-365-governance', '19-tool-threat-protection'], 'agents'],
+    ['wl-agents', 'AI agents', ['15-agent-frameworks', '16-foundry-hosted-agent', '32-foundry-gateway-connection', '04-federate-mcp-tools', '05-mcp-tool-controls', '30-agent-hooks', '20-agent-365-governance', '19-tool-threat-protection'], 'agents'],
     ['wl-coding', 'Coding agents', ['24-github-copilot-byok', '25-claude-code', '17-coding-agent-plugin', '04-federate-mcp-tools', '06-token-limits', '07-cost-budgets'], 'code'],
   ],
   gateway: ['gw', 'Azure AI Gateway', ['00-how-ai-gateway-works', 'quickstart', '01-provision-gateway', '02-first-model-call', '03-multi-provider-aliases', '21-enterprise-reference']],

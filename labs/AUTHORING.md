@@ -392,7 +392,7 @@ Kinds: `NOTE`, `TIP`, `IMPORTANT`, `WARNING`, `CAUTION`. A blockquote starting w
   Create API key dialogs, Catalog, the playground, Continue in code, and deleting the gateway from All gateways.
   Each new lab has its own set: `embeddings-01…08-*.webp` (lab 26), `routing-conditions-01…05-*.webp` (lab 27),
   `auto-selection-01…10-*.webp` (lab 28), `failover-01…07-*.webp` (lab 29), `agent-hooks-01…06-*.webp` (lab 30),
-  and `jev-01…15-*.webp` (lab 31).
+  `jev-01…15-*.webp` (lab 31), and `foundry-conn-01…13-*.webp` (lab 32, in the Microsoft Foundry portal).
 - New screenshots: crop to the relevant area, replace real names, emails, and IDs with Contoso placeholders, mask
   every key, highlight the controls to select with magenta (`#e3008c`) boxes, and save as WebP, 1600 px wide at most.
 - Diagrams in `assets/diagrams/`: `architecture.svg`, `request-lifecycle.svg`, `aliases.svg`,
@@ -400,7 +400,7 @@ Kinds: `NOTE`, `TIP`, `IMPORTANT`, `WARNING`, `CAUTION`. A blockquote starting w
   `private-networking.svg`, `hosted-agent.svg`, `agent-365.svg`, `threat-protection.svg`, `token-limits.svg`,
   `alias-routing.svg`, `streaming-usage.svg`, `quickstart.svg`, `github-copilot-byok.svg`, `claude-code.svg`,
   `embeddings.svg`, `conditional-routing.svg`, `auto-model-selection.svg`, `model-failover.svg`, `agent-hooks.svg`,
-  `jev-decisions.svg`.
+  `jev-decisions.svg`, `foundry-connection.svg`.
 - Provider logos in `assets/providers/`: `microsoft-foundry.png`, `azure-openai.png`, `openai.png`,
   `anthropic.png`, `aws-bedrock.png`, `google-vertex.png`, `custom-models.png`.
 

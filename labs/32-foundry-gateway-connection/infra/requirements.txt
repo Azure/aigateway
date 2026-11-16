@@ -1,0 +1,7 @@
+# Tested together on Python 3.14 (Python 3.10 or later is required).
+#   python -m venv .venv
+#   source .venv/bin/activate          # Windows: .venv\Scripts\Activate.ps1
+#   pip install -r requirements.txt
+azure-ai-projects==2.11.0
+azure-identity==1.27.0
+openai==3.48.0

@@ -972,6 +972,9 @@ it had. When the alias has no policies left, the update prints no policies, only
 - **Use another framework.** Swap the agent's internals for the OpenAI Agents SDK or LangGraph, as in
   [Connect agent frameworks to models and tools](../15-agent-frameworks/README.md). The gateway settings stay the
   same.
+- **Skip the agent code.** A gateway connection gives a Foundry project's playground and prompt agents the gateway's
+  models, with no code to deploy, as in
+  [Use gateway models in Microsoft Foundry projects](../32-foundry-gateway-connection/README.md).
 - **Charge the agent back.** Attribute its tokens and estimated cost with
   [Attribute tokens and cost with OpenTelemetry](../14-otel-chargeback/README.md).
 
@@ -1074,7 +1077,7 @@ as `aigw-lab16b`: in a Foundry project that you recreate with the same name, `az
 
 | ⬅️ Previous | 🏠 | Next ➡️ |
 | :-- | :-: | --: |
-| [15 · Agent frameworks](../15-agent-frameworks/README.md) | [All labs](../README.md) | [17 · Coding-agent plugin](../17-coding-agent-plugin/README.md) |
+| [15 · Agent frameworks](../15-agent-frameworks/README.md) | [All labs](../README.md) | [32 · Foundry gateway connection](../32-foundry-gateway-connection/README.md) |
 
-<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (10 of 13)</sub>
+<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (10 of 14)</sub>
 <!-- gh:end -->

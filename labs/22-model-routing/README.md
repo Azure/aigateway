@@ -1119,5 +1119,5 @@ own gateway.
 | :-- | :-: | --: |
 | [03 · Multi-provider aliases](../03-multi-provider-aliases/README.md) | [All labs](../README.md) | [27 · Conditions & session affinity](../27-conditional-routing/README.md) |
 
-<sub>Learning paths: [Platform engineer](../README.md#learning-paths) (4 of 11) · [App & agent developer](../README.md#learning-paths) (4 of 13)</sub>
+<sub>Learning paths: [Platform engineer](../README.md#learning-paths) (4 of 11) · [App & agent developer](../README.md#learning-paths) (4 of 14)</sub>
 <!-- gh:end -->

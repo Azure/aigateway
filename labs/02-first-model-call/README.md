@@ -1529,5 +1529,5 @@ azd down --purge --force &&
 | :-- | :-: | --: |
 | [01 · Provision a gateway](../01-provision-gateway/README.md) | [All labs](../README.md) | [03 · Multi-provider aliases](../03-multi-provider-aliases/README.md) |
 
-<sub>Learning paths: [30-minute essentials](../README.md#learning-paths) (3 of 4) · [Platform engineer](../README.md#learning-paths) (2 of 11) · [App & agent developer](../README.md#learning-paths) (1 of 13)</sub>
+<sub>Learning paths: [30-minute essentials](../README.md#learning-paths) (3 of 4) · [Platform engineer](../README.md#learning-paths) (2 of 11) · [App & agent developer](../README.md#learning-paths) (1 of 14)</sub>
 <!-- gh:end -->

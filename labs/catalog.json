@@ -110,6 +110,7 @@
         "04-federate-mcp-tools",
         "15-agent-frameworks",
         "16-foundry-hosted-agent",
+        "32-foundry-gateway-connection",
         "17-coding-agent-plugin",
         "24-github-copilot-byok",
         "25-claude-code"
@@ -237,6 +238,12 @@
         "text": "Route every model and tool call an agent makes through one control point."
       },
       {
+        "title": "Gateway models in Foundry projects",
+        "lab": "32-foundry-gateway-connection",
+        "icon": "layers",
+        "text": "Give Foundry projects the platform team's models through one gateway connection, with no deployments or keys."
+      },
+      {
         "title": "Tool allow and block lists",
         "lab": "05-mcp-tool-controls",
         "icon": "filter",
@@ -325,6 +332,7 @@
     "28-auto-model-selection": "Auto model selection",
     "29-model-failover": "Model failover",
     "30-agent-hooks": "Agent hooks",
-    "31-jev-decisions": "Jev decisions"
+    "31-jev-decisions": "Jev decisions",
+    "32-foundry-gateway-connection": "Foundry gateway connection"
   }
 }

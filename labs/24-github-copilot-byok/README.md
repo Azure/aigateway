@@ -2218,5 +2218,5 @@ gateway.
 | :-- | :-: | --: |
 | [17 · Coding-agent plugin](../17-coding-agent-plugin/README.md) | [All labs](../README.md) | [25 · Claude Code](../25-claude-code/README.md) |
 
-<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (12 of 13)</sub>
+<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (13 of 14)</sub>
 <!-- gh:end -->

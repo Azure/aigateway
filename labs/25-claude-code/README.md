@@ -1892,5 +1892,5 @@ portal.
 | :-- | :-: | --: |
 | [24 · GitHub Copilot BYOK](../24-github-copilot-byok/README.md) | [All labs](../README.md) | [18 · Private networking](../18-private-networking/README.md) |
 
-<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (13 of 13)</sub>
+<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (14 of 14)</sub>
 <!-- gh:end -->

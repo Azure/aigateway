@@ -619,7 +619,7 @@ gemini extensions uninstall aigateway &&
 
 | ⬅️ Previous | 🏠 | Next ➡️ |
 | :-- | :-: | --: |
-| [16 · Foundry hosted agent](../16-foundry-hosted-agent/README.md) | [All labs](../README.md) | [24 · GitHub Copilot BYOK](../24-github-copilot-byok/README.md) |
+| [32 · Foundry gateway connection](../32-foundry-gateway-connection/README.md) | [All labs](../README.md) | [24 · GitHub Copilot BYOK](../24-github-copilot-byok/README.md) |
 
-<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (11 of 13)</sub>
+<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (12 of 14)</sub>
 <!-- gh:end -->

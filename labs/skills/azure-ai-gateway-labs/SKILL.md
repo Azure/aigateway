@@ -199,6 +199,15 @@ Before you create, change, or delete Azure resources, confirm the subscription a
   `POST <runtime URL>/default/models/typesafe/v1/systemone` with the alias in `model` and a gateway key or Entra
   token, never the TypeSafe key. The TypeSafe SDK needs `base_url = <runtime URL>/default/models/typesafe` and
   `compression=False` (a compressed body answers `415`). Request and token limits apply.
+- A Microsoft Foundry project can use the gateway's aliases through a gateway connection (category `ApiManagement`,
+  target `<runtime URL>/default/models/openai/v1`, `authType: ProjectManagedIdentity`, audience
+  `https://azure-api.net/aigateway`). The project's managed identity needs **AI Gateway Models User** on
+  `<gateway id>/workspaces/default`, which the Foundry portal doesn't assign; without it, calls answer `403`
+  `Access to model is denied`. The model's Foundry name is `<connection>/<alias>`, and the portal names the
+  connection after the gateway. The playground, prompt agents, and the project's Responses API
+  (`<project endpoint>/openai/v1/responses`, with a token for `https://ai.azure.com`) serve it; the project's Chat
+  Completions answers `404` `DeploymentNotFound`. Gateway policies apply per project identity, and Foundry wraps a
+  gateway `429` in `rate_limit_exceeded` with the gateway's message and `Retry-After`.
 - Streaming (`"stream": true`) returns `text/event-stream` chunks and ends with `data: [DONE]`. Chat Completions
   sends a usage chunk with empty `choices` only when the client sets `stream_options.include_usage`, and
   `stream_options` without `stream` answers `400`. The gateway counts the tokens of every stream for limits,
@@ -279,6 +288,7 @@ Each entry shows the level, time, tracks, and the labs it needs.
 
 - **15** [Connect agent frameworks to models and tools](https://azure.github.io/aigateway/labs/15-agent-frameworks/index.md) `15-agent-frameworks` (Intermediate, 30 min · Code, Notebook · needs 02, 04): Point Microsoft Agent Framework, the OpenAI Agents SDK, and LangChain with LangGraph at the gateway's OpenAI-compatible model endpoint and its MCP endpoint, so every model and tool call an agent makes passes through gateway policies and shows up in Monitoring.
 - **16** [Deploy a Foundry hosted agent behind AI Gateway](https://azure.github.io/aigateway/labs/16-foundry-hosted-agent/index.md) `16-foundry-hosted-agent` (Intermediate, 45 min · Portal, CLI, Code, Notebook · needs 02, 04): Deploy your own Microsoft Agent Framework agent to Foundry Hosted Agents with azd. The agent has no model deployment, no direct tool access, and no keys. It calls its model through AI Gateway with its own Microsoft Entra Agent ID, and reaches the Microsoft Learn MCP server through a Foundry toolbox that signs in with the project's managed identity. Run it locally, invoke it in Foundry, and cap its tokens without changing its code.
+- **32** [Use gateway models in Microsoft Foundry projects](https://azure.github.io/aigateway/labs/32-foundry-gateway-connection/index.md) `32-foundry-gateway-connection` (Intermediate, 35 min · Portal, CLI, Bicep, Code, Notebook · needs 02): Connect a Microsoft Foundry project to Azure AI Gateway, so that the project's playground, agents, and code call the platform team's models with the project's managed identity, with no model deployments or keys in the project. Then cap the project's tokens with a gateway policy and manage the connection.
 - **17** [Build on your gateway with coding agents](https://azure.github.io/aigateway/labs/17-coding-agent-plugin/index.md) `17-coding-agent-plugin` (Beginner, 15 min · Code, Notebook · needs 02): Install the AI Gateway plugin in GitHub Copilot CLI, Claude Code, Cursor, or Gemini CLI, then let your coding agent discover the gateway's models and MCP tools and generate working client code.
 - **24** [Use your gateway's models and tools in GitHub Copilot](https://azure.github.io/aigateway/labs/24-github-copilot-byok/index.md) `24-github-copilot-byok` (Intermediate, 40 min · Portal, CLI, Bicep, Code, Notebook · needs 02): Point GitHub Copilot in VS Code, the Copilot CLI, the Copilot SDK, and the GitHub Copilot app at gpt-6.1-sol published by your gateway, then give them Microsoft Learn tools from an MCP server on the same gateway, so every model and tool call uses your key, your limits, and your monitoring.
 - **25** [Use your gateway's models and tools in Claude Code](https://azure.github.io/aigateway/labs/25-claude-code/index.md) `25-claude-code` (Intermediate, 40 min · Portal, CLI, Bicep, Code, Notebook · needs 02): Point Claude Code at the Claude models that your gateway publishes from Microsoft Foundry, with a token limit and a daily budget for each caller, then give it Microsoft Learn tools from an MCP server on the same gateway, so every model and tool call uses your key, your limits, and your monitoring.
@@ -298,7 +308,7 @@ Each entry shows the level, time, tracks, and the labs it needs.
 | :-- | :-- | :-- |
 | 30-minute essentials | Everyone | 00 → 01 → 02 → 04 |
 | Platform engineer | Build the shared AI platform | 01 → 02 → 03 → 22 → 27 → 29 → 04 → 09 → 12 → 18 → 21 |
-| App & agent developer | Ship apps and agents on governed endpoints | 02 → 03 → 26 → 22 → 28 → 23 → 31 → 04 → 15 → 16 → 17 → 24 → 25 |
+| App & agent developer | Ship apps and agents on governed endpoints | 02 → 03 → 26 → 22 → 28 → 23 → 31 → 04 → 15 → 16 → 32 → 17 → 24 → 25 |
 | Security & compliance | Protect data, identities, and tools | 10 → 11 → 08 → 05 → 09 → 19 → 30 → 20 |
 | FinOps & operations | Control spend and run the gateway | 06 → 23 → 07 → 28 → 13 → 14 |
 <!-- gh:end -->
@@ -322,6 +332,7 @@ Each entry shows the level, time, tracks, and the labs it needs.
 | Auto model selection: Let the gateway send each prompt to a lower-cost or a higher-quality model behind one alias | 28 Auto model selection |
 | Typed decisions with Jev: Get yes/no probabilities, choices, and rubric scores from decision models behind a governed alias | 31 Jev decisions |
 | Agent frameworks & hosted agents: Route every model and tool call an agent makes through one control point | 16 Foundry hosted agent |
+| Gateway models in Foundry projects: Give Foundry projects the platform team's models through one gateway connection, with no deployments or keys | 32 Foundry gateway connection |
 | Tool allow and block lists: Expose only approved tools with exact lists and patterns | 05 Tool allow & block lists |
 | Chargeback with token claims: Attribute tokens and cost to tenants, apps, and cost centers | 14 OpenTelemetry chargeback |
 | Tool threat protection: Defender and Purview evaluate tool calls for injection and data risk | 19 Tool threat protection |
