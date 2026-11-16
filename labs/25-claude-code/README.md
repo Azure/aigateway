@@ -1249,13 +1249,13 @@ must be an environment variable, as the earlier steps set it.
 ### Ask a question that needs the docs
 
 Claude Code names the server's tools `mcp__ai-gateway-learn__<tool>`. `claude -p` can't ask for permission, so
-`--allowedTools` allows the server's tools up front:
+`--allowedTools "mcp__ai-gateway-learn__*"` allows all the server's tools up front:
 
 ```bash
 # Ask a question that needs current docs, and allow the Learn tools for this one-shot run
 echo "🤖 Claude Code answer, with the Learn tools:"
 claude -p "Use the Microsoft Learn tools to find the Azure Functions Core Tools command that creates a new Python function project. Answer in two sentences, with the command and the link to the page." \
-  --allowedTools "mcp__ai-gateway-learn"
+  --allowedTools "mcp__ai-gateway-learn__*"
 ```
 
 Expected output (your text differs):

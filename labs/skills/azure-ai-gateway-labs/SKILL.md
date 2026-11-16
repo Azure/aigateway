@@ -223,7 +223,7 @@ Before you create, change, or delete Azure resources, confirm the subscription a
   barely count toward token limits. It doesn't retry a `429`, and it reports a budget's `403` as "Failed to
   authenticate": switch with `/model sonnet` or `--model sonnet`, because `--fallback-model` doesn't cover a `403`.
   Add a gateway MCP server with `claude mcp add --transport http --scope user <name> <url> --header
-  'Authorization: Bearer ${AI_GATEWAY_API_KEY}'`, with `--header` last, and allow its tools in `claude -p` with `--allowedTools "mcp__<name>"`.
+  'Authorization: Bearer ${AI_GATEWAY_API_KEY}'`, with `--header` last, and allow its tools in `claude -p` with `--allowedTools "mcp__<name>__*"`.
 
 ## Lab catalog
 
