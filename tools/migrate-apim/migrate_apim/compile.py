@@ -41,6 +41,12 @@ from . import plan as _plan  # noqa: F401  (imported for its selector declaratio
 
 ERROR = "error"
 WARNING = "warning"
+# Neither a defect nor a risk: something true about the contract that the
+# reader may want to act on. A newer release existing does not make the
+# catalog wrong about the one it documents, so calling it a warning asked CI
+# to report a problem that is not there -- and `--strict` would have failed
+# on it. Printed, counted separately, never fatal.
+SUGGESTION = "suggestion"
 
 
 @dataclass(frozen=True)
@@ -65,6 +71,9 @@ class Compilation:
     def warn(self, check: str, message: str) -> None:
         self.diagnostics.append(Diagnostic(WARNING, check, message))
 
+    def suggest(self, check: str, message: str) -> None:
+        self.diagnostics.append(Diagnostic(SUGGESTION, check, message))
+
     @property
     def errors(self) -> list[Diagnostic]:
         return [d for d in self.diagnostics if d.severity == ERROR]
@@ -72,6 +81,10 @@ class Compilation:
     @property
     def warnings(self) -> list[Diagnostic]:
         return [d for d in self.diagnostics if d.severity == WARNING]
+
+    @property
+    def suggestions(self) -> list[Diagnostic]:
+        return [d for d in self.diagnostics if d.severity == SUGGESTION]
 
     def ok(self, *, strict: bool = False) -> bool:
         return not self.errors and not (strict and self.warnings)
@@ -191,14 +204,13 @@ def check_release_pin(catalog: dict[str, Any], releases: str, out: Compilation) 
 
     there, newest = max(comparable)
     if there > here:
-        # Advisory, not fatal. A gateway release is not this tool's build to
-        # redden: the catalog is a claim about one release, verified against
-        # that release, and it stays true when a newer one ships. Failing here
-        # would mean every CLI release blocks every change to this tool until
-        # somebody adopts it, which turns adopting a release into something
-        # done under duress rather than deliberately. `--strict` promotes it,
-        # so the adoption PR itself can still demand alignment.
-        out.warn(
+        # A suggestion, not a warning. Nothing is wrong: the catalog is a claim
+        # about one release, verified against that release, and a newer one
+        # shipping does not make it false. Reporting it as a warning asked CI
+        # to show a problem that is not there, and `--strict` would then have
+        # failed on somebody else's release. What it is, is the moment to
+        # consider adopting -- said to whoever is already editing the table.
+        out.suggest(
             "release-pin",
             f"the catalog documents {documented} but {newest} has been released. "
             f"Adopt it with `python scripts/azcli_aigw_apply.py --version {newest}`, "

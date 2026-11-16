@@ -113,15 +113,15 @@ A data-driven contract is only as good as the checking of it. Two claims used to
 | Nothing the CLI insists on is missing | Every option the snapshot marks `[Required]`, other than the identity arguments `apply` supplies from the plan's target, is one the catalog marks required |
 | The snapshot is of this release | Its `wheelSha256` and version equal the catalog's `cliEvidence` |
 | One release, named consistently | Catalog filename and `targetCapabilities` agree with the `cliEvidence` version |
-| The catalog is not a release behind | With `--newest-release`, the documented version is the newest `cli-v*` there is — advisory, see below |
+| A newer release exists | With `--newest-release`, whether anything newer than the documented version is published — a suggestion, see below |
 | The shapes are well formed | Both files against `schemas/capabilities.schema.json` and `schemas/rules.schema.json`, `additionalProperties` closed |
 | Every rule can be selected | Each rule is governed by a registered selector (below) |
 | Every rule field has a reader | Each field is one that some site able to select the rule declares it `reads` |
 | No rule is ambiguous | In every section, no two rules look identical to the site that selects them — including the policy passes keyed on `family` and `hasExpression` |
 
-Errors fail the command; warnings — a field no site reads, a version that cannot be compared — are advisory, and `--strict` promotes them. `--strict` passes on the committed data, which is the only state in which it is worth having: a mode that cannot pass is a mode nobody runs.
+Three severities. **Errors** fail the command. **Warnings** — a field no site reads, a version that cannot be compared — are advisory, and `--strict` promotes them; `--strict` passes on the committed data, which is the only state in which it is worth having, since a mode that cannot pass is a mode nobody runs. **Suggestions** are never fatal, not even under `--strict`, and are counted apart from the tally so a clean compile still reads as clean.
 
-Being a release behind is advisory. The catalog is a claim about one release, checked against that release, and it stays true when a newer one ships. Failing on it would mean every gateway release blocks every change to this tool until somebody adopts it. The lag is reported where it is useful, to whoever is already editing the table, and `--strict` promotes it so the adoption PR still has to land complete.
+A newer release existing is a suggestion. The catalog is a claim about one release, checked against that release, and another one shipping does not make it false — there is nothing wrong to report. Calling it a warning put a problem in CI that was not there, and under `--strict` would have failed this tool's build on somebody else's release. What it is, is the moment to consider adopting, said to whoever is already editing the table.
 
 The catalog says which release to install; nothing here reads `cli/` to find out. `cli/install.sh` is the CLI's own artifact and moves when the CLI releases, so checking the catalog against it would have made the newest release the only one the catalog could ever pin — and then every run would validate against latest, which is the opposite of pinning. `cli-surface.yml` takes the version and digest from `cliEvidence` and installs exactly that wheel. The installers keep their own pin honest through `cli/tests/test_installers.py`.
 

@@ -343,7 +343,7 @@ class TestEveryPolicyPassIsCheckedForTies:
 class TestTheCatalogKeepsUpWithTheCli:
     def test_a_newer_release_than_the_catalog_is_reported(self, compile_with, shipped):
         result = compile_with(newest_release="cli-v1.0.0b32")
-        assert any("1.0.0b32 has been released" in str(d) for d in result.warnings)
+        assert any("1.0.0b32 has been released" in str(d) for d in result.suggestions)
 
     def test_a_newer_release_does_not_fail_the_build(self, compile_with, shipped):
         """A gateway release is not this tool's build to redden. The catalog is
@@ -353,11 +353,13 @@ class TestTheCatalogKeepsUpWithTheCli:
         result = compile_with(newest_release="cli-v1.0.0b32")
         assert result.ok(), [str(d) for d in result.errors]
 
-    def test_strict_still_demands_the_newest_release(self, compile_with, shipped):
-        """The adoption itself has to land complete, so the mode that gates it
-        promotes the warning back to a failure."""
+    def test_not_even_strict_fails_on_somebody_elses_release(self, compile_with, shipped):
+        """--strict promotes warnings, and this is not one. The catalog is
+        right about the release it documents; another one existing is a thing
+        to consider, not a defect, and nobody should have to adopt a release
+        to get a green build."""
         result = compile_with(newest_release="cli-v1.0.0b32")
-        assert not result.ok(strict=True)
+        assert result.ok(strict=True), [str(d) for d in result.diagnostics]
 
     def test_the_release_it_documents_is_not_a_complaint(self, compile_with, shipped):
         documented = shipped[0]["cliEvidence"]["documentedVersion"]
@@ -380,7 +382,7 @@ class TestTheCatalogKeepsUpWithTheCli:
         so `1.0.0b100` has to beat `1.0.0b99` here and not in `git --sort`."""
         tags = "cli-v1.0.0b6 cli-v1.0.0b99 cli-v1.0.0b31 cli-v1.0.0b100"
         result = compile_with(newest_release=tags)
-        assert any("1.0.0b100 has been released" in str(d) for d in result.warnings)
+        assert any("1.0.0b100 has been released" in str(d) for d in result.suggestions)
 
     def test_an_unreadable_tag_among_readable_ones_is_ignored(self, compile_with):
         result = compile_with(newest_release="cli-vnightly cli-v1.0.0b31")

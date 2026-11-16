@@ -640,9 +640,13 @@ def _compile(args: argparse.Namespace) -> int:
     for diagnostic in result.diagnostics:
         print(f"  {diagnostic}", file=sys.stderr)
     errors, warnings = len(result.errors), len(result.warnings)
+    counted = f"{errors} error(s), {warnings} warning(s)"
+    # Suggestions are counted apart from the tally that decides pass or fail,
+    # so a clean compile still reads as clean when one is present.
+    if result.suggestions:
+        counted += f", {len(result.suggestions)} suggestion(s)"
     print(
-        f"{catalog_path.name} against {surface_path.name}: {errors} error(s), "
-        f"{warnings} warning(s)",
+        f"{catalog_path.name} against {surface_path.name}: {counted}",
         file=sys.stderr,
     )
     return 0 if result.ok(strict=args.strict) else 1
