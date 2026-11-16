@@ -85,7 +85,7 @@ Before you create, change, or delete Azure resources, confirm the subscription a
 - The gateway is the `Microsoft.ApiManagement/aigateways` resource, API version `2026-11-01` (generally
   available). Providers use `modelProviderType` (`Foundry`, `Custom`, `GitHub`), `{ url: … }` endpoints, and a
   top-level `authentication` (`managedIdentity` or exactly one header). Providers and models need a `displayName`;
-  give API keys one too, or the portal shows them as *All APIs subscription*. Models have no `apiFormat`:
+  give API keys one too, or the service names them *All APIs subscription (1)*. Models have no `apiFormat`:
   `supportedEndpoints` decides the format. Tool servers use `toolServerType`, `blockList`, and an endpoint `mode`
   (`failClosed` or `failOpen`). `requestRateLimit` takes `count` and `period`. The service silently drops some
   preview names (`blocked`, `required`, `apiFormat`), so read a resource back after you write it. Never use

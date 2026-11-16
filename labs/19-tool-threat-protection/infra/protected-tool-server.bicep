@@ -82,7 +82,9 @@ resource toolsUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!e
 resource apiKey 'Microsoft.ApiManagement/aigateways/apiKeys@2026-11-01' = {
   parent: gateway
   name: apiKeyName
-  properties: {}
+  properties: {
+    displayName: apiKeyName
+  }
 }
 
 output toolServerId string = toolServer.id

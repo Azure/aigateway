@@ -336,7 +336,7 @@ class Lab:
         key_id = f"{self.gateway_id}/apiKeys/{name}"
         created = self.arm("GET", key_id) is None
         if created:
-            self.arm("PUT", key_id, {"properties": {}})
+            self.arm("PUT", key_id, {"properties": {"displayName": name}})
         return self.arm("POST", f"{key_id}/listSecrets")["primaryKey"], created
 
     def signed_in_identity(self):

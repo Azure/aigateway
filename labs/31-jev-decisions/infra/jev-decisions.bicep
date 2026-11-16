@@ -117,7 +117,9 @@ resource alias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01
 resource apiKey 'Microsoft.ApiManagement/aigateways/apiKeys@2026-11-01' = {
   parent: gateway
   name: apiKeyName
-  properties: {}
+  properties: {
+    displayName: apiKeyName
+  }
 }
 
 output providerName string = provider.name

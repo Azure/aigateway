@@ -465,7 +465,8 @@ Keep the video optional: every step it shows must also be written in the lab.
   `modelProviderType`, `{ url: … }` endpoints, a top-level `authentication`, models without `apiFormat`, tool
   servers with `toolServerType`, `blockList`, and an endpoint `mode`, and `requestRateLimit` with `count` and
   `period`. Model providers and models need a `displayName`, or the deployment fails with `400` "The displayName
-  property is required."; give API keys one too, or the portal lists them as *All APIs subscription*. The service
+  property is required."; give API keys one too, because a key created without it, through Bicep or REST, gets
+  the display name *All APIs subscription (1)*. Notebooks create keys with `lab.api_key`, which sets it. The service
   silently drops some preview names, such as a tool server's `blocked` or an endpoint's
   `required`, so check each resource after a deployment rather than trusting a green deployment.
 - Gateways are the dedicated `Microsoft.ApiManagement/aigateways` type, never `Microsoft.ApiManagement/service`.
@@ -488,8 +489,8 @@ Keep the video optional: every step it shows must also be written in the lab.
   `set-content-safety`, `set-cost-limit`, `remove`), Gateway scope policies (`az aigateway policy`), telemetry
   exporters, API keys (including `api-key update --state` and `api-key regenerate --key-type secondary`), and MCP
   servers (including `mcp update --versions`). Don't pass `--sku` to `az aigateway create`: the service default,
-  `Standard`, is the only SKU it accepts. `api-key create` doesn't need `--display-name`, but pass one so the portal
-  doesn't list the key as *All APIs subscription*. Create models with
+  `Standard`, is the only SKU it accepts. `api-key create` sets the display name to the key name when you omit
+  `--display-name`. Create models with
   `--deployment-config "{resourceId:…,modelName:…}"`, because `model create --foundry-resource-id --deployment`
   still crashes in 1.0.0b31, or import every deployment with `model-provider import --foundry-resource-id`.
   `--api-format` can't express embeddings or decision models: pass `--supported-endpoints /openai/v1/embeddings`

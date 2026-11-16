@@ -77,7 +77,9 @@ resource toolServer 'Microsoft.ApiManagement/aigateways/workspaces/toolServers@2
 resource apiKey 'Microsoft.ApiManagement/aigateways/apiKeys@2026-11-01' = {
   parent: gateway
   name: apiKeyName
-  properties: {}
+  properties: {
+    displayName: apiKeyName
+  }
 }
 
 output toolServerId string = toolServer.id
