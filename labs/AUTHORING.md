@@ -590,7 +590,9 @@ Follow the structure of the existing notebooks:
    deploys or reuses resources, waits for the gateway to apply them, and checks the result with `assert`.
 5. **Clean up** (delete only what the notebook created), **Troubleshooting**, and **Next steps**. The
    Troubleshooting cell lists the errors that are specific to the notebook, then links to the lab's section on the
-   [Troubleshooting page](#the-troubleshooting-page).
+   [Troubleshooting page](#the-troubleshooting-page). Readers rerun cells, so record what the notebook created in a
+   way that a rerun keeps: `created_x = globals().get("created_x", False) or new_x`, where `new_x` is what this run
+   found missing, or guard a group of checks with `if "created_x" not in globals():`.
 
 When a lab's code runs in another tool rather than in Python, the notebook drives that tool and shows its output
 as cards:
