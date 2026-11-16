@@ -409,9 +409,9 @@ ${quick ? `
         <h2 id="qs-band-title">Your first model call in five minutes</h2>
         <p>In the AI Gateway portal, with a few Azure CLI commands in Cloud Shell, or with one <code>azd up</code>, you create a gateway, publish a Microsoft Foundry model behind an alias, and create a runtime key. Then you make your first call through the gateway, the way an app does: with the alias and the key.</p>
         <ol class="qs-steps">
-          <li><span class="qs-step-num">1</span><span><strong>Understand</strong> the building blocks</span><span class="qs-step-time">1 min</span></li>
-          <li><span class="qs-step-num">2</span><span><strong>Create</strong> a gateway in the portal, Azure CLI, or azd</span><span class="qs-step-time">3 min</span></li>
-          <li><span class="qs-step-num">3</span><span><strong>Call</strong> the model through the gateway</span><span class="qs-step-time">1 min</span></li>
+          <li><span class="qs-step-num">1</span><span><strong>Understand</strong> the building blocks</span></li>
+          <li><span class="qs-step-num">2</span><span><strong>Create</strong> a gateway in the portal, Azure CLI, or azd</span></li>
+          <li><span class="qs-step-num">3</span><span><strong>Call</strong> the model through the gateway</span></li>
         </ol>
         <div class="qs-cta">
           <a class="btn btn-primary" href="${startHref}">Start the quick start ${I.arrowR}</a>

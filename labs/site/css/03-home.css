@@ -166,7 +166,7 @@ a.hx-group:is(:hover, :focus-visible, [aria-expanded="true"]) .hx-title { color:
 .qs-copy > p { margin: 0 0 20px; color: var(--fg-2); font-size: 16px; max-width: 520px; }
 .qs-steps { list-style: none; margin: 0 0 24px; padding: 0; display: grid; gap: 8px; }
 .qs-steps li {
-  display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 12px; align-items: center;
+  display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 12px; align-items: center;
   padding: 10px 14px; border-radius: var(--radius-l); background: var(--bg-2); border: 1px solid var(--stroke-2); font-size: 15px; color: var(--fg-2);
 }
 .qs-steps strong { color: var(--fg); }
@@ -174,7 +174,6 @@ a.hx-group:is(:hover, :focus-visible, [aria-expanded="true"]) .hx-title { color:
   width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%;
   background: var(--violet-bg); color: var(--violet-fg); font: 650 13px/1 var(--font-display);
 }
-.qs-step-time { font-size: 13px; color: var(--fg-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .qs-cta { display: flex; flex-wrap: wrap; gap: 10px; }
 .qs-terminal { position: relative; margin: 0; border-radius: var(--radius-l); overflow: hidden; background: #111116; border: 1px solid #2a2a31; box-shadow: var(--shadow-l); }
 .qs-terminal-bar { display: flex; align-items: center; gap: 6px; padding: 10px 14px; background: #1b1b21; border-bottom: 1px solid #2a2a31; }
