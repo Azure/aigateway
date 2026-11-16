@@ -112,14 +112,16 @@ A data-driven contract is only as good as the checking of it. Two claims used to
 | The options exist | Each declared and each required option is in that command's options |
 | Nothing the CLI insists on is missing | Every option the snapshot marks `[Required]`, other than the identity arguments `apply` supplies from the plan's target, is one the catalog marks required |
 | The snapshot is of this release | Its `wheelSha256` and version equal the catalog's `cliEvidence` |
-| One release, named consistently | Catalog filename, `targetCapabilities`, `DEFAULT_CATALOG`, and the `cli/` installers agree |
-| The catalog is not a release behind | With `--newest-release`, the documented version is the newest `cli-v*` there is |
+| One release, named consistently | Catalog filename and `targetCapabilities` agree; the `cli/` installers carry the same pin — advisory, see below |
+| The catalog is not a release behind | With `--newest-release`, the documented version is the newest `cli-v*` there is — advisory, see below |
 | The shapes are well formed | Both files against `schemas/capabilities.schema.json` and `schemas/rules.schema.json`, `additionalProperties` closed |
 | Every rule can be selected | Each rule is governed by a registered selector (below) |
 | Every rule field has a reader | Each field is one that some site able to select the rule declares it `reads` |
 | No rule is ambiguous | In every section, no two rules look identical to the site that selects them — including the policy passes keyed on `family` and `hasExpression` |
 
 Errors fail the command; warnings — a field no site reads, a version that cannot be compared — are advisory, and `--strict` promotes them. `--strict` passes on the committed data, which is the only state in which it is worth having: a mode that cannot pass is a mode nobody runs.
+
+Being a release behind is advisory, and so is the matching installer pin. The catalog is a claim about one release, checked against that release, and it stays true when a newer one ships. Failing on it would mean every gateway release blocks every change to this tool until somebody adopts it — and the installers would force it twice over, since `cli/` moves when the CLI releases while the catalog moves when it has been verified. Two pins, two owners, two cadences. The lag is reported where it is useful, to whoever is already editing the table, and `--strict` promotes it so the adoption PR still has to land the whole move together. The installers keep their own pin honest through `cli/tests/test_installers.py`.
 
 ### The selector registry
 

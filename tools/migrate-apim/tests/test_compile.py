@@ -204,6 +204,19 @@ class TestThePinsAgree:
             "\n".join(str(d) for d in result.errors)
         )
 
+    def test_installers_on_a_newer_release_do_not_fail_the_build(self, compile_with, tmp_path):
+        """`cli/` moves when the CLI releases; the catalog moves when it has
+        been verified against that release. Failing here would force the two
+        into lockstep, which is the same duress release-pin refuses."""
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "install.sh").write_text('WHEEL="aigateway-9.9.9b9"\n', encoding="utf-8")
+        (tmp_path / "install.ps1").write_text("$Wheel = 'aigateway-9.9.9b9'\n", encoding="utf-8")
+        (tmp_path / "tests" / "test_installers.py").write_text('V = "9.9.9b9"\n', encoding="utf-8")
+        result = compile_with(cli_dir=tmp_path)
+        assert result.ok(), [str(d) for d in result.errors]
+        assert any(d.check == "installer-pin" for d in result.warnings)
+        assert not result.ok(strict=True)
+
 
 class TestTheShapesAreClosed:
     """`additionalProperties: false` is the cheapest guard against an invented key."""
@@ -354,8 +367,21 @@ class TestEveryPolicyPassIsCheckedForTies:
 class TestTheCatalogKeepsUpWithTheCli:
     def test_a_newer_release_than_the_catalog_is_reported(self, compile_with, shipped):
         result = compile_with(newest_release="cli-v1.0.0b32")
-        assert "release-pin" in codes(result)
-        assert any("1.0.0b32 has been released" in str(d) for d in result.errors)
+        assert any("1.0.0b32 has been released" in str(d) for d in result.warnings)
+
+    def test_a_newer_release_does_not_fail_the_build(self, compile_with, shipped):
+        """A gateway release is not this tool's build to redden. The catalog is
+        a claim about one release and stays true when a newer one ships, so
+        falling behind is reported and adopted deliberately -- not under the
+        duress of every change being blocked until somebody does it."""
+        result = compile_with(newest_release="cli-v1.0.0b32")
+        assert result.ok(), [str(d) for d in result.errors]
+
+    def test_strict_still_demands_the_newest_release(self, compile_with, shipped):
+        """The adoption itself has to land complete, so the mode that gates it
+        promotes the warning back to a failure."""
+        result = compile_with(newest_release="cli-v1.0.0b32")
+        assert not result.ok(strict=True)
 
     def test_the_release_it_documents_is_not_a_complaint(self, compile_with, shipped):
         documented = shipped[0]["cliEvidence"]["documentedVersion"]
@@ -378,8 +404,7 @@ class TestTheCatalogKeepsUpWithTheCli:
         so `1.0.0b100` has to beat `1.0.0b99` here and not in `git --sort`."""
         tags = "cli-v1.0.0b6 cli-v1.0.0b99 cli-v1.0.0b31 cli-v1.0.0b100"
         result = compile_with(newest_release=tags)
-        assert "release-pin" in codes(result)
-        assert any("1.0.0b100 has been released" in str(d) for d in result.errors)
+        assert any("1.0.0b100 has been released" in str(d) for d in result.warnings)
 
     def test_an_unreadable_tag_among_readable_ones_is_ignored(self, compile_with):
         result = compile_with(newest_release="cli-vnightly cli-v1.0.0b31")

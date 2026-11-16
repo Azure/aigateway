@@ -191,7 +191,14 @@ def check_release_pin(catalog: dict[str, Any], releases: str, out: Compilation) 
 
     there, newest = max(comparable)
     if there > here:
-        out.error(
+        # Advisory, not fatal. A gateway release is not this tool's build to
+        # redden: the catalog is a claim about one release, verified against
+        # that release, and it stays true when a newer one ships. Failing here
+        # would mean every CLI release blocks every change to this tool until
+        # somebody adopts it, which turns adopting a release into something
+        # done under duress rather than deliberately. `--strict` promotes it,
+        # so the adoption PR itself can still demand alignment.
+        out.warn(
             "release-pin",
             f"the catalog documents {documented} but {newest} has been released. "
             f"Adopt it with `python scripts/azcli_aigw_apply.py --version {newest}`, "
@@ -274,6 +281,14 @@ def check_pins(
     # The installer scripts and their test carry the same pin. They are read for
     # those two constants only, not linted as prose.
     #
+    # Advisory, for the same reason as release-pin. These files belong to the
+    # CLI and move when it releases; the catalog moves when it has been
+    # verified against that release. Two pins, two owners, two cadences --
+    # holding them equal on pain of failure forces the lockstep that the
+    # release-pin comment above refuses. `--strict` promotes them, so the
+    # adoption PR still has to land all of it together. The installers are
+    # separately held to their own pin by cli/tests/test_installers.py.
+    #
     # Only the installers are held to "no other version appears". The test names
     # an older release on purpose, as the upgrade-from fixture, and asserts the
     # installers do *not* mention it -- so a stale-version sweep there would
@@ -292,14 +307,14 @@ def check_pins(
             out.error("installer-pin", f"cli/{name} could not be read: {exc}")
             continue
         if digest and digest not in text:
-            out.error("installer-pin", f"cli/{name} does not carry the catalog's wheel digest")
+            out.warn("installer-pin", f"cli/{name} does not carry the catalog's wheel digest")
         if version and version not in text:
-            out.error("installer-pin", f"cli/{name} does not name {version}")
+            out.warn("installer-pin", f"cli/{name} does not name {version}")
         if not forbid_other_versions:
             continue
         stale = set(_PIN.findall(text)) - {version}
         if stale:
-            out.error(
+            out.warn(
                 "installer-pin",
                 f"cli/{name} names {sorted(stale)} while the catalog documents {version}",
             )
