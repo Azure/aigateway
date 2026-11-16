@@ -40,7 +40,7 @@ SURFACE = {
 
 
 class TestComparingTwoSnapshots:
-    """What the drift check in cli-surface.yml actually asks."""
+    """What the drift check in migrate-apim.yml actually asks."""
 
     def test_the_same_surface_reports_nothing(self):
         assert export.differences(SURFACE, copy.deepcopy(SURFACE)) == []

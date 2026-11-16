@@ -123,7 +123,7 @@ Three severities. **Errors** fail the command. **Warnings** — a field no site 
 
 A newer release existing is a suggestion. The catalog is a claim about one release, checked against that release, and another one shipping does not make it false — there is nothing wrong to report. Calling it a warning put a problem in CI that was not there, and under `--strict` would have failed this tool's build on somebody else's release. What it is, is the moment to consider adopting, said to whoever is already editing the table.
 
-The catalog says which release to install; nothing here reads `cli/` to find out. `cli/install.sh` is the CLI's own artifact and moves when the CLI releases, so checking the catalog against it would have made the newest release the only one the catalog could ever pin — and then every run would validate against latest, which is the opposite of pinning. `cli-surface.yml` takes the version and digest from `cliEvidence` and installs exactly that wheel. The installers keep their own pin honest through `cli/tests/test_installers.py`.
+The catalog says which release to install; nothing here reads `cli/` to find out. `cli/install.sh` is the CLI's own artifact and moves when the CLI releases, so checking the catalog against it would have made the newest release the only one the catalog could ever pin — and then every run would validate against latest, which is the opposite of pinning. the export job in `migrate-apim.yml` takes the version and digest from `cliEvidence` and installs exactly that wheel. The installers keep their own pin honest through `cli/tests/test_installers.py`.
 
 ### The selector registry
 
@@ -175,12 +175,16 @@ The fake probe is also the reason `compile` exists. It answers whatever a test t
 
 ## CI
 
-| Workflow | When | What it proves | Needs |
-|---|---|---|---|
-| `.github/workflows/migrate-apim.yml` | every pull request and push touching the tool | the catalog and rules compile against the committed snapshot, the suite passes, and the pin is not behind the newest `cli-v*` tag | nothing — offline, no `az`, no credentials |
-| `.github/workflows/cli-surface.yml` | changes to `capabilities/` or the exporter, and on request | the committed snapshot is what the pinned wheel really offers | the Azure CLI and the network |
+`.github/workflows/migrate-apim.yml` runs on every pull request and push touching the tool, with one job per link in the chain:
 
-Together they give catalog ⊆ reality. Keeping them apart is what lets the first one gate every change: proving a command exists needs the real wheel, but proving the catalog only names commands *the snapshot* contains needs nothing at all.
+| Job | What it proves | Needs |
+|---|---|---|
+| `compile` | the catalog and rules compile against the committed snapshot, the suite passes, and a newer `cli-v*` release is reported | nothing — offline, no `az`, no credentials |
+| `export` | the committed snapshot is what the pinned wheel really offers | the Azure CLI and the network |
+
+Together they give catalog ⊆ reality, and neither covers the other: `compile` can gate every change only because it trusts the snapshot, and a snapshot is a file somebody could hand-edit.
+
+They are one workflow because they were never independent. The snapshot cannot change without `capabilities/` changing, so `export` never had a reason to run that `compile` did not also have — two files meant two statuses to read for one answer.
 
 Neither is wired to `cli-v*` tags. A CLI release is not this tool's build to redden, so the "a newer release exists" signal is raised offline, where the person it is addressed to is already standing. The cost is that it is only asked when somebody touches this tool: a pin can sit stale between visits, but it cannot be stale while being worked on.
 

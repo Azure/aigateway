@@ -1,36 +1,45 @@
-name: Compile migration contract
+name: Migration contract
 
 # The capability catalog claims an `az aigateway` release can do certain things,
 # and the rules claim the planner reads certain shapes. Both claims shipped
 # wrong once, through a green suite: the catalog declared a command that exists
 # in no release, and rules.json carried entries no selection site could choose.
 #
-# This job settles both offline, against a committed surface snapshot. It needs
-# no Azure CLI, no network and no credentials, so it can gate every change.
-# Whether that snapshot is an honest record of the real wheel is the separate
-# question cli-surface.yml answers.
+# Settling that is a chain, and this file holds both links:
 #
-# It also reports a catalog that has fallen behind the newest cli-v* release.
-# That lives here, on this tool's own changes, rather than on the CLI's release
-# tags: a gateway release is not this tool's build to redden, and the fact is
-# most useful to whoever is already editing the table.
+#   catalog --compile--> surface snapshot --export--> the published wheel
+#
+# `compile` checks the catalog against the committed snapshot. It needs no
+# Azure CLI, no network and no credentials, so it gates every change. But a
+# snapshot is just a file somebody could hand-edit, and then compile would be
+# checking the catalog against fiction and passing. `export` is what stops
+# that: it installs the wheel the catalog pins and fails if the committed
+# snapshot is not what that wheel actually offers.
+#
+# Neither covers the other, but they were never independent either -- the
+# snapshot cannot change without the catalog directory changing -- so they
+# share a trigger rather than living in two files with two statuses to read.
+#
+# Deliberately not wired to cli-v* tags. A gateway release is not this tool's
+# build to redden; `compile` reports a newer release as a suggestion, where it
+# is useful to whoever is already editing the table.
 
 on:
   pull_request:
     paths:
       - 'tools/migrate-apim/**'
-      - 'cli/install.sh'
-      - 'cli/install.ps1'
-      - 'cli/tests/**'
       - '.github/workflows/migrate-apim.yml'
   push:
     branches: [main]
     paths:
       - 'tools/migrate-apim/**'
-      - 'cli/install.sh'
-      - 'cli/install.ps1'
-      - 'cli/tests/**'
       - '.github/workflows/migrate-apim.yml'
+  workflow_dispatch:
+    inputs:
+      wheel-url:
+        description: 'Wheel to export from. Defaults to the one the catalog pins.'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -52,7 +61,7 @@ jobs:
       run:
         working-directory: tools/migrate-apim
     steps:
-      # Tags, because the stale-pin check below reads the published cli-v*
+      # Tags, because the release check below reads the published cli-v*
       # releases from them. They are not fetched by default.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -90,3 +99,113 @@ jobs:
 
       - name: Run the test suite
         run: python -m pytest -q
+
+  export:
+    # The other half of the chain, and the only part that needs an Azure CLI
+    # and a network.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.13'
+
+      - name: Install the Azure CLI
+        run: |
+          curl -fsSL https://aka.ms/InstallAzureCLIDeb | sudo bash
+          az version
+
+      # The digest is checked before the wheel is installed, not after. An
+      # unverified wheel is not something to run and then ask questions about.
+      - name: Download and verify the pinned wheel
+        id: wheel
+        working-directory: tools/migrate-apim
+        run: |
+          set -euo pipefail
+          CATALOG="$(ls capabilities/aigateway-*.json | head -1)"
+          VERSION="$(python -c "import json,sys;print(json.load(open(sys.argv[1]))['cliEvidence']['documentedVersion'])" "$CATALOG")"
+          DIGEST="$(python -c "import json,sys;print(json.load(open(sys.argv[1]))['cliEvidence']['wheelSha256'])" "$CATALOG")"
+          WHEEL="aigateway-${VERSION}-py3-none-any.whl"
+          URL="${{ inputs.wheel-url }}"
+          if [ -z "$URL" ]; then
+            URL="https://github.com/Azure/aigateway/releases/download/cli-v${VERSION}/${WHEEL}"
+          fi
+          echo "Fetching $URL"
+          # A missing asset and a wrong digest are different problems with
+          # different fixes, so they get different messages. The catalog is
+          # allowed to pin a release candidate; what it cannot do is pretend
+          # the snapshot has been checked against one.
+          if ! curl -fL --output "/tmp/${WHEEL}" "$URL"; then
+            echo "::error::No published wheel at ${URL}. The catalog pins ${VERSION}," \
+                 "which is not a released version. Tag and publish it, or re-pin the" \
+                 "catalog to a release that exists."
+            exit 1
+          fi
+          printf '%s  %s\n' "$DIGEST" "/tmp/${WHEEL}" | sha256sum --check
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "wheel=/tmp/${WHEEL}" >> "$GITHUB_OUTPUT"
+          echo "catalog=$CATALOG" >> "$GITHUB_OUTPUT"
+
+      # Into a directory of its own, so nothing here depends on, or disturbs,
+      # whatever extensions the runner already has.
+      - name: Install the extension in isolation
+        run: |
+          mkdir -p /tmp/aigw-ext /tmp/aigw-cfg
+          AZURE_EXTENSION_DIR=/tmp/aigw-ext AZURE_CONFIG_DIR=/tmp/aigw-cfg \
+            az extension add --source "${{ steps.wheel.outputs.wheel }}" --yes
+          AZURE_EXTENSION_DIR=/tmp/aigw-ext AZURE_CONFIG_DIR=/tmp/aigw-cfg \
+            az aigateway version -o json
+
+      - name: Check the help parser still reads what it should
+        working-directory: tools/migrate-apim
+        env:
+          AZURE_EXTENSION_DIR: /tmp/aigw-ext
+          AZURE_CONFIG_DIR: /tmp/aigw-cfg
+        run: python scripts/azcli_aigw_export.py --self-test
+
+      - name: Re-export the surface
+        working-directory: tools/migrate-apim
+        env:
+          AZURE_EXTENSION_DIR: /tmp/aigw-ext
+          AZURE_CONFIG_DIR: /tmp/aigw-cfg
+        run: |
+          set -euo pipefail
+          SNAPSHOT="capabilities/cli-surface-${{ steps.wheel.outputs.version }}.json"
+          cp "$SNAPSHOT" /tmp/committed-surface.json
+          python scripts/azcli_aigw_export.py \
+            --wheel "${{ steps.wheel.outputs.wheel }}" \
+            --out "$SNAPSHOT"
+
+      - name: Compile against the freshly exported surface
+        working-directory: tools/migrate-apim
+        run: |
+          pip install -e '.[dev]'
+          python -m migrate_apim compile
+
+      # A difference here means the committed snapshot is not what the wheel
+      # actually offers, so every offline compile since has been checking the
+      # catalog against fiction. The regenerated file is attached so the fix is
+      # a download and a commit.
+      #
+      # Compared on what the snapshots claim rather than on their bytes: the
+      # file also records the azure-cli-core that produced it, and this runner
+      # installs whatever is current. A byte comparison would report the next
+      # core release as drift in the wheel, which is both wrong and the kind of
+      # wrong that teaches people to ignore the check.
+      - name: Fail if the committed snapshot has drifted
+        id: drift
+        working-directory: tools/migrate-apim
+        run: |
+          if ! python scripts/azcli_aigw_export.py --compare \
+                 /tmp/committed-surface.json \
+                 "capabilities/cli-surface-${{ steps.wheel.outputs.version }}.json"; then
+            echo "::error::The committed CLI surface snapshot does not match the pinned wheel."
+            exit 1
+          fi
+
+      - if: failure() && steps.drift.outcome == 'failure'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: refreshed-cli-surface
+          path: tools/migrate-apim/capabilities/cli-surface-*.json

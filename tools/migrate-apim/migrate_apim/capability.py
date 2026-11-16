@@ -52,7 +52,7 @@ CAPABILITIES_DIR = Path(__file__).resolve().parent.parent / "capabilities"
 # release it adopts, and a constant left behind does not degrade `plan`, it
 # stops it. Writing the version here would also put a Python edit in the middle
 # of a data change, which is the one step of adopting a release that nothing
-# would check. `cli-surface.yml` resolves it the same way, and
+# would check. the export job resolves it the same way, and
 # `test_capability.py` pins that exactly one catalog is present.
 _CATALOGS = sorted(path.name for path in CAPABILITIES_DIR.glob("aigateway-*.json"))
 DEFAULT_CATALOG = _CATALOGS[0] if len(_CATALOGS) == 1 else ""

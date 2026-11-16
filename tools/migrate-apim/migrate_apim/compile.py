@@ -242,7 +242,7 @@ def check_release_pin(catalog: dict[str, Any], releases: str, out: Compilation) 
         out.warn(
             "release-pin",
             f"the catalog documents {documented}, which is newer than {newest}, the newest "
-            f"published release. cli-surface.yml cannot verify the snapshot until that "
+            f"published release. the export job cannot verify the snapshot until that "
             f"release is tagged and its wheel published.",
         )
 
