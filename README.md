@@ -19,7 +19,6 @@ your app, or use the Azure CLI to manage a gateway.
 - [Coding-agent plugin](#coding-agent-plugin): discover and integrate models and MCP tools; create, manage,
   and migrate gateways.
 - [Azure CLI](#azure-cli): create and manage gateways from the command line.
-- [Migration tool](tools/migrate-apim/README.md): inventory and migrate AI workloads from API Management.
 - [Labs](labs/README.md) and [samples](samples/README.md): learn and build with AI Gateway.
 
 For service concepts and configuration, see the [AI Gateway documentation](https://aka.ms/aigateway/docs).
