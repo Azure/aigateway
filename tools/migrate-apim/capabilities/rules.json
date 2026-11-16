@@ -58,7 +58,9 @@
       "verdict": "partial",
       "itemKind": "enumerate",
       "capabilityId": "model.create",
-      "rationale": "A model registration needs a model name. The catalogue could not be resolved from configuration."
+      "rationale": "A model registration needs a model name. The catalogue could not be resolved from configuration.",
+      "note": "When the item proposes 'resolve-models', it is not a question for the operator. Run migrate-apim resolve-models automatically using the credential the inventory recorded. The operator should not be asked to type model names the tool can fetch.",
+      "autoResolvable": "resolve-models"
     },
     {
       "match": {
@@ -204,7 +206,14 @@
         "retain-in-apim"
       ],
       "proposal": "accept-all",
-      "rationale": "APIM stores no tool names for a passthrough server, and the CLI cannot author allowList/blocked in this baseline regardless."
+      "rationale": "APIM stores no tool names for a passthrough server, and the CLI cannot author allowList/blocked in this baseline regardless.",
+      "toolDiscoveryGuidance": {
+        "preferredRoute": "gateway",
+        "preferredReason": "Lists what callers actually see with APIM's policies applied",
+        "fallbackRoute": "upstream",
+        "fallbackMeaning": "Policies were bypassed; the upstream list may be broader than what the gateway exposes today",
+        "communicateWhen": "If discovery falls back to upstream, tell the operator that APIM may currently be withholding some of these tools because the API's policies did not pass at the gateway, and federating all of them would widen what callers can reach. The list from the gateway is authoritative for what the gateway will serve."
+      }
     },
     {
       "match": {
@@ -547,13 +556,28 @@
       "itemKind": "translate",
       "capabilityId": "telemetry.create",
       "options": [
-        "reuse-appinsights",
-        "new-appinsights",
-        "gateway-metrics-only",
-        "retain-in-apim"
+        {
+          "value": "reuse-appinsights",
+          "consequence": "Gateway telemetry reports to the same Application Insights resource APIM uses. Changes what other workloads reading that resource see. Prerequisite: administrator must enable the OTLP endpoint on the existing Application Insights resource."
+        },
+        {
+          "value": "new-appinsights",
+          "consequence": "Gateway telemetry reports to a new Application Insights resource with OTLP enabled. Existing dashboards and alerts remain pointing to APIM's resource and will not see gateway telemetry. Prerequisite: administrator must create a new Application Insights resource and enable its OTLP endpoint."
+        },
+        {
+          "value": "gateway-metrics-only",
+          "consequence": "No migration of telemetry configuration. Gateway publishes metrics to its own endpoint; APIM logs remain in the original Application Insights resource. Nothing created or configured on the target."
+        },
+        {
+          "value": "retain-in-apim",
+          "consequence": "No migration attempted. Both APIM and gateway telemetry remain separate."
+        }
       ],
       "proposal": "reuse-appinsights",
-      "rationale": "APIM reports to Azure Application Insights and the gateway exports OpenTelemetry. The only surface both support is the OTLP endpoint on an Application Insights resource, which an administrator has to enable. So the question is which resource that is: the one APIM already reports to, or a new one for the gateway alone."
+      "rationale": "APIM reports to Azure Application Insights and the gateway exports OpenTelemetry. The only surface both support is the OTLP endpoint on an Application Insights resource. This question asks where that is: reuse the resource APIM already reports to, create a new one for the gateway alone, configure the gateway only, or keep both separate.",
+      "note": "The `ApplicationInsights` exporter kind exists in the command but carries nothing across from APIM and is never offered. The mapping requires an explicit OTLP endpoint. When deciding, ask this question before the `emit-token-metric` dimensions question (which is separate).",
+      "prerequisite": "appinsights-otlp",
+      "prerequisiteGuide": "For 'reuse-appinsights': Administrator must enable the OTLP endpoint on the existing Application Insights resource APIM reports to. For 'new-appinsights': Administrator must create a new Application Insights resource with the OTLP endpoint enabled. For others: nothing required."
     }
   ]
 }
