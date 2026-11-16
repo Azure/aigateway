@@ -57,6 +57,17 @@ def codes(result):
     return {d.check for d in result.errors}
 
 
+def one_newer(version: str) -> str:
+    """A release after this one, derived rather than written down.
+
+    A literal here is the same trap as a literal in the catalog: it is newer
+    than today's pin and older than tomorrow's, so the case it was meant to
+    exercise quietly stops firing on the first adoption.
+    """
+    head, _, beta = version.rpartition("b")
+    return f"{head}b{int(beta) + 1}"
+
+
 class TestTheShippedContractCompiles:
     def test_it_has_no_errors(self, compile_with):
         result = compile_with()
@@ -342,8 +353,9 @@ class TestEveryPolicyPassIsCheckedForTies:
 
 class TestTheCatalogKeepsUpWithTheCli:
     def test_a_newer_release_than_the_catalog_is_reported(self, compile_with, shipped):
-        result = compile_with(newest_release="cli-v1.0.0b32")
-        assert any("1.0.0b32 has been released" in str(d) for d in result.suggestions)
+        newer = one_newer(shipped[0]["cliEvidence"]["documentedVersion"])
+        result = compile_with(newest_release=f"cli-v{newer}")
+        assert any(f"{newer} has been released" in str(d) for d in result.suggestions)
 
     def test_a_newer_release_does_not_fail_the_build(self, compile_with, shipped):
         """A gateway release is not this tool's build to redden. The catalog is
@@ -358,7 +370,8 @@ class TestTheCatalogKeepsUpWithTheCli:
         right about the release it documents; another one existing is a thing
         to consider, not a defect, and nobody should have to adopt a release
         to get a green build."""
-        result = compile_with(newest_release="cli-v1.0.0b32")
+        newer = one_newer(shipped[0]["cliEvidence"]["documentedVersion"])
+        result = compile_with(newest_release=f"cli-v{newer}")
         assert result.ok(strict=True), [str(d) for d in result.diagnostics]
 
     def test_the_release_it_documents_is_not_a_complaint(self, compile_with, shipped):
@@ -384,8 +397,9 @@ class TestTheCatalogKeepsUpWithTheCli:
         result = compile_with(newest_release=tags)
         assert any("1.0.0b100 has been released" in str(d) for d in result.suggestions)
 
-    def test_an_unreadable_tag_among_readable_ones_is_ignored(self, compile_with):
-        result = compile_with(newest_release="cli-vnightly cli-v1.0.0b31")
+    def test_an_unreadable_tag_among_readable_ones_is_ignored(self, compile_with, shipped):
+        documented = shipped[0]["cliEvidence"]["documentedVersion"]
+        result = compile_with(newest_release=f"cli-vnightly cli-v{documented}")
         assert result.ok(strict=True), [str(d) for d in result.diagnostics]
 
     def test_pinning_an_unpublished_release_is_said_out_loud(self, compile_with):
@@ -445,8 +459,9 @@ class TestACleanRunSaysWhatItChecked:
     run unable to tell thorough from vacuous -- and this contract shipped a
     command that existed in no release, through a green suite."""
 
-    def test_every_check_reports_what_it_covered(self, compile_with):
-        covered = compile_with(newest_release="cli-v1.0.0b31").covered
+    def test_every_check_reports_what_it_covered(self, compile_with, shipped):
+        documented = shipped[0]["cliEvidence"]["documentedVersion"]
+        covered = compile_with(newest_release=f"cli-v{documented}").covered
         assert len(covered) == 5, covered
 
     def test_the_counts_are_the_real_ones(self, compile_with, shipped):

@@ -37,8 +37,13 @@ def _installed_cli_version() -> str | None:
 
 class TestCatalogue:
     def test_loads_the_pinned_catalogue(self, caps):
-        assert caps.cli_version == "1.0.0b31"
-        assert len(caps.capabilities) == 31
+        """Asserted against the catalog rather than against a version written
+        here. Writing the release down would mean every adoption edits the
+        suite, and a test that has to be updated to stay green is one nobody
+        reads before updating it."""
+        assert caps.cli_version == DEFAULT_CATALOG.removeprefix("aigateway-").removesuffix(".json")
+        assert caps.capabilities, "the pinned catalog declares no capabilities"
+        assert all(c.id for c in caps.capabilities.values())
 
     def test_declares_what_the_target_cannot_do(self, caps):
         assert "products" in caps.unsupported

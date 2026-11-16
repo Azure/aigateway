@@ -51,7 +51,9 @@ class TestDocument:
 
     def test_records_which_capability_catalogue_it_planned_against(self, plan):
         caps = plan["target"]["capabilities"]
-        assert caps["cliVersion"] == "1.0.0b31"
+        # What matters is that the plan records the catalog it was built
+        # against, not which release that happens to be today.
+        assert caps["cliVersion"] == CapabilityMap.load().cli_version
         # Nothing is claimed about the installed CLI unless it was probed.
         assert caps["probed"] is False
 
