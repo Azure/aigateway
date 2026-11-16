@@ -155,6 +155,11 @@ Before you create, change, or delete Azure resources, confirm the subscription a
   `ToolNotAvailable`. With **MCP server access** set to **Blocked**, `initialize` returns HTTP `200` with JSON-RPC
   error `-32000` and `data.code` `AccessBlockedByGateway`. Agent 365 needs a static allowed-tool list: exact names
   under **Match tools by name pattern**, without wildcards.
+- Agent 365 consent assigns the **A365 Gateway Policy Operator** role, which on AI gateways can only read and update
+  MCP servers (no `listSecrets`). Its blocks set the same MCP server properties as the portal: `accessState`
+  (`blocked`/`active`) and `blockList`. A blocked server answers HTTP `200` with the JSON-RPC error above, not the
+  `403` the Agent 365 article describes for API Management tiers. A PATCH of either property keeps the backend
+  credentials.
 - Tool threat protection evaluates only `tools/call`, with a delegated user token (OBO). A runtime key alone fails
   closed with `ToolEvaluationIdentityRequired` (HTTP `200`, `isError: true`).
 - Entra tokens use the scope `https://ai.gateway.azure.com/Data.All` (`https://ai.gateway.azure.com/.default` from

@@ -133,15 +133,22 @@ After a tenant administrator consents once, Agent 365 discovers `Microsoft.ApiMa
 tenant's subscriptions, including subscriptions you add later. AI gateways are `Microsoft.ApiManagement/aigateways`
 resources, so Agent 365 lists their MCP servers and tools with metadata such as endpoints, access scopes, and
 service identities. When an administrator blocks a server or a tool, Agent 365 uses the gateway's control-plane
-operations to insert a **managed policy** into that server. Unblocking removes it. Existing agents keep using the
-same gateway endpoints.
+operations to update that MCP server. On an AI gateway, its role can only read and update MCP servers, so a block
+sets the same properties as the gateway's own controls: the server's access state (`accessState`) or its list of
+blocked tools (`blockList`). Unblocking sets them back. Existing agents keep using the same gateway endpoints.
 
 | Control | Where you set it | What callers get |
 |---|---|---|
 | Block a tool (Agent 365) | Admin center › **Agents** › **Tools** › server › **Tools** tab | HTTP `200`, `isError: true`, denial code `ToolNotAvailable` |
-| Block a server (Agent 365) | Admin center › **Agents** › **Tools** › server › **Block** | HTTP `403`, error code `AccessBlockedByGateway` |
+| Block a server (Agent 365) | Admin center › **Agents** › **Tools** › server › **Block** | HTTP `200` with a JSON-RPC error whose `data.code` is `AccessBlockedByGateway` |
 | **Blocked tools** (gateway) | AI Gateway portal › MCP server › **Edit** › **Tools** | The tool stays in `tools/list`, and calls get the same `ToolNotAvailable` denial |
 | **MCP server access** (gateway) | AI Gateway portal › MCP server › **Edit** › **Basic info** | **Blocked**: HTTP `200` with a JSON-RPC error whose `data.code` is `AccessBlockedByGateway` |
+
+> [!NOTE]
+> The [Agent 365 article](https://learn.microsoft.com/azure/api-management/agent-365) describes a managed
+> `return-response` policy and HTTP `403` for a blocked server. That applies to API Management tiers. On an AI
+> gateway, a blocked server answers like the gateway's own **MCP server access** switch: HTTP `200` with a
+> JSON-RPC error.
 
 Tool-level blocking needs a **static list of allowed tools** on the server, so Agent 365 can read the tool list.
 It isn't available for servers with dynamic allowed tools: **Allow all tools**, or name patterns with wildcards
@@ -341,9 +348,10 @@ tools/list: HTTP 200
 
 ## Connect Agent 365 to your gateways
 
-A tenant administrator grants consent once. The consent gives the Agent 365 service identity the **A365 MCP
-Gateway Policy Operator** Azure role at tenant level, which lets it read API Management resources, read and write
-API-scoped policies, and discover supported resources in existing and future subscriptions in the tenant.
+A tenant administrator grants consent once. The consent gives the Agent 365 service identity the **A365 Gateway
+Policy Operator** Azure role at tenant level, so it can discover supported resources in existing and future
+subscriptions in the tenant. On AI gateways, the role can read gateways and read and update their MCP servers. It
+can't read the servers' secrets, such as backend keys or headers.
 
 <!-- steps -->
 
@@ -358,8 +366,8 @@ in as a tenant administrator.
 
 > [!IMPORTANT]
 > The consent covers every API Management instance and AI gateway in the tenant, not just this gateway, and lets
-> Agent 365 change their API-scoped policies. Agree on who may block servers and tools in Agent 365 before you
-> turn it on.
+> Agent 365 block and unblock their MCP servers and tools. Agree on who may block servers and tools in Agent 365
+> before you turn it on.
 
 ### Find your MCP server
 
@@ -381,14 +389,14 @@ of the server working.
 ### Turn off the tool in Agent 365
 
 In the admin center, under **Agents**, select **Tools**, then the `learn` server. Select the **Tools** tab and
-disable `learn_microsoft_docs_fetch`. Agent 365 inserts a managed policy into the server to stop that tool from
-running.
+disable `learn_microsoft_docs_fetch`. Agent 365 adds the tool to the server's blocked tools, so the gateway stops
+it from running.
 
 > [!TIP]
-> No Agent 365 tenant yet? Rehearse with the gateway's own control: in the AI Gateway portal, open **MCP
-> servers** › **Microsoft Learn** › **Edit**, select **Add blocked tool** under **Blocked tools**, enter
-> `learn_microsoft_docs_fetch`, and select **Save**. The next call gets the same `ToolNotAvailable` denial.
-> Remove the row and save again when you turn the tool back on.
+> No Agent 365 tenant yet? Rehearse with the gateway's own control, which sets the same list: in the AI Gateway
+> portal, open **MCP servers** › **Microsoft Learn** › **Edit**, select **Add blocked tool** under **Blocked
+> tools**, enter `learn_microsoft_docs_fetch`, and select **Save**. The next call gets the same
+> `ToolNotAvailable` denial. Remove the row and save again when you turn the tool back on.
 
 ### Call the blocked tool
 
@@ -469,7 +477,7 @@ In the admin center, on the `learn` server's **Tools** tab, enable `learn_micros
 ## Block the whole server
 
 During an incident, you may need to cut off every tool on a server at once. Blocking the server in Agent 365
-inserts a managed policy into the server, so the gateway answers before it reaches any backend.
+sets its access state to blocked, so the gateway answers before it reaches any backend.
 
 <!-- steps -->
 
@@ -477,62 +485,48 @@ inserts a managed policy into the server, so the gateway answers before it reach
 
 In the admin center, under **Agents**, select **Tools**, select the `learn` server, and select **Block**.
 
+> [!TIP]
+> To rehearse without Agent 365, set the same access state in the AI Gateway portal: open **MCP servers** ›
+> **Microsoft Learn** › **Edit**, turn off the **MCP server access** switch in **Basic info** so it shows
+> **Blocked**, and select **Save**.
+
 ### Try to connect
 
 ```bash
 # Try the MCP handshake again: the gateway rejects every request to the blocked server
-echo "🚦 Expect 403 AccessBlockedByGateway from MCP server $MCP_SERVER:"
+echo "🚦 Expect AccessBlockedByGateway from MCP server $MCP_SERVER:"
 ./infra/call-tool.sh "$MCP_SERVER"
 ```
 
 ```powershell
 # Try the MCP handshake again: the gateway rejects every request to the blocked server
-Write-Host "🚦 Expect 403 AccessBlockedByGateway from MCP server ${MCP_SERVER}:"
+Write-Host "🚦 Expect AccessBlockedByGateway from MCP server ${MCP_SERVER}:"
 ./infra/call-tool.ps1 -Server $MCP_SERVER
 ```
 
 ```text title="Expected output"
-🚦 Expect 403 AccessBlockedByGateway from MCP server learn:
+🚦 Expect AccessBlockedByGateway from MCP server learn:
 MCP endpoint: <gateway-url>/default/toolservers/learn/mcp
-initialize: HTTP 403 (x-correlation-id: <guid>)
-{
-  "error": {
-    "code": "AccessBlockedByGateway",
-    "message": "Access to server 'learn' is blocked.",
-    "target": "learn",
-    "correlationId": "<guid>"
-  }
-}
+initialize returned no result:
+{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"Access to MCP server \u0027learn\u0027 is blocked.","data":{"code":"AccessBlockedByGateway","target":"learn","correlationId":"<guid>"}}}
 ```
 
-The message names your server. Every request to the server, including `initialize` and `tools/list`, now
-returns `403`.
-
-> [!TIP]
-> To rehearse without Agent 365, open **MCP servers** › **Microsoft Learn** › **Edit** in the AI Gateway portal,
-> turn off the **MCP server access** switch in **Basic info** so it shows **Blocked**, and select **Save**. The
-> gateway's own block answers with HTTP `200` and a JSON-RPC error that carries the same code, so the script stops
-> after `initialize`:
->
-> ```text
-> MCP endpoint: <gateway-url>/default/toolservers/learn/mcp
-> initialize returned no result:
-> {"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"Access to MCP server \u0027learn\u0027 is blocked.","data":{"code":"AccessBlockedByGateway","target":"learn","correlationId":"<guid>"}}}
-> ```
->
-> `call-tool.ps1` shows the same JSON in an `initialize returned an error` exception. Turn the switch back on, so
-> it shows **Active**, and save when you unblock the server.
+The call returns HTTP `200` with a JSON-RPC error, not an HTTP error, so the script stops after `initialize`. The
+message names your server. Every request to the server, including `initialize` and `tools/list`, gets the same
+error, and the backend isn't called. `call-tool.ps1` shows the same JSON in an `initialize returned an error`
+exception.
 
 ### Unblock the server
 
-In the admin center, select the `learn` server again and unblock it. Agent 365 removes the managed policy, and
-the script lists the tools again.
+In the admin center, select the `learn` server again and unblock it. Agent 365 sets the access state back to
+active, and the script lists the tools again. If you rehearsed in the AI Gateway portal, turn the **MCP server
+access** switch back on, so it shows **Active**, and save.
 
 <!-- /steps -->
 
 > **Checkpoint**
-> While the server was blocked, every request returned `403 AccessBlockedByGateway`. After you unblocked it, the
-> handshake and `tools/list` succeed.
+> While the server was blocked, every request returned the JSON-RPC error `AccessBlockedByGateway`. After you
+> unblocked it, the handshake and `tools/list` succeed.
 
 ## Verify
 

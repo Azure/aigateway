@@ -231,6 +231,9 @@ Microsoft.Network/subscriptions/ is not registered for feature Microsoft.Network
 carry out the requested operation.
 ```
 
+Registering the feature yourself with `az feature register --namespace Microsoft.Network --name
+AllowPrivateEndpoints` doesn't skip the request: the feature stays **Pending** until Microsoft approves it.
+
 The gateway's private link resource names the private DNS zone for its endpoint. Check it once the gateway exists,
 because it's region specific and follows the gateway's host name, for example
 `privatelink.eastus2-01.ai.gateway.azure.com` for a gateway in East US 2. The product docs name
