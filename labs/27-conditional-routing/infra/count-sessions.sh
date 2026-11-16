@@ -28,19 +28,23 @@ for s in "${SESSIONS[@]}"; do
   ROW=""
   FIRST=""
   SAME="stays"
+  FAILED=""
   for i in $(seq 1 "$COUNT"); do
     if [ "$s" = "none" ]; then ARGS=(); else ARGS=(-H "$HEADER: $s"); fi
     CODE="$(curl -sS -o "$RESPONSE" -w '%{http_code}' "$URL" ${ARGS[@]+"${ARGS[@]}"} \
       -H "Authorization: Bearer $AI_GATEWAY_API_KEY" -H "Content-Type: application/json" -d "$BODY")"
     if [ "$CODE" = "200" ]; then
       SERVED="$(jq -r '.model // "unknown" | sub("-[0-9]{4}-[0-9]{2}-[0-9]{2}$"; "")' "$RESPONSE")"
+      [ -z "$FIRST" ] && FIRST="$SERVED"
+      [ "$SERVED" != "$FIRST" ] && SAME="moves"
     else
       SERVED="HTTP-$CODE"
+      FAILED="yes"
     fi
-    [ -z "$FIRST" ] && FIRST="$SERVED"
-    [ "$SERVED" != "$FIRST" ] && SAME="moves"
     ROW+="$(printf '%-13s' "$SERVED")"
     sleep "$PAUSE"
   done
+  # A failed request has no backend model, so the session's row can't show whether it stayed on one
+  [ -n "$FAILED" ] && SAME="inconclusive"
   printf '%-9s %s %s\n' "$s" "$ROW" "$SAME"
 done

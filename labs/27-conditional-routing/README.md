@@ -1065,8 +1065,8 @@ To go back to the condition, run `azd env set ROUTING_MODE conditions` and `azd 
 ## Watch the sessions
 
 Send four requests for each of a few sessions, each with its own `session-id` header, plus four requests without
-the header (`none`). The script prints the backend model of each request, and `stays` when all of a session's
-requests went to one model.
+the header (`none`). The script prints the backend model of each request, then `stays` when all of a session's
+requests went to one model, `moves` when they didn't, or `inconclusive` when a request failed.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -1104,8 +1104,8 @@ so your sessions can land differently. Run the script again: each session keeps 
 
 > **Checkpoint**
 > Every named session shows `stays`, and the sessions are spread over both models. The `none` row shows both models.
-> An `HTTP-429` entry means that a deployment reached its requests per minute, not that the session moved: wait a
-> minute and run the script again.
+> An `HTTP-429` entry, with `inconclusive` at the end of the row, means that a deployment reached its requests per
+> minute, not that the session moved: wait a minute and run the script again.
 
 ## Verify
 

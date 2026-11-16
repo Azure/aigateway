@@ -31,6 +31,8 @@ foreach ($s in $Sessions) {
     if ($r.StatusCode -eq 200) { ($r.Content | ConvertFrom-Json).model -replace '-\d{4}-\d{2}-\d{2}$', '' } else { "HTTP-$($r.StatusCode)" }
     Start-Sleep -Milliseconds ([int]($PauseSeconds * 1000))
   }
-  $verdict = if (@($served | Select-Object -Unique).Count -eq 1) { 'stays' } else { 'moves' }
+  # A failed request has no backend model, so the session's row can't show whether it stayed on one
+  $verdict = if (@($served | Where-Object { $_ -like 'HTTP-*' }).Count -gt 0) { 'inconclusive' }
+    elseif (@($served | Select-Object -Unique).Count -eq 1) { 'stays' } else { 'moves' }
   Write-Host ('{0,-9} {1} {2}' -f $s, (($served | ForEach-Object { '{0,-13}' -f $_ }) -join ''), $verdict)
 }
