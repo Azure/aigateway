@@ -204,14 +204,38 @@ class TestThePinsAgree:
             "\n".join(str(d) for d in result.errors)
         )
 
+    def test_installers_moving_together_are_one_warning(self, compile_with, tmp_path):
+        """A release moves all three at once. That is one fact with one thing
+        to do about it, and release-pin already says what; three files times
+        three symptoms made the reader collapse nine lines by hand to see it."""
+        (tmp_path / "tests").mkdir()
+        for name in ("install.sh", "install.ps1"):
+            (tmp_path / name).write_text('W="aigateway-1.0.0b98"\n', encoding="utf-8")
+        (tmp_path / "tests" / "test_installers.py").write_text('V = "1.0.0b98"\n', encoding="utf-8")
+        found = [d for d in compile_with(cli_dir=tmp_path).warnings if d.check == "installer-pin"]
+        assert len(found) == 1, [str(d) for d in found]
+        assert "1.0.0b98" in str(found[0])
+
+    def test_installers_disagreeing_say_what_each_is_on(self, compile_with, tmp_path):
+        """Here which of them is right is the open question, so collapsing
+        them would hide the only detail that settles it."""
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "install.sh").write_text('W="aigateway-1.0.0b98"\n', encoding="utf-8")
+        (tmp_path / "install.ps1").write_text("W = 'aigateway-1.0.0b97'\n", encoding="utf-8")
+        (tmp_path / "tests" / "test_installers.py").write_text('V = "1.0.0b98"\n', encoding="utf-8")
+        text = "\n".join(
+            str(d) for d in compile_with(cli_dir=tmp_path).warnings if d.check == "installer-pin"
+        )
+        assert "1.0.0b98" in text and "1.0.0b97" in text
+
     def test_installers_on_a_newer_release_do_not_fail_the_build(self, compile_with, tmp_path):
         """`cli/` moves when the CLI releases; the catalog moves when it has
         been verified against that release. Failing here would force the two
         into lockstep, which is the same duress release-pin refuses."""
         (tmp_path / "tests").mkdir()
-        (tmp_path / "install.sh").write_text('WHEEL="aigateway-9.9.9b9"\n', encoding="utf-8")
-        (tmp_path / "install.ps1").write_text("$Wheel = 'aigateway-9.9.9b9'\n", encoding="utf-8")
-        (tmp_path / "tests" / "test_installers.py").write_text('V = "9.9.9b9"\n', encoding="utf-8")
+        (tmp_path / "install.sh").write_text('WHEEL="aigateway-1.0.0b98"\n', encoding="utf-8")
+        (tmp_path / "install.ps1").write_text("$Wheel = 'aigateway-1.0.0b98'\n", encoding="utf-8")
+        (tmp_path / "tests" / "test_installers.py").write_text('V = "1.0.0b98"\n', encoding="utf-8")
         result = compile_with(cli_dir=tmp_path)
         assert result.ok(), [str(d) for d in result.errors]
         assert any(d.check == "installer-pin" for d in result.warnings)

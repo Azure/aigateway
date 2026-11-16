@@ -293,6 +293,12 @@ def check_pins(
     # an older release on purpose, as the upgrade-from fixture, and asserts the
     # installers do *not* mention it -- so a stale-version sweep there would
     # fail on the very line that prevents the staleness.
+    # Read everything first, then say what is wrong once. A release moves all
+    # three files together, and reporting it per file per symptom turned one
+    # fact -- the installers are on a newer release than the catalog -- into
+    # nine lines that a reader has to collapse by hand to notice there is only
+    # one thing to do about it.
+    seen: dict[str, tuple[bool, bool, set[str]]] = {}
     for name, forbid_other_versions in (
         ("install.sh", True), ("install.ps1", True), ("tests/test_installers.py", False),
     ):
@@ -306,18 +312,40 @@ def check_pins(
             # installer should not be the one thing that raises.
             out.error("installer-pin", f"cli/{name} could not be read: {exc}")
             continue
-        if digest and digest not in text:
+        others = set(_PIN.findall(text)) - {version} if forbid_other_versions else set()
+        seen[name] = (bool(version) and version in text, bool(digest) and digest in text, others)
+
+    off = [name for name, (named, _, _) in seen.items() if not named]
+    moved = {v for name, (_, _, others) in seen.items() if name in off for v in others}
+    if off and len(moved) == 1:
+        # The ordinary case: a release shipped, cli/ followed it, the catalog
+        # has not been adopted onto it yet. One sentence, and release-pin says
+        # what to run about it.
+        out.warn(
+            "installer-pin",
+            f"{', '.join('cli/' + n for n in off)} "
+            f"{'is' if len(off) == 1 else 'are'} pinned to {moved.pop()}, "
+            f"not the catalog's {version}",
+        )
+    else:
+        # They disagree with each other, or name nothing recognisable. Which
+        # one is right is the question here, so each says what it is pinned to.
+        for name in off:
+            others = seen[name][2]
+            found = f" (names {sorted(others)})" if others else ""
+            out.warn("installer-pin", f"cli/{name} does not name {version}{found}")
+        for name, (_, _, others) in seen.items():
+            if name not in off and others:
+                out.warn(
+                    "installer-pin",
+                    f"cli/{name} names {sorted(others)} while the catalog documents {version}",
+                )
+
+    # Only worth saying about a file that is otherwise on the right release; on
+    # a different one the digest is wrong by construction.
+    for name, (named, has_digest, _) in seen.items():
+        if named and digest and not has_digest:
             out.warn("installer-pin", f"cli/{name} does not carry the catalog's wheel digest")
-        if version and version not in text:
-            out.warn("installer-pin", f"cli/{name} does not name {version}")
-        if not forbid_other_versions:
-            continue
-        stale = set(_PIN.findall(text)) - {version}
-        if stale:
-            out.warn(
-                "installer-pin",
-                f"cli/{name} names {sorted(stale)} while the catalog documents {version}",
-            )
 
 
 # --------------------------------------------------------------- the rules
