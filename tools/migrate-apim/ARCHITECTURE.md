@@ -6,7 +6,7 @@ The tool maps APIM assets to Azure AI Gateway capabilities. It does this through
 
 ### `capabilities/aigateway-<version>.json`
 
-Declares what the `az aigateway` CLI extension can do. Paired to a specific CLI release (e.g., `cli-v1.0.0b31`). Contains:
+Declares what the `az aigateway` CLI extension can do. Paired to one CLI release, named in its own `cliEvidence.documentedVersion` and in its filename. Contains:
 
 - **`capabilities[]`** — CLI commands that exist (`model create`, `model-provider create`, `policy set`, etc.), with their options, required fields, and known limitations.
 - **`unsupported[]`** — Things the gateway cannot do at all (`arbitrary-policy-xml`, `workspace-creation`, etc.).

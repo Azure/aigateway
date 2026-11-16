@@ -119,7 +119,7 @@ migrate-apim summary inventory.json --format markdown
 # and that every rule is one the planner can actually select and does read
 migrate-apim compile
 migrate-apim compile --strict                       # warnings count as failures too
-migrate-apim compile --newest-release cli-v1.0.0b32 # has the catalog fallen behind?
+migrate-apim compile --newest-release "$(git tag --list 'cli-v*')"  # anything newer out?
 ```
 
 **Artifacts are read BOM-tolerantly and written without one.** The plan is meant to be edited, and
@@ -618,7 +618,7 @@ stateful server rejects everything after the handshake without them.
 
 ## The plan
 
-`plan` matches the inventory against a **capability inventory** — `capabilities/aigateway-1.0.0b31.json`,
+`plan` matches the inventory against a **capability inventory** — `capabilities/aigateway-<version>.json`,
 a curated table of what `az aigateway` can actually do, pinned to a CLI revision, plus
 `capabilities/rules.json` mapping source shapes to target capabilities. A new AI Gateway release is
 a data change, not a code change. With `--probe-cli`, the declared table is reconciled against the
