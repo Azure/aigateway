@@ -21,7 +21,7 @@ svg:root>.dg-root>.dg-bg{fill:var(--dg-bg)}
 .dg-pill{fill:var(--tn);fill-opacity:.12;stroke:var(--tn);stroke-opacity:.35}
 .dg-pill-t{fill:var(--tn);font-size:11.5px;font-weight:600}
 .dg-line{fill:none;stroke:var(--dg-stroke);stroke-width:1.75}
-.dg-flow{fill:none;stroke:var(--tn);stroke-width:2;stroke-dasharray:6 10;stroke-linecap:round;animation:dg-flow 1.4s linear infinite}
+.dg-flow{fill:none;stroke:var(--tn);stroke-width:2;stroke-dasharray:6 10;stroke-linecap:round;animation:dg-flow 1.4s linear 3}
 .dg-dash{fill:none;stroke:var(--tn);stroke-width:1.75;stroke-dasharray:4 5}
 .dg-ah{fill:var(--dg-muted)}
 .dg-dot{fill:var(--tn)}

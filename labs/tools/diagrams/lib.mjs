@@ -5,6 +5,7 @@
 const LIGHT = '--dg-bg:#fff;--dg-surface:#fff;--dg-surface-2:#f7f7f9;--dg-stroke:#d6d6dc;--dg-text:#242424;--dg-muted:#616161;--dg-violet:#7e5be8;--dg-azure:#0f6cbd;--dg-cyan:#0a9fd8;--dg-magenta:#c2147c;--dg-green:#107c10;--dg-amber:#c46a00;--dg-red:#c50f1f;--dg-gw:#f4f0ff;--dg-gw-stroke:#b9a6f5;--dg-zone:#f6f8fb';
 const DARK = '--dg-bg:#151518;--dg-surface:#1f1f24;--dg-surface-2:#26262c;--dg-stroke:#3b3b44;--dg-text:#f3f3f5;--dg-muted:#a9a9b2;--dg-violet:#a58bff;--dg-azure:#62abf5;--dg-cyan:#3ccbf4;--dg-magenta:#f472b6;--dg-green:#6cc56c;--dg-amber:#f0a33a;--dg-red:#f1707b;--dg-gw:rgba(142,91,255,.14);--dg-gw-stroke:rgba(165,139,255,.55);--dg-zone:rgba(255,255,255,.03)';
 const TONES = ['violet', 'azure', 'cyan', 'magenta', 'green', 'amber', 'red'];
+// Flow lines run three times (about 4 s) so no animation loops for more than 5 s (WCAG 2.2.2).
 const STYLE = `svg:root{${LIGHT}}@media (prefers-color-scheme:dark){svg:root{${DARK}}}
 svg:root>.dg-root>.dg-bg{fill:var(--dg-bg)}
 .dg-root{font-family:'Segoe UI Variable Text','Segoe UI',system-ui,-apple-system,'Helvetica Neue',sans-serif}
@@ -25,7 +26,7 @@ ${TONES.map((t) => `.tn-${t}{--tn:var(--dg-${t})}`).join('')}
 .dg-pill{fill:var(--tn);fill-opacity:.12;stroke:var(--tn);stroke-opacity:.35}
 .dg-pill-t{fill:var(--tn);font-size:11.5px;font-weight:600}
 .dg-line{fill:none;stroke:var(--dg-stroke);stroke-width:1.75}
-.dg-flow{fill:none;stroke:var(--tn);stroke-width:2;stroke-dasharray:6 10;stroke-linecap:round;animation:dg-flow 1.4s linear infinite}
+.dg-flow{fill:none;stroke:var(--tn);stroke-width:2;stroke-dasharray:6 10;stroke-linecap:round;animation:dg-flow 1.4s linear 3}
 .dg-dash{fill:none;stroke:var(--tn);stroke-width:1.75;stroke-dasharray:4 5}
 .dg-ah{fill:var(--dg-muted)}
 .dg-dot{fill:var(--tn)}

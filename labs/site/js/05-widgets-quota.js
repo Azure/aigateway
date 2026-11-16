@@ -20,16 +20,7 @@ const wdField = (label, input, cls = '') => `<label class="wd-field ${cls}"><spa
 const wdGroup = (label, inner) => `<div class="wd-field"><span>${label}</span>${inner}</div>`;
 const wdSelect = (name, opts, sel) => `<select data-k="${name}">${opts.map(([v, l]) => `<option value="${v}"${String(v) === String(sel) ? ' selected' : ''}>${l}</option>`).join('')}</select>`;
 const wdRand = (a, b) => a + Math.random() * (b - a);
-// The simulated clock stops while animations are paused (WCAG 2.2.2), so countdowns freeze and resume where they left off.
-let wdPausedAt = null, wdPausedFor = 0;
-const wdNow = () => (wdPausedAt ?? performance.now()) - wdPausedFor;
-function wdSyncClock() {
-  const off = document.documentElement.dataset.motion === 'off';
-  if (off && wdPausedAt === null) wdPausedAt = performance.now();
-  else if (!off && wdPausedAt !== null) { wdPausedFor += performance.now() - wdPausedAt; wdPausedAt = null; }
-}
-wdSyncClock();
-document.addEventListener('aigw:motion', wdSyncClock);
+const wdNow = () => performance.now();
 function wdBindSeg(root, onChange) {
   $$('.wd-seg', root).forEach((g) => g.addEventListener('click', (e) => {
     const b = e.target.closest('button');
@@ -39,13 +30,12 @@ function wdBindSeg(root, onChange) {
     onChange(g.dataset.seg, $$('button[aria-pressed="true"]', g).map((x) => x.dataset.v));
   }));
 }
-// Runs fn on an interval only while the element is on-screen, the tab is visible, and animations aren't paused.
+// Runs fn on an interval only while the element is on-screen and the tab is visible.
 function wdTicker(el, fn, ms = 250) {
   let vis = false, id = null;
-  const sync = () => { const on = vis && !document.hidden && wdPausedAt === null; if (on && !id) id = setInterval(fn, ms); if (!on && id) { clearInterval(id); id = null; } };
+  const sync = () => { const on = vis && !document.hidden; if (on && !id) id = setInterval(fn, ms); if (!on && id) { clearInterval(id); id = null; } };
   new IntersectionObserver(([e]) => { vis = e.isIntersecting; sync(); }).observe(el);
   document.addEventListener('visibilitychange', sync);
-  document.addEventListener('aigw:motion', () => { sync(); fn(); });
 }
 
 const QUOTA_CALLERS = [

@@ -68,6 +68,8 @@ h2:hover > .anchor, h3:hover > .anchor, h4:hover > .anchor, .anchor:focus { opac
 .figure-svg { padding: 20px; border-radius: var(--radius-l); border: 1px solid var(--stroke); background: var(--dg-bg); overflow-x: auto; }
 .figure-svg svg { display: block; width: 100%; height: auto; min-width: 560px; }
 .figure-svg img { border: 0; box-shadow: none; }
+/* Diagram flows stop after about 4 s (WCAG 2.2.2) and run again while the reader hovers the diagram. */
+:is(.figure-svg, .hxp-art):hover .dg-flow { animation-iteration-count: infinite; }
 .figure-video video { aspect-ratio: 16 / 9; background: #070b1f; cursor: pointer; }
 .video-frame { position: relative; }
 .video-frame video::-webkit-media-controls-fullscreen-button { display: none; }

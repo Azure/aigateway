@@ -374,7 +374,8 @@ Kinds: `NOTE`, `TIP`, `IMPORTANT`, `WARNING`, `CAUTION`. A blockquote starting w
 ### Images and diagrams
 
 - Paths are relative to the README: `![Alt text](../assets/screens/monitoring-overview.png "Caption")`.
-- SVG diagrams in `../assets/diagrams/` are inlined on the site (theme-aware, animated).
+- SVG diagrams in `../assets/diagrams/` are inlined on the site (theme-aware, animated). Their flow lines stop after
+  about 4 seconds and run again on hover. Keep any animation that starts by itself to 5 seconds or less (WCAG 2.2.2).
 - Screens available in `assets/screens/`: `monitoring-overview.png`, `monitoring-trace.png`,
   `policy-cost-limit-details.png`, `monitoring-token-claim-attributes.png`,
   `gateway-baselines-01-scope.webp` (**Add policy** › **Scope** › **Gateway**), `policy-cost-limit-entra-overrides.png`,

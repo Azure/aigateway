@@ -35,7 +35,6 @@
 .wd-window-bar { flex: 1; height: 4px; border-radius: 2px; background: var(--bg-4); overflow: hidden; }
 .wd-window-bar span { display: block; height: 100%; background: var(--fg-4); transform: scaleX(var(--p, 0)); transform-origin: left; }
 .wd-window b { font-weight: 600; color: var(--fg-2); font-variant-numeric: tabular-nums; }
-html[data-motion="off"] .wd-window b:not(:empty)::after { content: " · paused"; font-weight: 400; color: var(--fg-3); }
 .wd-callers { display: grid; gap: 8px; }
 .wd-caller { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; align-items: center; padding: 10px 12px; border-radius: var(--radius); border: 1px solid var(--stroke); background: var(--bg-elev); transition: border-color .2s; }
 .wd-caller.blocked { border-color: var(--danger-stroke); }
@@ -113,7 +112,7 @@ html[data-motion="off"] .wd-window b:not(:empty)::after { content: " · paused";
 .wd-alias-hub { position: relative; display: grid; place-items: center; height: 100%; min-height: 160px; }
 .wd-alias-hub svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .wd-alias-hub path { fill: none; stroke: var(--stroke-strong); stroke-width: 1.5; transition: stroke .3s, opacity .3s; }
-.wd-alias-hub path.on { stroke: var(--violet); stroke-width: 2; stroke-dasharray: 5 5; animation: dash 1s linear infinite; }
+.wd-alias-hub path.on { stroke: var(--violet); stroke-width: 2; stroke-dasharray: 5 5; animation: dash 1s linear 4; }
 .wd-alias-chip { position: relative; z-index: 1; padding: 8px 12px; border-radius: 10px; background: var(--violet-bg); border: 1.5px solid var(--important-stroke); color: var(--violet-fg); font: 700 13px var(--mono); text-align: center; line-height: 1.3; }
 .wd-alias-chip small { display: block; font: 600 10px var(--font); letter-spacing: .08em; text-transform: uppercase; opacity: .8; }
 .wd-targets { display: grid; gap: 8px; }

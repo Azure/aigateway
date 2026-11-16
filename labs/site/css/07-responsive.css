@@ -116,10 +116,6 @@
   .wd-alias-hub path.on, .ws-reply.live p::after { animation: none !important; }
   [class*="dg-flow"] { animation: none !important; }
 }
-/* The topbar "Pause animations" toggle (WCAG 2.2.2). */
-html[data-motion="off"] { scroll-behavior: auto !important; }
-html[data-motion="off"] *, html[data-motion="off"] *::before, html[data-motion="off"] *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
-html[data-motion="off"] :is(.wd-alias-hub path.on, [class*="dg-flow"]), html[data-motion="off"] .ws-reply.live p::after { animation: none !important; }
 
 @media print {
   .topbar, .sidebar, .toc, .footer, .lab-actions, .track-bar, .pager, .lab-complete, .feedback, .read-progress, .step-btns, .code-actions, .widget { display: none !important; }

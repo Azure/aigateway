@@ -31,7 +31,6 @@
 .search-trigger span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
 .search-trigger kbd { font-size: 11px; background: var(--bg-elev); }
 [data-theme="light"] .theme-sun, [data-theme="dark"] .theme-moon { display: none; }
-.motion-toggle[aria-pressed="true"] { color: var(--brand-fg); background: var(--brand-bg); border-color: var(--brand); }
 .theme-sun, .theme-moon { display: inline-grid; }
 .nav-toggle { display: none; }
 

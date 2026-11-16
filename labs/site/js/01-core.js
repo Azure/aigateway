@@ -5,7 +5,7 @@ const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 const h = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; };
 const escHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
-let reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches || document.documentElement.dataset.motion === 'off';
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const SV = (d) => `<svg class="i" viewBox="0 0 20 20" aria-hidden="true">${d}</svg>`;
 const IC = {
@@ -81,27 +81,6 @@ function initTheme() {
   }));
   sync();
   $$('[data-kbd]').forEach((k) => { k.textContent = isMac ? '⌘K' : 'Ctrl K'; });
-  initMotion();
-}
-
-// Pause animations: the looping diagrams, the hero, and the widgets stop (WCAG 2.2.2). The head script applies the
-// saved choice before first paint and defaults to paused when the OS asks for reduced motion.
-function initMotion() {
-  const root = document.documentElement;
-  const sync = () => $$('[data-motion-toggle]').forEach((b) => {
-    const off = root.dataset.motion === 'off';
-    b.setAttribute('aria-pressed', off);
-    b.title = off ? 'Animations paused. Select to play them' : 'Pause animations';
-  });
-  $$('[data-motion-toggle]').forEach((b) => b.addEventListener('click', () => {
-    root.dataset.motion = root.dataset.motion === 'off' ? 'on' : 'off';
-    store.set('motion', root.dataset.motion);
-    reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches || root.dataset.motion === 'off';
-    sync();
-    document.dispatchEvent(new CustomEvent('aigw:motion'));
-    toast(root.dataset.motion === 'off' ? 'Animations paused' : 'Animations playing');
-  }));
-  sync();
 }
 
 // Toast

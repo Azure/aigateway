@@ -6,7 +6,6 @@ export const I = {
   search: P('<circle cx="8.5" cy="8.5" r="5"/><path d="m12.5 12.5 4.5 4.5"/>'),
   sun: P('<circle cx="10" cy="10" r="3.5"/><path d="M10 2v1.5M10 16.5V18M2 10h1.5M16.5 10H18M4.3 4.3l1.1 1.1M14.6 14.6l1.1 1.1M4.3 15.7l1.1-1.1M14.6 5.4l1.1-1.1"/>'),
   moon: P('<path d="M16.5 12.2A6.8 6.8 0 0 1 7.8 3.5a6.8 6.8 0 1 0 8.7 8.7Z"/>'),
-  pause: P('<circle cx="10" cy="10" r="7.5"/><path d="M8.2 7.2v5.6M11.8 7.2v5.6"/>'),
   github: '<svg class="i i-fill" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.05-.49.05-.49.8.06 1.23.83 1.23.83.72 1.22 1.88.87 2.34.66.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 8 0Z"/></svg>',
   clock: P('<circle cx="10" cy="10" r="7.5"/><path d="M10 5.5V10l3 2"/>'),
   notebook: P('<rect x="4.5" y="2.5" width="12" height="15" rx="2"/><path d="M3 6h3M3 10h3M3 14h3M9 7h4.5M9 10.5h4.5"/>'),
@@ -100,7 +99,7 @@ ${canonical ? `<link rel="canonical" href="${esc(canonical)}">` : ''}
 <meta name="theme-color" content="#1b1a1f" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="${rel}assets/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="${rel}assets/site.css">
-<script>(function(){var d=document.documentElement;try{var t=localStorage.getItem('aigw-theme');if(!t)t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';d.dataset.theme=t;}catch(e){}try{var m=JSON.parse(localStorage.getItem('aigw-motion'));if(m==null)m=matchMedia('(prefers-reduced-motion: reduce)').matches?'off':'on';d.dataset.motion=m;}catch(e){d.dataset.motion='on';}})();</script>
+<script>(function(){var d=document.documentElement;try{var t=localStorage.getItem('aigw-theme');if(!t)t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';d.dataset.theme=t;}catch(e){}})();</script>
 ${extraHead}
 </head>
 <body class="page-${kind}">
@@ -132,7 +131,6 @@ function topbar(rel, site, kind) {
     <div class="topbar-actions">
       <button class="search-trigger" type="button" data-search-open aria-keyshortcuts="Control+K Meta+K">${I.search}<span>Search labs</span><kbd data-kbd aria-hidden="true">Ctrl K</kbd></button>
       <a class="topbar-link hide-sm" href="${site.docs}" target="_blank" rel="noopener">Documentation</a>
-      <button class="icon-btn motion-toggle" type="button" data-motion-toggle aria-pressed="false" aria-label="Pause animations" title="Pause animations">${I.pause}</button>
       <button class="icon-btn" type="button" data-theme-toggle aria-pressed="false" aria-label="Dark mode" title="Dark mode"><span class="theme-sun">${I.sun}</span><span class="theme-moon">${I.moon}</span></button>
       <a class="icon-btn hide-sm" href="${site.repo}" target="_blank" rel="noopener" aria-label="GitHub repository">${I.github}</a>
       <a class="btn btn-primary btn-pill btn-sm hide-xs" href="${site.portal}" target="_blank" rel="noopener">Open portal</a>
