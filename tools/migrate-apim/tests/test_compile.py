@@ -438,3 +438,24 @@ class TestTheRegistryDescribesThePlanner:
     def test_a_selector_rejects_a_value_it_never_compares_against(self):
         site = next(s for s in dispatch.REGISTRY if s.site == "plan._agent")
         assert not site.governs({"match": {"family": "models"}})
+
+
+class TestACleanRunSaysWhatItChecked:
+    """A compile that only speaks up on failure leaves the reader of a green
+    run unable to tell thorough from vacuous -- and this contract shipped a
+    command that existed in no release, through a green suite."""
+
+    def test_every_check_reports_what_it_covered(self, compile_with):
+        covered = compile_with(newest_release="cli-v1.0.0b31").covered
+        assert len(covered) == 5, covered
+
+    def test_the_counts_are_the_real_ones(self, compile_with, shipped):
+        catalog, rules, surface = shipped
+        covered = " ".join(compile_with().covered)
+        assert f"{len(catalog['capabilities'])} capabilities" in covered
+        assert f"{len(surface['commands'])} commands" in covered
+
+    def test_without_tags_the_release_line_is_absent(self, compile_with):
+        """Nothing was compared, so claiming a check ran would be a lie."""
+        covered = " ".join(compile_with().covered)
+        assert "published release" not in covered

@@ -637,6 +637,10 @@ def _compile(args: argparse.Namespace) -> int:
         catalog_path, rules_path, surface_path, newest_release=args.newest_release,
     )
 
+    # What was checked, before what came of it. A run that only speaks up on
+    # failure tells a reader nothing about what a green one covered.
+    for line in result.covered:
+        print(f"  checked {line}", file=sys.stderr)
     for diagnostic in result.diagnostics:
         print(f"  {diagnostic}", file=sys.stderr)
     errors, warnings = len(result.errors), len(result.warnings)

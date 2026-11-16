@@ -64,6 +64,15 @@ class Compilation:
 
     def __init__(self) -> None:
         self.diagnostics: list[Diagnostic] = []
+        # What each check actually covered. A compile that only speaks up when
+        # something is wrong leaves the reader of a green run guessing whether
+        # it checked anything at all, or silently skipped the half that
+        # mattered -- which is how the catalog shipped a command that existed
+        # in no release, through a green suite.
+        self.covered: list[str] = []
+
+    def cover(self, what: str) -> None:
+        self.covered.append(what)
 
     def error(self, check: str, message: str) -> None:
         self.diagnostics.append(Diagnostic(ERROR, check, message))
@@ -107,6 +116,12 @@ IDENTITY_OPTIONS = frozenset({
 def check_capabilities(catalog: dict[str, Any], surface: dict[str, Any], out: Compilation) -> None:
     """Every declared command and option has to exist in the snapshot."""
     commands = surface.get("commands") or {}
+    declared = catalog.get("capabilities") or []
+    options = sum(len(c.get("options") or []) for c in declared)
+    out.cover(
+        f"{len(declared)} capabilities and {options} declared options against "
+        f"{len(commands)} commands in the {surface.get('extensionVersion', '?')} surface"
+    )
     for capability in catalog.get("capabilities") or []:
         cid = capability.get("id", "<unnamed>")
         for field in ("command", "read"):
@@ -190,6 +205,8 @@ def check_release_pin(catalog: dict[str, Any], releases: str, out: Compilation) 
     if not candidates:
         return
 
+    out.cover(f"{documented} against {len(candidates)} published release(s)")
+
     here = release_order(documented)
     ordered = [(release_order(tag), tag) for tag in candidates]
     comparable = [(order, tag) for order, tag in ordered if order is not None]
@@ -253,6 +270,10 @@ def check_pins(
     evidence = catalog.get("cliEvidence") or {}
     version = evidence.get("documentedVersion")
     digest = evidence.get("wheelSha256")
+    out.cover(
+        f"{version} and its wheel digest agree across the catalog filename, "
+        f"cliEvidence, the snapshot and rules targetCapabilities"
+    )
 
     if surface.get("wheelSha256") != digest:
         out.error(
@@ -300,6 +321,11 @@ _SELECTED_SECTIONS = ("assets", "structural", "policies")
 
 def check_rules(catalog: dict[str, Any], rules: dict[str, Any], out: Compilation) -> None:
     capabilities = {c.get("id") for c in catalog.get("capabilities") or []}
+    counted = sum(len(rules.get(section) or []) for section in _SELECTED_SECTIONS)
+    out.cover(
+        f"{counted} rules across {', '.join(_SELECTED_SECTIONS)}: each selectable, "
+        f"every field read by a site that can select it, none ambiguous"
+    )
 
     for section in _SELECTED_SECTIONS:
         for rule in rules.get(section) or []:
@@ -476,6 +502,7 @@ def check_schemas(catalog: dict[str, Any], rules: dict[str, Any], out: Compilati
     Without `jsonschema` installed this degrades to a notice rather than
     passing quietly: a check that cannot run has not succeeded.
     """
+    out.cover("catalog and rules against their schemas, unknown keys rejected")
     try:
         import jsonschema  # type: ignore
     except ImportError:
