@@ -152,7 +152,7 @@ Route agent frameworks, hosted agents, and coding agents through the gateway.
 | 24 | [Use your gateway's models and tools in GitHub Copilot](24-github-copilot-byok/README.md) | Intermediate | 40 min | Portal · CLI · Bicep · Code | [📓](24-github-copilot-byok/24-github-copilot-byok.ipynb) |
 | 25 | [Use your gateway's models and tools in Claude Code](25-claude-code/README.md) | Intermediate | 40 min | Portal · CLI · Bicep · Code | [📓](25-claude-code/25-claude-code.ipynb) |
 
-### Production & emerging
+### Enterprise readiness
 
 Private networking, Agent 365, threat protection, and reference architectures.
 

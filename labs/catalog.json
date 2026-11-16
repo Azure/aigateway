@@ -54,7 +54,7 @@
     },
     {
       "id": "production",
-      "title": "Production & emerging",
+      "title": "Enterprise readiness",
       "color": "slate",
       "description": "Private networking, Agent 365, threat protection, and reference architectures."
     }
