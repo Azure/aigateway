@@ -118,7 +118,7 @@ jobs:
         working-directory: tools/migrate-apim
         run: |
           pip install -e '.[dev]'
-          python -m migrate_apim compile --cli-dir ../../cli
+          python -m migrate_apim compile
 
       # A difference here means the committed snapshot is not what the wheel
       # actually offers, so every offline compile since has been checking the

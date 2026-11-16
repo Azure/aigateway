@@ -97,7 +97,7 @@ When the Azure CLI extension gains a new capability:
 3. **Update `capabilities/aigateway-<version>.json`** — Add the capability, update `cliEvidence.documentedVersion` and `.wheelSha256`. Rename the file to match the version it documents. If a capability became unavailable, move it to `unsupported` or `serviceOnly`.
 4. **Update `capabilities/rules.json`** — Add or modify asset/policy rules to use the new capability id, and point `targetCapabilities` at the catalog.
 5. **Point `DEFAULT_CATALOG` at the new file** — every entry point that is not given `--capabilities` falls back to it.
-6. **Compile** — `migrate-apim compile --cli-dir ../../cli` must pass. It is the step that makes the rest of this list checkable rather than advisory.
+6. **Compile** — `migrate-apim compile` must pass. It is the step that makes the rest of this list checkable rather than advisory.
 7. **No code change needed** — The planner reads the data files; it does not care what they contain. A new gateway release is a data change.
 
 ## Compilation
@@ -112,7 +112,7 @@ A data-driven contract is only as good as the checking of it. Two claims used to
 | The options exist | Each declared and each required option is in that command's options |
 | Nothing the CLI insists on is missing | Every option the snapshot marks `[Required]`, other than the identity arguments `apply` supplies from the plan's target, is one the catalog marks required |
 | The snapshot is of this release | Its `wheelSha256` and version equal the catalog's `cliEvidence` |
-| One release, named consistently | Catalog filename and `targetCapabilities` agree; the `cli/` installers carry the same pin — advisory, see below |
+| One release, named consistently | Catalog filename and `targetCapabilities` agree with the `cliEvidence` version |
 | The catalog is not a release behind | With `--newest-release`, the documented version is the newest `cli-v*` there is — advisory, see below |
 | The shapes are well formed | Both files against `schemas/capabilities.schema.json` and `schemas/rules.schema.json`, `additionalProperties` closed |
 | Every rule can be selected | Each rule is governed by a registered selector (below) |
@@ -121,7 +121,9 @@ A data-driven contract is only as good as the checking of it. Two claims used to
 
 Errors fail the command; warnings — a field no site reads, a version that cannot be compared — are advisory, and `--strict` promotes them. `--strict` passes on the committed data, which is the only state in which it is worth having: a mode that cannot pass is a mode nobody runs.
 
-Being a release behind is advisory, and so is the matching installer pin. The catalog is a claim about one release, checked against that release, and it stays true when a newer one ships. Failing on it would mean every gateway release blocks every change to this tool until somebody adopts it — and the installers would force it twice over, since `cli/` moves when the CLI releases while the catalog moves when it has been verified. Two pins, two owners, two cadences. The lag is reported where it is useful, to whoever is already editing the table, and `--strict` promotes it so the adoption PR still has to land the whole move together. The installers keep their own pin honest through `cli/tests/test_installers.py`.
+Being a release behind is advisory. The catalog is a claim about one release, checked against that release, and it stays true when a newer one ships. Failing on it would mean every gateway release blocks every change to this tool until somebody adopts it. The lag is reported where it is useful, to whoever is already editing the table, and `--strict` promotes it so the adoption PR still has to land complete.
+
+The catalog says which release to install; nothing here reads `cli/` to find out. `cli/install.sh` is the CLI's own artifact and moves when the CLI releases, so checking the catalog against it would have made the newest release the only one the catalog could ever pin — and then every run would validate against latest, which is the opposite of pinning. `cli-surface.yml` takes the version and digest from `cliEvidence` and installs exactly that wheel. The installers keep their own pin honest through `cli/tests/test_installers.py`.
 
 ### The selector registry
 

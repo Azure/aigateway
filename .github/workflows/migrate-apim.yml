@@ -86,7 +86,6 @@ jobs:
       - name: Compile the capability contract
         run: |
           python -m migrate_apim compile \
-            --cli-dir ../../cli \
             --newest-release "${{ steps.release.outputs.tags }}"
 
       - name: Run the test suite

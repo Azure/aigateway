@@ -203,7 +203,7 @@ def check_release_pin(catalog: dict[str, Any], releases: str, out: Compilation) 
             f"the catalog documents {documented} but {newest} has been released. "
             f"Adopt it with `python scripts/azcli_aigw_apply.py --version {newest}`, "
             f"which re-exports the surface, re-pins cliEvidence, renames the catalog, "
-            f"repoints rules.json and moves the installers together.",
+            f"and repoints rules.json.",
         )
     elif there < here:
         # A legitimate state while a release candidate is being prepared, and
@@ -224,16 +224,19 @@ def check_pins(
     rules: dict[str, Any],
     surface: dict[str, Any],
     out: Compilation,
-    *,
-    cli_dir: Path | None = None,
 ) -> None:
     """One release, named the same way everywhere it is named.
 
-    The version and digest are repeated across the catalog, the rules, the
-    snapshot and the installer scripts. Nothing used to tie them together, and
-    they drifted: a catalog called `aigateway-1.0.0b26.json` whose own evidence
-    said `1.0.0b30`, and a `DEFAULT_CATALOG` naming a file deleted two releases
-    earlier, which stopped `plan` dead.
+    The version and digest are repeated across the catalog, the rules and the
+    snapshot. Nothing used to tie them together, and they drifted: a catalog
+    called `aigateway-1.0.0b26.json` whose own evidence said `1.0.0b30`, and a
+    `DEFAULT_CATALOG` naming a file deleted two releases earlier, which stopped
+    `plan` dead.
+
+    `cli/` is not among them. Those installers are the CLI's own artifact and
+    move when it releases; holding the catalog to them would make the newest
+    release the only one it could pin, so every run would validate against
+    latest. The catalog says which release to install, not the other way round.
     """
     evidence = catalog.get("cliEvidence") or {}
     version = evidence.get("documentedVersion")
@@ -275,77 +278,6 @@ def check_pins(
             f"stops `plan` outright. Present: "
             f"{sorted(p.name for p in CAPABILITIES_DIR.iterdir())}",
         )
-
-    if cli_dir is None or not cli_dir.is_dir():
-        return
-    # The installer scripts and their test carry the same pin. They are read for
-    # those two constants only, not linted as prose.
-    #
-    # Advisory, for the same reason as release-pin. These files belong to the
-    # CLI and move when it releases; the catalog moves when it has been
-    # verified against that release. Two pins, two owners, two cadences --
-    # holding them equal on pain of failure forces the lockstep that the
-    # release-pin comment above refuses. `--strict` promotes them, so the
-    # adoption PR still has to land all of it together. The installers are
-    # separately held to their own pin by cli/tests/test_installers.py.
-    #
-    # Only the installers are held to "no other version appears". The test names
-    # an older release on purpose, as the upgrade-from fixture, and asserts the
-    # installers do *not* mention it -- so a stale-version sweep there would
-    # fail on the very line that prevents the staleness.
-    # Read everything first, then say what is wrong once. A release moves all
-    # three files together, and reporting it per file per symptom turned one
-    # fact -- the installers are on a newer release than the catalog -- into
-    # nine lines that a reader has to collapse by hand to notice there is only
-    # one thing to do about it.
-    seen: dict[str, tuple[bool, bool, set[str]]] = {}
-    for name, forbid_other_versions in (
-        ("install.sh", True), ("install.ps1", True), ("tests/test_installers.py", False),
-    ):
-        path = cli_dir / name
-        if not path.is_file():
-            continue
-        try:
-            text = path.read_text(encoding="utf-8")
-        except OSError as exc:
-            # Every other load here turns into a diagnostic. An unreadable
-            # installer should not be the one thing that raises.
-            out.error("installer-pin", f"cli/{name} could not be read: {exc}")
-            continue
-        others = set(_PIN.findall(text)) - {version} if forbid_other_versions else set()
-        seen[name] = (bool(version) and version in text, bool(digest) and digest in text, others)
-
-    off = [name for name, (named, _, _) in seen.items() if not named]
-    moved = {v for name, (_, _, others) in seen.items() if name in off for v in others}
-    if off and len(moved) == 1:
-        # The ordinary case: a release shipped, cli/ followed it, the catalog
-        # has not been adopted onto it yet. One sentence, and release-pin says
-        # what to run about it.
-        out.warn(
-            "installer-pin",
-            f"{', '.join('cli/' + n for n in off)} "
-            f"{'is' if len(off) == 1 else 'are'} pinned to {moved.pop()}, "
-            f"not the catalog's {version}",
-        )
-    else:
-        # They disagree with each other, or name nothing recognisable. Which
-        # one is right is the question here, so each says what it is pinned to.
-        for name in off:
-            others = seen[name][2]
-            found = f" (names {sorted(others)})" if others else ""
-            out.warn("installer-pin", f"cli/{name} does not name {version}{found}")
-        for name, (_, _, others) in seen.items():
-            if name not in off and others:
-                out.warn(
-                    "installer-pin",
-                    f"cli/{name} names {sorted(others)} while the catalog documents {version}",
-                )
-
-    # Only worth saying about a file that is otherwise on the right release; on
-    # a different one the digest is wrong by construction.
-    for name, (named, has_digest, _) in seen.items():
-        if named and digest and not has_digest:
-            out.warn("installer-pin", f"cli/{name} does not carry the catalog's wheel digest")
 
 
 # --------------------------------------------------------------- the rules
@@ -580,7 +512,6 @@ def compile_contract(
     rules_path: Path,
     surface_path: Path,
     *,
-    cli_dir: Path | None = None,
     newest_release: str | None = None,
 ) -> Compilation:
     out = Compilation()
@@ -609,7 +540,7 @@ def compile_contract(
 
     check_schemas(catalog, rules, out)
     check_capabilities(catalog, surface, out)
-    check_pins(catalog, catalog_path, rules, surface, out, cli_dir=cli_dir)
+    check_pins(catalog, catalog_path, rules, surface, out)
     check_rules(catalog, rules, out)
     if newest_release:
         check_release_pin(catalog, newest_release, out)

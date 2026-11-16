@@ -191,10 +191,6 @@ def build_parser() -> argparse.ArgumentParser:
     compile_cmd.add_argument("--rules", help="Path to rules.json")
     compile_cmd.add_argument("--surface", help="Path to the CLI surface snapshot")
     compile_cmd.add_argument(
-        "--cli-dir",
-        help="Path to cli/, to cross-check the pinned wheel version and digest",
-    )
-    compile_cmd.add_argument(
         "--newest-release",
         metavar="VERSIONS",
         help="Published CLI versions or cli-v tags, whitespace separated, to report "
@@ -637,10 +633,8 @@ def _compile(args: argparse.Namespace) -> int:
             return 1
         surface_path = find_surface(catalog, catalog_path.parent)
 
-    cli_dir = Path(args.cli_dir) if args.cli_dir else None
     result = compile_contract(
-        catalog_path, rules_path, surface_path,
-        cli_dir=cli_dir, newest_release=args.newest_release,
+        catalog_path, rules_path, surface_path, newest_release=args.newest_release,
     )
 
     for diagnostic in result.diagnostics:

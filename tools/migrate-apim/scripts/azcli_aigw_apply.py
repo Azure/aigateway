@@ -52,15 +52,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 CAPABILITIES = ROOT / "capabilities"
 EXPORTER = ROOT / "scripts" / "azcli_aigw_export.py"
-CLI_DIR = ROOT.parent.parent / "cli"
 RELEASE_URL = "https://github.com/Azure/aigateway/releases/download/cli-v{v}/aigateway-{v}-py3-none-any.whl"
 REPO_BLOB = "https://github.com/Azure/aigateway/blob/{rev}/cli/{page}"
-# The installer scripts and their test carry the same version and digest as the
-# catalog, and `compile`'s installer-pin check holds them to it. An adoption
-# that moves the catalog alone leaves the contract broken, which is how this
-# arrangement failed first: b26 -> b31 passed only because the release had
-# already moved the installers, so nothing here had to know about them.
-INSTALLERS = ("install.sh", "install.ps1", "tests/test_installers.py")
 
 
 class Abort(RuntimeError):
@@ -174,45 +167,6 @@ def rewrite_catalog(catalog: Path, version: str, sha: str, revision: str) -> dic
     return {"previous": previous}
 
 
-def repin_installers(
-    cli_dir: Path, old: tuple[str, str], new: tuple[str, str], write: bool = True
-) -> list[str]:
-    """Move the installers and their test onto the release being adopted.
-
-    The previous version and digest are replaced exactly, rather than any
-    version-shaped string being swept up: `tests/test_installers.py` names an
-    older release on purpose as the upgrade-from fixture, and rewriting that
-    would destroy the very case that proves upgrading works. compile's
-    installer-pin check knows the difference too, which is why it only holds
-    the two installers to "no other version appears".
-
-    A file that does not carry the old pin is reported rather than skipped. It
-    means the installers and the catalog had already diverged, and guessing
-    which of the two is right is not this script's call to make.
-    """
-    report: list[str] = []
-    old_version, old_digest = old
-    new_version, new_digest = new
-    for name in INSTALLERS:
-        path = cli_dir / name
-        if not path.is_file():
-            raise Abort(f"{path} is missing; the installer pins cannot be moved.")
-        text = path.read_text(encoding="utf-8")
-        versions = text.count(old_version)
-        digests = text.count(old_digest)
-        if not versions:
-            raise Abort(
-                f"cli/{name} does not name {old_version}, the version the catalog is "
-                f"moving from. It has diverged from the catalog already; reconcile it "
-                f"by hand before adopting {new_version}."
-            )
-        updated = text.replace(old_version, new_version).replace(old_digest, new_digest)
-        if write:
-            path.write_text(updated, encoding="utf-8")
-        report.append(f"cli/{name}: {versions} version, {digests} digest")
-    return report
-
-
 def repoint_rules(version: str) -> None:
     rules = CAPABILITIES / "rules.json"
     data = json.loads(rules.read_text(encoding="utf-8"))
@@ -227,21 +181,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--wheel-url", help="Download from here instead of the release asset")
     parser.add_argument("--surface", type=Path, help="Use this exported snapshot instead of exporting")
     parser.add_argument("--revision", help="Docs revision; defaults to the cli-v<version> tag")
-    parser.add_argument("--cli-dir", type=Path, default=CLI_DIR,
-                        help="Where the installers live, when not the repository's cli/")
     parser.add_argument("--dry-run", action="store_true", help="Report what would change, write nothing")
     args = parser.parse_args(argv)
 
     version = args.version.removeprefix("cli-v")
     catalog = sole_catalog()
-    # Read before anything is rewritten: moving the installers needs the pins
-    # the catalog is moving away from, and the catalog is where they are kept.
-    was = json.loads(catalog.read_text(encoding="utf-8"))["cliEvidence"]
-    current, current_digest = was["documentedVersion"], was["wheelSha256"]
+    current = json.loads(catalog.read_text(encoding="utf-8"))["cliEvidence"]["documentedVersion"]
     if current == version and not args.dry_run:
         raise Abort(f"the catalog already documents {version}; nothing to adopt.")
 
-    cli_dir = args.cli_dir
     revision = resolve_revision(version, args.revision)
     print(f"Adopting {current} -> {version} (docs at {revision[:12]})")
 
@@ -249,10 +197,6 @@ def main(argv: list[str] | None = None) -> int:
         print("  would rename  " + f"{catalog.name} -> aigateway-{version}.json")
         print("  would write   " + f"capabilities/cli-surface-{version}.json")
         print("  would repoint rules.json targetCapabilities")
-        for line in repin_installers(
-            cli_dir, (current, current_digest), (version, "?" * 64), write=False
-        ):
-            print(f"  would repin   {line}")
         print("  would blank   cliEvidence.surfaceDelta, for a human to write")
         return 0
 
@@ -267,10 +211,6 @@ def main(argv: list[str] | None = None) -> int:
             sha = digest(wheel)
             export_surface(wheel, snapshot, workdir)
 
-    # The installers first: they are the step that can still refuse, and a
-    # refusal after the catalog has been renamed leaves a half-moved tree.
-    repinned = repin_installers(cli_dir, (current, current_digest), (version, sha))
-
     moved = rewrite_catalog(catalog, version, sha, revision)
     adopted = catalog.with_name(f"aigateway-{version}.json")
     if adopted != catalog:
@@ -281,11 +221,9 @@ def main(argv: list[str] | None = None) -> int:
         stale.unlink()
 
     print(f"  wrote {adopted.name} and {snapshot.name}")
-    for line in repinned:
-        print(f"  repinned {line}")
     print("\nChecking the catalog against the release it now claims:")
     checked = subprocess.run(
-        [sys.executable, "-m", "migrate_apim", "compile", "--cli-dir", str(cli_dir)],
+        [sys.executable, "-m", "migrate_apim", "compile"],
         cwd=ROOT, check=False,
     )
     print(

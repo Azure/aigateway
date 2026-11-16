@@ -17,8 +17,6 @@ from migrate_apim import compile, dispatch
 from migrate_apim.capability import CAPABILITIES_DIR, DEFAULT_CATALOG
 from migrate_apim.compile import compile_contract, find_surface
 
-CLI_DIR = CAPABILITIES_DIR.parent.parent.parent / "cli"
-
 
 @pytest.fixture(scope="module")
 def shipped():
@@ -31,7 +29,7 @@ def shipped():
 @pytest.fixture
 def compile_with(tmp_path, shipped):
     """Compile a variation on the shipped contract, and return its diagnostics."""
-    def run(*, catalog=None, rules=None, surface=None, cli_dir=None, newest_release=None):
+    def run(*, catalog=None, rules=None, surface=None, newest_release=None):
         base_catalog, base_rules, base_surface = shipped
         catalog = catalog if catalog is not None else base_catalog
         rules = rules if rules is not None else base_rules
@@ -50,7 +48,6 @@ def compile_with(tmp_path, shipped):
             paths[f"aigateway-{version}.json"],
             paths["rules.json"],
             paths[f"cli-surface-{version}.json"],
-            cli_dir=cli_dir,
             newest_release=newest_release,
         )
     return run
@@ -70,7 +67,6 @@ class TestTheShippedContractCompiles:
         catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
         result = compile_contract(
             catalog_path, CAPABILITIES_DIR / "rules.json", find_surface(catalog),
-            cli_dir=CLI_DIR if CLI_DIR.is_dir() else None,
         )
         assert result.errors == [], "\n".join(str(d) for d in result.errors)
 
@@ -196,50 +192,6 @@ class TestThePinsAgree:
         rules = copy.deepcopy(shipped[1])
         rules["targetCapabilities"] = "aigateway-1.0.0b26"
         assert "rules-target-catalog" in codes(compile_with(rules=rules))
-
-    @pytest.mark.skipif(not CLI_DIR.is_dir(), reason="needs cli/ beside tools/")
-    def test_the_installers_carry_the_catalogs_pin(self, compile_with):
-        result = compile_with(cli_dir=CLI_DIR)
-        assert "installer-pin" not in codes(result), (
-            "\n".join(str(d) for d in result.errors)
-        )
-
-    def test_installers_moving_together_are_one_warning(self, compile_with, tmp_path):
-        """A release moves all three at once. That is one fact with one thing
-        to do about it, and release-pin already says what; three files times
-        three symptoms made the reader collapse nine lines by hand to see it."""
-        (tmp_path / "tests").mkdir()
-        for name in ("install.sh", "install.ps1"):
-            (tmp_path / name).write_text('W="aigateway-1.0.0b98"\n', encoding="utf-8")
-        (tmp_path / "tests" / "test_installers.py").write_text('V = "1.0.0b98"\n', encoding="utf-8")
-        found = [d for d in compile_with(cli_dir=tmp_path).warnings if d.check == "installer-pin"]
-        assert len(found) == 1, [str(d) for d in found]
-        assert "1.0.0b98" in str(found[0])
-
-    def test_installers_disagreeing_say_what_each_is_on(self, compile_with, tmp_path):
-        """Here which of them is right is the open question, so collapsing
-        them would hide the only detail that settles it."""
-        (tmp_path / "tests").mkdir()
-        (tmp_path / "install.sh").write_text('W="aigateway-1.0.0b98"\n', encoding="utf-8")
-        (tmp_path / "install.ps1").write_text("W = 'aigateway-1.0.0b97'\n", encoding="utf-8")
-        (tmp_path / "tests" / "test_installers.py").write_text('V = "1.0.0b98"\n', encoding="utf-8")
-        text = "\n".join(
-            str(d) for d in compile_with(cli_dir=tmp_path).warnings if d.check == "installer-pin"
-        )
-        assert "1.0.0b98" in text and "1.0.0b97" in text
-
-    def test_installers_on_a_newer_release_do_not_fail_the_build(self, compile_with, tmp_path):
-        """`cli/` moves when the CLI releases; the catalog moves when it has
-        been verified against that release. Failing here would force the two
-        into lockstep, which is the same duress release-pin refuses."""
-        (tmp_path / "tests").mkdir()
-        (tmp_path / "install.sh").write_text('WHEEL="aigateway-1.0.0b98"\n', encoding="utf-8")
-        (tmp_path / "install.ps1").write_text("$Wheel = 'aigateway-1.0.0b98'\n", encoding="utf-8")
-        (tmp_path / "tests" / "test_installers.py").write_text('V = "1.0.0b98"\n', encoding="utf-8")
-        result = compile_with(cli_dir=tmp_path)
-        assert result.ok(), [str(d) for d in result.errors]
-        assert any(d.check == "installer-pin" for d in result.warnings)
-        assert not result.ok(strict=True)
 
 
 class TestTheShapesAreClosed:
