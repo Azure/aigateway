@@ -1348,5 +1348,5 @@ touch them, because the Bicep + azd and Terraform tracks created their own gatew
 | :-- | :-: | --: |
 | [29 · Model failover](../29-model-failover/README.md) | [All labs](../README.md) | [26 · Embeddings](../26-embeddings/README.md) |
 
-<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (6 of 14) · [FinOps & operations](../README.md#learning-paths) (2 of 6)</sub>
+<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (6 of 15) · [FinOps & operations](../README.md#learning-paths) (2 of 6)</sub>
 <!-- gh:end -->

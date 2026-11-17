@@ -1602,6 +1602,8 @@ Microsoft Entra token for the gateway, and the gateway exchanges it for a delega
 exchange app registration holds the delegated permissions, and a user-assigned identity attached to the gateway, like
 the one in this lab, authenticates that app through a federated credential, so no client secret is stored. See
 [Access MCP server backends with user credentials](https://ai.gateway.azure.com/docs/toolservers/access-backends-with-user-credentials).
+[33 · Connect Microsoft 365 Copilot to MCP tools as the signed-in user](../33-copilot-obo-mcp/README.md) builds the whole
+chain, from Copilot Cowork to an MCP server on Azure Container Apps.
 
 ### Drop access the system identity no longer needs
 

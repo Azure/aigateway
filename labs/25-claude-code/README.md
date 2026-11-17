@@ -2394,5 +2394,5 @@ if another provider on the gateway uses the account. Otherwise, remove it in the
 | :-- | :-: | --: |
 | [24 · GitHub Copilot BYOK](../24-github-copilot-byok/README.md) | [All labs](../README.md) | [18 · Private networking](../18-private-networking/README.md) |
 
-<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (14 of 14)</sub>
+<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (15 of 15)</sub>
 <!-- gh:end -->

@@ -1712,5 +1712,5 @@ don't touch them, because the Bicep + azd and Terraform tracks created their own
 | :-- | :-: | --: |
 | [23 · Streaming responses](../23-streaming-responses/README.md) | [All labs](../README.md) | [31 · Jev decisions](../31-jev-decisions/README.md) |
 
-<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (3 of 14)</sub>
+<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (3 of 15)</sub>
 <!-- gh:end -->

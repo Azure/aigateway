@@ -179,6 +179,7 @@ A few labs use more providers. Register them the same way before you start those
 | :-- | :-- |
 | `Microsoft.Insights` and `Microsoft.OperationalInsights` | [13 · Monitoring](13-monitoring/README.md) and [21 · Enterprise reference](21-enterprise-reference/README.md) |
 | `Microsoft.Network` | [18 · Private networking](18-private-networking/README.md) |
+| `Microsoft.App`, `Microsoft.ContainerRegistry`, `Microsoft.OperationalInsights`, and `Microsoft.ManagedIdentity` | [33 · Copilot on-behalf-of](33-copilot-obo-mcp/README.md) |
 
 > **Checkpoint**
 > The loop printed a line such as `📦 Microsoft.ApiManagement is registered` for each provider, and

@@ -20,8 +20,8 @@ locals {
   backend_scope     = "api://${azuread_application.backend.client_id}/user_impersonation"
 }
 
-# Azure AI Gateway's service principal. Before you begin creates it when it's missing: Terraform only reads it, so
-# terraform destroy never deletes it.
+# Azure AI Gateway's service principal. The lab's Terraform track creates it with the Azure CLI when it's missing:
+# Terraform only reads it, so terraform destroy never deletes it.
 data "azuread_service_principal" "ai_gateway" {
   client_id = local.ai_gateway_app_id
 }

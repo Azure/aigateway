@@ -13,10 +13,11 @@ import * as setL29 from './diagrams/set-l29.mjs';
 import * as setL30 from './diagrams/set-l30.mjs';
 import * as setL31 from './diagrams/set-l31.mjs';
 import * as setL32 from './diagrams/set-l32.mjs';
+import * as setL33 from './diagrams/set-l33.mjs';
 
 const out = join(dirname(fileURLToPath(import.meta.url)), '..', 'assets', 'diagrams');
 await mkdir(out, { recursive: true });
-const all = { ...setA, ...setB, ...setC, ...setL26, ...setL27, ...setL28, ...setL29, ...setL30, ...setL31, ...setL32 };
+const all = { ...setA, ...setB, ...setC, ...setL26, ...setL27, ...setL28, ...setL29, ...setL30, ...setL31, ...setL32, ...setL33 };
 for (const make of Object.values(all)) {
   const svg = make();
   const file = svg.match(/data-name="([\w-]+)"/)[1];

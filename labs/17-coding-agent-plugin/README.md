@@ -2207,5 +2207,5 @@ gemini extensions uninstall aigateway &&
 | :-- | :-: | --: |
 | [32 · Foundry gateway connection](../32-foundry-gateway-connection/README.md) | [All labs](../README.md) | [24 · GitHub Copilot BYOK](../24-github-copilot-byok/README.md) |
 
-<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (12 of 14)</sub>
+<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (13 of 15)</sub>
 <!-- gh:end -->

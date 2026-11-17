@@ -201,6 +201,18 @@ Before you create, change, or delete Azure resources, confirm the subscription a
   `tools/call` and expects `{"decision":"allow"|"deny","reason":"…"}`. A deny reaches the caller as HTTP `200` with
   `isError: true`, without the reason; with `failClosed`, a failure or a timeout of about 30 seconds looks the same.
   The portal edits one intervention point per policy, and the CLI can't set it.
+- On-behalf-of MCP backends: `authentication.oauth2` with `grantType: tokenExchange` and
+  `tokenExchange.profile: entraOnBehalfOf`, a `federatedClientApplication` (the token exchange app's client ID, and
+  the client ID, not the principal ID, of a user-assigned identity attached to the gateway), and full delegated
+  `scopes` (the portal rejects `.default`). The token exchange app needs the identifier URI `api://<client ID>`
+  (otherwise tool calls answer `502`), a federated credential that trusts the gateway identity, AI Gateway
+  pre-authorized for its `FederationApp.Access` scope, and tenant-wide consent to the backend's scope. Callers need
+  an Entra token with `Data.All` and **AI Gateway Tools User** on the MCP server. `az aigateway mcp create` has no
+  dedicated flags: pass the backend with `--endpoints`, or the `authentication` object with `"type": "oauth2"`
+  added in `--credentials`. Microsoft 365 Copilot reaches the server through a Teams
+  Developer Portal OAuth client registration (**Any Teams app**) and an admin center MCP connector. The gateway
+  drops the tools' `readOnlyHint`, so Copilot shows them as **Write** and asks before each call; Cowork shows the
+  approval, Chat doesn't (lab 33).
 - Jev decision models: a Custom provider with base URL `https://api.typesafe.ai` and one header,
   `Authorization: Bearer <TypeSafe key>`; the model declares `supportedEndpoints: ["typesafe/v1/systemone"]`. Call
   `POST <runtime URL>/default/models/typesafe/v1/systemone` with the alias in `model` and a gateway key or Entra
@@ -273,6 +285,7 @@ Each entry shows the level, time, tracks, and the labs it needs.
 - **04** [Federate MCP tools behind one endpoint](https://azure.github.io/aigateway/labs/04-federate-mcp-tools/index.md) `04-federate-mcp-tools` (Beginner, 30 min · Portal, CLI, Bicep, Terraform, Code, Notebook · needs 01): Register a remote MCP server in Azure AI Gateway, add a second backend under its own namespace, and connect curl, VS Code, and Python to one governed MCP endpoint.
 - **05** [Control which tools agents can call](https://azure.github.io/aigateway/labs/05-mcp-tool-controls/index.md) `05-mcp-tool-controls` (Intermediate, 20 min · Portal, CLI, Bicep, Terraform · needs 04): Publish only approved MCP tools with name patterns, block risky tools, take a whole MCP server offline, and cap tool traffic per caller with a request rate limit.
 - **30** [Govern MCP tool calls with agent hooks](https://azure.github.io/aigateway/labs/30-agent-hooks/index.md) `30-agent-hooks` (Advanced, 40 min · Portal, CLI, Bicep, Terraform · needs 04): Run your own allow-or-deny rules on every MCP tool call. An agent hooks policy asks an Azure function before the tool runs and again before the result reaches the agent, authenticated with the gateway's managed identity.
+- **33** [Connect Microsoft 365 Copilot to MCP tools as the signed-in user](https://azure.github.io/aigateway/labs/33-copilot-obo-mcp/index.md) `33-copilot-obo-mcp` (Advanced, 60 min · Portal, CLI, Bicep, Terraform · needs 04, 11): Let Microsoft 365 Copilot and Copilot Cowork call your MCP tools through Azure AI Gateway as the signed-in user. The gateway checks the user's role, then exchanges the user's token with Microsoft Entra ID on-behalf-of, so the backend sees the user and no secret leaves the gateway.
 
 ### Governance & cost
 
@@ -316,8 +329,8 @@ Each entry shows the level, time, tracks, and the labs it needs.
 | :-- | :-- | :-- |
 | 30-minute essentials | Everyone | 00 → 01 → 02 → 04 |
 | Platform engineer | Build the shared AI platform | 01 → 02 → 03 → 22 → 27 → 29 → 04 → 09 → 12 → 18 → 21 |
-| App & agent developer | Ship apps and agents on governed endpoints | 02 → 03 → 26 → 22 → 28 → 23 → 31 → 04 → 15 → 16 → 32 → 17 → 24 → 25 |
-| Security & compliance | Protect data, identities, and tools | 10 → 11 → 08 → 05 → 09 → 19 → 30 → 20 |
+| App & agent developer | Ship apps and agents on governed endpoints | 02 → 03 → 26 → 22 → 28 → 23 → 31 → 04 → 15 → 16 → 32 → 33 → 17 → 24 → 25 |
+| Security & compliance | Protect data, identities, and tools | 10 → 11 → 08 → 05 → 09 → 19 → 30 → 33 → 20 |
 | FinOps & operations | Control spend and run the gateway | 06 → 23 → 07 → 28 → 13 → 14 |
 <!-- gh:end -->
 
@@ -345,6 +358,7 @@ Each entry shows the level, time, tracks, and the labs it needs.
 | Chargeback with token claims: Attribute tokens and cost to tenants, apps, and cost centers | 14 OpenTelemetry chargeback |
 | Tool threat protection: Defender and Purview evaluate tool calls for injection and data risk | 19 Tool threat protection |
 | Agent hooks: Run your own allow-or-deny rules on every MCP tool call and result, in an Azure function | 30 Agent hooks |
+| Copilot tools as the signed-in user: Let Microsoft 365 Copilot call MCP tools as each signed-in user, with Microsoft Entra on-behalf-of at the gateway | 33 Copilot on-behalf-of |
 | Agent 365 governance: Inventory and block MCP servers and tools from the Microsoft 365 admin center | 20 Agent 365 governance |
 | Coding-agent plugin: Let Copilot, Claude Code, Cursor, or Gemini build on your gateway, and migrate AI assets from API Management | 17 Coding-agent plugin |
 | GitHub Copilot on your models and tools: Run Copilot in VS Code, the CLI, the SDK, and the app on models and MCP tools your gateway governs | 24 GitHub Copilot BYOK |

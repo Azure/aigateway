@@ -2069,5 +2069,5 @@ the Azure CLI track.
 | :-- | :-: | --: |
 | [10 · Runtime API keys](../10-api-keys/README.md) | [All labs](../README.md) | [12 · Backend identities](../12-backend-identity/README.md) |
 
-<sub>Learning paths: [Security & compliance](../README.md#learning-paths) (2 of 8)</sub>
+<sub>Learning paths: [Security & compliance](../README.md#learning-paths) (2 of 9)</sub>
 <!-- gh:end -->

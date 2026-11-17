@@ -1411,5 +1411,5 @@ Keep the gateway and the `learn` MCP server from lab 04: the next labs reuse the
 | :-- | :-: | --: |
 | [18 · Private networking](../18-private-networking/README.md) | [All labs](../README.md) | [20 · Agent 365 governance](../20-agent-365-governance/README.md) |
 
-<sub>Learning paths: [Security & compliance](../README.md#learning-paths) (6 of 8)</sub>
+<sub>Learning paths: [Security & compliance](../README.md#learning-paths) (6 of 9)</sub>
 <!-- gh:end -->

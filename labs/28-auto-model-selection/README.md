@@ -1981,5 +1981,5 @@ Bicep + azd and Terraform tracks created their own gateways.
 | :-- | :-: | --: |
 | [27 · Conditions & session affinity](../27-conditional-routing/README.md) | [All labs](../README.md) | [29 · Model failover](../29-model-failover/README.md) |
 
-<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (5 of 14) · [FinOps & operations](../README.md#learning-paths) (4 of 6)</sub>
+<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (5 of 15) · [FinOps & operations](../README.md#learning-paths) (4 of 6)</sub>
 <!-- gh:end -->

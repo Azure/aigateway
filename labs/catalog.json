@@ -111,6 +111,7 @@
         "15-agent-frameworks",
         "16-foundry-hosted-agent",
         "32-foundry-gateway-connection",
+        "33-copilot-obo-mcp",
         "17-coding-agent-plugin",
         "24-github-copilot-byok",
         "25-claude-code"
@@ -130,6 +131,7 @@
         "09-gateway-baselines",
         "19-tool-threat-protection",
         "30-agent-hooks",
+        "33-copilot-obo-mcp",
         "20-agent-365-governance"
       ]
     },
@@ -268,6 +270,12 @@
         "text": "Run your own allow-or-deny rules on every MCP tool call and result, in an Azure function."
       },
       {
+        "title": "Copilot tools as the signed-in user",
+        "lab": "33-copilot-obo-mcp",
+        "icon": "key",
+        "text": "Let Microsoft 365 Copilot call MCP tools as each signed-in user, with Microsoft Entra on-behalf-of at the gateway."
+      },
+      {
         "title": "Agent 365 governance",
         "lab": "20-agent-365-governance",
         "icon": "building",
@@ -333,6 +341,7 @@
     "29-model-failover": "Model failover",
     "30-agent-hooks": "Agent hooks",
     "31-jev-decisions": "Jev decisions",
-    "32-foundry-gateway-connection": "Foundry gateway connection"
+    "32-foundry-gateway-connection": "Foundry gateway connection",
+    "33-copilot-obo-mcp": "Copilot on-behalf-of"
   }
 }

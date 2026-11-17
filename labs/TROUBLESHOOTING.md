@@ -742,3 +742,24 @@ Lab 32: [Use gateway models in Microsoft Foundry projects](32-foundry-gateway-co
 | Call Chat Completions through the project | `404` with `DeploymentNotFound`: `The API deployment for this resource does not exist. If you created the deployment within the last 5 minutes, please wait a moment and try again.` | Foundry serves connected models through the Responses API only. Waiting doesn't help | Expected. Call `/openai/v1/responses` with the model's Foundry name, `<gateway>-model-gateway/<alias>`. |
 | Reach the limit through the project | The SDK's burst takes several seconds per request, and fewer requests than expected show `429` | The OpenAI client retries a `429` twice before it raises the error | Expected. Run `python infra/call_model.py --burst 4`, which turns the retries off with `max_retries=0`. |
 | Delete the app team's project | `CannotDeleteResource` when you delete the Foundry resource | The Foundry resource still has a project | Delete the project first, then the Foundry resource. |
+
+## Lab 33: Copilot on-behalf-of
+
+Lab 33: [Connect Microsoft 365 Copilot to MCP tools as the signed-in user](33-copilot-obo-mcp/README.md)
+
+| Step | Symptom | Likely cause | Fix |
+|---|---|---|---|
+| Deploy the backend<br>Deploy with azd up<br>Deploy with terraform apply | The deployment fails with an error that starts with `Another object with the same value for property uniqueName` | An app registration of an earlier run with the same base name is still in **Deleted applications** | Purge it from **Deleted applications** in Microsoft Entra ID, as **Clean up** does, or deploy with a new base name. |
+| Deploy the backend<br>Grant yourself the Tools User role<br>Deploy with azd up<br>Deploy with terraform apply | A role assignment fails with `PrincipalNotFound` | The new managed identity or service principal hasn't reached every Microsoft Entra ID replica yet | Wait a minute and run the step again. |
+| Register the MCP server | `ERROR: Operation returned an invalid status 'Bad Gateway'` | Another MCP server on the gateway already has the display name `OBO demo`. Display names must be unique on a gateway | Delete the other server, or pass another `--display-name`. |
+| Validate the backend | The portal says "Use explicit delegated scopes rather than `.default`." | The backend scope ends in `/.default` | Enter the full scope, `api://<backend app ID>/user_impersonation`. |
+| Test in the catalog<br>Run the test script<br>Ask who the backend sees | Every tool call fails with `502` | The token exchange app's identifier URI isn't `api://<client ID>`, which is how the gateway addresses it | Run `az ad app update --id <token exchange app ID> --identifier-uris "api://<token exchange app ID>"`. The lab's templates set it for you. |
+| Test in the catalog<br>Run the test script | `502` or the JSON-RPC error `-32603`, or `400` with `-32602` when the server supports only `2026-07-28` | The server's supported MCP versions don't include the version that the client negotiates | Support `2025-11-25`, `2025-06-18`, and `2025-03-26`, as **Register the MCP server** does. |
+| Test in the catalog<br>Run the test script | `403` on the handshake | You don't hold the **AI Gateway Tools User** role on the MCP server, or the new assignment hasn't applied yet | Run **Grant yourself the Tools User role**, then wait a few minutes and try again. |
+| Add the connector | "Selected user account does not exist in tenant" | The browser is signed in with an account of another tenant | Sign in with an account of the tenant that holds the connector app, for example in an InPrivate window. |
+| Add the connector | "The sign-in window was blocked by the browser. Please enable pop-ups for this site and retry authentication to complete setup." | The browser blocks the admin center's pop-ups | Allow pop-ups for the Microsoft 365 admin center, then select **Authorize** again. |
+| Check the connection and its tools | **AI Gateway OBO demo** isn't **Ready** yet | Microsoft 365 takes up to 30 minutes to prepare a new connector | Wait, then refresh **Your Connections**. |
+| Check the connection and its tools<br>Ask who the backend sees | Every tool shows as **Write**, and Copilot asks you to approve each call | The gateway doesn't pass the tools' `readOnlyHint` annotations on to the connector yet | Expected. Select **Approve**. |
+| Ask who the backend sees | In Copilot **Chat**, the call never finishes, and **Tasks** shows it at **Needs your input** | Chat doesn't show the approval card of a **Write** tool | Use **Cowork**, as the step does. |
+| Read the backend's log | The query returns no lines | Log Analytics takes a few minutes to ingest the container's logs | Wait a few minutes and run the query again. |
+| Delete everything Terraform created | `terraform destroy` runs for about 25 minutes | Azure takes that long to delete the Container Apps environment | Expected. Wait for `Destroy complete!`. |

@@ -1653,5 +1653,5 @@ touch it, because the Bicep + azd and Terraform tracks created their own gateway
 | :-- | :-: | --: |
 | [09 · Gateway-wide baselines](../09-gateway-baselines/README.md) | [All labs](../README.md) | [11 · Entra ID & RBAC](../11-entra-rbac/README.md) |
 
-<sub>Learning paths: [Security & compliance](../README.md#learning-paths) (1 of 8)</sub>
+<sub>Learning paths: [Security & compliance](../README.md#learning-paths) (1 of 9)</sub>
 <!-- gh:end -->

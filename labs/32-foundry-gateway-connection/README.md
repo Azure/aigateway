@@ -2121,5 +2121,5 @@ next labs reuse it.
 | :-- | :-: | --: |
 | [16 · Foundry hosted agent](../16-foundry-hosted-agent/README.md) | [All labs](../README.md) | [17 · Coding-agent plugin](../17-coding-agent-plugin/README.md) |
 
-<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (11 of 14)</sub>
+<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (11 of 15)</sub>
 <!-- gh:end -->

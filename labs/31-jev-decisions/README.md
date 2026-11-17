@@ -1898,5 +1898,5 @@ Deleting the provider doesn't revoke your TypeSafe key. If you created it for th
 | :-- | :-: | --: |
 | [26 · Embeddings](../26-embeddings/README.md) | [All labs](../README.md) | [04 · Federate MCP tools](../04-federate-mcp-tools/README.md) |
 
-<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (7 of 14)</sub>
+<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (7 of 15)</sub>
 <!-- gh:end -->

@@ -658,5 +658,5 @@ select **Allow all tools**, then select **Save**.
 | :-- | :-: | --: |
 | [19 · Tool threat protection](../19-tool-threat-protection/README.md) | [All labs](../README.md) | [21 · Enterprise reference](../21-enterprise-reference/README.md) |
 
-<sub>Learning paths: [Security & compliance](../README.md#learning-paths) (8 of 8)</sub>
+<sub>Learning paths: [Security & compliance](../README.md#learning-paths) (9 of 9)</sub>
 <!-- gh:end -->

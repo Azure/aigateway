@@ -1197,5 +1197,5 @@ touch them, because the Bicep + azd and Terraform tracks created their own gatew
 | :-- | :-: | --: |
 | [07 · Cost budgets](../07-cost-budgets/README.md) | [All labs](../README.md) | [09 · Gateway-wide baselines](../09-gateway-baselines/README.md) |
 
-<sub>Learning paths: [Security & compliance](../README.md#learning-paths) (3 of 8)</sub>
+<sub>Learning paths: [Security & compliance](../README.md#learning-paths) (3 of 9)</sub>
 <!-- gh:end -->

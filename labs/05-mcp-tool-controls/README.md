@@ -1737,5 +1737,5 @@ Keep the gateway, the `learn` MCP server, and your key from lab 04. The next lab
 | :-- | :-: | --: |
 | [04 · Federate MCP tools](../04-federate-mcp-tools/README.md) | [All labs](../README.md) | [06 · Token limits](../06-token-limits/README.md) |
 
-<sub>Learning paths: [Security & compliance](../README.md#learning-paths) (4 of 8)</sub>
+<sub>Learning paths: [Security & compliance](../README.md#learning-paths) (4 of 9)</sub>
 <!-- gh:end -->

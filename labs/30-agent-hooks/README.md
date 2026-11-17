@@ -2533,7 +2533,7 @@ Keep the gateway and the `learn` MCP server from lab 04: the next labs reuse the
 
 | ⬅️ Previous | 🏠 | Next ➡️ |
 | :-- | :-: | --: |
-| [21 · Enterprise reference](../21-enterprise-reference/README.md) | [All labs](../README.md) |   |
+| [21 · Enterprise reference](../21-enterprise-reference/README.md) | [All labs](../README.md) | [33 · Copilot on-behalf-of](../33-copilot-obo-mcp/README.md) |
 
-<sub>Learning paths: [Security & compliance](../README.md#learning-paths) (7 of 8)</sub>
+<sub>Learning paths: [Security & compliance](../README.md#learning-paths) (7 of 9)</sub>
 <!-- gh:end -->

@@ -1079,5 +1079,5 @@ as `aigw-lab16b`: in a Foundry project that you recreate with the same name, `az
 | :-- | :-: | --: |
 | [15 · Agent frameworks](../15-agent-frameworks/README.md) | [All labs](../README.md) | [32 · Foundry gateway connection](../32-foundry-gateway-connection/README.md) |
 
-<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (10 of 14)</sub>
+<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (10 of 15)</sub>
 <!-- gh:end -->
