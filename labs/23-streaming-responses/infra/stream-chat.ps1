@@ -19,7 +19,7 @@ param(
 $ErrorActionPreference = 'Stop'
 if (-not $env:AI_GATEWAY_URL) { throw 'Set $env:AI_GATEWAY_URL to the gateway runtime URL, for example https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com' }
 if (-not $env:AI_GATEWAY_MODEL) { throw 'Set $env:AI_GATEWAY_MODEL to the callable model alias' }
-if (-not $env:AI_GATEWAY_API_KEY) { throw 'Set $env:AI_GATEWAY_API_KEY to a runtime key from Access > Keys' }
+if (-not $env:AI_GATEWAY_API_KEY) { throw 'Set $env:AI_GATEWAY_API_KEY to a runtime key from Access > API keys' }
 
 # reasoning_effort none spends the budget on the reply instead of hidden reasoning, so the first token arrives sooner.
 $body = @{

@@ -161,7 +161,7 @@ gateway switcher in the top bar and start creating a new one from there.
 
 In **Create AI gateway**, enter a globally unique **Name** of 24 characters or fewer, or select
 **Generate a new name**. Then choose the subscription, a **Resource group** (**New** or **Existing**), and the
-**Region**. Under **Advanced**, keep **Enable system-assigned managed identity** selected, **Public network access** set to **Enabled**, and
+**Region**. With **New**, the portal suggests `ai-gateway-<gateway>`. Under **Advanced**, keep **Enable system-assigned managed identity** selected, **Public network access** set to **Enabled**, and
 **Public routing**. **Private routing** connects the gateway to private backends through a virtual network. You can
 also add, change, or remove it later under **Networking**. [Lab 18](../18-private-networking/README.md) covers it.
 If you set **Public network access** to **Disabled**, the gateway rejects calls from the internet with `403`
@@ -175,10 +175,11 @@ If you set **Public network access** to **Disabled**, the gateway rejects calls 
 
 ### Watch it provision
 
-Select **Create gateway**. **All gateways** opens with the banner **Gateway creation is in progress**, and the
-gateway's **Provisioning** status, such as **Created** or **InProgress**, moves to **Succeeded** in a few minutes.
-You can use other gateways while it runs. Creating a gateway provisions only the AI Gateway runtime, as the Azure
-CLI and Bicep + azd tracks do.
+Select **Create gateway**. **All gateways** opens with the banner **Gateway creation is in progress**. The
+gateway's **Provisioning** status moves through **Creating resource group** (when you chose **New**),
+**InProgress**, and **Activating** to **Succeeded**, which can take up to about 20 minutes. You can use other
+gateways while it runs, but you can't select the new one until it's ready. Creating a gateway provisions only the
+AI Gateway runtime, as the Azure CLI and Bicep + azd tracks do.
 
 ### Open the setup guide on Home
 

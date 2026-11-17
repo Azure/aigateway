@@ -39,7 +39,7 @@ if ($Auth -eq 'token') {
   else { Write-Warning "The token has no scp claim, so it isn't a delegated user token." }
   $headers['Authorization'] = "Bearer $token"
 } else {
-  if (-not $env:AI_GATEWAY_API_KEY) { throw 'Set $env:AI_GATEWAY_API_KEY to a runtime key from Access > Keys' }
+  if (-not $env:AI_GATEWAY_API_KEY) { throw 'Set $env:AI_GATEWAY_API_KEY to a runtime key from Access > API keys' }
   $headers['Authorization'] = "Bearer $env:AI_GATEWAY_API_KEY"
 }
 

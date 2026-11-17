@@ -163,8 +163,8 @@ the token and the role work, so any later failure comes from the policy.
 
 ### Grant yourself the AI Gateway Tools User role
 
-In the AI Gateway portal, select **Access** › **Entra ID** › **Add role assignment**. Enter your object ID in
-**Search by name, email, or object ID**, check your account, and select **Next**. Select
+In the AI Gateway portal, select **Access** › **Entra ID** › **Add role assignment**. Enter your name or object ID in
+**Search directory identities**, check your account, and select **Next**. Select
 **Invoke gateway assets only**, then **Next**. Select **Specific assets**, check **Microsoft Learn**, the MCP server
 with the scope `/workspaces/default/toolServers/learn`, under **Resources**, and confirm that **Azure roles to
 assign** shows **AI Gateway Tools User**. Select **Next**, check the assignment on the **Review** step, then select
@@ -194,6 +194,12 @@ if ($?) { Write-Host "🔐 You have the AI Gateway Tools User role on the $MCP_S
 
 If you already have **AI Gateway User** or **AI Gateway Tools User** at the gateway scope, skip this step. Role
 assignments can take several minutes to apply.
+
+> **Note**
+> To assign a role, you need **Owner**, **User Access Administrator**, or **Role Based Access Control
+> Administrator** on the gateway or above. **Contributor** isn't enough, and neither is a role whose permission to
+> assign roles carries a condition that excludes this role. The portal then reports "1 role assignment failed."
+> without a reason. Ask an owner of the subscription to assign the role.
 
 </details> <!-- gh -->
 <!-- track: iac | Bicep + azd -->
@@ -818,7 +824,7 @@ case "$AUTH" in
     fi
     HEADERS=(-H "Authorization: Bearer $TOKEN") ;;
   key)
-    : "${AI_GATEWAY_API_KEY:?Set AI_GATEWAY_API_KEY to a runtime key from Access > Keys}"
+    : "${AI_GATEWAY_API_KEY:?Set AI_GATEWAY_API_KEY to a runtime key from Access > API keys}"
     HEADERS=(-H "Authorization: Bearer $AI_GATEWAY_API_KEY") ;;
   *)
     echo "The first argument must be token or key." >&2; exit 1 ;;
@@ -963,19 +969,28 @@ for threats, prompt injection, and sensitive-data risks." Select **Next**.
 ### Select the MCP server
 
 On the **Scope** step, the wizard notes that this policy applies to individual MCP servers. Check
-**Microsoft Learn**, the `learn` MCP server, which the list shows with the type **Tool**. Then select **Next**.
+**Microsoft Learn**, the `learn` MCP server, which the list shows with the type **Tool**. **Next** stays unavailable
+until you check a server. Then select **Next**.
+
+![The Scope step of the Add policy wizard, with the Microsoft Learn MCP server checked and the Next button](../assets/screens/tool-threat-protection-02-scope.webp "The policy applies to individual MCP servers. Check the learn server, then select Next.")
 
 ### Choose the evaluation stages
 
 On the **Details** step, the wizard reminds you that Microsoft Entra ID is required for this policy, because the
-evaluation runs on behalf of the caller. Select both stages:
+evaluation runs on behalf of the caller. Both stages are selected by default:
 
 - **Before tool invocation: Evaluate the request payload**
 - **After tool invocation: Evaluate the tool output**
 
-You must select at least one stage. Then select **Create**. The **Policies** list shows the new
-**Agent 365 tool threat protection** policy on **MCP server: Microsoft Learn**, running
-**Before tool execution and Before returning the tool result**.
+Keep both. To evaluate a single stage, clear the other one; at least one stage must stay selected. Then select
+**Create**.
+
+![The Details step of the Add policy wizard, with both evaluation stages selected and the Create button](../assets/screens/tool-threat-protection-03-stages.webp "Both stages are selected by default. Clear one to evaluate only the requests or only the results.")
+
+The **Policies** list shows the new **Agent 365 tool threat protection** policy on **MCP server: Microsoft Learn**,
+running **Before tool execution and Before returning the tool result**.
+
+![The Policies page of the AI Gateway portal, with the Agent 365 tool threat protection policy on the Microsoft Learn MCP server](../assets/screens/tool-threat-protection-04-policy-list.webp "The new policy, its scope, and the two stages it runs in.")
 
 </details> <!-- gh -->
 <!-- track: iac | Bicep + azd -->
@@ -1294,12 +1309,15 @@ steps. Find your calls by time and compare the allowed call with the key-only ca
 ### Delete the policy
 
 In the AI Gateway portal, select **Policies**. On the row of the **Agent 365 tool threat protection** policy,
-select **More actions** (**…**), then **Delete**. Confirm with **Delete** in **Delete this policy?**. Tool calls
-with a runtime key work again.
+select **More actions** (**…**), then **Delete**. **Delete this policy?** warns that the policy's behavior is no
+longer applied to its assets, and that the MCP server stays in the gateway. Select **Delete**. The list shows
+**No policies configured**, and tool calls with a runtime key work again.
 
 ### Remove the role assignment
 
-If you added **AI Gateway Tools User** only for this lab, remove it in **Access**, or run:
+If you added **AI Gateway Tools User** only for this lab, remove it in **Access**, or run the commands below. Like
+assigning a role, removing one needs **Owner**, **User Access Administrator**, or **Role Based Access Control
+Administrator**. If you can't remove it, it goes away when you delete the gateway.
 
 ```bash
 # Remove your AI Gateway Tools User role on the MCP server

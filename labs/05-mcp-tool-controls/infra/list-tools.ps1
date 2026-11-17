@@ -18,7 +18,7 @@ param(
   [string]$Query = 'What is Azure AI Gateway?'
 )
 $ErrorActionPreference = 'Stop'
-if (-not $env:AI_GATEWAY_API_KEY) { throw 'Set $env:AI_GATEWAY_API_KEY to a runtime key from Access > Keys' }
+if (-not $env:AI_GATEWAY_API_KEY) { throw 'Set $env:AI_GATEWAY_API_KEY to a runtime key from Access > API keys' }
 $uri = $env:AI_GATEWAY_MCP_ENDPOINT
 if (-not $uri) {
   if (-not $env:AI_GATEWAY_URL) { throw 'Set $env:AI_GATEWAY_URL to the gateway runtime URL, for example https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com' }

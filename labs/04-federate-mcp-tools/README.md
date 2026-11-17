@@ -170,7 +170,7 @@ On **Basic info**, set:
 | **Name** | `learn` (part of the endpoint URL; it can't be changed after creation) |
 | **Display name** | `Microsoft Learn` |
 | **Description** | `Search and fetch official Microsoft documentation and code samples.` |
-| **Supported MCP versions** | `2025-06-18` (required: select at least one version that every backend supports) |
+| **Supported MCP versions** | `2025-06-18` only. The wizard preselects `2026-07-28`, `2025-11-25`, `2025-06-18`, and `2025-03-26`, so clear the others. You must keep at least one version that every backend supports. |
 
 Agents and people read the description to decide when to use the server, so keep it specific. The display name
 must be unique among the MCP servers of the gateway. You learn more about the versions in
@@ -184,7 +184,7 @@ On **Backends**, select **Add backend** › **MCP server**. In **Add MCP backend
 |---|---|
 | **Endpoint URL** | `https://learn.microsoft.com/api/mcp` |
 | **Authentication** | **None** |
-| **Namespace** | `learn` |
+| **Namespace prefix** | `learn` |
 
 Select **Add**. The backend appears in the table with its **URL**, **Type**, **Authentication**, **Namespace**,
 and **Required** columns. Leave **Required** on.
@@ -833,7 +833,7 @@ optional backend is unavailable, the gateway skips it instead of failing the who
 
 On the `learn` details page, select **Edit**. Under **Backends**, select **Add backend** › **MCP server**. In
 **Add MCP backend**, set **Endpoint URL** to `https://learn.microsoft.com/api/mcp`, **Authentication** to **None**,
-and **Namespace** to `docs`, then select **Add**. In the backends table, turn **Required** off for the new row.
+and **Namespace prefix** to `docs`, then select **Add**. In the backends table, turn **Required** off for the new row.
 Select **Save**.
 
 </details> <!-- gh -->

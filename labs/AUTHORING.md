@@ -426,7 +426,8 @@ Kinds: `NOTE`, `TIP`, `IMPORTANT`, `WARNING`, `CAUTION`. A blockquote starting w
 - Screens available in `assets/screens/`: `monitoring-overview.png`, `monitoring-trace.png`,
   `policy-cost-limit-details.png`, `monitoring-token-claim-attributes.png`,
   `gateway-baselines-01-scope.webp` (**Add policy** › **Scope** › **Gateway**), `policy-cost-limit-entra-overrides.png`,
-  `tool-threat-protection-01-policy-type.webp` (**Add policy** › **Type** › **Agent 365 tool threat protection**),
+  `tool-threat-protection-01…04-*.webp` (**Add policy** › **Type**, **Scope**, and **Details** for Agent 365 tool
+  threat protection, then the **Policies** list),
   `access-entra-role-assignments.webp`, `managed-identities.png`,
   `mcp-tool-controls-05-tools.webp` (an MCP server's **Tools** with name patterns and blocked tools),
   `token-limits-01-policy-type.webp` and `streaming-responses-01-policy-type.webp` (the **Add policy** › **Type**
@@ -439,7 +440,8 @@ Kinds: `NOTE`, `TIP`, `IMPORTANT`, `WARNING`, `CAUTION`. A blockquote starting w
   Create API key dialogs, Catalog, the playground, Continue in code, and deleting the gateway from All gateways.
   Each new lab has its own set: `embeddings-01…08-*.webp` (lab 26), `routing-conditions-01…05-*.webp` (lab 27),
   `auto-selection-01…10-*.webp` (lab 28), `failover-01…07-*.webp` (lab 29), `agent-hooks-01…06-*.webp` (lab 30),
-  `jev-01…15-*.webp` (lab 31), and `foundry-conn-01…14-*.webp` (lab 32, in the Microsoft Foundry portal).
+  `jev-01…15-*.webp` (lab 31), `foundry-conn-01…14-*.webp` (lab 32, in the Microsoft Foundry portal), and
+  `agent-365-01…07-*.webp` (lab 20, in the Microsoft 365 admin center and the AI Gateway portal).
 - New screenshots: crop to the relevant area, replace real names, emails, and IDs with Contoso placeholders, mask
   every key, highlight the controls to select with magenta (`#e3008c`) boxes, and save as WebP, 1600 px wide at most.
 - Diagrams in `assets/diagrams/`: `architecture.svg`, `request-lifecycle.svg`, `aliases.svg`,

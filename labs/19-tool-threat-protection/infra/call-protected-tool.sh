@@ -35,7 +35,7 @@ case "$AUTH" in
     fi
     HEADERS=(-H "Authorization: Bearer $TOKEN") ;;
   key)
-    : "${AI_GATEWAY_API_KEY:?Set AI_GATEWAY_API_KEY to a runtime key from Access > Keys}"
+    : "${AI_GATEWAY_API_KEY:?Set AI_GATEWAY_API_KEY to a runtime key from Access > API keys}"
     HEADERS=(-H "Authorization: Bearer $AI_GATEWAY_API_KEY") ;;
   *)
     echo "The first argument must be token or key." >&2; exit 1 ;;

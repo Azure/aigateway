@@ -1493,7 +1493,7 @@ set -euo pipefail
 PROMPT="${1:-Write a one-sentence status update.}"
 : "${AI_GATEWAY_URL:?Set AI_GATEWAY_URL to the gateway runtime URL, for example https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com}"
 : "${AI_GATEWAY_MODEL:?Set AI_GATEWAY_MODEL to the callable model alias}"
-: "${AI_GATEWAY_API_KEY:?Set AI_GATEWAY_API_KEY to a runtime key from Access > Keys}"
+: "${AI_GATEWAY_API_KEY:?Set AI_GATEWAY_API_KEY to a runtime key from Access > API keys}"
 
 BASE="${AI_GATEWAY_URL%/}/default/models/openai/v1"
 

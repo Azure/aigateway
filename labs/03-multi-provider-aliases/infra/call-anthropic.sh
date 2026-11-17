@@ -13,7 +13,7 @@ set -euo pipefail
 ALIAS="${1:?Pass the callable alias as the first argument}"
 PROMPT="${2:-In one sentence, what is an AI gateway?}"
 : "${AI_GATEWAY_URL:?Set AI_GATEWAY_URL to the gateway runtime URL, for example https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com}"
-: "${AI_GATEWAY_API_KEY:?Set AI_GATEWAY_API_KEY to a runtime key from Access > Keys}"
+: "${AI_GATEWAY_API_KEY:?Set AI_GATEWAY_API_KEY to a runtime key from Access > API keys}"
 
 URL="${AI_GATEWAY_URL%/}/default/models/anthropic/v1/messages"
 BODY="$(jq -cn --arg model "$ALIAS" --arg prompt "$PROMPT" \

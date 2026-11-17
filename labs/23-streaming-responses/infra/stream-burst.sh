@@ -15,7 +15,7 @@ if [[ "${1:-}" == "--usage" ]]; then USAGE=true; shift; fi
 MODEL="${1:?Pass the callable model alias as the first argument}"
 REQUESTS="${2:-8}"
 : "${AI_GATEWAY_URL:?Set AI_GATEWAY_URL to the gateway runtime URL, for example https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com}"
-: "${AI_GATEWAY_API_KEY:?Set AI_GATEWAY_API_KEY to a runtime key from Access > Keys}"
+: "${AI_GATEWAY_API_KEY:?Set AI_GATEWAY_API_KEY to a runtime key from Access > API keys}"
 
 URL="${AI_GATEWAY_URL%/}/default/models/openai/v1/chat/completions"
 # Each request asks for about 200 output tokens, the same prompt as lab 06.

@@ -19,7 +19,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 if (-not $env:AI_GATEWAY_URL) { throw 'Set $env:AI_GATEWAY_URL to the gateway runtime URL, for example https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com' }
-if (-not $env:AI_GATEWAY_API_KEY) { throw 'Set $env:AI_GATEWAY_API_KEY to a runtime key from Access > Keys' }
+if (-not $env:AI_GATEWAY_API_KEY) { throw 'Set $env:AI_GATEWAY_API_KEY to a runtime key from Access > API keys' }
 $toolArguments = $Arguments | ConvertFrom-Json -AsHashtable
 if ($toolArguments -isnot [System.Collections.IDictionary]) { throw '-Arguments must be a JSON object.' }
 $uri = "$($env:AI_GATEWAY_URL.TrimEnd('/'))/default/toolservers/$Server/mcp"

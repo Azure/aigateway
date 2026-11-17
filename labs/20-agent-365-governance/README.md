@@ -71,11 +71,12 @@ enforce each decision on live traffic.
   [Control which tools agents can call](../05-mcp-tool-controls/README.md). This lab governs the `learn` MCP
   server, and you edit its **Tool availability** the same way you did in lab 05.
 - A Microsoft Agent 365 tenant, and a **tenant administrator** who can grant tenant-level consent in the
-  [Microsoft 365 admin center](https://admin.microsoft.com). After consent, Agent 365 administrators don't need
+  [Microsoft 365 admin center](https://admin.cloud.microsoft). After consent, Agent 365 administrators don't need
   Azure permissions of their own. Without Agent 365, you can still do the AI Gateway steps, and each blocking step
   shows how to get the same denial with the gateway's own controls.
 - Permission to edit the MCP server in the AI Gateway portal, for example **Contributor** on the gateway's resource
-  group, and a runtime API key from **Access** › **API keys**.
+  group, and a runtime API key from **Access** › **API keys**. To use the gateway's **Built-in all-access API key**,
+  open its **More actions** menu, select **View keys**, then **Copy API key**.
 - Run the scripts and samples from the lab's folder, `~/aigateway/labs/20-agent-365-governance`.
 
 > [!NOTE]
@@ -98,7 +99,7 @@ echo "📝 MCP server $MCP_SERVER on gateway $GATEWAY in $RG"
 export AI_GATEWAY_URL="https://$(az aigateway show -g "$RG" -n "$GATEWAY" --query properties.frontend.defaultHostname -o tsv)"
 echo "🌐 Runtime URL: $AI_GATEWAY_URL"
 
-# Paste the runtime key you created in Access › API keys without showing it, and don't commit it or write it to a file
+# Paste the runtime key from Access › API keys without showing it, and don't commit it or write it to a file
 printf "AI Gateway API key: " && read -rs AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 ```
@@ -117,7 +118,7 @@ Write-Host "📝 MCP server $MCP_SERVER on gateway $GATEWAY in $RG"
 $env:AI_GATEWAY_URL = "https://$(az aigateway show -g $RG -n $GATEWAY --query properties.frontend.defaultHostname -o tsv)"
 Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
 
-# Paste the runtime key you created in Access › API keys without showing it, and don't commit it or write it to a file
+# Paste the runtime key from Access › API keys without showing it, and don't commit it or write it to a file
 $env:AI_GATEWAY_API_KEY = Read-Host "AI Gateway API key" -MaskInput
 Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) characters, not shown)"
 ```
@@ -171,11 +172,11 @@ that in the AI Gateway portal.
 
 <!-- steps -->
 
-### Open the Tools step
+### Open the Tools section
 
 Open the [AI Gateway portal](https://ai.gateway.azure.com) and select your gateway from the gateway switcher.
-Select **MCP servers**, then **Microsoft Learn** (the `learn` server), then **Edit**, and go to the **Tools**
-step.
+Select **MCP servers**, then **Microsoft Learn** (the `learn` server), then **Edit**. **Edit** opens the whole
+server on one page, with **Discard** and **Save** at the top. Scroll down to the **Tools** section.
 
 ### Allow the exact tool names
 
@@ -183,7 +184,8 @@ Under **Tool availability**, select **Match tools by name pattern**. Under **All
 `learn_microsoft_docs_search` in the first row. Select **Add pattern** and enter
 `learn_microsoft_code_sample_search`, then select **Add pattern** again and enter `learn_microsoft_docs_fetch`.
 Enter the exact names, without `*` or `?`, so the list stays static. Leave **Blocked tools** empty, so the only
-blocks in this lab come from Agent 365. Select **Save**. The server's detail page shows **Allowed tools (3)**.
+blocks in this lab come from Agent 365. Select **Save**. The server's details page shows **Allowed tools (3)** and
+**Blocked tools** **None**.
 
 A pattern with a wildcard, or **Allow all tools**, makes the list dynamic, and Agent 365 then can't read this
 server's tool list. You can still block the whole server from Agent 365, and block single tools under **Blocked
@@ -225,7 +227,7 @@ TOOL="${2:-}"
 ARGS="${3:-}"
 if [ -z "$ARGS" ]; then ARGS="{}"; fi
 : "${AI_GATEWAY_URL:?Set AI_GATEWAY_URL to the gateway runtime URL, for example https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com}"
-: "${AI_GATEWAY_API_KEY:?Set AI_GATEWAY_API_KEY to a runtime key from Access > Keys}"
+: "${AI_GATEWAY_API_KEY:?Set AI_GATEWAY_API_KEY to a runtime key from Access > API keys}"
 command -v jq >/dev/null || { echo "This script needs jq." >&2; exit 1; }
 printf '%s' "$ARGS" | jq -e 'type == "object"' >/dev/null || { echo "arguments-json must be a JSON object." >&2; exit 1; }
 ENDPOINT="${AI_GATEWAY_URL%/}/default/toolservers/${SERVER}/mcp"
@@ -336,9 +338,9 @@ Write-Host "🔧 Tools on MCP server ${MCP_SERVER}:"
 🔧 Tools on MCP server learn:
 MCP endpoint: <gateway-url>/default/toolservers/learn/mcp
 tools/list: HTTP 200
-  learn_microsoft_docs_search
   learn_microsoft_code_sample_search
   learn_microsoft_docs_fetch
+  learn_microsoft_docs_search
 ```
 
 <!-- /steps -->
@@ -357,9 +359,14 @@ can't read the servers' secrets, such as backend keys or headers.
 
 ### Grant consent
 
-Sign in to the [Microsoft 365 admin center](https://admin.microsoft.com) as a tenant administrator. Under
-**Agents**, select **Settings**, then **Gateways**. Turn on **Azure API Management service and AI Gateway**. By
-consenting, you let the organization read the tools published through the gateway.
+Sign in to the [Microsoft 365 admin center](https://admin.cloud.microsoft) as a tenant administrator. Under
+**Agents**, select **Settings**, then **Gateways**. The **Gateways (preview)** panel opens. Under
+**Microsoft Azure**, check **I have reviewed the information access requirements of this gateway and I consent to
+its use.**, then turn on **Azure API Management service and Azure AI Gateway**. After a few seconds, **Connected**
+changes from **No** to **Yes**. There's nothing to save. By consenting, you let the organization read the tools
+published through the gateway.
+
+![The Gateways (preview) panel in the Microsoft 365 admin center, with the consent box checked and Azure API Management service and Azure AI Gateway connected](../assets/screens/agent-365-01-gateways-consent.webp "Agents › Settings › Gateways: one consent covers every API Management instance and AI gateway in the tenant. The LiteLLM gateway card below it is for gateways outside Azure.")
 
 If **Agents** › **Settings** doesn't list **Gateways**, check that the tenant has Agent 365 and that you're signed
 in as a tenant administrator.
@@ -371,13 +378,27 @@ in as a tenant administrator.
 
 ### Find your MCP server
 
-Under **Agents**, select **Tools**. Search for `learn`, or look for servers whose publisher is **AI Gateway**.
-Select the server to see its metadata, such as its endpoint, access scope, and service identity.
+Under **Agents**, select **Tools**, then select **MCP servers** on the **Registry** tab and search for `learn`.
+Your server is the **Microsoft Learn** row with the type **MCP Server**, the status **Available**, your gateway's
+name as its **Publisher**, and **AI Gateway** as its **Source**. A **Microsoft Learn** row from the **Catalog**
+source, published by Microsoft Corporation, can show up too; that one isn't your gateway's server. Agent 365 syncs
+the inventory on a schedule, so the server can take several minutes to appear after you grant consent.
+
+![The Tools page in the Microsoft 365 admin center, filtered on learn, with the Microsoft Learn MCP server from the gateway listed as Available, with the gateway as publisher and AI Gateway as source](../assets/screens/agent-365-02-tools-inventory.webp "Agents › Tools › Registry › MCP servers: the gateway's server is the row whose source is AI Gateway. The Catalog rows come from the Agent 365 catalog.")
+
+Select your **Microsoft Learn** row. The page has three tabs: **Overview**, **Tools**, and **Activity**. **Overview**
+shows the **Server URL**, which is your gateway's runtime URL followed by `/default/toolservers/learn/mcp`, and your
+gateway as **Source** and **Publisher**. The server's description isn't synced, so **About this MCP Server** reads
+"No description provided." **Activity** shows calls by agents; the calls that you make with a runtime key in this
+lab don't show there.
+
+![The Microsoft Learn MCP server's Overview tab in the Microsoft 365 admin center, with the Block button, the Overview, Tools, and Activity tabs, and the server URL on the gateway](../assets/screens/agent-365-03-server-overview.webp "The server's page in Agent 365: its status, publisher, and server URL on your gateway, and the Block button at the top right.")
 
 <!-- /steps -->
 
 > **Checkpoint**
-> The `learn` server from your gateway is in the Agent 365 inventory, with **AI Gateway** as its publisher.
+> The `learn` server from your gateway is in the Agent 365 inventory, with **AI Gateway** as its source and your
+> gateway as its publisher.
 
 ## Block a tool
 
@@ -388,9 +409,18 @@ of the server working.
 
 ### Turn off the tool in Agent 365
 
-In the admin center, under **Agents**, select **Tools**, then the `learn` server. Select the **Tools** tab and
-disable `learn_microsoft_docs_fetch`. Agent 365 adds the tool to the server's blocked tools, so the gateway stops
-it from running.
+In the admin center, under **Agents**, select **Tools**, then the `learn` server. Select the **Tools** tab and turn
+off the switch of `learn_microsoft_docs_fetch`, so it shows **Disabled**. Then select **Save**, and wait for
+**Changes saved.**: saving takes up to about a minute. Agent 365 adds the tool to the server's blocked tools, so the
+gateway stops it from running.
+
+![The Tools tab of the Microsoft Learn MCP server in the Microsoft 365 admin center, with learn_microsoft_docs_fetch disabled and the Save button](../assets/screens/agent-365-04-tool-disabled.webp "Turn off the tool, then select Save. Nothing changes on the gateway until you save.")
+
+To see the change on the gateway, open the AI Gateway portal and select **MCP servers** › **Microsoft Learn**. Under
+**Tools**, **Blocked tools (1)** lists `learn_microsoft_docs_fetch`. The tool stays under **Allowed tools**, because
+the blocked list wins over the allowed list.
+
+![The Microsoft Learn MCP server's Overview tab in the AI Gateway portal, with three allowed tools and learn_microsoft_docs_fetch under Blocked tools](../assets/screens/agent-365-05-gateway-blocked-tools.webp "The tool that Agent 365 turned off shows up under Blocked tools on the gateway.")
 
 > [!TIP]
 > No Agent 365 tenant yet? Rehearse with the gateway's own control, which sets the same list: in the AI Gateway
@@ -467,7 +497,9 @@ The search returns results with `isError: false`.
 
 ### Turn the tool back on
 
-In the admin center, on the `learn` server's **Tools** tab, enable `learn_microsoft_docs_fetch` again.
+In the admin center, on the `learn` server's **Tools** tab, turn the switch of `learn_microsoft_docs_fetch` back
+on, so it shows **Enabled**, and select **Save**. Once **Changes saved.** shows, the tool is off the gateway's
+blocked list and runs again.
 
 <!-- /steps -->
 
@@ -483,7 +515,16 @@ sets its access state to blocked, so the gateway answers before it reaches any b
 
 ### Block the server in Agent 365
 
-In the admin center, under **Agents**, select **Tools**, select the `learn` server, and select **Block**.
+In the admin center, under **Agents**, select **Tools**, select the `learn` server, and select **Block** at the top
+right. **Block Microsoft Learn** warns that your users won't have access to this MCP server while it's blocked.
+Select **Block**.
+
+![The Block Microsoft Learn dialog in the Microsoft 365 admin center, with the Block and Cancel buttons](../assets/screens/agent-365-06-block-server.webp "Block cuts off every tool on the server at once.")
+
+The status changes from **Available** to **Blocked**, and the button changes to **Unblock**. In the AI Gateway
+portal, the server's **MCP status** shows **Blocked**.
+
+![The Microsoft Learn MCP server in the Microsoft 365 admin center, with the status Blocked and the Unblock button](../assets/screens/agent-365-07-server-blocked.webp "A blocked server shows Blocked, and Block becomes Unblock.")
 
 > [!TIP]
 > To rehearse without Agent 365, set the same access state in the AI Gateway portal: open **MCP servers** ›
@@ -518,9 +559,10 @@ exception.
 
 ### Unblock the server
 
-In the admin center, select the `learn` server again and unblock it. Agent 365 sets the access state back to
-active, and the script lists the tools again. If you rehearsed in the AI Gateway portal, turn the **MCP server
-access** switch back on, so it shows **Active**, and save.
+In the admin center, on the `learn` server's page, select **Unblock**. There's no confirmation: the status changes
+back to **Available**, and a banner confirms that Microsoft Learn has been unblocked. Agent 365 sets the access
+state back to active, and within about half a minute the script lists the tools again. If you rehearsed in the AI
+Gateway portal, turn the **MCP server access** switch back on, so it shows **Active**, and save.
 
 <!-- /steps -->
 
@@ -534,8 +576,8 @@ access** switch back on, so it shows **Active**, and save.
 
 ### Confirm the inventory
 
-In the admin center, under **Agents** › **Tools**, the `learn` server is listed with **AI Gateway** as its
-publisher, isn't blocked, and its **Tools** tab shows all three tools enabled.
+In the admin center, under **Agents** › **Tools**, the `learn` server is listed with your gateway as its publisher
+and **AI Gateway** as its source, its status is **Available**, and its **Tools** tab shows all three tools enabled.
 
 ### Confirm the server works end to end
 
@@ -586,7 +628,7 @@ shows the server's tool executions and **Traces** shows each request.
 
 In the admin center, make sure the `learn` server isn't blocked and all its tools are enabled. The gateway
 consent is tenant-wide, so leave it on if your organization plans to keep using the integration. Otherwise, ask a
-tenant administrator to review **Azure API Management service and AI Gateway** under **Agents** › **Settings** ›
+tenant administrator to review **Azure API Management service and Azure AI Gateway** under **Agents** › **Settings** ›
 **Gateways**.
 
 ### Restore the tool availability
