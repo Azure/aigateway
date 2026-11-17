@@ -1,0 +1,18 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": {
+      "value": "${AZURE_ENV_NAME}"
+    },
+    "location": {
+      "value": "${AZURE_LOCATION}"
+    },
+    "principalId": {
+      "value": "${AZURE_PRINCIPAL_ID}"
+    },
+    "mcpServerSource": {
+      "value": "${MCP_SERVER_SOURCE=https://github.com/Azure/aigateway.git#main:labs/33-copilot-obo-mcp/infra/mcp-server}"
+    }
+  }
+}

@@ -1,0 +1,2 @@
+fastmcp==4.1.7
+uvicorn==0.54.0
