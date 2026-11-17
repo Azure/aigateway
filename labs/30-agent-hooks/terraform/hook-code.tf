@@ -1,11 +1,19 @@
-# Deploys the function code in infra/hook, like azd deploy. The archive provider zips the folder, then the Azure CLI
-# restarts the new app once (a new Flex Consumption app that reaches its storage through a private endpoint can fail
-# its first code upload until it restarts) and uploads the zip with a remote build, which installs requirements.txt.
-# The deployment runs again when the code or the app changes.
+# Deploys the function code in infra/hook, like azd deploy. The archive provider zips only the function's three files,
+# so local files such as local.settings.json, .venv, and __pycache__ stay on your machine, as .funcignore keeps them
+# out of azd deploy. Then the Azure CLI restarts the new app once (a new Flex Consumption app that reaches its storage
+# through a private endpoint can fail its first code upload until it restarts) and uploads the zip with a remote
+# build, which installs requirements.txt. The deployment runs again when the code or the app changes.
 data "archive_file" "hook_code" {
   type        = "zip"
-  source_dir  = "${path.module}/../infra/hook"
   output_path = "${path.module}/.terraform/hook.zip"
+
+  dynamic "source" {
+    for_each = ["function_app.py", "host.json", "requirements.txt"]
+    content {
+      content  = file("${path.module}/../infra/hook/${source.value}")
+      filename = source.value
+    }
+  }
 }
 
 resource "terraform_data" "hook_code" {
