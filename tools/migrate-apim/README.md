@@ -759,9 +759,15 @@ checked, so a journal carrying a stale or wrong phase status repairs itself on t
 There is no transaction across steps, so the cost of finding a problem halfway is a half-built
 gateway. `--preflight` refuses while any of these stands: the plan names no target; an item still
 needs a decision; a settled decision has been orphaned; a referenced credential is missing or not
-mechanically retrievable; or a `Microsoft.ApiManagement/service` shares the target's name, which
-matters because several CLI commands dispatch by name without `--ids`. Manual prerequisites are
-raised as notes and acknowledged with `--acknowledge <id>`.
+mechanically retrievable; the plan describes work it cannot itself produce; a step names a provider
+nothing in the plan registers; an object the planner marked as not fully configurable would become a
+step; or a `Microsoft.ApiManagement/service` shares the target's name, which matters because several
+CLI commands dispatch by name without `--ids`. Manual prerequisites are raised as notes and
+acknowledged with `--acknowledge <id>`.
+
+That last one is the plan's own judgement, read back. `plan` records why it could not finish shaping
+an object, and until `apply` consulted it the condition surfaced as a step failing part-way through
+a phase — under a cause the builder guessed at, with every step queued behind it skipped.
 
 ### Phases
 
@@ -792,7 +798,8 @@ Phase models -- EXECUTING
 
 **`policies` writes two different things**, because the gateway holds policy in two places. A token
 limit lives on a *model registration*, so an APIM policy scoped to an API, a product or the service
-is expanded at planning time into one object per model it covered — one object is one
+is expanded at planning time into one object per model it covered — a policy factored into a
+*fragment* covers whatever includes it, and is followed there first — one object is one
 `az aigateway model policy set`. Policies batch by counter key, so a batch can hold two limits with
 different ceilings; each member keeps its own. On a real instance that was 10000/minute on one API
 and 1000 on another, and shaping only the first member applied one ceiling to both.

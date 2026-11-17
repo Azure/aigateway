@@ -655,6 +655,57 @@ class TestIncompleteObjectsStopPreflight:
         assert self.REASON not in step.detail
 
 
+class TestAFragmentReachesPreflightRatherThanAPhase:
+    """The planner's fragment handling and preflight's check, as one chain.
+
+    A policy factored into a fragment used to reach no model registration, and
+    the object that stranded on it stopped the policies phase. The planner now
+    follows the fragment to the APIs that include it, and what is left over --
+    a fragment nothing includes, which governs nothing -- stops at preflight
+    carrying the reason the planner wrote. Each half is tested where it lives;
+    this is the join, which is the behaviour the two were for.
+    """
+
+    def _planned(self, inventory, *, included_by):
+        document = copy.deepcopy(inventory)
+        document["policies"].append({
+            "id": "policy:fragment/shared-limits", "stats": {}, "fragmentRefs": [],
+            "scope": {"level": "fragment", "name": "shared-limits"},
+            "elements": [{
+                "section": "fragment", "path": "fragment/llm-token-limit[1]",
+                "name": "llm-token-limit", "family": "tokenLimit", "depth": 1,
+                "attributes": {"tokens-per-minute": "7000", "counter-key": "shared"},
+                "text": None, "expressionIds": [], "namedValueRefs": [], "childNames": [],
+            }],
+        })
+        if included_by:
+            including = next(d for d in document["policies"] if d["id"] == included_by)
+            including["fragmentRefs"] = [*(including.get("fragmentRefs") or []), "shared-limits"]
+        plan = build_plan(document, CapabilityMap.load(), target=TARGET)
+        for item in plan["items"]:
+            if item["status"] == "needs-decision":
+                item["status"] = "adapted"
+                item["decision"] = item["proposal"] or "accept"
+        return plan, document
+
+    def test_a_fragment_an_api_includes_raises_nothing_to_block_on(self, inventory):
+        plan, document = self._planned(inventory, included_by="policy:api/aoai-api")
+        codes = {f["code"] for f in preflight(plan, document) if f["blocking"]}
+        assert "incompleteObject" not in codes
+
+    def test_a_fragment_nothing_includes_stops_before_the_first_write(self, inventory):
+        # Unreferenced, it governs nothing, so the object is honestly stranded.
+        # What changed is where that is discovered: preflight, in the planner's
+        # words, rather than a step failing with every policy behind it skipped.
+        plan, document = self._planned(inventory, included_by=None)
+        [incomplete] = [
+            f for f in preflight(plan, document) if f["code"] == "incompleteObject"
+        ]
+        assert incomplete["blocking"] is True
+        assert "fragment 'shared-limits'" in incomplete["message"]
+        assert "policy:fragment/shared-limits" in incomplete["message"]
+
+
 class TestAliasVerification:
     """An alias read back reports a different shape from the one it was sent."""
 

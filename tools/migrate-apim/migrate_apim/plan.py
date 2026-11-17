@@ -952,7 +952,6 @@ class PlanBuilder:
             rule = batch["rule"]
             element = batch["element"]
             members = batch["members"]
-            label = element["name"] + (" with expression" if batch["hasExpression"] else "")
             self._add(
                 item_id=ids.item("policy", signature),
                 source={"assetId": None, "assetKind": "policy", "aspect": element["name"]},
