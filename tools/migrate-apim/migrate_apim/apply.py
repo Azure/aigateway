@@ -245,6 +245,35 @@ def preflight(plan: dict[str, Any], inventory: dict[str, Any], *, runner: Runner
             "Re-plan from a current inventory, or settle the items that register those providers.",
         )
 
+    # Work the plan has already judged unappliable. `plan` detects it, explains
+    # it and writes the reason on the object, and nothing read it back: the
+    # condition surfaced as a step failing part-way through a phase, under a
+    # builder's guess at a cause the plan could name exactly. A failed step stops
+    # its phase, so one such object also costs every step queued behind it.
+    #
+    # Asked of `steps_for` rather than re-derived from the items, so the objects
+    # checked are the objects that run. One no phase performs cannot fail a
+    # phase, and blocking on it would stop a whole migration over work the
+    # operator was going to apply by hand -- which `notExecutable` already names.
+    incomplete = [
+        (step, obj)
+        for step in steps_for(plan)
+        for obj in step.objects
+        # Only an explicit false. The field is absent from most objects, and
+        # reading absence as incomplete would block every plan there is.
+        if obj.get("configurationComplete") is False
+    ]
+    if incomplete:
+        finding(
+            "incompleteObject", True,
+            f"{len(incomplete)} object(s) the plan marked as not fully configurable: "
+            + "; ".join(_incomplete_note(step, obj) for step, obj in incomplete[:3])
+            + ("..." if len(incomplete) > 3 else ""),
+            "Re-plan from a current inventory, or exclude the items named above to leave their "
+            "objects out of the run. Applied as it stands, each one fails its step and stops the "
+            "rest of its phase.",
+        )
+
     unbuildable: dict[str, list[str]] = {}
     for item in plan.get("items") or []:
         capability_id = item.get("capabilityId")
@@ -275,6 +304,30 @@ def preflight(plan: dict[str, Any], inventory: dict[str, Any], *, runner: Runner
         findings.extend(_role_grant_check(plan, Target.parse(target_id), runner))
 
     return findings
+
+
+def _incomplete_note(step: Step, obj: dict[str, Any]) -> str:
+    """One unappliable object, in the planner's own words.
+
+    The reason is quoted rather than restated, because the plan knows it and a
+    builder does not: `model policy set` can say only that an object names no
+    model registration, where the plan can say which scope covered none.
+    `fullConfigurationAt` comes with it, since the remedy usually starts at the
+    policy document the element was read from.
+    """
+    label = _object_label(obj)
+    where = f"{step.item_id} ({label})" if label else step.item_id
+    reason = str(obj.get("incompleteReason") or "").strip()
+    if not reason:
+        # Two planner paths mark an object incomplete from empty settings alone
+        # and write no reason. Reporting that silence beats quoting an empty
+        # string, and naming a cause this check cannot see would be a guess.
+        reason = "the plan marked it incomplete and said no more"
+        if not obj.get("settings"):
+            reason += "; it carries no settings"
+    at = obj.get("fullConfigurationAt") or {}
+    source = " ".join(str(part) for part in (at.get("policyId"), at.get("path")) if part)
+    return f"{where}: {reason}" + (f" [{source}]" if source else "")
 
 
 def _role_grant_check(
