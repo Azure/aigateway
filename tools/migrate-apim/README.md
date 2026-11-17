@@ -436,8 +436,28 @@ model, or a tool server. APIM has well over a hundred. Most of the migration's r
 | `azure-openai-content-safety`, `llm-content-safety` | — | **Gap.** Content-safety flags exist in the CLI but are not supported on typed `aigateways`. The policy also pulls in a separate Content Safety backend, surfaced as a `supportingBackends` dependency |
 | Transformations: `set-body`, `set-header`, `rewrite-uri`, `json-to-xml` | — | **Gap.** No request/response rewriting |
 | `send-request`, `return-response`, custom `@{…}` expressions | — | **Gap.** `agentHooks` is the nearest mechanism, and only for tool traffic |
+| `authentication-basic`, `authentication-certificate`, `get-authorization-context` | — | **Gap.** A provider authenticates with a managed identity or an API key; `model-provider create/update` exposes no basic credential, no client certificate, and no credential-manager equivalent |
+| `check-header`, `validate-client-certificate` | — | **Gap.** Caller authentication is Entra auth plus RBAC, or an API key. A gate on a shared header secret or a client certificate is neither |
+| `emit-metric`, `log-to-eventhub` | — | **Gap.** `telemetry-exporter create` takes a kind and an endpoint, not a metric to emit or a sink to write to |
+| `set-service-url` | — | **Gap.** An alias backend pool holds backends the gateway knows; overriding the URL outright names no backend |
+| `mcp-server` | `mcp create` | **Handled.** Collected as an MCP asset from the API that carries it, and registered by the MCP server item |
+| `validate-mcp-request` | — | **Gap.** `mcp create` registers a server, its endpoints and its versions; guarding a tool call on the way through is not part of that surface |
 | `cors`, `trace`, correlation headers | — | **Not applicable** |
+| Anything else APIM ships | — | **Gap, blocking.** Reported rather than assumed harmless — see below |
 | — | `costLimit` | AI Gateway capability with no APIM source; an upgrade, not a gap |
+
+**Nothing is dropped for want of a rule.** Rule selection ends in a terminal rule that matches
+anything the four passes above it did not, so an element this catalog has never heard of reaches the
+plan as a blocking decision instead of being discarded where it was classified. That hole was real:
+eleven elements matched no rule at all, three of them carrying backend credentials, and because an
+element containing an expression at least fell into the pass above, the policies that vanished most
+completely were the simplest ones.
+
+The net is not allowed to become the mapping. `compile` holds every element in `policy.FAMILIES` —
+the vocabulary the collector classifies against — to a rule of its own or a rule for its family, and
+fails naming any that are left to the terminal rule. What legitimately reaches it is counted on the
+plan under `policyCoverage`, which accounts for every element walked under exactly one disposition
+and sums them, so a reader can check the planner against the inventory rather than trust it.
 
 ### Known structural gaps
 

@@ -165,7 +165,11 @@
           "properties": {
             "element": {"type": "array", "items": {"type": "string"}, "minItems": 1},
             "family": {"type": "string"},
-            "hasExpression": {"type": "boolean"}
+            "hasExpression": {"type": "boolean"},
+            "anyElement": {
+              "const": true,
+              "description": "The terminal rule, tried last and matching anything the passes above did not. There is exactly one; a second is a tie `compile` rejects. It exists so that an element no rule recognises still reaches the plan, rather than being dropped where it was classified."
+            }
           }
         },
         "verdict": {"$ref": "#/$defs/verdict"},

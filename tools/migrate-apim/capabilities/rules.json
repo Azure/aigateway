@@ -279,6 +279,61 @@
     },
     {
       "match": {
+        "family": "backendAuthentication"
+      },
+      "verdict": "gap",
+      "itemKind": "accept-loss",
+      "rationale": "A model provider authenticates with a managed identity or an API key. `model-provider create` and `model-provider update` expose no basic credential, no client certificate, and nothing equivalent to an APIM credential manager, so a backend secured any other way has no target. `authentication-managed-identity` is the one member of this family that does map, and it has a rule of its own.",
+      "proposal": "retain-in-apim"
+    },
+    {
+      "match": {
+        "family": "authentication"
+      },
+      "verdict": "gap",
+      "itemKind": "accept-loss",
+      "rationale": "Caller authentication on the gateway is Entra auth plus data-plane RBAC, or an API key. A gate on a shared secret in a header, or on a client certificate, is neither. `validate-jwt` and `validate-azure-ad-token` are the members of this family that do map, and they have a rule of their own.",
+      "proposal": "retain-in-apim"
+    },
+    {
+      "match": {
+        "family": "observability"
+      },
+      "verdict": "gap",
+      "itemKind": "accept-loss",
+      "rationale": "The gateway reports through a telemetry exporter it owns: `telemetry-exporter create` takes a kind and an endpoint, not a metric to emit or a sink to write to. There is no Event Hub destination and no way to author a custom metric. Where the gateway's own telemetry reports is a separate decision, on the telemetry destination item.",
+      "proposal": "accept"
+    },
+    {
+      "match": {
+        "element": [
+          "mcp-server"
+        ]
+      },
+      "verdict": "handled",
+      "capabilityId": "mcp.create",
+      "rationale": "The tool server this policy exposes is collected as an MCP asset from the API that carries it, and registered by the MCP server item rather than raised again here."
+    },
+    {
+      "match": {
+        "family": "mcp"
+      },
+      "verdict": "gap",
+      "itemKind": "accept-loss",
+      "rationale": "`mcp create` registers a tool server, its endpoints and its supported versions. Guarding a tool call on the way through is not part of that surface. `mcp-server`, which declares the server itself, is carried by the MCP server item and has a rule of its own.",
+      "proposal": "retain-in-apim"
+    },
+    {
+      "match": {
+        "family": "routing"
+      },
+      "verdict": "gap",
+      "itemKind": "accept-loss",
+      "rationale": "An alias backend pool holds backends the gateway knows, with a priority and a weight each. Overriding the destination URL outright names no backend, so there is nothing for the pool to hold. `set-backend-service` and `forward-request` choose among backends and have a rule of their own.",
+      "proposal": "retain-in-apim"
+    },
+    {
+      "match": {
         "element": [
           "send-request",
           "send-one-way-request",
@@ -348,8 +403,18 @@
       },
       "verdict": "gap",
       "itemKind": "accept-loss",
-      "note": "Last of the three passes in capability.policy_rule, so it is reached only by an element with no rule of its own and no family rule. The ordering is in the code, not in a priority here.",
+      "note": "Third of the four passes in capability.policy_rule, so it is reached only by an element with no rule of its own and no family rule. The ordering is in the code, not in a priority here.",
       "rationale": "A policy expression doing more than reading a well-known context property has no equivalent. The target's policy surface is six declarative types.",
+      "proposal": "retain-in-apim"
+    },
+    {
+      "match": {
+        "anyElement": true
+      },
+      "verdict": "gap",
+      "itemKind": "accept-loss",
+      "note": "Last of the four passes in capability.policy_rule, and the one that makes an unmapped element impossible rather than merely unlikely. `compile` holds every element in policy.FAMILIES to a rule of its own or a family rule, so nothing reaching here is a policy the tool has ever been taught; it is a policy APIM has that this catalog does not know about. Deliberately blocking: the alternative is a migration that silently drops a policy nobody has read.",
+      "rationale": "This policy is not in the vocabulary this catalog was written against, so nothing can be said about what it does or whether the target has an equivalent. It is reported rather than assumed harmless.",
       "proposal": "retain-in-apim"
     }
   ],

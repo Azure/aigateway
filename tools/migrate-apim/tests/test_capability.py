@@ -129,8 +129,26 @@ class TestPolicyRules:
         assert rule["verdict"] == "gap"
         assert (rule.get("match") or {}).get("hasExpression") is True
 
-    def test_an_unmapped_element_without_an_expression_matches_nothing(self, caps):
-        assert caps.policy_rule("some-future-policy", family="other") is None
+    def test_an_unmapped_element_without_an_expression_reaches_the_terminal_rule(self, caps):
+        # It used to match nothing, and `plan._policies` dropped what matched
+        # nothing where it stood. An element carrying an expression at least
+        # reached the pass above, so the policies that vanished most completely
+        # were the simplest ones.
+        rule = caps.policy_rule("some-future-policy", family="other")
+        assert rule is caps.terminal_policy_rule()
+        assert rule["verdict"] == "gap"
+
+    def test_only_an_element_outside_the_vocabulary_reaches_the_terminal_rule(self, caps):
+        # The terminal rule is the net, not the mapping. `compile` holds every
+        # element in policy.FAMILIES to a rule of its own or a family rule.
+        from migrate_apim.policy import FAMILIES, family_of
+
+        terminal = caps.terminal_policy_rule()
+        reached = sorted(
+            name for name in FAMILIES
+            if caps.policy_rule(name, family=family_of(name)) is terminal
+        )
+        assert reached == []
 
     def test_plumbing_is_explicitly_not_applicable(self, caps):
         for name in ("base", "include-fragment", "choose", "set-variable", "cors"):
