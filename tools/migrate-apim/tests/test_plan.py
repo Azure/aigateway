@@ -236,6 +236,104 @@ class TestPolicyMapping:
         assert not elements & {"base", "include-fragment", "choose", "when", "set-variable"}
 
 
+def _routed(inventory, *, path, attributes, expressions=(), name="set-backend-service",
+            api="aoai-api"):
+    """A copy of the inventory with one routing element added to an API policy."""
+    changed = copy.deepcopy(inventory)
+    document = next(d for d in changed["policies"]
+                    if (d.get("scope") or {}).get("level") == "api"
+                    and (d.get("scope") or {}).get("name") == api)
+    document["elements"].append({
+        "section": "inbound", "path": path, "name": name,
+        "family": "routing", "depth": path.count("/") + 1, "attributes": attributes,
+        "text": None, "expressionIds": list(expressions), "namedValueRefs": [], "childNames": [],
+    })
+    return changed
+
+
+def _routing_items(plan):
+    return [i for i in plan["items"]
+            if i["source"]["assetKind"] == "policy"
+            and i["evidence"]["element"] in {"set-backend-service", "forward-request"}]
+
+
+class TestRoutingLogicLeavesATrace:
+    """`handled` claims another object carries the element, and for a backend
+    picked by an expression or inside a `choose` no object does: the alias pool
+    is built from the APIM backend pool, which holds none of that logic. The
+    element was excluded before anything looked at it, so a routing decision
+    the target cannot make produced no item, no gap and no mention."""
+
+    def test_a_plain_backend_selection_is_still_carried_by_the_alias(
+            self, inventory, capabilities):
+        routed = _routed(inventory, path="inbound/set-backend-service[1]",
+                         attributes={"backend-id": "aoai-pool"})
+        assert _routing_items(build_plan(routed, capabilities)) == []
+
+    def test_a_backend_chosen_by_an_expression_becomes_a_decision(
+            self, inventory, capabilities):
+        routed = _routed(inventory, path="inbound/set-backend-service[1]",
+                         attributes={"backend-id": "@(context.Variables[\"region\"])"},
+                         expressions=["expr:route"])
+        [item] = _routing_items(build_plan(routed, capabilities))
+        assert item["verdict"] == "partial"
+        assert item["kind"] == "accept-loss"
+        assert item["status"] == "needs-decision"
+        assert item["proposal"] == "compensate"
+        assert {o["value"] for o in item["options"]} == {
+            "accept", "compensate", "retain-in-apim"
+        }
+
+    def test_a_backend_chosen_inside_a_choose_becomes_a_decision(
+            self, inventory, capabilities):
+        # No expression on the element itself: the branch that selects it is
+        # the whole of what will not travel.
+        routed = _routed(inventory, path="inbound/choose[1]/when[1]/set-backend-service[1]",
+                         attributes={"backend-id": "aoai-east"})
+        [item] = _routing_items(build_plan(routed, capabilities))
+        assert item["verdict"] == "partial"
+        assert item["evidence"]["hasExpression"] is False
+        assert item["evidence"]["members"][0]["path"].startswith("inbound/choose[1]/when[1]/")
+
+    def test_the_decision_says_what_became_of_the_routing(self, inventory, capabilities):
+        routed = _routed(inventory, path="inbound/choose[1]/otherwise[1]/set-backend-service[1]",
+                         attributes={"backend-id": "aoai-west"})
+        plan = build_plan(routed, capabilities)
+        [item] = _routing_items(plan)
+        # The alias is what carries the part that does travel, so the item
+        # points at it rather than reading as a loss with no destination.
+        assert item["capabilityId"] == "alias.create"
+        assert "alias backend pool" in item["rationale"]
+        assert all(option["consequence"] for option in item["options"])
+        assert validate_document(plan) == []
+
+    def test_it_asks_once_however_many_occurrences(self, inventory, capabilities):
+        routed = _routed(inventory, path="inbound/choose[1]/when[1]/set-backend-service[1]",
+                         attributes={"backend-id": "aoai-east"})
+        routed = _routed(routed, api="support-mcp",
+                         path="inbound/choose[1]/when[1]/set-backend-service[1]",
+                         attributes={"backend-id": "support-backend"})
+        [item] = _routing_items(build_plan(routed, capabilities))
+        assert {m["policyId"] for m in item["evidence"]["members"]} == {
+            "policy:api/aoai-api", "policy:api/support-mcp"
+        }
+
+    def test_a_sound_handled_element_is_left_alone(self, inventory, capabilities):
+        # authentication-managed-identity really is carried by the provider
+        # item, expression or no expression. Raising it here would put an item
+        # in every plan for something nothing was lost to.
+        routed = _routed(
+            inventory, name="authentication-managed-identity",
+            path="inbound/choose[1]/when[1]/authentication-managed-identity[1]",
+            attributes={"resource": "@(context.Variables[\"scope\"])"},
+            expressions=["expr:scope"],
+        )
+        plan = build_plan(routed, capabilities)
+        assert not [i for i in plan["items"]
+                    if i["source"]["assetKind"] == "policy"
+                    and i["evidence"]["element"] == "authentication-managed-identity"]
+
+
 class TestStructural:
     def test_a_non_default_workspace_must_be_collapsed(self, plan):
         [item] = items_of(plan, "collapse")
