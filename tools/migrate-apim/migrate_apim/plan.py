@@ -20,10 +20,63 @@ from typing import Any
 
 from . import ids
 from .capability import CapabilityMap
-from .detect import dialect_target
+from .detect import MCP_PATTERNS, dialect_target
+from .dispatch import selector
 
 SCHEMA_VERSION = "1.0"
 GENERATOR_VERSION = "0.1.0"
+
+# Every place the planner chooses a rule, declared where the choosing happens.
+# `migrate_apim.compile` reads these to decide whether a rule in rules.json can
+# ever be selected; see migrate_apim/dispatch.py for why they are not a separate
+# list somewhere else.
+MCP_BY_PATTERN = selector(
+    "assets",
+    keys=("family", "pattern"),
+    values={"family": ("mcpServers",), "pattern": MCP_PATTERNS},
+    site="plan._mcp",
+    reads=("verdict", "itemKind", "capabilityId", "proposal", "rationale", "options"),
+)
+MCP_BY_TOOL_DISCOVERY = selector(
+    "assets",
+    keys=("family", "toolDiscovery"),
+    values={"family": ("mcpServers",), "toolDiscovery": ("runtimeOnly",)},
+    site="plan._mcp tool exposure",
+    reads=("verdict", "itemKind", "proposal", "rationale", "options"),
+)
+AGENT_RULE = selector(
+    "assets", keys=("family",), values={"family": ("agents",)}, site="plan._agent",
+    reads=("verdict", "itemKind", "proposal", "rationale", "options"),
+)
+
+# `_structural` is six branches, not one. They share a key and nothing else:
+# each raises a different item and takes a different set of fields off its rule.
+# One selector for all six would have to declare the union of what they read,
+# which would excuse a field on the workspace rule because the telemetry branch
+# happens to read it. So each branch declares its own.
+def _structural_selector(kind: str, *, reads: tuple[str, ...]) -> Any:
+    return selector(
+        "structural", keys=("kind",), values={"kind": (kind,)},
+        site=f"plan._structural {kind}", reads=reads,
+    )
+
+
+_DECIDED = ("verdict", "itemKind", "proposal", "rationale", "options")
+STRUCTURAL_WORKSPACE = _structural_selector("workspace", reads=_DECIDED)
+STRUCTURAL_SUBSCRIPTIONS = _structural_selector("subscriptions", reads=_DECIDED)
+STRUCTURAL_TELEMETRY = _structural_selector(
+    "telemetry", reads=(*_DECIDED, "capabilityId", "prerequisiteWhen"),
+)
+STRUCTURAL_CERTIFICATES = _structural_selector(
+    "certificates", reads=("verdict", "itemKind", "proposal", "rationale"),
+)
+STRUCTURAL_CREDENTIAL_PROVIDERS = _structural_selector(
+    "credentialProviders", reads=("verdict", "itemKind", "proposal", "rationale"),
+)
+STRUCTURAL_COVERAGE_GAP = _structural_selector(
+    "coverageGap",
+    reads=("verdict", "itemKind", "rationale", "options", "blocking", "cannotAccept"),
+)
 
 READY = "ready"
 NEEDS_DECISION = "needs-decision"
@@ -783,10 +836,8 @@ class PlanBuilder:
     def _mcp(self, server: dict[str, Any]) -> None:
         asset_id = server["id"]
         pattern = server.get("pattern")
-        rule = _first(
-            self.caps.asset_rules(),
-            lambda r: (r.get("match") or {}).get("family") == "mcpServers"
-            and (r.get("match") or {}).get("pattern") == pattern,
+        rule = MCP_BY_PATTERN.first(
+            self.caps.asset_rules(), family="mcpServers", pattern=pattern
         )
         if rule:
             self._add(
@@ -798,7 +849,7 @@ class PlanBuilder:
                 proposal=rule.get("proposal"),
                 rationale=rule.get("rationale")
                 or f"A {pattern} MCP server registers as a tool server with its upstream endpoints.",
-                options=[_opt(value, "") for value in rule.get("options") or []],
+                options=_options_of(rule),
                 evidence={"pattern": pattern, "upstream": server.get("upstream")},
                 target={
                     "capability": "mcp.create",
@@ -833,33 +884,30 @@ class PlanBuilder:
                 blocking=True,
             )
         if discovery == "runtimeOnly":
-            tool_rule = _first(
-                self.caps.asset_rules(),
-                lambda r: (r.get("match") or {}).get("toolDiscovery") == "runtimeOnly",
+            tool_rule = MCP_BY_TOOL_DISCOVERY.first(
+                self.caps.asset_rules(), family="mcpServers", toolDiscovery="runtimeOnly"
             ) or {}
             self._add(
                 item_id=ids.item(asset_id, "tools"),
                 source={"assetId": asset_id, "assetKind": "mcpServer", "aspect": "toolExposure"},
-                kind="enumerate",
-                verdict="gap",
+                kind=tool_rule.get("itemKind", "enumerate"),
+                verdict=tool_rule.get("verdict", "gap"),
                 proposal=tool_rule.get("proposal", "accept-all"),
                 rationale=tool_rule.get("rationale", ""),
-                options=[_opt(value, "") for value in tool_rule.get("options") or []],
+                options=_options_of(tool_rule),
                 evidence={"toolDiscovery": server.get("toolDiscovery")},
             )
 
     def _agent(self, agent: dict[str, Any]) -> None:
-        rule = _first(
-            self.caps.asset_rules(), lambda r: (r.get("match") or {}).get("family") == "agents"
-        ) or {}
+        rule = AGENT_RULE.first(self.caps.asset_rules(), family="agents") or {}
         self._add(
             item_id=ids.item(agent["id"], "registration"),
             source={"assetId": agent["id"], "assetKind": "agent", "aspect": "registration"},
-            kind="accept-loss",
-            verdict="gap",
+            kind=rule.get("itemKind", "accept-loss"),
+            verdict=rule.get("verdict", "gap"),
             proposal=rule.get("proposal", "retain-in-apim"),
             rationale=rule.get("rationale", ""),
-            options=[_opt(value, "") for value in rule.get("options") or []],
+            options=_options_of(rule),
             evidence={"hosting": agent.get("hosting"), "agent": agent.get("agent")},
         )
 
@@ -931,37 +979,37 @@ class PlanBuilder:
 
     def _structural(self) -> None:
         shared = self.inventory.get("shared") or {}
-        rules = {(_match_kind(rule)): rule for rule in self.caps.structural_rules()}
+        structural = self.caps.structural_rules()
 
         for workspace in self.inventory.get("workspaces") or []:
             if workspace.get("name") == "default" or not workspace.get("collected"):
                 continue
-            rule = rules.get("workspace") or {}
+            rule = STRUCTURAL_WORKSPACE.first(structural, kind="workspace") or {}
             self._add(
                 item_id=ids.item("workspace", workspace["name"]),
                 source={"assetId": None, "assetKind": "workspace", "aspect": workspace["name"]},
-                kind="collapse",
-                verdict="partial",
+                kind=rule.get("itemKind", "collapse"),
+                verdict=rule.get("verdict", "partial"),
                 proposal=rule.get("proposal", "flatten"),
                 rationale=rule.get("rationale", ""),
-                options=[_opt(value, "") for value in rule.get("options") or []],
+                options=_options_of(rule),
                 evidence={"workspace": workspace},
                 blocking=True,
             )
 
         subscriptions = shared.get("subscriptions") or []
         if subscriptions:
-            rule = rules.get("subscriptions") or {}
+            rule = STRUCTURAL_SUBSCRIPTIONS.first(structural, kind="subscriptions") or {}
             scopes = sorted({entry["scope"]["level"] for entry in subscriptions})
             self._add(
                 item_id=ids.item("access", "subscriptions"),
                 source={"assetId": None, "assetKind": "access", "aspect": "subscriptions"},
-                kind="scope",
-                verdict="partial",
+                kind=rule.get("itemKind", "scope"),
+                verdict=rule.get("verdict", "partial"),
                 capability_id="key.create",
                 proposal=rule.get("proposal", "entra-rbac"),
                 rationale=rule.get("rationale", ""),
-                options=[_opt(value, "") for value in rule.get("options") or []],
+                options=_options_of(rule),
                 evidence={"count": len(subscriptions), "scopeLevels": scopes},
                 # Only one of the options makes keys. Settled on Entra RBAC or on
                 # staying in APIM, this item is a decision with nothing to build,
@@ -975,7 +1023,12 @@ class PlanBuilder:
             )
 
         if self._reports_telemetry():
-            rule = rules.get("telemetry") or {}
+            # The options are spelled out in rules.json rather than here, because
+            # these four differ in what they *disturb* rather than in what they
+            # cost, and that is mapping knowledge: one touches a resource other
+            # workloads may be reading, the next leaves every existing dashboard
+            # pointing at a gateway that no longer reports to it.
+            rule = STRUCTURAL_TELEMETRY.first(structural, kind="telemetry") or {}
             loggers = [
                 logger.get("name") for logger in
                 ((self.inventory.get("shared") or {}).get("telemetry") or {}).get("loggers") or []
@@ -984,47 +1037,32 @@ class PlanBuilder:
                 item_id=_TELEMETRY_ITEM,
                 source={"assetId": None, "assetKind": "telemetry", "aspect": "destination"},
                 kind=rule.get("itemKind", "translate"),
-                verdict="partial",
-                capability_id="telemetry.create",
+                verdict=rule.get("verdict", "partial"),
+                capability_id=rule.get("capabilityId", "telemetry.create"),
                 proposal=rule.get("proposal", "reuse-appinsights"),
                 rationale=rule.get("rationale", ""),
-                # Spelled out, because the two differ in what they change rather
-                # than in what they cost: one touches a resource other workloads
-                # may be reading, the other leaves every existing dashboard
-                # pointing at a gateway that no longer reports to it.
-                options=[
-                    _opt("reuse-appinsights",
-                         "Enable the OTLP endpoint on the Application Insights resource APIM "
-                         "already reports to. Both products' telemetry stays in one place, and "
-                         "enabling it changes a resource other workloads may share."),
-                    _opt("new-appinsights",
-                         "Create an Application Insights resource with the OTLP endpoint enabled, "
-                         "for the gateway alone. Nothing shared changes; existing dashboards and "
-                         "alerts do not cover the gateway until they are rebuilt."),
-                    _opt("gateway-metrics-only",
-                         "No exporter. The gateway's own metrics are the only telemetry, and "
-                         "nothing reports into Application Insights."),
-                    _opt("retain-in-apim",
-                         "Keep this workload on APIM, reporting as it does now."),
-                ],
+                options=_options_of(rule),
                 evidence={"apimLoggers": loggers},
                 target=_objects_or_none("telemetry.create",
                                         self._telemetry_objects(_TELEMETRY_ITEM)),
                 blocking=False,
             )
 
-        for name, kind in (("certificates", "certificates"), ("credentialProviders", "credentialProviders")):
-            entries = shared.get(name) or []
+        for kind, site in (("certificates", STRUCTURAL_CERTIFICATES),
+                           ("credentialProviders", STRUCTURAL_CREDENTIAL_PROVIDERS)):
+            entries = shared.get(kind) or []
             if not entries:
                 continue
-            rule = rules.get(kind) or {}
+            rule = site.first(structural, kind=kind) or {}
+            verdict = rule.get("verdict", "gap")
             self._add(
                 item_id=ids.item("shared", kind),
                 source={"assetId": None, "assetKind": kind, "aspect": "reprovisioning"},
-                kind="accept-loss",
-                verdict="gap",
+                kind=rule.get("itemKind", "accept-loss"),
+                verdict=verdict,
+                proposal=rule.get("proposal"),
                 rationale=rule.get("rationale", ""),
-                options=_loss_options("gap"),
+                options=_loss_options(verdict),
                 evidence={"count": len(entries), "names": [entry.get("name") for entry in entries]},
             )
 
@@ -1057,18 +1095,20 @@ class PlanBuilder:
             if entry.get("status") == "failed"
         ]
         for failure in failures:
-            rule = rules.get("coverageGap") or {}
+            rule = STRUCTURAL_COVERAGE_GAP.first(structural, kind="coverageGap") or {}
             self._add(
                 item_id=ids.item("coverage", f"{failure['collection']}/{failure['scope']}"),
                 source={"assetId": None, "assetKind": "coverageGap", "aspect": failure["collection"]},
-                kind="enumerate",
-                verdict="gap",
+                kind=rule.get("itemKind", "enumerate"),
+                verdict=rule.get("verdict", "gap"),
                 rationale=rule.get("rationale", ""),
-                options=[_opt("re-collect", "Fix access and collect again."),
-                         _opt("supply-facts", "State what is there.")],
+                options=_options_of(rule) or [
+                    _opt("re-collect", "Fix access and collect again."),
+                    _opt("supply-facts", "State what is there."),
+                ],
                 evidence={"coverage": failure},
-                blocking=True,
-                cannot_accept=True,
+                blocking=rule.get("blocking", True),
+                cannot_accept=rule.get("cannotAccept", True),
             )
 
     def _reports_telemetry(self) -> bool:
@@ -1142,14 +1182,24 @@ class PlanBuilder:
                     )
                 ),
             })
-        if self._reports_telemetry():
+        settled = self._settled_value(_TELEMETRY_ITEM)
+        # Two of the four destinations create or touch an Application Insights
+        # resource, and two do not. Which is which is mapping knowledge, so the
+        # rule says it; until the item is settled nothing is ruled out and the
+        # administrator still has to know. An unsettled plan asks.
+        telemetry_rule = STRUCTURAL_TELEMETRY.first(
+            self.caps.structural_rules(), kind="telemetry") or {}
+        needs_endpoint = telemetry_rule.get("prerequisiteWhen")
+        if self._reports_telemetry() and (
+            settled is None or not needs_endpoint or settled in needs_endpoint
+        ):
             self.prerequisites.append({
                 "id": "prereq:appinsights-otlp",
                 "owner": "azure-administrator",
                 "commands": [],
                 "summary": (
                     "Create an Application Insights resource with the OTLP endpoint enabled"
-                    if self._settled_value(_TELEMETRY_ITEM) == "new-appinsights" else
+                    if settled == "new-appinsights" else
                     "Enable the OTLP endpoint on the Application Insights resource APIM reports to"
                 ),
                 # The one fact that makes this mapping possible, and it is in
@@ -1762,6 +1812,22 @@ def _opt(value: str, consequence: str) -> dict[str, str]:
     return {"value": value, "consequence": consequence}
 
 
+def _options_of(rule: dict[str, Any]) -> list[dict[str, str]]:
+    """A rule's options, in either of the two shapes rules.json uses.
+
+    A bare string is the choice with nothing said about it; the object form
+    carries what choosing it costs. Both reach the plan as {value, consequence},
+    so a rule can gain a consequence later without the reader changing.
+    """
+    options = []
+    for option in rule.get("options") or []:
+        if isinstance(option, dict):
+            options.append(_opt(option["value"], option.get("consequence", "")))
+        elif option:
+            options.append(_opt(option, ""))
+    return options
+
+
 def _loss_options(verdict: str) -> list[dict[str, str]]:
     if verdict != "gap":
         return []
@@ -1771,17 +1837,6 @@ def _loss_options(verdict: str) -> list[dict[str, str]]:
         _opt("retain-in-apim", "Keep this workload on APIM."),
         _opt("block", "Stop the migration until resolved."),
     ]
-
-
-def _first(items: list[dict[str, Any]], predicate: Any) -> dict[str, Any] | None:
-    for item in items:
-        if predicate(item):
-            return item
-    return None
-
-
-def _match_kind(rule: dict[str, Any]) -> str:
-    return (rule.get("match") or {}).get("kind") or ""
 
 
 def _slug(value: str) -> str:

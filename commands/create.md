@@ -1,6 +1,6 @@
 ---
-description: Create an Azure AI Gateway for an authorized administrator and verify provisioning.
-argument-hint: <gateway-name> <resource-group> <region>
+description: "Create an Azure AI Gateway for an authorized administrator and verify provisioning."
+argument-hint: "<gateway-name> <resource-group> <region>"
 ---
 
 # /aigateway:create

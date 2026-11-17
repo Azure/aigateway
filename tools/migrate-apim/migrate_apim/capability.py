@@ -22,9 +22,40 @@ from pathlib import Path
 from typing import Any, Callable, Iterable
 
 from .azcli import az_argv
+from .dispatch import selector
+
+# `policy_rule` runs three passes in order: an element-specific rule wins, then
+# a family rule, then the expression fallback. Each pass is its own selection
+# site, so each declares what it looks at.
+#
+# All three hand the chosen rule back to the same reader in `plan._policies`, so
+# they read the same fields; they differ only in how the rule is found.
+_POLICY_FIELDS = (
+    "verdict", "itemKind", "capabilityId", "target", "proposal", "rationale",
+    "options", "partial", "partialWhen", "batchOn",
+)
+POLICY_BY_ELEMENT = selector(
+    "policies", keys=("element",), site="capability.policy_rule element",
+    reads=_POLICY_FIELDS,
+)
+POLICY_BY_FAMILY = selector(
+    "policies", keys=("family",), site="capability.policy_rule family",
+    reads=_POLICY_FIELDS,
+)
+POLICY_BY_EXPRESSION = selector(
+    "policies", keys=("hasExpression",), site="capability.policy_rule expression",
+    reads=_POLICY_FIELDS,
+)
 
 CAPABILITIES_DIR = Path(__file__).resolve().parent.parent / "capabilities"
-DEFAULT_CATALOG = "aigateway-1.0.0b26.json"
+# Discovered rather than written down. The catalog is renamed on every CLI
+# release it adopts, and a constant left behind does not degrade `plan`, it
+# stops it. Writing the version here would also put a Python edit in the middle
+# of a data change, which is the one step of adopting a release that nothing
+# would check. the export job resolves it the same way, and
+# `test_capability.py` pins that exactly one catalog is present.
+_CATALOGS = sorted(path.name for path in CAPABILITIES_DIR.glob("aigateway-*.json"))
+DEFAULT_CATALOG = _CATALOGS[0] if len(_CATALOGS) == 1 else ""
 
 # A probe maps an `az aigateway` command path to the option names the installed
 # extension exposes for it, or None when the command is absent.
@@ -73,9 +104,18 @@ class Capability:
 class CapabilityMap:
     """The target's capability table plus the APIM mapping rules."""
 
-    def __init__(self, catalog: dict[str, Any], rules: dict[str, Any]) -> None:
+    def __init__(
+        self,
+        catalog: dict[str, Any],
+        rules: dict[str, Any],
+        *,
+        catalog_name: str | None = None,
+    ) -> None:
         self.catalog = catalog
         self.rules = rules
+        # The catalog actually loaded, so a plan built with --capabilities
+        # records the table it was planned against rather than the default.
+        self.catalog_name = catalog_name or Path(DEFAULT_CATALOG).stem
         self.capabilities: dict[str, Capability] = {}
         for raw in catalog.get("capabilities", []):
             self.capabilities[raw["id"]] = Capability(
@@ -115,7 +155,7 @@ class CapabilityMap:
             raise CapabilityError(f"capability data unavailable: {exc}") from exc
         except json.JSONDecodeError as exc:
             raise CapabilityError(f"capability data is not valid JSON: {exc}") from exc
-        return cls(catalog, rules)
+        return cls(catalog, rules, catalog_name=catalog_path.stem)
 
     @property
     def cli_version(self) -> str | None:
@@ -183,15 +223,21 @@ class CapabilityMap:
         """
         rules = self.rules.get("policies") or []
         for rule in rules:
+            if not POLICY_BY_ELEMENT.governs(rule):
+                continue
             names = (rule.get("match") or {}).get("element")
             if names and element_name in names:
                 return rule
         for rule in rules:
+            if not POLICY_BY_FAMILY.governs(rule):
+                continue
             match = rule.get("match") or {}
             if match.get("family") and match["family"] == family:
                 return rule
         if has_expression:
             for rule in rules:
+                if not POLICY_BY_EXPRESSION.governs(rule):
+                    continue
                 if (rule.get("match") or {}).get("hasExpression"):
                     return rule
         return None
@@ -208,7 +254,7 @@ class CapabilityMap:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "catalog": Path(DEFAULT_CATALOG).stem,
+            "catalog": self.catalog_name,
             "cliVersion": self.cli_version,
             "probed": self.probed,
             "capabilities": {cid: cap.support for cid, cap in sorted(self.capabilities.items())},

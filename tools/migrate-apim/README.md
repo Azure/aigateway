@@ -3,15 +3,12 @@
 Inventory the AI assets of an Azure API Management instance, shaped for migration to
 [Azure AI Gateway](https://ai.gateway.azure.com) (`Microsoft.ApiManagement/aigateways`).
 
-This is the source-side half of a migration. It answers three questions a coding agent has to
-answer before it can move anything:
+It answers two questions a coding agent has to answer before it can move anything:
 
 1. **What AI workload is actually running in this APIM?** Models, MCP servers, and A2A agents —
    and nothing else.
 2. **What would it take to reproduce it on AI Gateway?** Every asset is captured decomposed into
    the target's building blocks, so the gap is a comparison rather than an interpretation.
-3. **How does an automated migration get the credentials without anyone reading them?** Every
-   secret becomes a reference plus the exact command that retrieves it at apply time.
 
 Status: `collect`, `resolve-models`, `discover-tools`, `plan`, `apply` and `validate` are
 implemented and verified against live APIM instances.
@@ -22,7 +19,7 @@ implemented and verified against live APIM instances.
 
 An agent cannot do a migration like this in one pass. It collects, proposes, asks the operator
 about the parts that do not translate, records what they decide, and only then emits something
-executable. The tool is therefore a **pipeline of pure functions over files**, not one command:
+executable:
 
 ```
           ┌─────────────┐
@@ -114,6 +111,12 @@ migrate-apim collect --apim <name> -g <rg> --foundry-subscription <sub-id>
 # Check and read
 migrate-apim validate inventory.json
 migrate-apim summary inventory.json --format markdown
+
+# Check the contract itself: that the catalog names commands the pinned CLI has,
+# and that every rule is one the planner can actually select and does read
+migrate-apim compile
+migrate-apim compile --strict                       # warnings count as failures too
+migrate-apim compile --newest-release "$(git tag --list 'cli-v*')"  # anything newer out?
 ```
 
 **Artifacts are read BOM-tolerantly and written without one.** The plan is meant to be edited, and
@@ -612,12 +615,24 @@ stateful server rejects everything after the handshake without them.
 
 ## The plan
 
-`plan` matches the inventory against a **capability inventory** — `capabilities/aigateway-1.0.0b26.json`,
+`plan` matches the inventory against a **capability inventory** — `capabilities/aigateway-<version>.json`,
 a curated table of what `az aigateway` can actually do, pinned to a CLI revision, plus
 `capabilities/rules.json` mapping source shapes to target capabilities. A new AI Gateway release is
 a data change, not a code change. With `--probe-cli`, the declared table is reconciled against the
 installed extension, so a capability the docs promise but the local CLI does not expose is reported
 `unavailable` instead of being planned against.
+
+"Curated" is doing real work in that sentence, and it used to be doing it unsupervised: a curated
+table can name a command that exists in no release, and a rule can match on a field no collector
+emits. Both happened. `migrate-apim compile` is the check — it compiles the catalog against
+`capabilities/cli-surface-<version>.json`, a record of what one released wheel really offers, and
+every rule against the planner's registered selection sites. It needs no `az` and no network, so it
+runs on every change; `scripts/azcli_aigw_export.py` refreshes the snapshot when the CLI moves. See
+[ARCHITECTURE.md](ARCHITECTURE.md#compilation).
+
+`--probe-cli` answers a different question and still earns its keep: `compile` asks whether the
+catalog is true of the release it claims, while `--probe-cli` asks what *this operator's* install
+can do right now, which may be older.
 
 Each item is one source aspect and what becomes of it:
 

@@ -4,7 +4,7 @@ Use `az aigateway` (or the `az aig` shorthand) to create gateways and manage
 model aliases, providers, MCP servers, policies, identities, networking, and
 client keys.
 The CLI is in **public preview**. This guide and the
-[searchable command reference](command-reference.md) cover release **1.0.0b31**.
+[searchable command reference](command-reference.md) cover release **1.0.0b34**.
 The CLI implementation is distributed as a released Azure CLI extension,
 not built from this plugin checkout.
 
@@ -25,7 +25,7 @@ use the pinned installer scripts ([`install.sh`](install.sh) /
 automatically before installing.
 If the asset digest and release notes disagree, do not install until the
 release owner resolves the mismatch.
-The following examples install the reviewed `1.0.0b31` release. If a newer
+The following examples install the reviewed `1.0.0b34` release. If a newer
 release is available, use its wheel URL and its own published digest instead;
 do not reuse this checksum for another version.
 An agent must obtain approval before installing or upgrading a tool.
@@ -33,11 +33,11 @@ An agent must obtain approval before installing or upgrading a tool.
 **Bash**
 
 ```bash
-WHEEL="aigateway-1.0.0b31-py3-none-any.whl"
+WHEEL="aigateway-1.0.0b34-py3-none-any.whl"
 curl -fL --output "$WHEEL" \
-  "https://github.com/Azure/aigateway/releases/download/cli-v1.0.0b31/$WHEEL" || exit 1
+  "https://github.com/Azure/aigateway/releases/download/cli-v1.0.0b34/$WHEEL" || exit 1
 printf '%s  %s\n' \
-  'f8f13bfb1f5ca44b97675096e0e5361e09c7e62e74a73401e39ac1acafa3b4d4' "$WHEEL" \
+  'f4f1c509ccf0e8c5f135604f318bc60077eb14b4cef9036456f266874b9c5c86' "$WHEEL" \
   | sha256sum --check || exit 1
 az extension add --source "$WHEEL" --upgrade
 ```
@@ -47,10 +47,10 @@ On macOS without `sha256sum`, use `shasum -a 256 --check` instead.
 **PowerShell**
 
 ```powershell
-$wheel = "aigateway-1.0.0b31-py3-none-any.whl"
-Invoke-WebRequest -Uri "https://github.com/Azure/aigateway/releases/download/cli-v1.0.0b31/$wheel" `
+$wheel = "aigateway-1.0.0b34-py3-none-any.whl"
+Invoke-WebRequest -Uri "https://github.com/Azure/aigateway/releases/download/cli-v1.0.0b34/$wheel" `
   -OutFile $wheel -ErrorAction Stop
-$expected = "f8f13bfb1f5ca44b97675096e0e5361e09c7e62e74a73401e39ac1acafa3b4d4"
+$expected = "f4f1c509ccf0e8c5f135604f318bc60077eb14b4cef9036456f266874b9c5c86"
 if ((Get-FileHash $wheel -Algorithm SHA256).Hash -ne $expected) {
   throw "CLI wheel checksum mismatch; do not install."
 }
@@ -67,7 +67,10 @@ az aigateway --help
 ```
 
 For this release, `version` reports extension `aigateway`, version
-`1.0.0b31`, and API `2025-09-01-preview`. Do not substitute legacy
+`1.0.0b34`, and default API `2026-11-01` (with 1-line fallback to
+`2025-09-01-preview` via `AZURE_AIGATEWAY_API_VERSION=2025-09-01-preview`,
+`az config set aigateway.api_version=2025-09-01-preview`, or
+`--api-version 2025-09-01-preview`). Do not substitute legacy
 `az ai-gateway`, a source build, or locally patched installed modules.
 
 ## Quickstart
@@ -102,25 +105,13 @@ API Management `service` resource.
 ### 2. Register a public MCP server
 
 The [Microsoft Learn MCP server](https://learn.microsoft.com/training/support/mcp)
-needs no backend credential. Put the following endpoint array in
-`endpoints.json`:
-
-```json
-[
-  {
-    "kind": "mcp",
-    "namespace": "learn",
-    "mcp": {
-      "transport": "streamableHttp",
-      "url": "https://learn.microsoft.com/api/mcp"
-    }
-  }
-]
-```
+needs no backend credential. Register a single public MCP endpoint directly
+with `--url` (or pass `--endpoints @endpoints.json` for multiple sources):
 
 ```bash
 az aigateway mcp create --subscription "$SUBSCRIPTION" \
-  -g "$RG" --gateway-name "$GATEWAY" -n learn --endpoints @endpoints.json
+  -g "$RG" --gateway-name "$GATEWAY" -n learn \
+  --url https://learn.microsoft.com/api/mcp
 az aigateway mcp show --subscription "$SUBSCRIPTION" \
   -g "$RG" --gateway-name "$GATEWAY" -n learn -o json
 ```

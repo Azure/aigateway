@@ -573,6 +573,11 @@ def classify_api(
     )
 
 
+# Every value `_mcp_pattern` can return. A rules.json rule that matches on a
+# pattern outside this set can never be selected, so `compile` checks against it.
+MCP_PATTERNS = ("federationRouter", "toolProjection", "passthrough", "unconfigured")
+
+
 def _mcp_pattern(props: dict[str, Any], api: dict[str, Any]) -> str:
     mcp_props = props.get("mcpProperties") or {}
     if mcp_props.get("isFederationRouter") or mcp_props.get("federation"):

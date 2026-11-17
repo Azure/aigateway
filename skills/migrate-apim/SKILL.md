@@ -1,6 +1,6 @@
 ---
 name: migrate-apim
-description: Migrate AI workloads from Azure API Management to Azure AI Gateway. Use when asked to inventory, assess, plan, or execute a move of model APIs, MCP servers, or A2A agents from an APIM instance to Microsoft.ApiManagement/aigateways.
+description: "Migrate AI workloads from Azure API Management to Azure AI Gateway. Use when asked to inventory, assess, plan, or execute a move of model APIs, MCP servers, or A2A agents from an APIM instance to Microsoft.ApiManagement/aigateways."
 ---
 
 # Migrate APIM AI workloads to Azure AI Gateway
@@ -87,20 +87,15 @@ things — three identical rate limits are one item. Do not unbatch them.
 
 | Kind | What you are asking |
 | --- | --- |
-| `reduce-surface` | AI Gateway publishes four inference routes. Which part of this API moves, and what happens to the rest? |
+| `reduce-surface` | See the rule: what part of this API moves? See `capabilities/rules.json` for the publishable routes. |
 | `translate` | It maps, but the semantics differ. Which target semantics? |
 | `accept-loss` | No equivalent. Accept, compensate, retain in APIM, or block? |
 | `enumerate` | A fact that only exists at runtime or in the operator's head. |
 
-An `enumerate` item about an MCP server's tools is **not** a question either: run
-`discover-tools`, which calls `tools/list` for you. Prefer the gateway route -- that is the list
-callers actually see. If it falls back to the upstream, the API's policies did not run, so say so
-when you put the list to the operator rather than presenting it as what the gateway exposes.
+Two `enumerate` items are **not** questions:
+- **MCP tool discovery** — Run `discover-tools`, not `ask`. See `capabilities/rules.json` under the MCP `runtimeOnly` rule for guidance on which route to prefer, and what the result means if it falls back.
+- **resolve-models** — Run it, not ask. The rule metadata in `capabilities/rules.json` explains why; see the models rule for `unresolved` status.
 
-An `enumerate` item proposing `resolve-models` is **not** a question. Run it — the tool fetches the
-catalogue using the credential the inventory already knows how to retrieve, and re-planning closes
-the item. Asking the operator to type model names the tool can fetch is the governing rule being
-broken in the other direction.
 | `name` | What clients send as `model`. A default is proposed; confirm or replace. |
 | `scope` | How gateway-wide keys and Entra RBAC replace per-product subscription keys. |
 | `collapse` | Only the `default` workspace exists on the target. |
@@ -166,14 +161,11 @@ An item carrying `needsFact` is settled on something the answer does not supply.
 metrics policy means "send them elsewhere" and APIM never says where, so no exporter is built and
 the phase reports nothing wrong. Go back to the operator for the fact, in the shape `how` names.
 
-**Telemetry is two questions, and the first one is `item:telemetry/destination`.** APIM reports to
-Azure Application Insights and the gateway exports OpenTelemetry; the only surface both support is
-the **OTLP endpoint on an Application Insights resource**, which an administrator has to enable.
-Ask which resource that is before anything else: reusing the one APIM reports to changes a resource
-other workloads may be reading, while a new one leaves existing dashboards and alerts pointing
-where the gateway does not report. Then `prereq:appinsights-otlp` goes to the administrator, and
-only once the endpoint exists does the decision carry it. Do not propose the `ApplicationInsights`
-exporter kind: the command takes it and it carries nothing across from APIM.
+**Telemetry destination** — `item:telemetry/destination` — is settled before applying any telemetry
+phase. The planner generates it with four options and a prerequisite. See `capabilities/rules.json`
+under the telemetry rule for the full decision guidance: what each option means, which prerequisite
+it raises, and what the administrator has to do. The plan item itself carries all the logic; treat
+this as passing the choice through to apply rather than re-deciding it.
 
 ## 3. Execute
 

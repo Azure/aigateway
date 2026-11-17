@@ -1,6 +1,6 @@
 ---
-description: Configure and operate an Azure AI Gateway, including assets, model policies, identities, networking, and secret rotation.
-argument-hint: <gateway-name> <resource-group> <operation>
+description: "Configure and operate an Azure AI Gateway, including assets, model policies, identities, networking, and secret rotation."
+argument-hint: "<gateway-name> <resource-group> <operation>"
 ---
 
 # /aigateway:manage

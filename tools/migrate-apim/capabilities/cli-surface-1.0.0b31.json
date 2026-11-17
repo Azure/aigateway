@@ -1,0 +1,1021 @@
+{
+  "schemaVersion": "1.0",
+  "kind": "aigatewayCliSurface",
+  "extensionVersion": "1.0.0b31",
+  "wheelSha256": "f8f13bfb1f5ca44b97675096e0e5361e09c7e62e74a73401e39ac1acafa3b4d4",
+  "generatedBy": {
+    "method": "help-sections",
+    "azureCliCore": "2.90.0"
+  },
+  "commands": {
+    "api-key create": {
+      "options": [
+        "api-key-name",
+        "display-name",
+        "gateway-name",
+        "name",
+        "resource-group",
+        "state"
+      ],
+      "required": [
+        "api-key-name",
+        "gateway-name",
+        "name",
+        "resource-group"
+      ]
+    },
+    "api-key delete": {
+      "options": [
+        "api-key-name",
+        "gateway-name",
+        "name",
+        "resource-group",
+        "yes"
+      ],
+      "required": []
+    },
+    "api-key list": {
+      "options": [
+        "gateway-name",
+        "max-items",
+        "next-token",
+        "resource-group"
+      ],
+      "required": [
+        "gateway-name",
+        "resource-group"
+      ]
+    },
+    "api-key list-secrets": {
+      "options": [
+        "api-key-name",
+        "gateway-name",
+        "name",
+        "resource-group"
+      ],
+      "required": []
+    },
+    "api-key regenerate": {
+      "options": [
+        "api-key-name",
+        "gateway-name",
+        "key-type",
+        "name",
+        "resource-group"
+      ],
+      "required": [
+        "key-type"
+      ]
+    },
+    "api-key show": {
+      "options": [
+        "api-key-name",
+        "gateway-name",
+        "name",
+        "resource-group"
+      ],
+      "required": []
+    },
+    "api-key update": {
+      "options": [
+        "api-key-name",
+        "display-name",
+        "expiration-date",
+        "gateway-name",
+        "name",
+        "primary-key",
+        "resource-group",
+        "secondary-key",
+        "state"
+      ],
+      "required": []
+    },
+    "create": {
+      "options": [
+        "gateway-name",
+        "location",
+        "mi-system-assigned",
+        "mi-user-assigned",
+        "name",
+        "no-wait",
+        "publisher-email",
+        "publisher-name",
+        "resource-group",
+        "sku",
+        "subnet",
+        "system-assigned",
+        "tags",
+        "user-assigned"
+      ],
+      "required": [
+        "gateway-name",
+        "location",
+        "name",
+        "resource-group"
+      ]
+    },
+    "delete": {
+      "options": [
+        "gateway-name",
+        "name",
+        "no-wait",
+        "resource-group",
+        "yes"
+      ],
+      "required": []
+    },
+    "identity assign": {
+      "options": [
+        "gateway-name",
+        "mi-system-assigned",
+        "mi-user-assigned",
+        "name",
+        "no-wait",
+        "resource-group",
+        "system-assigned",
+        "user-assigned"
+      ],
+      "required": [
+        "gateway-name",
+        "name",
+        "resource-group"
+      ]
+    },
+    "identity remove": {
+      "options": [
+        "gateway-name",
+        "mi-system-assigned",
+        "mi-user-assigned",
+        "name",
+        "no-wait",
+        "resource-group",
+        "system-assigned",
+        "user-assigned"
+      ],
+      "required": [
+        "gateway-name",
+        "name",
+        "resource-group"
+      ]
+    },
+    "identity show": {
+      "options": [
+        "gateway-name",
+        "name",
+        "resource-group"
+      ],
+      "required": [
+        "gateway-name",
+        "name",
+        "resource-group"
+      ]
+    },
+    "identity wait": {
+      "options": [
+        "created",
+        "custom",
+        "deleted",
+        "exists",
+        "gateway-name",
+        "interval",
+        "name",
+        "resource-group",
+        "timeout",
+        "updated"
+      ],
+      "required": []
+    },
+    "list": {
+      "options": [
+        "max-items",
+        "next-token",
+        "resource-group",
+        "skip-token",
+        "top"
+      ],
+      "required": []
+    },
+    "mcp authorize": {
+      "options": [
+        "endpoint-id",
+        "gateway-name",
+        "resource-group",
+        "tool-server-name"
+      ],
+      "required": []
+    },
+    "mcp create": {
+      "options": [
+        "allow-list",
+        "block-list",
+        "blocked",
+        "credentials",
+        "description",
+        "display-name",
+        "endpoints",
+        "failure-mode",
+        "gateway-name",
+        "kind",
+        "mcp",
+        "name",
+        "namespace",
+        "open-api",
+        "policies",
+        "required",
+        "resource-group",
+        "tool-server-name",
+        "tools",
+        "transport",
+        "type",
+        "url",
+        "versions"
+      ],
+      "required": [
+        "gateway-name",
+        "name",
+        "resource-group",
+        "tool-server-name"
+      ]
+    },
+    "mcp delete": {
+      "options": [
+        "gateway-name",
+        "name",
+        "resource-group",
+        "tool-server-name",
+        "yes"
+      ],
+      "required": []
+    },
+    "mcp list": {
+      "options": [
+        "gateway-name",
+        "max-items",
+        "next-token",
+        "resource-group"
+      ],
+      "required": [
+        "gateway-name",
+        "resource-group"
+      ]
+    },
+    "mcp show": {
+      "options": [
+        "gateway-name",
+        "name",
+        "resource-group",
+        "tool-server-name"
+      ],
+      "required": []
+    },
+    "mcp source add": {
+      "options": [
+        "credentials",
+        "gateway-name",
+        "kind",
+        "mcp",
+        "name",
+        "namespace",
+        "open-api",
+        "required",
+        "resource-group",
+        "tool-server-name",
+        "tools",
+        "transport",
+        "url"
+      ],
+      "required": [
+        "kind",
+        "namespace"
+      ]
+    },
+    "mcp source list": {
+      "options": [
+        "gateway-name",
+        "name",
+        "resource-group",
+        "tool-server-name"
+      ],
+      "required": [
+        "gateway-name",
+        "name",
+        "resource-group",
+        "tool-server-name"
+      ]
+    },
+    "mcp source remove": {
+      "options": [
+        "gateway-name",
+        "name",
+        "namespace",
+        "resource-group",
+        "tool-server-name"
+      ],
+      "required": [
+        "namespace"
+      ]
+    },
+    "mcp update": {
+      "options": [
+        "allow-list",
+        "block-list",
+        "blocked",
+        "description",
+        "display-name",
+        "endpoints",
+        "gateway-name",
+        "name",
+        "policies",
+        "resource-group",
+        "tool-server-name",
+        "type",
+        "versions"
+      ],
+      "required": []
+    },
+    "model create": {
+      "options": [
+        "api-format",
+        "deployment",
+        "deployment-config",
+        "description",
+        "display-name",
+        "foundry-resource-id",
+        "gateway-name",
+        "model-name",
+        "model-provider",
+        "name",
+        "policies",
+        "provider-name",
+        "resource-group",
+        "supported-endpoints"
+      ],
+      "required": [
+        "gateway-name",
+        "resource-group"
+      ]
+    },
+    "model delete": {
+      "options": [
+        "gateway-name",
+        "model-name",
+        "model-provider",
+        "name",
+        "provider-name",
+        "resource-group",
+        "yes"
+      ],
+      "required": []
+    },
+    "model get": {
+      "options": [
+        "gateway-name",
+        "model-name",
+        "model-provider",
+        "name",
+        "provider-name",
+        "resource-group"
+      ],
+      "required": []
+    },
+    "model list": {
+      "options": [
+        "gateway-name",
+        "max-items",
+        "model-provider",
+        "next-token",
+        "provider-name",
+        "resource-group",
+        "type"
+      ],
+      "required": []
+    },
+    "model policy list": {
+      "options": [
+        "gateway-name",
+        "model-name",
+        "model-provider",
+        "name",
+        "provider-name",
+        "resource-group"
+      ],
+      "required": [
+        "gateway-name",
+        "model-name",
+        "model-provider",
+        "name",
+        "provider-name",
+        "resource-group"
+      ]
+    },
+    "model policy remove": {
+      "options": [
+        "gateway-name",
+        "model-name",
+        "model-provider",
+        "name",
+        "provider-name",
+        "remove-content-safety",
+        "remove-cost-limit",
+        "remove-token-limit",
+        "resource-group"
+      ],
+      "required": []
+    },
+    "model policy set": {
+      "options": [
+        "content-safety",
+        "cost-counter-key",
+        "cost-id",
+        "cost-limit",
+        "cost-overrides",
+        "cost-period",
+        "gateway-name",
+        "hate-severity",
+        "model-name",
+        "model-provider",
+        "name",
+        "provider-name",
+        "resource-group",
+        "self-harm-severity",
+        "sexual-severity",
+        "token-counter-key",
+        "token-limit",
+        "token-period",
+        "violence-severity"
+      ],
+      "required": []
+    },
+    "model policy set-content-safety": {
+      "options": [
+        "content-safety",
+        "gateway-name",
+        "hate-severity",
+        "model-name",
+        "model-provider",
+        "name",
+        "provider-name",
+        "resource-group",
+        "self-harm-severity",
+        "sexual-severity",
+        "violence-severity"
+      ],
+      "required": [
+        "content-safety"
+      ]
+    },
+    "model policy set-cost-limit": {
+      "options": [
+        "amount",
+        "counter-key",
+        "gateway-name",
+        "id",
+        "model-name",
+        "model-provider",
+        "name",
+        "overrides",
+        "period",
+        "provider-name",
+        "resource-group"
+      ],
+      "required": []
+    },
+    "model policy set-token-limit": {
+      "options": [
+        "gateway-name",
+        "model-name",
+        "model-provider",
+        "name",
+        "provider-name",
+        "resource-group",
+        "token-counter-key",
+        "token-limit",
+        "token-period"
+      ],
+      "required": []
+    },
+    "model show": {
+      "options": [
+        "gateway-name",
+        "model-name",
+        "model-provider",
+        "name",
+        "provider-name",
+        "resource-group"
+      ],
+      "required": []
+    },
+    "model update": {
+      "options": [
+        "api-format",
+        "deployment",
+        "description",
+        "display-name",
+        "gateway-name",
+        "model-name",
+        "model-provider",
+        "name",
+        "policies",
+        "provider-name",
+        "resource-group",
+        "supported-endpoints"
+      ],
+      "required": []
+    },
+    "model-alias create": {
+      "options": [
+        "backend-model",
+        "backend-models",
+        "description",
+        "gateway-name",
+        "name",
+        "policies",
+        "resource-group",
+        "routing-name"
+      ],
+      "required": []
+    },
+    "model-alias delete": {
+      "options": [
+        "gateway-name",
+        "name",
+        "resource-group",
+        "yes"
+      ],
+      "required": []
+    },
+    "model-alias list": {
+      "options": [
+        "gateway-name",
+        "max-items",
+        "next-token",
+        "resource-group"
+      ],
+      "required": []
+    },
+    "model-alias set": {
+      "options": [
+        "backend-model",
+        "backend-models",
+        "description",
+        "gateway-name",
+        "name",
+        "policies",
+        "resource-group",
+        "routing-name"
+      ],
+      "required": []
+    },
+    "model-alias show": {
+      "options": [
+        "gateway-name",
+        "name",
+        "resource-group"
+      ],
+      "required": []
+    },
+    "model-alias update": {
+      "options": [
+        "backend-model",
+        "backend-models",
+        "description",
+        "gateway-name",
+        "name",
+        "policies",
+        "resource-group",
+        "routing-name"
+      ],
+      "required": []
+    },
+    "model-provider create": {
+      "options": [
+        "custom",
+        "description",
+        "display-name",
+        "foundry",
+        "foundry-resource-id",
+        "gateway-name",
+        "import-models",
+        "kind",
+        "name",
+        "provider-name",
+        "resource-group"
+      ],
+      "required": [
+        "gateway-name",
+        "resource-group"
+      ]
+    },
+    "model-provider delete": {
+      "options": [
+        "gateway-name",
+        "name",
+        "provider-name",
+        "resource-group",
+        "yes"
+      ],
+      "required": []
+    },
+    "model-provider import": {
+      "options": [
+        "foundry-resource-id",
+        "gateway-name",
+        "name",
+        "provider-name",
+        "resource-group"
+      ],
+      "required": []
+    },
+    "model-provider list": {
+      "options": [
+        "gateway-name",
+        "max-items",
+        "next-token",
+        "resource-group"
+      ],
+      "required": [
+        "gateway-name",
+        "resource-group"
+      ]
+    },
+    "model-provider show": {
+      "options": [
+        "gateway-name",
+        "name",
+        "provider-name",
+        "resource-group"
+      ],
+      "required": []
+    },
+    "model-provider sync": {
+      "options": [
+        "create-default-aliases",
+        "dry-run",
+        "gateway-name",
+        "name",
+        "provider-name",
+        "resource-group",
+        "yes"
+      ],
+      "required": []
+    },
+    "model-provider update": {
+      "options": [
+        "custom",
+        "description",
+        "display-name",
+        "foundry",
+        "gateway-name",
+        "name",
+        "provider-name",
+        "resource-group"
+      ],
+      "required": []
+    },
+    "network private-endpoint-connection approve": {
+      "options": [
+        "connection-name",
+        "description",
+        "gateway-name",
+        "name",
+        "no-wait",
+        "resource-group"
+      ],
+      "required": []
+    },
+    "network private-endpoint-connection delete": {
+      "options": [
+        "connection-name",
+        "gateway-name",
+        "name",
+        "no-wait",
+        "resource-group",
+        "yes"
+      ],
+      "required": []
+    },
+    "network private-endpoint-connection list": {
+      "options": [
+        "gateway-name",
+        "max-items",
+        "next-token",
+        "resource-group"
+      ],
+      "required": [
+        "gateway-name",
+        "resource-group"
+      ]
+    },
+    "network private-endpoint-connection reject": {
+      "options": [
+        "connection-name",
+        "description",
+        "gateway-name",
+        "name",
+        "no-wait",
+        "resource-group"
+      ],
+      "required": []
+    },
+    "network private-endpoint-connection show": {
+      "options": [
+        "connection-name",
+        "gateway-name",
+        "name",
+        "resource-group"
+      ],
+      "required": []
+    },
+    "network private-endpoint-connection wait": {
+      "options": [
+        "connection-name",
+        "created",
+        "custom",
+        "deleted",
+        "exists",
+        "gateway-name",
+        "interval",
+        "name",
+        "resource-group",
+        "timeout",
+        "updated"
+      ],
+      "required": []
+    },
+    "network show": {
+      "options": [
+        "gateway-name",
+        "name",
+        "resource-group"
+      ],
+      "required": []
+    },
+    "network update": {
+      "options": [
+        "disable-vnet",
+        "disable-vnet-integration",
+        "gateway-name",
+        "name",
+        "no-wait",
+        "public-network-access",
+        "resource-group",
+        "subnet"
+      ],
+      "required": []
+    },
+    "network wait": {
+      "options": [
+        "created",
+        "custom",
+        "deleted",
+        "exists",
+        "gateway-name",
+        "interval",
+        "name",
+        "resource-group",
+        "timeout",
+        "updated"
+      ],
+      "required": []
+    },
+    "policy list": {
+      "options": [
+        "gateway-name",
+        "resource-group"
+      ],
+      "required": [
+        "gateway-name",
+        "resource-group"
+      ]
+    },
+    "policy remove": {
+      "options": [
+        "gateway-name",
+        "remove-content-safety",
+        "remove-cost-limit",
+        "remove-ip-filter",
+        "remove-rate-limit",
+        "remove-token-limit",
+        "resource-group"
+      ],
+      "required": []
+    },
+    "policy set": {
+      "options": [
+        "action",
+        "allowed-ips",
+        "calls-per-period",
+        "cidr-ranges",
+        "content-safety",
+        "cost-counter-key",
+        "cost-id",
+        "cost-limit",
+        "cost-overrides",
+        "cost-period",
+        "count",
+        "gateway-name",
+        "hate-severity",
+        "ip-addresses",
+        "ip-filter-action",
+        "ip-filter-mode",
+        "period-seconds",
+        "rate-counter-key",
+        "rate-limit",
+        "rate-period",
+        "resource-group",
+        "self-harm-severity",
+        "sexual-severity",
+        "token-counter-key",
+        "token-limit",
+        "token-period",
+        "violence-severity"
+      ],
+      "required": []
+    },
+    "policy set-content-safety": {
+      "options": [
+        "content-safety",
+        "gateway-name",
+        "hate-severity",
+        "resource-group",
+        "self-harm-severity",
+        "sexual-severity",
+        "violence-severity"
+      ],
+      "required": [
+        "content-safety"
+      ]
+    },
+    "policy set-cost-limit": {
+      "options": [
+        "amount",
+        "counter-key",
+        "gateway-name",
+        "id",
+        "overrides",
+        "period",
+        "resource-group"
+      ],
+      "required": []
+    },
+    "policy set-ip-filter": {
+      "options": [
+        "action",
+        "allowed-ips",
+        "cidr-ranges",
+        "gateway-name",
+        "ip-addresses",
+        "ip-filter-action",
+        "ip-filter-mode",
+        "resource-group"
+      ],
+      "required": [
+        "action",
+        "allowed-ips",
+        "cidr-ranges",
+        "ip-addresses",
+        "ip-filter-action",
+        "ip-filter-mode"
+      ]
+    },
+    "policy set-rate-limit": {
+      "options": [
+        "calls-per-period",
+        "count",
+        "gateway-name",
+        "period-seconds",
+        "rate-counter-key",
+        "rate-limit",
+        "rate-period",
+        "resource-group"
+      ],
+      "required": []
+    },
+    "policy set-token-limit": {
+      "options": [
+        "gateway-name",
+        "resource-group",
+        "token-counter-key",
+        "token-limit",
+        "token-period"
+      ],
+      "required": []
+    },
+    "show": {
+      "options": [
+        "gateway-name",
+        "name",
+        "resource-group"
+      ],
+      "required": []
+    },
+    "telemetry-exporter create": {
+      "options": [
+        "application-insights",
+        "gateway-name",
+        "kind",
+        "name",
+        "open-telemetry",
+        "payload-capture",
+        "resource-group",
+        "telemetry",
+        "telemetry-exporter-name"
+      ],
+      "required": [
+        "gateway-name",
+        "kind",
+        "resource-group"
+      ]
+    },
+    "telemetry-exporter delete": {
+      "options": [
+        "gateway-name",
+        "name",
+        "resource-group",
+        "telemetry-exporter-name",
+        "yes"
+      ],
+      "required": [
+        "gateway-name",
+        "name",
+        "resource-group",
+        "telemetry-exporter-name"
+      ]
+    },
+    "telemetry-exporter list": {
+      "options": [
+        "gateway-name",
+        "max-items",
+        "next-token",
+        "resource-group"
+      ],
+      "required": [
+        "gateway-name",
+        "resource-group"
+      ]
+    },
+    "telemetry-exporter show": {
+      "options": [
+        "gateway-name",
+        "name",
+        "resource-group",
+        "telemetry-exporter-name"
+      ],
+      "required": [
+        "gateway-name",
+        "name",
+        "resource-group",
+        "telemetry-exporter-name"
+      ]
+    },
+    "telemetry-exporter update": {
+      "options": [
+        "application-insights",
+        "gateway-name",
+        "kind",
+        "name",
+        "open-telemetry",
+        "payload-capture",
+        "resource-group",
+        "telemetry",
+        "telemetry-exporter-name"
+      ],
+      "required": [
+        "gateway-name",
+        "name",
+        "resource-group",
+        "telemetry-exporter-name"
+      ]
+    },
+    "update": {
+      "options": [
+        "gateway-name",
+        "name",
+        "no-wait",
+        "resource-group",
+        "sku",
+        "tags"
+      ],
+      "required": []
+    },
+    "version": {
+      "options": [],
+      "required": []
+    },
+    "wait": {
+      "options": [
+        "created",
+        "custom",
+        "deleted",
+        "exists",
+        "gateway-name",
+        "interval",
+        "name",
+        "resource-group",
+        "timeout",
+        "updated"
+      ],
+      "required": []
+    }
+  }
+}

@@ -1,6 +1,16 @@
+import json
+import subprocess
+
 import pytest
 
-from migrate_apim.capability import CapabilityError, CapabilityMap
+from migrate_apim.azcli import az_argv
+from migrate_apim.capability import (
+    CAPABILITIES_DIR,
+    DEFAULT_CATALOG,
+    CapabilityError,
+    CapabilityMap,
+    az_option_probe,
+)
 
 
 @pytest.fixture(scope="module")
@@ -8,10 +18,32 @@ def caps():
     return CapabilityMap.load()
 
 
+def _installed_cli_version() -> str | None:
+    """The version of the `az aigateway` extension on PATH, if any."""
+    try:
+        proc = subprocess.run(
+            az_argv(["az", "aigateway", "version", "-o", "json"]),
+            capture_output=True, text=True, timeout=60,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return None
+    if proc.returncode != 0:
+        return None
+    try:
+        return json.loads(proc.stdout).get("extensionVersion")
+    except json.JSONDecodeError:
+        return None
+
+
 class TestCatalogue:
     def test_loads_the_pinned_catalogue(self, caps):
-        assert caps.cli_version == "1.0.0b30"
-        assert len(caps.capabilities) == 30
+        """Asserted against the catalog rather than against a version written
+        here. Writing the release down would mean every adoption edits the
+        suite, and a test that has to be updated to stay green is one nobody
+        reads before updating it."""
+        assert caps.cli_version == DEFAULT_CATALOG.removeprefix("aigateway-").removesuffix(".json")
+        assert caps.capabilities, "the pinned catalog declares no capabilities"
+        assert all(c.id for c in caps.capabilities.values())
 
     def test_declares_what_the_target_cannot_do(self, caps):
         assert "products" in caps.unsupported
@@ -133,3 +165,72 @@ class TestTargetSurface:
         )
         assert rule["cannotAccept"] is True
         assert rule["blocking"] is True
+
+
+class TestTheDefaultCatalogueResolves:
+    """Every entry point that does not pass --capabilities falls back to
+    DEFAULT_CATALOG. It is discovered, so what has to hold is that exactly one
+    catalog is there to find: none and `plan` stops outright, two and it would
+    silently pick by sort order rather than by what was adopted."""
+
+    def test_exactly_one_catalogue_is_present(self):
+        found = sorted(path.name for path in CAPABILITIES_DIR.glob("aigateway-*.json"))
+        assert len(found) == 1, (
+            f"expected one aigateway-*.json in {CAPABILITIES_DIR}, found {found}. "
+            "Adopting a release renames the catalog; it does not add a second."
+        )
+
+    def test_the_default_names_a_file_that_exists(self):
+        assert (CAPABILITIES_DIR / DEFAULT_CATALOG).is_file(), (
+            f"DEFAULT_CATALOG={DEFAULT_CATALOG!r} is not in {CAPABILITIES_DIR}: "
+            f"{sorted(p.name for p in CAPABILITIES_DIR.iterdir())}"
+        )
+
+    def test_loading_without_a_path_works(self):
+        assert CapabilityMap.load().cli_version
+
+    def test_the_filename_matches_the_version_it_documents(self, caps):
+        assert DEFAULT_CATALOG == f"aigateway-{caps.cli_version}.json"
+
+    def test_a_plan_records_the_catalogue_it_was_built_against(self):
+        # Not the default, when one was supplied: the plan has to say which
+        # table it was planned against for a resumed session to be comparable.
+        path = CAPABILITIES_DIR / DEFAULT_CATALOG
+        assert CapabilityMap.load(catalog_path=path).to_dict()["catalog"] == path.stem
+
+
+class TestTheCatalogueOnlyDeclaresRealCommands:
+    """The catalogue is a claim about an `az aigateway` release. The offline
+    suite injects a probe, so a fabricated command or a misspelled flag passes
+    every other test here -- `mcp import` and `model-provider import --foundry`
+    both shipped that way. This reconciles the claim against the real wheel,
+    and skips rather than guesses when that wheel is not installed."""
+
+    def test_required_options_are_declared_options(self, caps):
+        for capability in caps.capabilities.values():
+            assert set(capability.required) <= set(capability.options), capability.id
+
+    def test_every_declared_command_exists_in_the_documented_release(self, caps):
+        installed = _installed_cli_version()
+        if installed != caps.cli_version:
+            pytest.skip(
+                f"needs the documented az aigateway {caps.cli_version} installed "
+                f"(found {installed or 'no extension'})"
+            )
+        unavailable = {}
+        for capability in caps.capabilities.values():
+            options = az_option_probe(capability.command)
+            if options is None:
+                unavailable[capability.id] = (
+                    f"`az aigateway {' '.join(capability.command)}` does not exist"
+                )
+                continue
+            missing = sorted(set(capability.required) - options)
+            if missing:
+                unavailable[capability.id] = (
+                    f"`az aigateway {' '.join(capability.command)}` exposes no {missing}"
+                )
+        assert not unavailable, (
+            "the catalogue declares what the installed CLI does not expose: "
+            + json.dumps(unavailable, indent=2)
+        )

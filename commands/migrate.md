@@ -1,6 +1,6 @@
 ---
-description: Migrate AI workloads from an Azure API Management instance to Azure AI Gateway: inventory the source, propose a migration plan, adapt it with the operator, then provision it phase by phase.
-argument-hint: <apim-name> <resource-group> [target-gateway]
+description: "Migrate AI workloads from an Azure API Management instance to Azure AI Gateway: inventory the source, propose a migration plan, adapt it with the operator, then provision it phase by phase."
+argument-hint: "<apim-name> <resource-group> [target-gateway]"
 ---
 
 # /aigateway:migrate

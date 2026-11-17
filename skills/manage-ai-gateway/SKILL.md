@@ -1,7 +1,7 @@
 ---
 name: manage-ai-gateway
-version: 1.0.0
-description: Create, configure, administer, troubleshoot, and operate Microsoft.ApiManagement/aigateways resources with the official Azure AI Gateway CLI. Manage providers, models, aliases, MCP sources, policies, client keys, managed identities, networking, private endpoint connections, and telemetry. Use for administrator tasks, not application integration or APIM migration.
+version: "1.0.0"
+description: "Create, configure, administer, troubleshoot, and operate Microsoft.ApiManagement/aigateways resources with the official Azure AI Gateway CLI. Manage providers, models, aliases, MCP sources, policies, client keys, managed identities, networking, private endpoint connections, and telemetry. Use for administrator tasks, not application integration or APIM migration."
 ---
 
 # Manage Azure AI Gateway
