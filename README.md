@@ -4,7 +4,7 @@
 
 [![Portal](https://img.shields.io/badge/portal-ai.gateway.azure.com-0078D4)](https://ai.gateway.azure.com)
 [![Docs](https://img.shields.io/badge/docs-aka.ms%2Faigateway%2Fdocs-0078D4)](https://aka.ms/aigateway/docs)
-[![az aigateway](https://img.shields.io/badge/az_aigateway-public_preview-5C2D91)](cli/README.md)
+[![az aigateway](https://img.shields.io/badge/az_aigateway-general_availability-5C2D91)](cli/README.md)
 [![Labs](https://img.shields.io/badge/labs-27-107C10)](https://azure.github.io/aigateway/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -19,7 +19,6 @@ your app, or use the Azure CLI to manage a gateway.
 - [Coding-agent plugin](#coding-agent-plugin): discover and integrate models and MCP tools; create, manage,
   and migrate gateways.
 - [Azure CLI](#azure-cli): create and manage gateways from the command line.
-- [Migration tool](tools/migrate-apim/README.md): inventory and migrate AI workloads from API Management.
 - [Labs](labs/README.md) and [samples](samples/README.md): learn and build with AI Gateway.
 
 For service concepts and configuration, see the [AI Gateway documentation](https://aka.ms/aigateway/docs).
@@ -41,7 +40,7 @@ Install the plugin in Claude Code or GitHub Copilot CLI to use its skills and
 | [`use-ai-gateway`](skills/use-ai-gateway/SKILL.md) | Integrate: discover a gateway's models and MCP tools and connect them to your app. |
 | [`manage-ai-gateway`](skills/manage-ai-gateway/SKILL.md) | Configure and administer: providers, models, aliases, MCP sources, policies, keys, identities, networking, and telemetry. |
 | [`migrate-apim`](skills/migrate-apim/SKILL.md) | Migrate model APIs, MCP servers, and A2A agents from API Management. |
-| [`feedback-ai-gateway`](skills/feedback-ai-gateway/SKILL.md) | Package an agent session into a local feedback ZIP. |
+| [`feedback-ai-gateway`](skills/feedback-ai-gateway/SKILL.md) | Collect session feedback on friction points returning a clean file ready for sharing. |
 
 | Command | What it does |
 | ------- | ------------ |
@@ -50,7 +49,7 @@ Install the plugin in Claude Code or GitHub Copilot CLI to use its skills and
 | `/aigateway:create <gateway> <resource-group> <region>` | Create a gateway. |
 | `/aigateway:manage <gateway> <resource-group>` | Configure and operate a gateway. |
 | `/aigateway:migrate <apim-name> <resource-group>` | Plan and run a migration from API Management. |
-| `/aigateway:feedback` | Package an agent session into a local ZIP. |
+| `/aigateway:feedback` | Collect session feedback on friction points returning a clean file ready for sharing. |
 
 For example, provide a gateway resource ID to discover its assets, then describe what you want to build:
 
