@@ -38,9 +38,3 @@ variable "use_responses_api" {
   type        = bool
   default     = true
 }
-
-variable "model_version" {
-  description = "Version of the model behind the alias. Foundry lists it with the connected model."
-  type        = string
-  default     = "2025-08-07"
-}

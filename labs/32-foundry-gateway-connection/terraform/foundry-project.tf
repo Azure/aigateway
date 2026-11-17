@@ -78,7 +78,7 @@ resource "azapi_resource" "connection" {
             properties = {
               model = {
                 name    = module.base.model_name
-                version = var.model_version
+                version = module.base.model_version
                 format  = "OpenAI"
               }
             }

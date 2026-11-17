@@ -167,6 +167,7 @@ output gatewayPrincipalId string = gateway.identity.principalId
 output providerName string = provider.name
 output modelName string = model.name
 output modelId string = model.id
+output modelVersion string = deployment.properties.model.version
 output foundryId string = foundry.id
 output foundryEndpoint string = foundry.properties.endpoint
 output apiKeyName string = apiKey.name

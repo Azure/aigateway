@@ -44,6 +44,10 @@ output "model_id" {
   value = azapi_resource.model.id
 }
 
+output "model_version" {
+  value = azurerm_cognitive_deployment.model.model[0].version
+}
+
 output "foundry_id" {
   value = azurerm_cognitive_account.foundry.id
 }

@@ -57,6 +57,7 @@ module app 'foundry-project.bicep' = {
     gatewayName: base.outputs.gatewayName
     aliasName: base.outputs.aliasName
     modelName: base.outputs.modelName
+    modelVersion: base.outputs.modelVersion
     accountName: 'aigw${suffix}-apps'
     projectName: projectName
     useResponsesApi: useResponsesApi
