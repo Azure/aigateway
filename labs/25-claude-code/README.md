@@ -75,7 +75,7 @@ the token limit and the budget, and see how Claude Code reports them.
   for the regions and requirements. Model inference is billed per use.
 - Permission to assign roles on that Foundry account, for example **Owner** or **User Access Administrator**. The
   gateway's managed identity needs the **Foundry User** role there to call the models.
-- [Claude Code](https://code.claude.com/docs/en/setup). This lab was tested with version 2.1.319. You don't need an
+- [Claude Code](https://code.claude.com/docs/en/setup). This lab was tested with version 2.1.326. You don't need an
   Anthropic account or a Claude subscription: Claude Code uses the gateway's key.
 - `jq` for the Bash commands.
 
@@ -688,7 +688,7 @@ echo "🔐 Foundry User assignments: $ROLES, grantFoundryUser=$GRANT"
 
 # Create the provider only if the gateway doesn't have it yet
 PROVIDERS="$(az aigateway model-provider list -g "$RG" --gateway-name "$GATEWAY" \
-  --query "length([?name=='$PROVIDER'])" -o tsv)"
+  --query "length([?name=='$PROVIDER'])" -o tsv --only-show-errors)"
 CREATE="$([ "$PROVIDERS" = "0" ] && echo true || echo false)"
 echo "🏭 Providers named $PROVIDER: $PROVIDERS, createProvider=$CREATE"
 
@@ -716,7 +716,7 @@ Write-Host "🔐 Foundry User assignments: $ROLES, grantFoundryUser=$GRANT"
 
 # Create the provider only if the gateway doesn't have it yet
 $PROVIDERS = az aigateway model-provider list -g $RG --gateway-name $GATEWAY `
-  --query "length([?name=='$PROVIDER'])" -o tsv
+  --query "length([?name=='$PROVIDER'])" -o tsv --only-show-errors
 $CREATE = if ($PROVIDERS -eq "0") { "true" } else { "false" }
 Write-Host "🏭 Providers named ${PROVIDER}: $PROVIDERS, createProvider=$CREATE"
 
@@ -1022,7 +1022,7 @@ echo "🔐 Foundry User assignments: $ROLES, grant_foundry_user=$TF_VAR_grant_fo
 
 # Create the provider only if the gateway doesn't have it yet
 PROVIDERS="$(az aigateway model-provider list -g "$RG" --gateway-name "$GATEWAY" \
-  --query "length([?name=='$PROVIDER'])" -o tsv)"
+  --query "length([?name=='$PROVIDER'])" -o tsv --only-show-errors)"
 export TF_VAR_create_provider="$( { [ "$PROVIDERS" = "0" ] || grep -q '^azapi_resource.provider' <<<"$MANAGED"; } &&
   echo true || echo false)"
 echo "🏭 Providers named $PROVIDER: $PROVIDERS, create_provider=$TF_VAR_create_provider"
@@ -1063,7 +1063,7 @@ Write-Host "🔐 Foundry User assignments: $ROLES, grant_foundry_user=$env:TF_VA
 
 # Create the provider only if the gateway doesn't have it yet
 $PROVIDERS = az aigateway model-provider list -g $RG --gateway-name $GATEWAY `
-  --query "length([?name=='$PROVIDER'])" -o tsv
+  --query "length([?name=='$PROVIDER'])" -o tsv --only-show-errors
 $env:TF_VAR_create_provider =
   if ($PROVIDERS -eq "0" -or ($MANAGED -match '^azapi_resource.provider')) { "true" } else { "false" }
 Write-Host "🏭 Providers named ${PROVIDER}: $PROVIDERS, create_provider=$env:TF_VAR_create_provider"
@@ -1266,7 +1266,7 @@ Expected output:
 🔖 Sonnet: <foundry-account-name>/claude-sonnet-5-5
 🔖 Haiku: <foundry-account-name>/claude-haiku-5-5
 🔑 Key: in ANTHROPIC_AUTH_TOKEN (32 characters, not shown)
-2.1.319 (Claude Code)
+2.1.326 (Claude Code)
 ```
 
 These variables last for the current terminal. [Go further](#go-further) shows how to keep them in Claude Code's
@@ -1315,11 +1315,12 @@ Expected output (your cost differs):
 ```text
 📂 Practice project: ~/contoso-calc
 🤖 Claude Code answer:
-✅ pong · <foundry-account-name>/claude-opus-5-5 · $0.021
+✅ pong · <foundry-account-name>/claude-opus-5-5 · $0.0821
 ```
 
-The alias in the output proves that the call went through the gateway. Add `--model sonnet` or `--model haiku` to ask
-another tier.
+The alias in the output proves that the call went through the gateway. The cost estimate varies from run to run,
+even for the same prompt: on Opus, it ranged from $0.003 to $0.08 in testing. Add `--model sonnet` or `--model haiku`
+to ask another tier.
 
 ### Run an agent task
 
@@ -1332,7 +1333,7 @@ claude
 ```
 
 The first time, Claude Code asks you to pick a theme and shows its security notes. Then it asks whether you trust the
-folder: select **Yes, I trust this folder**. The banner shows `Claude Code v2.1.319` and
+folder: select **Yes, I trust this folder**. The banner shows `Claude Code v2.1.326` and
 `Opus 5.5 · API Usage Billing`. Claude Code runs on the gateway's Opus alias, and it doesn't ask you to sign in.
 
 Type `/status` to see where the requests go. It shows `ANTHROPIC_AUTH_TOKEN` as the auth token, the gateway's
