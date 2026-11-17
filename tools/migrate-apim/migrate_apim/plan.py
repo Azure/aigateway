@@ -1440,6 +1440,22 @@ class PlanBuilder:
             return None
         if level == "api":
             return {name or ""}
+        if level == "fragment":
+            # A fragment is not a scope anything runs at: it covers whatever
+            # includes it. Read as a scope of its own it covered no API, so a
+            # token limit factored into a shared fragment -- the way an operator
+            # is meant to share one -- reached no model registration and the
+            # policy stranded. Each including scope is resolved as itself, so a
+            # fragment included globally still covers everything.
+            covered: set[str] = set()
+            for include_level, include_name in _fragment_includers(
+                name or "", self.inventory.get("policies") or []
+            ):
+                apis = self._apis_in_scope(include_level, include_name)
+                if apis is None:
+                    return None
+                covered |= apis
+            return covered
         if level == "workspace":
             return {
                 _api_of((item.get("source") or {}).get("assetId") or "")
@@ -1985,6 +2001,39 @@ def _objects_or_none(capability_id: str | None, objects: list[dict[str, Any]]) -
 def _api_of(asset_id: str) -> str:
     """The source API name in a model asset id, workspace prefix removed."""
     return (asset_id.split(":", 1)[-1]).rsplit("/", 1)[-1]
+
+
+def _fragment_includers(
+    fragment: str, documents: list[dict[str, Any]]
+) -> list[tuple[str | None, str | None]]:
+    """The scopes whose policy includes a fragment, as (level, name) pairs.
+
+    The inventory holds a fragment as a document of its own, and the only link
+    back to the policies that run it is the `fragmentRefs` the collector records
+    from `<include-fragment>`. A fragment included by a fragment is followed too,
+    so what comes back is always a scope something runs at. APIM accepts a cycle
+    of includes even though it cannot execute one, so the walk guards against
+    revisiting a fragment rather than trusting the source not to contain one.
+    """
+    by_fragment: dict[str, list[dict[str, Any]]] = {}
+    for document in documents:
+        for name in document.get("fragmentRefs") or []:
+            by_fragment.setdefault(name, []).append(document.get("scope") or {})
+
+    scopes: list[tuple[str | None, str | None]] = []
+    pending, seen = [fragment], {fragment}
+    while pending:
+        for scope in by_fragment.get(pending.pop(0), []):
+            if scope.get("level") == "fragment":
+                nested = scope.get("name") or ""
+                if nested not in seen:
+                    seen.add(nested)
+                    pending.append(nested)
+                continue
+            entry = (scope.get("level"), scope.get("name"))
+            if entry not in scopes:
+                scopes.append(entry)
+    return scopes
 
 
 # How strict one policy is against another of the same type, lowest first. Only

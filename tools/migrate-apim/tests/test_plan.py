@@ -1085,6 +1085,122 @@ class TestPolicyTargetsAreApplied:
         assert "nothing to carry" in stranded[0]["incompleteReason"]
 
 
+def policy_document(inventory, policy_id, scope, *, includes=None):
+    """The inventory's document for one policy scope, created if the fixture has none."""
+    document = next((d for d in inventory["policies"] if d["id"] == policy_id), None)
+    if document is None:
+        document = {"id": policy_id, "scope": scope, "elements": [], "fragmentRefs": [], "stats": {}}
+        inventory["policies"].append(document)
+    if includes:
+        document["fragmentRefs"] = [*(document.get("fragmentRefs") or []), includes]
+    return document
+
+
+def token_limit_in_fragment(inventory, name, *, counter_key="shared-counter"):
+    """A fragment carrying one `llm-token-limit`, the way an operator shares one."""
+    document = policy_document(
+        inventory, f"policy:fragment/{name}", {"level": "fragment", "name": name}
+    )
+    document["elements"].append({
+        "section": "fragment", "path": "fragment/llm-token-limit[1]",
+        "name": "llm-token-limit", "family": "tokenLimit", "depth": 1,
+        "attributes": {"tokens-per-minute": "7000", "counter-key": counter_key},
+        "text": None, "expressionIds": [], "namedValueRefs": [], "childNames": [],
+    })
+    return document
+
+
+def fragment_item(plan, name="shared-limits"):
+    return next(
+        item for item in plan["items"]
+        if item.get("capabilityId") == "model.policy"
+        and any(member["policyId"] == f"policy:fragment/{name}"
+                for member in item["evidence"]["members"])
+    )
+
+
+class TestAPolicyFactoredIntoAFragment:
+    """A fragment is how APIM shares one policy across several APIs.
+
+    The inventory holds a fragment as a document scoped to itself, and resolved
+    as a scope of its own it covers no API. So a token limit an operator had
+    factored out reached no model registration: the item read as ready, carried
+    an object with no model on it, and the first such object stopped the
+    policies phase for every policy behind it.
+    """
+
+    def test_its_limit_lands_on_the_models_of_every_including_api(self, inventory, capabilities):
+        document = copy.deepcopy(inventory)
+        token_limit_in_fragment(document, "shared-limits")
+        policy_document(document, "policy:api/aoai-api", {"level": "api", "name": "aoai-api"},
+                        includes="shared-limits")
+        policy_document(document, "policy:api/finance/model-api",
+                        {"level": "api", "name": "model-api"}, includes="shared-limits")
+        item = fragment_item(build_plan(document, capabilities))
+        assert item["status"] == "ready", "a literal counter key maps natively"
+        objects = item["target"]["objects"]
+        # Both including APIs, and every registration each of them makes: the
+        # pooled `gpt-5` is registered once per account and limited on both.
+        assert {obj["modelName"] for obj in objects} == {
+            "gpt-5", "text-embedding-3-large", "claude-opus-5"}
+        assert len(objects) == 4, objects
+        assert all(obj["configurationComplete"] for obj in objects), objects
+
+    def test_a_fragment_included_through_another_fragment_still_reaches_the_api(
+        self, inventory, capabilities
+    ):
+        document = copy.deepcopy(inventory)
+        token_limit_in_fragment(document, "shared-limits")
+        policy_document(document, "policy:fragment/outer", {"level": "fragment", "name": "outer"},
+                        includes="shared-limits")
+        policy_document(document, "policy:api/aoai-api", {"level": "api", "name": "aoai-api"},
+                        includes="outer")
+        objects = fragment_item(build_plan(document, capabilities))["target"]["objects"]
+        assert {obj["modelName"] for obj in objects} == {"gpt-5", "text-embedding-3-large"}
+
+    def test_a_cycle_of_includes_terminates(self, inventory, capabilities):
+        """APIM accepts a fragment including one that includes it back, and stores it."""
+        document = copy.deepcopy(inventory)
+        token_limit_in_fragment(document, "shared-limits")
+        policy_document(document, "policy:fragment/shared-limits",
+                        {"level": "fragment", "name": "shared-limits"}, includes="outer")
+        policy_document(document, "policy:fragment/outer", {"level": "fragment", "name": "outer"},
+                        includes="shared-limits")
+        policy_document(document, "policy:api/aoai-api", {"level": "api", "name": "aoai-api"},
+                        includes="outer")
+        objects = fragment_item(build_plan(document, capabilities))["target"]["objects"]
+        assert {obj["modelName"] for obj in objects} == {"gpt-5", "text-embedding-3-large"}
+
+    def test_a_fragment_the_global_policy_includes_covers_every_model(
+        self, inventory, capabilities
+    ):
+        """Narrowing the union would still produce objects, so the count is the check."""
+        document = copy.deepcopy(inventory)
+        token_limit_in_fragment(document, "shared-limits")
+        policy_document(document, "policy:global", {"level": "global", "name": None},
+                        includes="shared-limits")
+        built = build_plan(document, capabilities)
+        registered = {
+            (obj["name"], obj["providerName"]) for item in built["items"]
+            if item.get("capabilityId") == "model.create"
+            for obj in (item.get("target") or {}).get("objects") or []
+        }
+        covered = {(obj["modelName"], obj["providerName"])
+                   for obj in fragment_item(built)["target"]["objects"]}
+        assert covered == registered
+
+    def test_a_fragment_nothing_includes_still_says_what_became_of_its_policy(
+        self, inventory, capabilities
+    ):
+        """Unreferenced, it governs nothing, and that is the genuinely empty scope."""
+        document = copy.deepcopy(inventory)
+        token_limit_in_fragment(document, "shared-limits")
+        objects = fragment_item(build_plan(document, capabilities))["target"]["objects"]
+        assert [obj.get("modelName") for obj in objects] == [None]
+        assert objects[0]["configurationComplete"] is False
+        assert "nothing to carry" in objects[0]["incompleteReason"]
+
+
 class TestTheGatewayWideBaseline:
     """One baseline, however many source policies.
 
