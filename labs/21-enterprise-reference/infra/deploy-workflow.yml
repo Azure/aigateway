@@ -9,8 +9,10 @@
 #
 # One-time setup (see the lab for the commands):
 #   - A Microsoft Entra app registration (or user-assigned managed identity) with a federated credential for each
-#     GitHub environment: issuer https://token.actions.githubusercontent.com,
-#     subject repo:<org>/<repo>:environment:<dev|prod>, audience api://AzureADTokenExchange.
+#     GitHub environment: issuer https://token.actions.githubusercontent.com, audience api://AzureADTokenExchange,
+#     subject <prefix>:environment:<dev|prod>. Read the prefix with
+#     gh api repos/<org>/<repo>/actions/oidc/customization/sub --jq .sub_claim_prefix: repositories created after
+#     July 15, 2026 add immutable IDs, as in repo:<org>@<org-id>/<repo>@<repo-id>.
 #   - That identity needs Contributor and Role Based Access Control Administrator on the target subscription,
 #     because the template creates resource groups and role assignments.
 #   - GitHub environments named dev and prod (add required reviewers to prod), each with the variables
