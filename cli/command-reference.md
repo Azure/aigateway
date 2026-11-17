@@ -1,6 +1,6 @@
 # Azure AI Gateway CLI command reference
 
-This is the human-readable reference for the published **1.0.0b33** extension.
+This is the human-readable reference for the published **1.0.0b34** extension.
 Start with [installation and quickstart](README.md). Use this page to find a
 command, understand its purpose, and copy a configuration example. Use the
 installed command's `--help` for all arguments and allowed values; help
@@ -22,8 +22,8 @@ table lists the public commands in the reviewed wheel.
 | `model-provider` | `create`, `import`, `show`, `list`, `update`, `delete`, `sync` | Backend connection, Foundry bulk onboarding, and model registration reconciliation |
 | `model` | `create`, `show` (`get`), `list`, `update`, `delete` | Register existing backend models and their protocol metadata |
 | `model-alias` | `create`, `set`, `show`, `list`, `update`, `delete` | Publish callable names and priority/weight target pools |
-| `model policy` | `list`, `set`, `set-token-limit`, `set-cost-limit`, `set-content-safety`, `remove` | Model-local policy configuration; content safety is legacy-only |
-| `policy` | `list`, `set`, `set-token-limit`, `set-cost-limit`, `set-rate-limit`, `set-ip-filter`, `set-content-safety`, `remove` | Default-workspace controls; content safety is legacy-only |
+| `model policy` | `list`, `set`, `set-token-limit`, `set-cost-limit`, `remove` | Model-local token-limit and cost-limit policy configuration |
+| `policy` | `list`, `set`, `set-token-limit`, `set-cost-limit`, `set-rate-limit`, `set-ip-filter`, `remove` | Default-workspace token, cost, request-rate, and IP filter controls |
 | `mcp` | `create`, `import`, `show`, `list`, `update`, `delete`, `authorize` | ToolServer registration, bulk import, and configured backend OAuth initiation |
 | `mcp source` | `add`, `list`, `remove` | Individual backend source membership |
 | `api-key` | `create`, `show`, `list`, `update`, `delete`, `list-secrets`, `regenerate` | Inbound gateway-wide client keys |
@@ -75,7 +75,10 @@ identify the parent gateway. Use exact `--ids` only where that command's
 help exposes it. Verify returned resource IDs/types, especially where a
 name can also match a legacy API Management `service`.
 This guide targets `Microsoft.ApiManagement/aigateways` and its implicit
-`default` workspace.
+`default` workspace using default ARM API version `2026-11-01` (with 1-line
+fallback to `2025-09-01-preview` via `--api-version 2025-09-01-preview`,
+`AZURE_AIGATEWAY_API_VERSION=2025-09-01-preview`, or
+`az config set aigateway.api_version=2025-09-01-preview`).
 
 Use JSON files for structured arguments that support `@file`. The file must
 contain the advertised object/array, not a string holding JSON. Files do
@@ -208,8 +211,9 @@ Use the [policy reference](../skills/manage-ai-gateway/references/policies.md)
 for model-local setters, rate/IP controls, accounting dimensions, tool
 threat protection, and agent hooks. `--policies @file` on a compatible asset
 replaces its complete policy array; retain existing IDs and unrelated entries.
-Content-safety flags are visible but are **not supported on typed
-`aigateways`** in this baseline; do not copy legacy `service` examples.
+Content-safety policy commands and flags are disabled in `1.0.0b34` pending
+`2026-11-01` alignment; unrecognized server-side policy entries are preserved
+unchanged during read-modify-write updates.
 
 ## MCP servers
 
@@ -245,7 +249,9 @@ See [authentication, key storage, rotation, and identity commands](../skills/man
 
 ## Output and verification
 
-Use `-o table` for an overview, `-o json` for complete metadata, and
+Use `-o table` for an overview (for `model-alias list` and `model-alias show`,
+`-o table` renders one row per backend target with its `Priority` and
+`Weight`), `-o json` for complete metadata, and
 `--query ... -o tsv` for a selected nonsecret field:
 
 ```bash
