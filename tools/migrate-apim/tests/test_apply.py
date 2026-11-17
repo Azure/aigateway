@@ -552,6 +552,109 @@ class TestPlannerGapsStopPreflight:
         assert gap["blocking"] is True
 
 
+class TestIncompleteObjectsStopPreflight:
+    """`plan` marks an object it cannot fully configure and records why.
+
+    Nothing read that back, so a condition the planner had already detected and
+    explained surfaced as a step failing mid-phase, under whatever cause the
+    builder guessed at.
+    """
+
+    REASON = ("No model registration in this plan falls under api 'aoai-api', so there is "
+              "nothing to carry the policy.")
+
+    def _stranded(self, settled, *, reason=REASON):
+        """A policy object the plan says it cannot build, as `plan` shapes one."""
+        broken = copy.deepcopy(settled)
+        item = next(i for i in broken["items"] if i.get("capabilityId") == "model.policy")
+        obj = item["target"]["objects"][0]
+        obj.pop("modelName", None)
+        obj.pop("providerName", None)
+        obj["configurationComplete"] = False
+        obj.pop("incompleteReason", None)
+        if reason:
+            obj["incompleteReason"] = reason
+        return broken, item
+
+    def test_an_object_the_plan_cannot_build_blocks_before_the_first_write(
+        self, settled, inventory
+    ):
+        broken, _ = self._stranded(settled)
+        findings = preflight(broken, inventory, runner=_Runner())
+        incomplete = next(f for f in findings if f["code"] == "incompleteObject")
+        assert incomplete["blocking"] is True
+
+    def test_the_finding_carries_the_planners_reason_and_where_to_read_the_source(
+        self, settled, inventory
+    ):
+        broken, item = self._stranded(settled)
+        policy_id = item["target"]["objects"][0]["fullConfigurationAt"]["policyId"]
+        [incomplete] = [f for f in preflight(broken, inventory) if f["code"] == "incompleteObject"]
+        assert self.REASON in incomplete["message"]
+        assert item["id"] in incomplete["message"]
+        assert policy_id in incomplete["message"]
+
+    def test_an_object_marked_incomplete_without_a_reason_says_so_rather_than_quoting_nothing(
+        self, settled, inventory
+    ):
+        broken, item = self._stranded(settled, reason=None)
+        [incomplete] = [f for f in preflight(broken, inventory) if f["code"] == "incompleteObject"]
+        assert item["id"] in incomplete["message"]
+        assert "said no more" in incomplete["message"]
+
+    def test_objects_that_carry_no_completeness_flag_are_not_called_incomplete(
+        self, settled, inventory
+    ):
+        # Most objects never carry the field. Reading its absence as a false
+        # would raise the finding on every plan, which is the same as never.
+        codes = {f["code"] for f in preflight(settled, inventory)}
+        assert "incompleteObject" not in codes
+
+    def test_only_the_first_few_are_listed_and_the_rest_are_counted(self, settled, inventory):
+        broken = copy.deepcopy(settled)
+        for item in broken["items"]:
+            for obj in (item.get("target") or {}).get("objects") or []:
+                obj["configurationComplete"] = False
+        [incomplete] = [f for f in preflight(broken, inventory) if f["code"] == "incompleteObject"]
+        assert incomplete["message"].endswith("...")
+
+    def test_an_incomplete_object_no_phase_will_run_does_not_stop_the_migration(
+        self, settled, inventory, no_builder_for
+    ):
+        # The item becomes no step, so nothing it holds can fail mid-phase, and
+        # blocking here would stop a whole migration over work the operator was
+        # going to apply by hand anyway. notExecutable already names it.
+        broken, _ = self._stranded(settled)
+        no_builder_for("model.policy")
+        codes = {f["code"] for f in preflight(broken, inventory)}
+        assert "incompleteObject" not in codes
+        assert "notExecutable" in codes
+
+    def test_the_fields_apply_blocks_on_are_declared_in_the_plan_schema(self, settled):
+        # A cross-module contract nothing declared is how these three came to be
+        # written by the planner and read by nobody for as long as they were.
+        from migrate_apim.cli import validate_document
+
+        broken, item = self._stranded(settled)
+        assert validate_document(broken) == []
+        item["target"]["objects"][0]["configurationComplete"] = "no"
+        assert validate_document(broken) != []
+
+    def test_left_to_run_such_an_object_fails_its_step_under_a_borrowed_reason(
+        self, settled, inventory
+    ):
+        # What preflight now gets in front of. The step fails -- and a failed
+        # step stops its phase -- reporting whatever the builder could work out,
+        # while the explanation sits unread on the object a few lines away.
+        broken, _ = self._stranded(settled)
+        executor = Executor(broken, inventory, new_journal(broken), runner=_Runner(),
+                            execute=True, skip_rehearsal=True)
+        step = next(s for s in steps_for(broken) if s.capability_id == "model.policy")
+        executor.run_step(step)
+        assert step.status == "failed"
+        assert self.REASON not in step.detail
+
+
 class TestAliasVerification:
     """An alias read back reports a different shape from the one it was sent."""
 

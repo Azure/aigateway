@@ -187,7 +187,31 @@
           "type": "object",
           "properties": {
             "capability": {"type": "string"},
-            "objects": {"type": "array"}
+            "objects": {
+              "type": "array",
+              "items": {
+                "description": "One call's inputs. The fields are the capability's own and are left open here, except for the three below, which any object may carry and which apply reads whatever the capability is.",
+                "type": "object",
+                "properties": {
+                  "configurationComplete": {
+                    "description": "False when the planner could not shape the whole object. Preflight blocks on one that would become a step: the builder cannot produce it either, and a step that fails part-way through a phase leaves a half-built gateway.",
+                    "type": "boolean"
+                  },
+                  "incompleteReason": {
+                    "description": "Why the object is incomplete, in the planner's words, because only the planner knows. Quoted by preflight, which can otherwise say no more than that the object is incomplete.",
+                    "type": "string"
+                  },
+                  "fullConfigurationAt": {
+                    "description": "The source document and element path the object was shaped from, so whatever did not survive the shaping can be read where it is whole.",
+                    "type": "object",
+                    "properties": {
+                      "policyId": {"type": ["string", "null"]},
+                      "path": {"type": ["string", "null"]}
+                    }
+                  }
+                }
+              }
+            }
           }
         },
         "blocking": {"type": "boolean"},
