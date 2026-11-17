@@ -77,8 +77,8 @@ baseline, prove it works with a smoke test, and wire it all into GitHub Actions.
 - For the Terraform track: Terraform 1.9 or later, as in
   [Deploy a lab with Terraform](../SETUP.md#deploy-a-lab-with-terraform).
 - The Azure CLI installs Bicep the first time you deploy. The telemetry script and the smoke test read the gateway
-  with the `aigateway` extension. Its `az aigateway policy` commands set one policy at a time from flags, so to apply the
-  whole baseline from a file, the baseline script calls the management API with `az rest`.
+  with the `aigateway` extension. Its `az aigateway policy` commands take each setting as a flag, not a policy array,
+  so to apply the whole baseline from a file, the baseline script calls the management API with `az rest`.
 - **Owner**, or **Contributor** plus **Role Based Access Control Administrator**, on the subscription. The
   template creates two resource groups and several role assignments.
 - Quota for `gpt-5-mini` with the `GlobalStandard` SKU in the region you deploy to. The dev environment uses
@@ -193,8 +193,9 @@ portal-only overrides, and the spend it has already counted.
 
 > [!NOTE]
 > The portal writes `"scope": "workspace"` on Gateway scope rate and cost limits, so `baselines.json` does too.
-> If the API rejects a field, create the policy once in the portal at **Gateway** scope, read the workspace's
-> `properties.policies` with `az rest` and API version `2026-11-01`, and copy that shape into `baselines.json`.
+> If the API rejects a field, create the policy once in the portal at **Gateway** scope, read the Gateway scope
+> policies with `az aigateway policy list -g "$RG" --gateway-name "$GATEWAY"`, and copy that shape into
+> `baselines.json`.
 
 ### Observability: the destination in Bicep, the exporter after it
 
@@ -1597,8 +1598,8 @@ if ($?) { Write-Host "🔐 Gateway baseline is applied to $env:GATEWAY" }
 #     fields you set in the portal. Updating a costLimit this way keeps its accumulated spend.
 #   - A baseline whose type doesn't exist is appended. A new costLimit gets a fresh, stable id.
 #   - Policies of other types (for example ones you added in the portal) are left untouched.
-# Running it twice gives the same result. The az aigateway policy commands set one policy at a time from flags, so
-# to write the whole array from a file, the script calls the management API with az rest.
+# Running it twice gives the same result. The az aigateway policy commands take each setting as a flag, not a
+# policy array, so to write the array from a file, the script calls the management API with az rest.
 #
 # Usage:
 #   export RG="<gateway-resource-group>" GATEWAY="<gateway-name>"

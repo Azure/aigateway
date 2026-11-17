@@ -74,7 +74,7 @@ Before you create, change, or delete Azure resources, confirm the subscription a
 | Track | Marker id | How to use it |
 | :-- | :-- | :-- |
 | Portal | `portal` | Click-by-click steps in the AI Gateway portal. You can't run them from a shell, so guide the user through them one screen at a time. |
-| Azure CLI | `cli` | `az aigateway` commands (extension 1.0.0b33 or later), plus `az rest` calls to Azure Resource Manager for what the extension can't do yet, in Bash and PowerShell variants. This is the easiest track for an agent to run. |
+| Azure CLI | `cli` | `az aigateway` commands (extension 1.0.0b34 or later), plus `az rest` calls to Azure Resource Manager for what the extension can't do yet, in Bash and PowerShell variants. This is the easiest track for an agent to run. |
 | REST API | `rest` | Raw Azure Resource Manager requests, for users who script against the API themselves. |
 | Bicep + azd | `iac` | A self-contained azd template in the lab folder (`azure.yaml` and `infra/main.bicep`): clone the repo, run `azd up` in the lab folder to create a new resource group with its own gateway, model, and the lab's feature, read the outputs with `azd env get-value`, change settings with `azd env set` and `azd provision`, and delete everything with `azd down --purge --force`. Lab 09 labels its track **Policy as code** (JSON policies applied by a script), and lab 21 **Bicep** (`az deployment sub create` with parameter files). |
 | Terraform | `terraform` | A root module in the lab's `terraform/` folder (the `azapi` provider for AI Gateway resources at API version `2026-11-01`, `azurerm` for the resource group, Foundry, and role assignments): clone the repo, set `ARM_SUBSCRIPTION_ID`, run `terraform init`, `terraform plan -out tfplan`, and `terraform apply tfplan` in that folder to create a new resource group `rg-aigw-labNN-tf` with its own gateway, model, and the lab's feature, read the outputs with `terraform output -raw`, change settings with `-var`, and delete everything with `terraform destroy -auto-approve`. Run the lab's scripts (`./infra/…`) from the lab's folder, not `terraform/`: from there, use `terraform -chdir=terraform …`. Needs Terraform 1.9 or later. |
@@ -100,24 +100,29 @@ Before you create, change, or delete Azure resources, confirm the subscription a
   (display names; `az account list-locations` maps them to `--location` names), as in the Setup guide's
   **Find the available regions**. The portal can offer fewer regions than the CLI and Bicep. Templates that deploy
   Foundry models need a region where those models are available too.
-- The CLI track uses the `az aigateway` extension 1.0.0b33 or later (the Setup guide installs it). It still calls
-  API version `2025-09-01-preview`, so its output shows the preview names (`kind`, `foundry.endpoint`, `blocked`,
-  `required`, `callsPerPeriod`). Use it for gateways
-  (including `network update`), providers, models (`model create --foundry-resource-id … --deployment …` or
-  `--deployment-config "{resourceId:…,modelName:…}"`),
-  aliases, model policies (`model policy set-token-limit`, `set-content-safety`, `set-cost-limit`, `remove`),
-  Gateway scope policies (`az aigateway policy`), telemetry exporters (`az aigateway telemetry-exporter`), API keys,
-  and MCP servers. `az aigateway create` takes no `--sku`, secrets come from `api-key list-secrets`, rotation uses
+- The CLI track uses the `az aigateway` extension 1.0.0b34 or later (the Setup guide installs it). It calls API
+  version `2026-11-01` and prints the same names as REST, Bicep, and Terraform (`modelProviderType`, a top-level
+  `authentication`, `foundry.endpoint.url`, `telemetryExporterType`, `blockList`, `mode`, `count`, `period`).
+  `--foundry` and `--custom` on `model-provider create` and `update` still take the preview input shape (a string
+  `endpoint`). Use it for gateways (including `network update`), providers, models
+  (`model create --foundry-resource-id … --deployment …` or `--deployment-config "{resourceId:…,modelName:…}"`),
+  aliases (`model-alias update --policies` for an alias's policies), model policies
+  (`model policy set-token-limit`, `set-cost-limit`, `remove`), Gateway scope policies (`az aigateway policy`, which
+  keeps the other policies), telemetry exporters (`az aigateway telemetry-exporter`), API keys, and MCP servers
+  (`mcp update --versions`, `--allow-list`, `--block-list`, and `--policies` for agent hooks).
+  `az aigateway create` takes no `--sku`, secrets come from `api-key list-secrets`, rotation uses
   `api-key regenerate --key-type primary|secondary`, `api-key update --state suspended|active` pauses a key, and
   `model-alias set` creates an alias or updates the existing one. `--token-counter-key` takes one or more values,
   such as `Identity IPAddress`. `model-provider update --foundry` and `--custom` merge a partial JSON value into the
-  provider's settings, and `mcp update --versions` and `--endpoints` change only what you pass. `model create
-  --foundry-resource-id --deployment` works from 1.0.0b33 (it crashed in earlier versions). `--api-format` can't express
-  embeddings or decision models: pass `--supported-endpoints /openai/v1/embeddings` or `typesafe/v1/systemone`.
-  The track keeps `az rest` for what the
-  extension can't do yet: MCP tool rules (`allowList`, `blockList`, `accessState`), backend conditions, session
-  affinity, failover, auto model selection, agent hooks, request rate limits on a model or alias (the Gateway
-  scope has `policy set-rate-limit`), and writing a whole policy array from a file. In zsh, read secrets with
+  provider's settings, and `mcp update --versions` and `--endpoints` change only what you pass, while `--policies`
+  replaces the whole array. 1.0.0b34 removed the content safety options: at model scope, read the policies, merge,
+  and write them with `model update --policies`; at Gateway scope, use `az rest`. `mcp create --failure-mode` is
+  ignored. `--api-format` can't express embeddings or decision models: pass
+  `--supported-endpoints /openai/v1/embeddings` or `typesafe/v1/systemone`. The track keeps `az rest` for what the
+  extension can't do yet: MCP server access (`accessState`), backend conditions, session affinity, failover, auto
+  model selection, content safety at Gateway scope, a gateway's private link resources, and writing a whole policy
+  array from a file. `model-alias show` reads every alias field, but `model-alias set` and
+  `update --backend-model` drop `when` and `selectorModelName`, so change those aliases only with `az rest`. In zsh, read secrets with
   `printf "Prompt: " && read -rs VAR && echo`, never `read -rsp`. Tool servers have no top-level `failureMode`: an
   endpoint's `mode` (`failClosed` or `failOpen`) decides, and it defaults to `failOpen`. Connector tools come from an existing Azure Connector Namespace
   (`Microsoft.Web/connectorGateways`): create its MCP server and authorize its connections in Azure, then import it

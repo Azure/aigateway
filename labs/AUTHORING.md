@@ -528,30 +528,37 @@ Keep the video optional: every step it shows must also be written in the lab.
   `https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com` for `aigw-labs-001`. Always read it from the
   gateway, never build it from the name, and write it as `<gateway-url>` in commands and code.
 - Policy `counterKey` values are arrays: `counterKey: [ 'identity' ]` or `[ 'ipAddress' ]`.
-- CLI tracks use the `az aigateway` extension (1.0.0b33 or later, see
-  [Install the aigateway extension](SETUP.md#install-the-aigateway-extension)). The extension still calls API
-  version `2025-09-01-preview`, so its output shows the preview field names (`kind`, `foundry.endpoint`, `blocked`,
-  `required`, `callsPerPeriod`): CLI checkpoints quote those, and REST and Bicep checkpoints quote the
-  `2026-11-01` names. Use the extension for gateways (including
-  `network update`), providers, models, aliases, model policies (`model policy set-token-limit`,
-  `set-content-safety`, `set-cost-limit`, `remove`), Gateway scope policies (`az aigateway policy`), telemetry
-  exporters, API keys (including `api-key update --state` and `api-key regenerate --key-type secondary`), and MCP
-  servers (including `mcp update --versions`). Don't pass `--sku` to `az aigateway create`: the service default,
-  `Standard`, is the only SKU it accepts. `api-key create` sets the display name to the key name when you omit
-  `--display-name`. Create a model with `model create --foundry-resource-id --deployment`, which works from
-  1.0.0b33, or with `--deployment-config "{resourceId:…,modelName:…}"`, or import every deployment with
+- CLI tracks use the `az aigateway` extension (1.0.0b34 or later, see
+  [Install the aigateway extension](SETUP.md#install-the-aigateway-extension)). It calls API version `2026-11-01`
+  and prints the same names as REST, Bicep, and Terraform (`modelProviderType`, a top-level `authentication`,
+  `foundry.endpoint.url`, `telemetryExporterType`, `blockList`, `mode`, `count`, `period`), so every checkpoint
+  quotes those names. `model-provider create` and `update` still take the preview input shape in `--foundry` and
+  `--custom` (a string `endpoint`). Use the extension for gateways (including `network update`), providers,
+  models, aliases (`model-alias update --policies` for an alias's policies), model policies
+  (`model policy set-token-limit`, `set-cost-limit`, `remove`), Gateway scope policies (`az aigateway policy`, with
+  `--gateway-name`), telemetry exporters, API keys (including `api-key update --state` and
+  `api-key regenerate --key-type secondary`), and MCP servers (including `mcp update --versions`, `--allow-list`,
+  `--block-list`, and `--policies` for agent hooks). The `policy set-*` and `policy remove` commands keep the
+  other Gateway scope policies. 1.0.0b34 removed the content safety options: at model scope, read the policies,
+  merge, and write them back with `model update --policies`; at Gateway scope, use `az rest`. Don't pass
+  `--failure-mode` to `mcp create`: it never sends `failureMode`, and an endpoint's `mode` (`failClosed` or
+  `failOpen`) decides. Don't pass `--sku` to `az aigateway create`: the service default, `Standard`, is the only
+  SKU it accepts. `api-key create` sets the display name to the key name when you omit `--display-name`. Create a
+  model with `model create --foundry-resource-id --deployment` or with
+  `--deployment-config "{resourceId:…,modelName:…}"`, or import every deployment with
   `model-provider import --foundry-resource-id`.
   `--api-format` can't express embeddings or decision models: pass `--supported-endpoints /openai/v1/embeddings`
-  or `typesafe/v1/systemone` instead. Call ARM with `az rest` only for what the extension can't do yet: MCP tool
-  rules (`allowList`, `blockList`, `accessState`), backend conditions, session affinity, failover, auto model
-  selection, agent hooks, and writing a whole policy array from a file. A tool server has no top-level
-  `failureMode`: an endpoint's `mode` (`failClosed` or `failOpen`) decides. Say why in one sentence. Set
-  `GATEWAY_ID` with `az aigateway show`, plus `WS` (`https://management.azure.com$GATEWAY_ID/workspaces/default`)
-  and `API` (`api-version=2026-11-01`), only in tracks that still call `az rest`. Publish aliases with
-  `model-alias set`, which creates the alias or updates it, so a step can run again. `--token-counter-key` takes one
-  or more values (`Identity IPAddress`). `model-provider update --foundry` and `--custom` merge a partial JSON value
-  into the provider's settings. `PATCH` and `--policies` replace whole arrays such as `properties.policies`, so
-  read, edit, then write.
+  or `typesafe/v1/systemone` instead. Call ARM with `az rest` only for what the extension can't do yet: MCP server
+  access (`accessState`), backend conditions, session affinity, failover, auto model selection, content safety at
+  Gateway scope, a gateway's private link resources, and writing a whole policy array from a file. Read any alias
+  with `model-alias show`, but change aliases with conditions, failover rules, or auto model selection only with
+  `az rest`: `model-alias set` and `update --backend-model` drop `when` and `selectorModelName`. Say why in one
+  sentence. Set `GATEWAY_ID` with `az aigateway show`, plus `WS`
+  (`https://management.azure.com$GATEWAY_ID/workspaces/default`) and `API` (`api-version=2026-11-01`), only in
+  tracks that still call `az rest`. Publish aliases with `model-alias set`, which creates the alias or updates it,
+  so a step can run again. `--token-counter-key` takes one or more values (`Identity IPAddress`).
+  `model-provider update --foundry` and `--custom` merge a partial JSON value into the provider's settings.
+  `PATCH` and `--policies` replace whole arrays such as `properties.policies`, so read, edit, then write.
 - Parameterize names and locations; default `location` to `resourceGroup().location` in resource-group-scoped
   modules.
 - Mirror the structure of the existing labs: lab 06 for a Bicep + azd track (see [azd templates](#azd-templates)),

@@ -47,10 +47,10 @@ if ($LASTEXITCODE -ne 0) { throw 'The Monitoring Metrics Publisher role assignme
 Write-Host '🔐 The gateway can publish to the Data Collection Rule'
 
 # 3. Replace a legacy ApplicationInsights exporter, then create or update the OpenTelemetry exporter, retrying for up
-#    to 5 minutes while the role assignment propagates. The exporter type is properties.telemetryExporterType in the
-#    2026-11-01 API and properties.kind in the CLI's preview API, which returns no kind for a legacy exporter.
+#    to 5 minutes while the role assignment propagates. The CLI returns the exporter type as
+#    properties.telemetryExporterType, which is ApplicationInsights for a legacy exporter.
 $legacy = az aigateway telemetry-exporter show -g $env:RG --gateway-name $env:GATEWAY -n $exporter `
-  --query "(properties.telemetryExporterType || properties.kind) != 'OpenTelemetry'" -o tsv 2>$null
+  --query "properties.telemetryExporterType != 'OpenTelemetry'" -o tsv 2>$null
 if ($legacy -eq 'true') {
   Write-Host "🧹 Deleting the ApplicationInsights exporter $exporter, because an exporter's type can't change"
   az aigateway telemetry-exporter delete -g $env:RG --gateway-name $env:GATEWAY -n $exporter --yes -o none

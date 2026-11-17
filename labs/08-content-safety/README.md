@@ -165,16 +165,22 @@ Terraform tracks create a new gateway and put it on a new alias of the model. Th
 ### Create the policy
 
 The **Add policy** wizard doesn't list **Content safety** for AI Gateway resources, so create the policy with
-one Azure CLI command, for example in [Azure Cloud Shell](https://shell.azure.com), with the variables from
-**Before you begin**. Then set the thresholds in the portal. The command puts **Balanced** (`Medium`) on all
-four categories and keeps every other policy on the model:
+the Azure CLI, for example in [Azure Cloud Shell](https://shell.azure.com), with the variables from
+**Before you begin**. Then set the thresholds in the portal. The commands read the model's policies, add
+**Balanced** (`Medium`) content safety on all four categories, and write the array back, so every other policy on
+the model stays:
 
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# Add content safety to the model at Medium (Balanced) in all four categories
-az aigateway model policy set-content-safety -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL" \
-  --content-safety Medium --output none &&
+# Read the model's policies, drop any content safety policy, and add one at Medium (Balanced) in all four categories
+POLICIES="$(az aigateway model policy list -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL" -o json |
+  jq -c '[.[] | select(.type != "contentSafety")]
+    + [{"type":"contentSafety","hateSeverity":"Medium","violenceSeverity":"Medium","sexualSeverity":"Medium","selfHarmSeverity":"Medium"}]')"
+
+# Write the merged array back: --policies replaces the whole array
+az aigateway model update -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL" \
+  --policies "$POLICIES" --output none &&
   echo "🔐 Content safety on $MODEL is Balanced (Medium) for all four categories"
 ```
 </details> <!-- gh -->
@@ -182,10 +188,20 @@ az aigateway model policy set-content-safety -g "$RG" --gateway-name "$GATEWAY" 
 <details><summary>PowerShell</summary> <!-- gh -->
 
 ```powershell title="PowerShell"
-# Add content safety to the model at Medium (Balanced) in all four categories
-az aigateway model policy set-content-safety -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER -n $MODEL `
-  --content-safety Medium --output none
+# Read the model's policies, drop any content safety policy, and add one at Medium (Balanced) in all four categories
+$current  = az aigateway model policy list -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER -n $MODEL `
+  -o json | ConvertFrom-Json
+$policies = @($current | Where-Object { $_ -and $_.type -ne 'contentSafety' })
+$policies += [pscustomobject]@{
+  type = 'contentSafety'; hateSeverity = 'Medium'; violenceSeverity = 'Medium'; sexualSeverity = 'Medium'; selfHarmSeverity = 'Medium'
+}
+
+# Write the merged array back from a file, which keeps the JSON quotes intact: --policies replaces the whole array
+ConvertTo-Json -InputObject $policies -Depth 10 -Compress | Set-Content -Path policies.json
+az aigateway model update -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER -n $MODEL `
+  --policies '@policies.json' --output none
 if ($?) { Write-Host "🔐 Content safety on $MODEL is Balanced (Medium) for all four categories" }
+Remove-Item policies.json
 ```
 </details> <!-- gh -->
 
@@ -221,16 +237,22 @@ Select **Save**. The portal confirms **Policy updated**.
 
 ### Set the policy
 
-Policies live in the model's `properties.policies` array. `az aigateway model policy set-content-safety` adds the
-content safety policy, or replaces the one that's there, and keeps every other policy on the model.
-`--content-safety` sets the threshold for all four categories, and `--violence-severity` overrides **Violence**.
+Policies live in the model's `properties.policies` array. The `aigateway` extension 1.0.0b34 removed its content
+safety commands until they match API version `2026-11-01`, so set the policy with `az aigateway model update
+--policies`. It **replaces the whole array**, so read the array first, swap in the new content safety policy, and
+write the result back. That keeps every other policy on the model.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# Screen the model at Medium (Balanced) in all four categories, with Low (Strict) for Violence
-az aigateway model policy set-content-safety -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL" \
-  --content-safety Medium --violence-severity Low --output none &&
+# Read the model's policies, drop any content safety policy, and add one: Medium, with Low for Violence
+POLICIES="$(az aigateway model policy list -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL" -o json |
+  jq -c '[.[] | select(.type != "contentSafety")]
+    + [{"type":"contentSafety","hateSeverity":"Medium","violenceSeverity":"Low","sexualSeverity":"Medium","selfHarmSeverity":"Medium"}]')"
+
+# Write the merged array back: --policies replaces the whole array
+az aigateway model update -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL" \
+  --policies "$POLICIES" --output none &&
   echo "🔐 Content safety on $MODEL is Balanced (Medium), with Strict (Low) for Violence"
 ```
 </details> <!-- gh -->
@@ -238,16 +260,26 @@ az aigateway model policy set-content-safety -g "$RG" --gateway-name "$GATEWAY" 
 <details><summary>PowerShell</summary> <!-- gh -->
 
 ```powershell title="PowerShell"
-# Screen the model at Medium (Balanced) in all four categories, with Low (Strict) for Violence
-az aigateway model policy set-content-safety -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER -n $MODEL `
-  --content-safety Medium --violence-severity Low --output none
+# Read the model's policies, drop any content safety policy, and add one: Medium, with Low for Violence
+$current  = az aigateway model policy list -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER -n $MODEL `
+  -o json | ConvertFrom-Json
+$policies = @($current | Where-Object { $_ -and $_.type -ne 'contentSafety' })
+$policies += [pscustomobject]@{
+  type = 'contentSafety'; hateSeverity = 'Medium'; violenceSeverity = 'Low'; sexualSeverity = 'Medium'; selfHarmSeverity = 'Medium'
+}
+
+# Write the merged array back from a file, which keeps the JSON quotes intact: --policies replaces the whole array
+ConvertTo-Json -InputObject $policies -Depth 10 -Compress | Set-Content -Path policies.json
+az aigateway model update -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER -n $MODEL `
+  --policies '@policies.json' --output none
 if ($?) { Write-Host "🔐 Content safety on $MODEL is Balanced (Medium), with Strict (Low) for Violence" }
+Remove-Item policies.json
 ```
 </details> <!-- gh -->
 
 The command prints `🔐 Content safety on <model-name> is Balanced (Medium), with Strict (Low) for Violence`. Each
-threshold accepts `None`, `Low`, `Medium`, or `High`. To override another category, add `--hate-severity`,
-`--self-harm-severity`, or `--sexual-severity`.
+threshold accepts `None`, `Low`, `Medium`, or `High`. To change another category, change its value in the
+`contentSafety` object: `hateSeverity`, `selfHarmSeverity`, or `sexualSeverity`.
 
 ### Confirm the policy
 
@@ -270,8 +302,8 @@ az aigateway model policy list -g $RG --gateway-name $GATEWAY --provider-name $P
 </details> <!-- gh -->
 
 > **Checkpoint**
-> The output contains `"type": "contentSafety"` with `"violenceSeverity": "Low"`, `"Medium"` for the other
-> three categories, and `"scope": "resource"`, which the service adds to every model policy.
+> The output lists your other policies unchanged, plus `"type": "contentSafety"` with `"violenceSeverity": "Low"`,
+> `"Medium"` for the other three categories, and `"scope": "resource"`, which the service adds to every model policy.
 
 </details> <!-- gh -->
 <!-- track: rest | REST API -->
@@ -924,14 +956,19 @@ Violence threshold. If it returns `400`, the gateway blocked it and the error me
 
 Set **Violence** back to **Balanced** (`Medium`) with the track you used, then run the script again. For
 example, from the command line, set all four categories to `Medium`. The other three already are, so only
-**Violence** changes, and the command keeps every other policy on the model:
+**Violence** changes, and the merge keeps every other policy on the model:
 
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
 # Set all four categories to Medium (Balanced): only Violence changes, and the other policies stay
-az aigateway model policy set-content-safety -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL" \
-  --content-safety Medium --output none &&
+POLICIES="$(az aigateway model policy list -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL" -o json |
+  jq -c '[.[] | select(.type != "contentSafety")]
+    + [{"type":"contentSafety","hateSeverity":"Medium","violenceSeverity":"Medium","sexualSeverity":"Medium","selfHarmSeverity":"Medium"}]')"
+
+# Write the merged array back: --policies replaces the whole array
+az aigateway model update -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL" \
+  --policies "$POLICIES" --output none &&
   echo "🔐 Content safety on $MODEL is Balanced (Medium) for all four categories"
 ```
 </details> <!-- gh -->
@@ -940,9 +977,19 @@ az aigateway model policy set-content-safety -g "$RG" --gateway-name "$GATEWAY" 
 
 ```powershell title="PowerShell"
 # Set all four categories to Medium (Balanced): only Violence changes, and the other policies stay
-az aigateway model policy set-content-safety -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER -n $MODEL `
-  --content-safety Medium --output none
+$current  = az aigateway model policy list -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER -n $MODEL `
+  -o json | ConvertFrom-Json
+$policies = @($current | Where-Object { $_ -and $_.type -ne 'contentSafety' })
+$policies += [pscustomobject]@{
+  type = 'contentSafety'; hateSeverity = 'Medium'; violenceSeverity = 'Medium'; sexualSeverity = 'Medium'; selfHarmSeverity = 'Medium'
+}
+
+# Write the merged array back from a file, which keeps the JSON quotes intact: --policies replaces the whole array
+ConvertTo-Json -InputObject $policies -Depth 10 -Compress | Set-Content -Path policies.json
+az aigateway model update -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER -n $MODEL `
+  --policies '@policies.json' --output none
 if ($?) { Write-Host "🔐 Content safety on $MODEL is Balanced (Medium) for all four categories" }
+Remove-Item policies.json
 ```
 </details> <!-- gh -->
 
@@ -1031,9 +1078,13 @@ Select **Policies**. On the **Content safety** policy's row, select **More actio
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# Remove only the content safety policy from the model, and keep its other policies
-az aigateway model policy remove -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL" \
-  --remove-content-safety true --output none &&
+# Read the model's policies and drop the content safety policy, so that the others stay
+POLICIES="$(az aigateway model policy list -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL" -o json |
+  jq -c '[.[] | select(.type != "contentSafety")]')"
+
+# Write the remaining policies back: --policies replaces the whole array
+az aigateway model update -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL" \
+  --policies "$POLICIES" --output none &&
   echo "🚮 Content safety is removed from $MODEL"
 ```
 </details> <!-- gh -->
@@ -1041,10 +1092,17 @@ az aigateway model policy remove -g "$RG" --gateway-name "$GATEWAY" --provider-n
 <details><summary>PowerShell</summary> <!-- gh -->
 
 ```powershell title="PowerShell"
-# Remove only the content safety policy from the model, and keep its other policies
-az aigateway model policy remove -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER -n $MODEL `
-  --remove-content-safety true --output none
+# Read the model's policies and drop the content safety policy, so that the others stay
+$current  = az aigateway model policy list -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER -n $MODEL `
+  -o json | ConvertFrom-Json
+$policies = @($current | Where-Object { $_ -and $_.type -ne 'contentSafety' })
+
+# Write the remaining policies back from a file: --policies replaces the whole array
+ConvertTo-Json -InputObject $policies -Depth 10 -Compress | Set-Content -Path policies.json
+az aigateway model update -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER -n $MODEL `
+  --policies '@policies.json' --output none
 if ($?) { Write-Host "🚮 Content safety is removed from $MODEL" }
+Remove-Item policies.json
 ```
 </details> <!-- gh -->
 

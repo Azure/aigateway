@@ -349,7 +349,9 @@ if ($?) { Write-Host "✨ Model $RESEARCH is published through $PROVIDER" }
 
 The `az aigateway model-alias` commands have no options yet for backend conditions, session affinity, or the
 routing order, so this step sends the whole alias to the management API with `az rest`, at API version
-`2026-11-01`. A `PUT` creates the alias or replaces all of it.
+`2026-11-01`. A `PUT` creates the alias or replaces all of it. `az aigateway model-alias show` prints all of these
+settings, but don't change this alias with `model-alias set` or `update --backend-model`: they replace the backend
+models without their conditions.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -768,10 +770,6 @@ export AI_GATEWAY_URL="$(azd env get-value AI_GATEWAY_URL)"
 echo "📝 Alias $ALIAS routes between $GENERAL and $RESEARCH on gateway $GATEWAY in $RG"
 echo "🌐 Runtime URL: $AI_GATEWAY_URL"
 
-# Build the management URL of the gateway's default workspace, and the API version, for the az rest calls
-export WS="https://management.azure.com$GATEWAY_ID/workspaces/default"
-export API="api-version=2026-11-01"
-
 # Read the app-first-call key from the gateway, so that it never shows on screen or lands in a file
 export AI_GATEWAY_API_KEY="$(az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/app-first-call" \
   --query primaryKey --output tsv)"
@@ -784,7 +782,7 @@ export ROUTES='.properties
     "Routing order: \((.selectionOrder // ["priority"]) | join(", "))",
     "Session key: \(.sessionBackendPreference.key // "none")"'
 echo "🔖 Alias $ALIAS routes to:"
-az rest --method get --url "$WS/aliases/$ALIAS?$API" | jq -r "$ROUTES"
+az aigateway model-alias show -g "$RG" --gateway-name "$GATEWAY" -n "$ALIAS" | jq -r "$ROUTES"
 ```
 </details> <!-- gh -->
 
@@ -802,10 +800,6 @@ $env:AI_GATEWAY_URL     = azd env get-value AI_GATEWAY_URL
 Write-Host "📝 Alias $ALIAS routes between $GENERAL and $RESEARCH on gateway $GATEWAY in $RG"
 Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
 
-# Build the management URL of the gateway's default workspace, and the API version, for the az rest calls
-$WS  = "https://management.azure.com$GATEWAY_ID/workspaces/default"
-$API = "api-version=2026-11-01"
-
 # Read the app-first-call key from the gateway, so that it never shows on screen or lands in a file
 $env:AI_GATEWAY_API_KEY = az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/app-first-call" `
   --query primaryKey --output tsv
@@ -822,7 +816,7 @@ function Show-Routes($alias) {
   "Session key: $(if ($p.sessionBackendPreference) { $p.sessionBackendPreference.key } else { 'none' })"
 }
 Write-Host "🔖 Alias $ALIAS routes to:"
-Show-Routes (az rest --method get --url "$WS/aliases/${ALIAS}?$API" | ConvertFrom-Json)
+Show-Routes (az aigateway model-alias show -g $RG --gateway-name $GATEWAY -n $ALIAS | ConvertFrom-Json)
 ```
 </details> <!-- gh -->
 
@@ -1129,10 +1123,6 @@ export AI_GATEWAY_URL="$(terraform output -raw ai_gateway_url)"
 echo "📝 Alias $ALIAS routes between $GENERAL and $RESEARCH on gateway $GATEWAY in $RG"
 echo "🌐 Runtime URL: $AI_GATEWAY_URL"
 
-# Build the management URL of the gateway's default workspace, and the API version, for the az rest calls
-export WS="https://management.azure.com$GATEWAY_ID/workspaces/default"
-export API="api-version=2026-11-01"
-
 # Read the app-first-call key from the gateway, so that it never lands in a file or the Terraform state
 export AI_GATEWAY_API_KEY="$(az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/app-first-call" \
   --query primaryKey --output tsv)"
@@ -1145,7 +1135,7 @@ export ROUTES='.properties
     "Routing order: \((.selectionOrder // ["priority"]) | join(", "))",
     "Session key: \(.sessionBackendPreference.key // "none")"'
 echo "🔖 Alias $ALIAS routes to:"
-az rest --method get --url "$WS/aliases/$ALIAS?$API" | jq -r "$ROUTES"
+az aigateway model-alias show -g "$RG" --gateway-name "$GATEWAY" -n "$ALIAS" | jq -r "$ROUTES"
 # Move back to the lab's folder, which holds the scripts
 cd .. && echo "📂 Lab folder: $(pwd)"
 ```
@@ -1165,10 +1155,6 @@ $env:AI_GATEWAY_URL     = terraform output -raw ai_gateway_url
 Write-Host "📝 Alias $ALIAS routes between $GENERAL and $RESEARCH on gateway $GATEWAY in $RG"
 Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
 
-# Build the management URL of the gateway's default workspace, and the API version, for the az rest calls
-$WS  = "https://management.azure.com$GATEWAY_ID/workspaces/default"
-$API = "api-version=2026-11-01"
-
 # Read the app-first-call key from the gateway, so that it never lands in a file or the Terraform state
 $env:AI_GATEWAY_API_KEY = az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/app-first-call" `
   --query primaryKey --output tsv
@@ -1185,7 +1171,7 @@ function Show-Routes($alias) {
   "Session key: $(if ($p.sessionBackendPreference) { $p.sessionBackendPreference.key } else { 'none' })"
 }
 Write-Host "🔖 Alias $ALIAS routes to:"
-Show-Routes (az rest --method get --url "$WS/aliases/${ALIAS}?$API" | ConvertFrom-Json)
+Show-Routes (az aigateway model-alias show -g $RG --gateway-name $GATEWAY -n $ALIAS | ConvertFrom-Json)
 # Move back to the lab's folder, which holds the scripts
 Set-Location ..
 if ($?) { Write-Host "📂 Lab folder: $(Get-Location)" }
@@ -1529,18 +1515,18 @@ so your sessions can land differently. Run the script again: each session keeps 
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# Read the alias from the management API, and print its routing
+# Read the alias, and print its routing
 echo "🔖 Alias $ALIAS routes to:"
-az rest --method get --url "$WS/aliases/$ALIAS?$API" | jq -r "$ROUTES"
+az aigateway model-alias show -g "$RG" --gateway-name "$GATEWAY" -n "$ALIAS" | jq -r "$ROUTES"
 ```
 </details> <!-- gh -->
 
 <details><summary>PowerShell</summary> <!-- gh -->
 
 ```powershell title="PowerShell"
-# Read the alias from the management API, and print its routing
+# Read the alias, and print its routing
 Write-Host "🔖 Alias $ALIAS routes to:"
-Show-Routes (az rest --method get --url "$WS/aliases/${ALIAS}?$API" | ConvertFrom-Json)
+Show-Routes (az aigateway model-alias show -g $RG --gateway-name $GATEWAY -n $ALIAS | ConvertFrom-Json)
 ```
 </details> <!-- gh -->
 

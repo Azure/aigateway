@@ -1822,27 +1822,23 @@ portal's policy with one that has both intervention points.
 
 ### Write the policy
 
-The `aigateway` extension still writes the preview shape of agent hooks and replaces the whole policy array, so
-this track calls the management API with `az rest`. Read the server's policies, keep the others, and add the hook.
+`az aigateway mcp update --policies` replaces the server's whole policy array. Read the server's policies with
+`az aigateway mcp show`, keep the others, and add the hook.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# Build the management URL of the workspace, with the API version
-export WS="https://management.azure.com$GATEWAY_ID/workspaces/default"
-export API="api-version=2026-11-01"
-echo "🌐 MCP server: $WS/toolServers/$MCP_SERVER"
-
 # Describe the hook: ask the decision service before and after each tool call, as the gateway's managed identity
 HOOK_POLICY="$(jq -cn --arg url "$HOOK_URL" --arg aud "$HOOK_AUDIENCE" '{id:"tool-guard",type:"agentHooks",scope:"resource",mode:"failClosed",endpoint:{url:$url},authentication:{managedIdentity:{resource:$aud}},headers:[{name:"x-hook-policy",value:"lab30"}],hooks:{preToolCall:{},postToolCall:{}}}')"
 echo "📝 Agent hooks policy tool-guard calls $HOOK_URL"
 
 # Read the server's policies, keep every policy except agent hooks, and add the new one
-POLICIES="$(az rest --method get --url "$WS/toolServers/$MCP_SERVER?$API" | jq -c --argjson hook "$HOOK_POLICY" '[(.properties.policies // [])[] | select(.type != "agentHooks")] + [$hook]')"
+POLICIES="$(az aigateway mcp show -g "$RG" --gateway-name "$GATEWAY" -n "$MCP_SERVER" -o json |
+  jq -c --argjson hook "$HOOK_POLICY" '[(.properties.policies // [])[] | select(.type != "agentHooks")] + [$hook]')"
 echo "📝 Policies to write: $(jq length <<< "$POLICIES"), including tool-guard"
 
 # Replace the server's whole policies array with the merged one
-az rest --method patch --url "$WS/toolServers/$MCP_SERVER?$API" --body "{\"properties\":{\"policies\":$POLICIES}}" -o none &&
+az aigateway mcp update -g "$RG" --gateway-name "$GATEWAY" -n "$MCP_SERVER" --policies "$POLICIES" -o none &&
   echo "🔐 Agent hooks policy tool-guard is on the $MCP_SERVER MCP server"
 ```
 </details> <!-- gh -->
@@ -1850,11 +1846,6 @@ az rest --method patch --url "$WS/toolServers/$MCP_SERVER?$API" --body "{\"prope
 <details><summary>PowerShell</summary> <!-- gh -->
 
 ```powershell title="PowerShell"
-# Build the management URL of the workspace, with the API version
-$WS  = "https://management.azure.com$GATEWAY_ID/workspaces/default"
-$API = "api-version=2026-11-01"
-Write-Host "🌐 MCP server: $WS/toolServers/$MCP_SERVER"
-
 # Describe the hook: ask the decision service before and after each tool call, as the gateway's managed identity
 $hookPolicy = [pscustomobject]@{
   id             = 'tool-guard'; type = 'agentHooks'; scope = 'resource'; mode = 'failClosed'
@@ -1866,15 +1857,15 @@ $hookPolicy = [pscustomobject]@{
 Write-Host "📝 Agent hooks policy tool-guard calls $HOOK_URL"
 
 # Read the server's policies, keep every policy except agent hooks, and add the new one
-$current  = az rest --method get --url "$WS/toolServers/$MCP_SERVER`?$API" | ConvertFrom-Json
+$current  = az aigateway mcp show -g $RG --gateway-name $GATEWAY -n $MCP_SERVER -o json | ConvertFrom-Json
 $policies = @($current.properties.policies | Where-Object { $_ -and $_.type -ne 'agentHooks' }) + $hookPolicy
 Write-Host "📝 Policies to write: $($policies.Count), including tool-guard"
 
-# Write the request body to a file, which --body reads with the @ prefix, then replace the whole policies array
-@{ properties = @{ policies = $policies } } | ConvertTo-Json -Depth 10 -Compress | Set-Content -Path patch.json
-az rest --method patch --url "$WS/toolServers/$MCP_SERVER`?$API" --body '@patch.json' -o none
+# Write the policies to a file, which --policies reads with the @ prefix, then replace the whole policies array
+ConvertTo-Json -InputObject $policies -Depth 10 -Compress | Set-Content -Path policies.json
+az aigateway mcp update -g $RG --gateway-name $GATEWAY -n $MCP_SERVER --policies '@policies.json' -o none
 if ($?) { Write-Host "🔐 Agent hooks policy tool-guard is on the $MCP_SERVER MCP server" }
-Remove-Item patch.json
+Remove-Item policies.json
 ```
 </details> <!-- gh -->
 
@@ -1885,7 +1876,7 @@ Remove-Item patch.json
 ```bash title="Bash"
 # Read the agent hooks policy on the MCP server
 echo "🔐 Agent hooks policy on the $MCP_SERVER MCP server:"
-az rest --method get --url "$WS/toolServers/$MCP_SERVER?$API" --query "properties.policies[?type=='agentHooks']"
+az aigateway mcp show -g "$RG" --gateway-name "$GATEWAY" -n "$MCP_SERVER" --query "properties.policies[?type=='agentHooks']"
 ```
 </details> <!-- gh -->
 
@@ -1894,13 +1885,14 @@ az rest --method get --url "$WS/toolServers/$MCP_SERVER?$API" --query "propertie
 ```powershell title="PowerShell"
 # Read the agent hooks policy on the MCP server
 Write-Host "🔐 Agent hooks policy on the $MCP_SERVER MCP server:"
-az rest --method get --url "$WS/toolServers/$MCP_SERVER`?$API" --query "properties.policies[?type=='agentHooks']"
+az aigateway mcp show -g $RG --gateway-name $GATEWAY -n $MCP_SERVER --query "properties.policies[?type=='agentHooks']"
 ```
 </details> <!-- gh -->
 
 > **Checkpoint**
 > The policy has `"type": "agentHooks"`, `"mode": "failClosed"`, your `endpoint.url`, `managedIdentity.resource`,
-> and both `preToolCall` and `postToolCall` under `hooks`.
+> and both `preToolCall` and `postToolCall` under `hooks`. The CLI masks header values as `"***"`; the gateway still
+> sends `lab30`, which the decision log shows in **Verify**.
 
 In the AI Gateway portal, **Policies** lists it as **Before and after tool calls**, of type **Agent hooks**. Select
 it to see both intervention points with their settings.
@@ -1913,40 +1905,29 @@ it to see both intervention points with their settings.
 
 ### Read the policy that azd attached
 
-`azd up` already attached the policy. Read it back with the management API, because the `aigateway` extension
-shows the preview shape of agent hooks.
+`azd up` already attached the policy. Read it back.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# Build the management URL of the workspace, with the API version
-export WS="https://management.azure.com$GATEWAY_ID/workspaces/default"
-export API="api-version=2026-11-01"
-echo "🌐 MCP server: $WS/toolServers/$MCP_SERVER"
-
 # Read the agent hooks policy on the MCP server
 echo "🔐 Agent hooks policy on the $MCP_SERVER MCP server:"
-az rest --method get --url "$WS/toolServers/$MCP_SERVER?$API" --query "properties.policies[?type=='agentHooks']"
+az aigateway mcp show -g "$RG" --gateway-name "$GATEWAY" -n "$MCP_SERVER" --query "properties.policies[?type=='agentHooks']"
 ```
 </details> <!-- gh -->
 
 <details><summary>PowerShell</summary> <!-- gh -->
 
 ```powershell title="PowerShell"
-# Build the management URL of the workspace, with the API version
-$WS  = "https://management.azure.com$GATEWAY_ID/workspaces/default"
-$API = "api-version=2026-11-01"
-Write-Host "🌐 MCP server: $WS/toolServers/$MCP_SERVER"
-
 # Read the agent hooks policy on the MCP server
 Write-Host "🔐 Agent hooks policy on the $MCP_SERVER MCP server:"
-az rest --method get --url "$WS/toolServers/$MCP_SERVER`?$API" --query "properties.policies[?type=='agentHooks']"
+az aigateway mcp show -g $RG --gateway-name $GATEWAY -n $MCP_SERVER --query "properties.policies[?type=='agentHooks']"
 ```
 </details> <!-- gh -->
 
 > **Checkpoint**
 > The policy has `"id": "tool-guard"`, `"type": "agentHooks"`, `"mode": "failClosed"`, the hook URL, the token
-> audience, and both `preToolCall` and `postToolCall` under `hooks`.
+> audience, and both `preToolCall` and `postToolCall` under `hooks`. The CLI masks header values as `"***"`.
 
 </details> <!-- gh -->
 <!-- track: terraform | Terraform -->
@@ -1954,21 +1935,15 @@ az rest --method get --url "$WS/toolServers/$MCP_SERVER`?$API" --query "properti
 
 ### Read the policy that Terraform attached
 
-`terraform apply` already attached the policy. Read it back with the management API, because the `aigateway`
-extension shows the preview shape of agent hooks. Then move back to the lab's folder, where the next steps run the
-test script.
+`terraform apply` already attached the policy. Read it back, then move back to the lab's folder, where the next
+steps run the test script.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# Build the management URL of the workspace, with the API version
-export WS="https://management.azure.com$GATEWAY_ID/workspaces/default"
-export API="api-version=2026-11-01"
-echo "🌐 MCP server: $WS/toolServers/$MCP_SERVER"
-
 # Read the agent hooks policy on the MCP server
 echo "🔐 Agent hooks policy on the $MCP_SERVER MCP server:"
-az rest --method get --url "$WS/toolServers/$MCP_SERVER?$API" --query "properties.policies[?type=='agentHooks']"
+az aigateway mcp show -g "$RG" --gateway-name "$GATEWAY" -n "$MCP_SERVER" --query "properties.policies[?type=='agentHooks']"
 
 # Move back to the lab's folder, where the next steps run the test script
 cd .. &&
@@ -1979,14 +1954,9 @@ cd .. &&
 <details><summary>PowerShell</summary> <!-- gh -->
 
 ```powershell title="PowerShell"
-# Build the management URL of the workspace, with the API version
-$WS  = "https://management.azure.com$GATEWAY_ID/workspaces/default"
-$API = "api-version=2026-11-01"
-Write-Host "🌐 MCP server: $WS/toolServers/$MCP_SERVER"
-
 # Read the agent hooks policy on the MCP server
 Write-Host "🔐 Agent hooks policy on the $MCP_SERVER MCP server:"
-az rest --method get --url "$WS/toolServers/$MCP_SERVER`?$API" --query "properties.policies[?type=='agentHooks']"
+az aigateway mcp show -g $RG --gateway-name $GATEWAY -n $MCP_SERVER --query "properties.policies[?type=='agentHooks']"
 
 # Move back to the lab's folder, where the next steps run the test script
 Set-Location ..
@@ -1996,7 +1966,7 @@ if ($?) { Write-Host "📂 Lab folder: $(Get-Location)" }
 
 > **Checkpoint**
 > The policy has `"id": "tool-guard"`, `"type": "agentHooks"`, `"mode": "failClosed"`, the hook URL, the token
-> audience, and both `preToolCall` and `postToolCall` under `hooks`.
+> audience, and both `preToolCall` and `postToolCall` under `hooks`. The CLI masks header values as `"***"`.
 
 </details> <!-- gh -->
 <!-- /tracks -->
@@ -2004,7 +1974,7 @@ if ($?) { Write-Host "📂 Lab folder: $(Get-Location)" }
 > [!WARNING]
 > Don't edit a policy with both intervention points in the portal. Its **Edit policy** panel reads "This policy has
 > both intervention points. Choose one to continue.", and saving keeps only the point that you choose. Change such a
-> policy with `az rest`, Bicep, or Terraform.
+> policy with the Azure CLI, Bicep, or Terraform.
 
 ![The Edit policy panel of a policy with both intervention points, asking to choose one](../assets/screens/agent-hooks-06-edit-both-points.webp "The portal shows both hooks on the policy's page, but its editor keeps only one.")
 
@@ -2415,7 +2385,7 @@ longer wait for the hook.
 ### Delete the decision service
 
 The **Azure CLI** steps of **Deploy the decision service** created a resource group and an app registration. Delete
-them with the **Azure CLI** track's last two commands below.
+them with the **Azure CLI** track's last three commands below.
 
 </details> <!-- gh -->
 <!-- track: cli | Azure CLI -->
@@ -2427,17 +2397,23 @@ them with the **Azure CLI** track's last two commands below.
 
 ```bash title="Bash"
 # Remove the agent hooks policy from the MCP server, and keep its other policies
-POLICIES="$(az rest --method get --url "$WS/toolServers/$MCP_SERVER?$API" | jq -c '[(.properties.policies // [])[] | select(.type != "agentHooks")]')"
-az rest --method patch --url "$WS/toolServers/$MCP_SERVER?$API" --body "{\"properties\":{\"policies\":$POLICIES}}" -o none &&
+POLICIES="$(az aigateway mcp show -g "$RG" --gateway-name "$GATEWAY" -n "$MCP_SERVER" -o json |
+  jq -c '[(.properties.policies // [])[] | select(.type != "agentHooks")]')"
+az aigateway mcp update -g "$RG" --gateway-name "$GATEWAY" -n "$MCP_SERVER" --policies "$POLICIES" -o none &&
   echo "🚮 The agent hooks policy is removed from the $MCP_SERVER MCP server"
 
 # Delete the decision service's resource group: the function app, its network, storage, and logs
 az group delete -n "$HOOK_RG" --yes --no-wait &&
   echo "⏳ Resource group $HOOK_RG is being deleted"
 
-# Delete the hook's app registration
-az ad app delete --id "$HOOK_CLIENT_ID" &&
+# Read the app registration's object ID, which the purge needs, then delete the app registration
+HOOK_OBJECT_ID="$(az ad app show --id "$HOOK_CLIENT_ID" --query id -o tsv)" &&
+  az ad app delete --id "$HOOK_CLIENT_ID" &&
   echo "🚮 App registration $HOOK_CLIENT_ID is deleted"
+
+# Purge the app registration from the deleted items
+az rest --method delete --url "https://graph.microsoft.com/v1.0/directory/deletedItems/$HOOK_OBJECT_ID" &&
+  echo "🚮 App registration $HOOK_OBJECT_ID is purged"
 ```
 </details> <!-- gh -->
 
@@ -2445,20 +2421,25 @@ az ad app delete --id "$HOOK_CLIENT_ID" &&
 
 ```powershell title="PowerShell"
 # Remove the agent hooks policy from the MCP server, and keep its other policies
-$current  = az rest --method get --url "$WS/toolServers/$MCP_SERVER`?$API" | ConvertFrom-Json
+$current  = az aigateway mcp show -g $RG --gateway-name $GATEWAY -n $MCP_SERVER -o json | ConvertFrom-Json
 $policies = @($current.properties.policies | Where-Object { $_ -and $_.type -ne 'agentHooks' })
-@{ properties = @{ policies = $policies } } | ConvertTo-Json -Depth 10 -Compress | Set-Content -Path patch.json
-az rest --method patch --url "$WS/toolServers/$MCP_SERVER`?$API" --body '@patch.json' -o none
+ConvertTo-Json -InputObject $policies -Depth 10 -Compress | Set-Content -Path policies.json
+az aigateway mcp update -g $RG --gateway-name $GATEWAY -n $MCP_SERVER --policies '@policies.json' -o none
 if ($?) { Write-Host "🚮 The agent hooks policy is removed from the $MCP_SERVER MCP server" }
-Remove-Item patch.json
+Remove-Item policies.json
 
 # Delete the decision service's resource group: the function app, its network, storage, and logs
 az group delete -n $HOOK_RG --yes --no-wait
 if ($?) { Write-Host "⏳ Resource group $HOOK_RG is being deleted" }
 
-# Delete the hook's app registration
+# Read the app registration's object ID, which the purge needs, then delete the app registration
+$HOOK_OBJECT_ID = az ad app show --id $HOOK_CLIENT_ID --query id -o tsv
 az ad app delete --id $HOOK_CLIENT_ID
 if ($?) { Write-Host "🚮 App registration $HOOK_CLIENT_ID is deleted" }
+
+# Purge the app registration from the deleted items
+az rest --method delete --url "https://graph.microsoft.com/v1.0/directory/deletedItems/$HOOK_OBJECT_ID"
+if ($?) { Write-Host "🚮 App registration $HOOK_OBJECT_ID is purged" }
 ```
 </details> <!-- gh -->
 

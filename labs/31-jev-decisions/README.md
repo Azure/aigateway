@@ -259,7 +259,7 @@ az aigateway model-provider create -g "$RG" --gateway-name "$GATEWAY" -n typesaf
   --custom "$(jq -cn --arg key "$JEV_API_KEY" '{
       endpoint: "https://api.typesafe.ai",
       authentication: {kind: "ApiKey", apiKey: {headerName: "Authorization", value: ("Bearer " + $key)}}}')" \
-  --query "{name:name,kind:properties.kind,endpoint:properties.custom.endpoint}" &&
+  --query "{name:name,kind:properties.modelProviderType,endpoint:properties.custom.endpoint.url}" &&
   echo "🔌 Model provider typesafe is ready, and the TypeSafe key stays in the gateway"
 
 # Clear the key from your shell, now that the gateway stores it
@@ -284,7 +284,7 @@ Write-Host "🔑 TypeSafe key: in the key variable ($($key.Length) characters, n
 # Add TypeSafe as a Custom provider: the gateway stores the key, and apps never receive it
 az aigateway model-provider create -g $RG --gateway-name $GATEWAY -n typesafe `
   --kind Custom --display-name "TypeSafe" --description "TypeSafe Jev decision models." --custom '@custom.json' `
-  --query "{name:name,kind:properties.kind,endpoint:properties.custom.endpoint}"
+  --query "{name:name,kind:properties.modelProviderType,endpoint:properties.custom.endpoint.url}"
 if ($?) { Write-Host "🔌 Model provider typesafe is ready, and the TypeSafe key stays in the gateway" }
 
 # Delete the file and the variable right away, because they held the key
@@ -1506,11 +1506,11 @@ Expected output:
 ```text
 [
   {
-    "callsPerPeriod": 5,
+    "count": 5,
     "counterKey": [
       "identity"
     ],
-    "periodSeconds": 60,
+    "period": "minute",
     "scope": "resource",
     "type": "requestRateLimit"
   }
@@ -1518,9 +1518,7 @@ Expected output:
 🚦 ticket-triage allows 5 decision requests per minute for each caller
 ```
 
-The CLI shows `count` and `period` with the preview names `callsPerPeriod` and `periodSeconds`, and the service adds
-`"scope": "resource"`. The `2026-11-01` API, which the Bicep and Terraform tracks use, stores the same limit as
-`"count": 5` and `"period": "minute"`.
+The service adds `"scope": "resource"`.
 
 </details> <!-- gh -->
 <!-- track: iac | Bicep + azd -->
@@ -1552,8 +1550,7 @@ az aigateway model-alias show -g $RG --gateway-name $GATEWAY -n $env:AI_GATEWAY_
 </details> <!-- gh -->
 
 > **Checkpoint**
-> The output has one `requestRateLimit` with `callsPerPeriod` `5`, `periodSeconds` `60`, and `counterKey`
-> `["identity"]`: the CLI shows the template's `count` and `period` with their preview names.
+> The output has one `requestRateLimit` with `count` `5`, `period` `minute`, and `counterKey` `["identity"]`.
 
 To change the limit later, run `azd env set DECISIONS_PER_MINUTE 10` and `azd provision`. It takes about a minute.
 Keep `5` for **Verify**.
@@ -1588,8 +1585,7 @@ az aigateway model-alias show -g $RG --gateway-name $GATEWAY -n $env:AI_GATEWAY_
 </details> <!-- gh -->
 
 > **Checkpoint**
-> The output has one `requestRateLimit` with `callsPerPeriod` `5`, `periodSeconds` `60`, and `counterKey`
-> `["identity"]`: the CLI shows the configuration's `count` and `period` with their preview names.
+> The output has one `requestRateLimit` with `count` `5`, `period` `minute`, and `counterKey` `["identity"]`.
 
 ### Preview a change to the limit
 

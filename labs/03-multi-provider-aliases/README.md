@@ -271,7 +271,7 @@ az aigateway model-provider create -g "$RG" --gateway-name "$GATEWAY" -n "$PROVI
   --custom "$(jq -cn --arg key "$ANTHROPIC_API_KEY" '{
       endpoint: "https://api.anthropic.com",
       authentication: {kind: "ApiKey", apiKey: {headerName: "x-api-key", value: $key}}}')" \
-  --query "{name:name,kind:properties.kind,endpoint:properties.custom.endpoint}" &&
+  --query "{name:name,kind:properties.modelProviderType,endpoint:properties.custom.endpoint.url}" &&
   echo "🔌 Model provider $PROVIDER is ready, and its key stays in the gateway"
 
 # Clear the key from your shell, now that the gateway stores it
@@ -296,7 +296,7 @@ Write-Host "🔑 Anthropic key: in the key variable ($($key.Length) characters, 
 # Add Anthropic as a custom provider: the gateway stores the key, and apps never receive it
 az aigateway model-provider create -g $RG --gateway-name $GATEWAY -n $PROVIDER `
   --kind Custom --display-name "Anthropic" --custom '@custom.json' `
-  --query "{name:name,kind:properties.kind,endpoint:properties.custom.endpoint}"
+  --query "{name:name,kind:properties.modelProviderType,endpoint:properties.custom.endpoint.url}"
 if ($?) { Write-Host "🔌 Model provider $PROVIDER is ready, and its key stays in the gateway" }
 
 # Delete the file and the variable right away, because they held the key
@@ -345,9 +345,11 @@ foreach ($model in $FAST_MODEL, $SMART_MODEL) {
 > OpenAI-compatible endpoints. Leave out `--api-format` for custom providers. If the service rejects either
 > command, create the provider and models with the **Portal** tab, then continue here with the aliases.
 >
-> The GA management API (`2026-11-01`) stores the provider as `modelProviderType: "Custom"`, the URL in
-> `custom.endpoint.url`, and the key in `authentication.headers`, a list with exactly one `{name, value}` header.
-> A `GET` returns the header name but never its value, so a full `PUT` to the provider must send the key again.
+> The CLI stores the provider in the shape of the GA management API (`2026-11-01`): `modelProviderType: "Custom"`,
+> the URL in `custom.endpoint.url`, and the key in `authentication.headers`, a list with exactly one
+> `{name, value}` header. That's why the command's output shows `"kind": "Custom"` and the URL. A `GET`, like
+> `az aigateway model-provider show`, returns the header name but never its value, so a full `PUT` to the provider
+> must send the key again.
 
 ### Create the aliases
 

@@ -358,7 +358,7 @@ az aigateway telemetry-exporter create -g "$RG" --gateway-name "$GATEWAY" -n app
 
 # List the gateway's telemetry exporters, with the kind of each one
 echo "📊 Telemetry exporters on $GATEWAY:"
-az aigateway telemetry-exporter list -g "$RG" --gateway-name "$GATEWAY" --query "[].{name:name, kind:properties.kind}" -o table
+az aigateway telemetry-exporter list -g "$RG" --gateway-name "$GATEWAY" --query "[].{name:name, kind:properties.telemetryExporterType}" -o table
 ```
 </details> <!-- gh -->
 
@@ -375,7 +375,7 @@ if ($?) { Write-Host "📊 Telemetry exporter appinsights sends metrics, logs, a
 
 # List the gateway's telemetry exporters, with the kind of each one
 Write-Host "📊 Telemetry exporters on ${GATEWAY}:"
-az aigateway telemetry-exporter list -g $RG --gateway-name $GATEWAY --query "[].{name:name, kind:properties.kind}" -o table
+az aigateway telemetry-exporter list -g $RG --gateway-name $GATEWAY --query "[].{name:name, kind:properties.telemetryExporterType}" -o table
 ```
 </details> <!-- gh -->
 
@@ -385,9 +385,10 @@ again, it fails with `The telemetry exporter already exists; use telemetry-expor
 with `update` in place of `create` instead.
 
 > [!NOTE]
-> The `aigateway` extension nests the managed identity in `--open-telemetry` as `credentials`. In the management API
-> version `2026-11-01`, which the Bicep + azd and Terraform tracks use, the same setting is a top-level
-> `authentication` property and each endpoint is an object with a `url`.
+> `--open-telemetry` takes each endpoint as a URL and nests the managed identity as `credentials`. The `aigateway`
+> extension sends the exporter in the shape of the management API version `2026-11-01`, which the Bicep + azd and
+> Terraform tracks use: `--kind` becomes `telemetryExporterType`, each endpoint an object with a `url`, and
+> `credentials` a top-level `authentication` property. `show` and `list` return that shape.
 
 > **Checkpoint**
 > The list shows one exporter, `appinsights`, of kind `OpenTelemetry`. In the portal, the gateway's **Monitoring**
@@ -822,7 +823,7 @@ echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not sh
 
 # List the gateway's telemetry exporters, with the kind of each one
 echo "📊 Telemetry exporters on $GATEWAY:"
-az aigateway telemetry-exporter list -g "$RG" --gateway-name "$GATEWAY" --query "[].{name:name, kind:properties.kind}" -o table
+az aigateway telemetry-exporter list -g "$RG" --gateway-name "$GATEWAY" --query "[].{name:name, kind:properties.telemetryExporterType}" -o table
 ```
 </details> <!-- gh -->
 
@@ -848,7 +849,7 @@ Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) c
 
 # List the gateway's telemetry exporters, with the kind of each one
 Write-Host "📊 Telemetry exporters on ${GATEWAY}:"
-az aigateway telemetry-exporter list -g $RG --gateway-name $GATEWAY --query "[].{name:name, kind:properties.kind}" -o table
+az aigateway telemetry-exporter list -g $RG --gateway-name $GATEWAY --query "[].{name:name, kind:properties.telemetryExporterType}" -o table
 ```
 </details> <!-- gh -->
 
@@ -1183,7 +1184,7 @@ echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not sh
 
 # List the gateway's telemetry exporters, with the kind of each one
 echo "📊 Telemetry exporters on $GATEWAY:"
-az aigateway telemetry-exporter list -g "$RG" --gateway-name "$GATEWAY" --query "[].{name:name, kind:properties.kind}" -o table
+az aigateway telemetry-exporter list -g "$RG" --gateway-name "$GATEWAY" --query "[].{name:name, kind:properties.telemetryExporterType}" -o table
 
 # Move back to the lab's folder, which holds the traffic script
 cd .. && echo "📂 Lab folder: $(pwd)"
@@ -1212,7 +1213,7 @@ Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) c
 
 # List the gateway's telemetry exporters, with the kind of each one
 Write-Host "📊 Telemetry exporters on ${GATEWAY}:"
-az aigateway telemetry-exporter list -g $RG --gateway-name $GATEWAY --query "[].{name:name, kind:properties.kind}" -o table
+az aigateway telemetry-exporter list -g $RG --gateway-name $GATEWAY --query "[].{name:name, kind:properties.telemetryExporterType}" -o table
 
 # Move back to the lab's folder, which holds the traffic script
 Set-Location ..
@@ -1712,7 +1713,7 @@ To check the exporter from the CLI, list the gateway's telemetry exporters:
 ```bash title="Bash"
 # List the gateway's telemetry exporters, with the kind of each one
 echo "📊 Telemetry exporters on $GATEWAY:"
-az aigateway telemetry-exporter list -g "$RG" --gateway-name "$GATEWAY" --query "[].{name:name, kind:properties.kind}" -o table
+az aigateway telemetry-exporter list -g "$RG" --gateway-name "$GATEWAY" --query "[].{name:name, kind:properties.telemetryExporterType}" -o table
 ```
 </details> <!-- gh -->
 
@@ -1721,14 +1722,13 @@ az aigateway telemetry-exporter list -g "$RG" --gateway-name "$GATEWAY" --query 
 ```powershell title="PowerShell"
 # List the gateway's telemetry exporters, with the kind of each one
 Write-Host "📊 Telemetry exporters on ${GATEWAY}:"
-az aigateway telemetry-exporter list -g $RG --gateway-name $GATEWAY --query "[].{name:name, kind:properties.kind}" -o table
+az aigateway telemetry-exporter list -g $RG --gateway-name $GATEWAY --query "[].{name:name, kind:properties.telemetryExporterType}" -o table
 ```
 </details> <!-- gh -->
 
-Every track creates an exporter of kind `OpenTelemetry`. The extension calls the preview API, which names the type
-`kind`; the `2026-11-01` API returns it as `properties.telemetryExporterType`. A legacy exporter of kind
-`ApplicationInsights`, from [Troubleshooting](../TROUBLESHOOTING.md#lab-13-monitoring), shows an empty kind in this
-list.
+Every track creates an exporter of kind `OpenTelemetry`, which the `2026-11-01` API returns as
+`properties.telemetryExporterType`. A legacy exporter, from [Troubleshooting](../TROUBLESHOOTING.md#lab-13-monitoring),
+shows the kind `ApplicationInsights` in this list.
 
 <!-- /steps -->
 

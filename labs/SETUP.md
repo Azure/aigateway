@@ -133,16 +133,16 @@ az aigateway version
 </details> <!-- gh -->
 
 > **Checkpoint**
-> The installer printed `📦 aigateway extension … is installed`, and `az aigateway version` prints the extension
-> version and the API version it calls, `2025-09-01-preview`. The labs need version `1.0.0b33` or later; run the
-> installer again to upgrade an older one.
+> The installer printed `📦 aigateway extension … is installed`, and `az aigateway version` prints JSON with the
+> extension version, `extensionVersion`, and the API version it calls, `"apiVersion": "2026-11-01"`. The labs need
+> version `1.0.0b34` or later; run the installer again to upgrade an older one.
 
 > [!NOTE]
 > The labs use `az aigateway` commands wherever the extension covers an operation. A few operations, such as
 > an MCP server's tool rules or an alias's backend conditions and failover, aren't in the extension yet. For
 > those, the labs call the Azure Resource Manager REST API with `az rest` and API version `2026-11-01`, and say
-> why. Because the extension calls the earlier API version, its output uses a few older field names, such as
-> `kind` for a provider's type; each lab's checkpoints show what to expect.
+> why. The extension calls the same API version, so its output uses the same field names as the REST and Bicep
+> tracks, such as `modelProviderType` for a provider's type.
 
 ## Register the resource providers
 

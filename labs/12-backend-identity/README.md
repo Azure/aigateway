@@ -141,7 +141,7 @@ Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) c
 </details> <!-- gh -->
 
 Don't remember the provider name? List the Foundry providers:
-`az aigateway model-provider list -g "$RG" --gateway-name "$GATEWAY" --query "[?properties.kind=='Foundry'].name" -o tsv`.
+`az aigateway model-provider list -g "$RG" --gateway-name "$GATEWAY" --query "[?properties.modelProviderType=='Foundry'].name" -o tsv`.
 
 ## How it works
 
@@ -166,8 +166,8 @@ Attaching an identity to the gateway doesn't change which identity an asset uses
 so you can move assets one at a time.
 
 The table uses the field names of API version `2026-11-01`, where `authentication` sits at the top level of the
-provider's properties, next to `foundry`. The `az aigateway` extension still reads the earlier API version, so its
-output nests the same settings under `foundry.authentication`, with a `kind` of `ManagedIdentity` or `ApiKey`.
+provider's properties, next to `foundry`. The `az aigateway` output shows the same shape. Only its `--foundry`
+argument still takes `authentication` as one of the Foundry settings, and the CLI writes it to the top level.
 
 ## Check the system-assigned identity
 
@@ -1174,29 +1174,29 @@ switches it to your identity. Clients don't change: they keep calling the same a
 
 The portal picks the identity only when you import a Foundry account: the **Authentication method** step offers
 **Managed identity** with a choice of the system-assigned identity or any attached user-assigned identity, and
-grants the selected identity **Foundry User**. To switch a provider that already exists, run these Azure CLI
+grants the selected identity **Foundry User**. To switch a provider that already exists, run this Azure CLI
 command, for example in [Azure Cloud Shell](https://shell.azure.com). It sets `clientId` in the provider's
-`foundry` settings and keeps the rest:
+managed identity settings and keeps the rest:
 
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# Set clientId to your identity's client ID; the CLI merges it into the provider's other foundry settings
+# Set clientId to your identity's client ID; the CLI merges it into the provider's other settings
 echo "🔌 Authentication of $PROVIDER:"
 az aigateway model-provider update -g "$RG" --gateway-name "$GATEWAY" -n "$PROVIDER" \
   --foundry "{authentication:{managedIdentity:{clientId:$IDENTITY_CLIENT_ID}}}" \
-  --query properties.foundry.authentication
+  --query properties.authentication
 ```
 </details> <!-- gh -->
 
 <details><summary>PowerShell</summary> <!-- gh -->
 
 ```powershell title="PowerShell"
-# Set clientId to your identity's client ID; the CLI merges it into the provider's other foundry settings
+# Set clientId to your identity's client ID; the CLI merges it into the provider's other settings
 Write-Host "🔌 Authentication of ${PROVIDER}:"
 az aigateway model-provider update -g $RG --gateway-name $GATEWAY -n $PROVIDER `
   --foundry "{authentication:{managedIdentity:{clientId:$IDENTITY_CLIENT_ID}}}" `
-  --query properties.foundry.authentication
+  --query properties.authentication
 ```
 </details> <!-- gh -->
 
@@ -1206,28 +1206,29 @@ az aigateway model-provider update -g $RG --gateway-name $GATEWAY -n $PROVIDER `
 
 ### Update the provider's authentication
 
-`--foundry` takes only the settings to change: the CLI merges them into the provider's `foundry` settings. Set
-`clientId`, and the endpoint and accounts stay as they are. Models are separate resources, so they don't change.
+`--foundry` takes only the settings to change: the CLI merges them into the provider's settings, and writes
+`authentication` to the top level of its properties. Set `clientId`, and the endpoint and accounts stay as they
+are. Models are separate resources, so they don't change.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# Set clientId to your identity's client ID; the CLI merges it into the provider's other foundry settings
+# Set clientId to your identity's client ID; the CLI merges it into the provider's other settings
 echo "🔌 Authentication of $PROVIDER:"
 az aigateway model-provider update -g "$RG" --gateway-name "$GATEWAY" -n "$PROVIDER" \
   --foundry "{authentication:{managedIdentity:{clientId:$IDENTITY_CLIENT_ID}}}" \
-  --query properties.foundry.authentication
+  --query properties.authentication
 ```
 </details> <!-- gh -->
 
 <details><summary>PowerShell</summary> <!-- gh -->
 
 ```powershell title="PowerShell"
-# Set clientId to your identity's client ID; the CLI merges it into the provider's other foundry settings
+# Set clientId to your identity's client ID; the CLI merges it into the provider's other settings
 Write-Host "🔌 Authentication of ${PROVIDER}:"
 az aigateway model-provider update -g $RG --gateway-name $GATEWAY -n $PROVIDER `
   --foundry "{authentication:{managedIdentity:{clientId:$IDENTITY_CLIENT_ID}}}" `
-  --query properties.foundry.authentication
+  --query properties.authentication
 ```
 </details> <!-- gh -->
 
@@ -1368,7 +1369,7 @@ azd provision &&
 # Show the provider's authentication settings
 echo "🔌 Authentication of $PROVIDER:"
 az aigateway model-provider show -g "$RG" --gateway-name "$GATEWAY" -n "$PROVIDER" \
-  --query properties.foundry.authentication -o json
+  --query properties.authentication -o json
 ```
 </details> <!-- gh -->
 
@@ -1386,7 +1387,7 @@ if ($?) { Write-Host "🚀 Provider $PROVIDER is redeployed with identity $IDENT
 # Show the provider's authentication settings
 Write-Host "🔌 Authentication of ${PROVIDER}:"
 az aigateway model-provider show -g $RG --gateway-name $GATEWAY -n $PROVIDER `
-  --query properties.foundry.authentication -o json
+  --query properties.authentication -o json
 ```
 </details> <!-- gh -->
 
@@ -1467,7 +1468,7 @@ terraform apply tfplan &&
 # Show the provider's authentication settings
 echo "🔌 Authentication of $PROVIDER:"
 az aigateway model-provider show -g "$RG" --gateway-name "$GATEWAY" -n "$PROVIDER" \
-  --query properties.foundry.authentication -o json
+  --query properties.authentication -o json
 ```
 </details> <!-- gh -->
 
@@ -1485,7 +1486,7 @@ if ($?) { Write-Host "🚀 Provider $PROVIDER uses identity $IDENTITY" }
 # Show the provider's authentication settings
 Write-Host "🔌 Authentication of ${PROVIDER}:"
 az aigateway model-provider show -g $RG --gateway-name $GATEWAY -n $PROVIDER `
-  --query properties.foundry.authentication -o json
+  --query properties.authentication -o json
 ```
 </details> <!-- gh -->
 
@@ -1497,9 +1498,8 @@ provider back to the system-assigned identity, with the same one change.
 <!-- /tracks -->
 
 > **Checkpoint**
-> The CLI output shows `kind: ManagedIdentity` and a `managedIdentity.clientId` equal to `$IDENTITY_CLIENT_ID`. At API
-> version `2026-11-01`, which the Bicep and Terraform tracks use, the same value is
-> `properties.authentication.managedIdentity.clientId`.
+> The CLI output shows a `managedIdentity` with `clientId` equal to `$IDENTITY_CLIENT_ID` and `resource` set to
+> `https://cognitiveservices.azure.com/`: the provider's `properties.authentication.managedIdentity.clientId`.
 
 ## Verify
 
@@ -1512,7 +1512,7 @@ provider back to the system-assigned identity, with the same one change.
 ```bash title="Bash"
 # Read the client ID that the provider signs in with, and compare it with your identity's client ID
 PROVIDER_CLIENT_ID="$(az aigateway model-provider show -g "$RG" --gateway-name "$GATEWAY" -n "$PROVIDER" \
-  --query properties.foundry.authentication.managedIdentity.clientId -o tsv)"
+  --query properties.authentication.managedIdentity.clientId -o tsv)"
 echo "🔌 Provider's client ID: $PROVIDER_CLIENT_ID"
 echo "👤 Identity's client ID: $IDENTITY_CLIENT_ID"
 ```
@@ -1523,7 +1523,7 @@ echo "👤 Identity's client ID: $IDENTITY_CLIENT_ID"
 ```powershell title="PowerShell"
 # Read the client ID that the provider signs in with, and compare it with your identity's client ID
 $PROVIDER_CLIENT_ID = az aigateway model-provider show -g $RG --gateway-name $GATEWAY -n $PROVIDER `
-  --query properties.foundry.authentication.managedIdentity.clientId -o tsv
+  --query properties.authentication.managedIdentity.clientId -o tsv
 Write-Host "🔌 Provider's client ID: $PROVIDER_CLIENT_ID"
 Write-Host "👤 Identity's client ID: $IDENTITY_CLIENT_ID"
 ```
@@ -1632,7 +1632,7 @@ Removing `clientId` selects the system-assigned identity again. A `null` value r
 echo "🔌 Authentication of $PROVIDER:"
 az aigateway model-provider update -g "$RG" --gateway-name "$GATEWAY" -n "$PROVIDER" \
   --foundry "{authentication:{managedIdentity:{clientId:null}}}" \
-  --query properties.foundry.authentication
+  --query properties.authentication
 ```
 </details> <!-- gh -->
 
@@ -1643,7 +1643,7 @@ az aigateway model-provider update -g "$RG" --gateway-name "$GATEWAY" -n "$PROVI
 Write-Host "🔌 Authentication of ${PROVIDER}:"
 az aigateway model-provider update -g $RG --gateway-name $GATEWAY -n $PROVIDER `
   --foundry "{authentication:{managedIdentity:{clientId:null}}}" `
-  --query properties.foundry.authentication
+  --query properties.authentication
 ```
 </details> <!-- gh -->
 

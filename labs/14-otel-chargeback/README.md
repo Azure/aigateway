@@ -216,7 +216,7 @@ az aigateway telemetry-exporter show -g $RG --gateway-name $GATEWAY -n appinsigh
 
 Expected output: `tid` and `oid` with `logs, traces, metrics`, and `appid` and `azp` with `logs, traces`. If the
 exporter isn't found, list the exporters with `az aigateway telemetry-exporter list` and use the name of the one
-whose kind is `OpenTelemetry`. Without one, reconfigure monitoring as in
+whose `properties.telemetryExporterType` is `OpenTelemetry`. Without one, reconfigure monitoring as in
 [Monitor usage, cost, and traces](../13-monitoring/README.md) first.
 
 ### Add metrics for the client app

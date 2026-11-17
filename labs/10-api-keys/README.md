@@ -1245,7 +1245,7 @@ automatically.
 ## Revoke a leaked key
 
 When a key leaks, revoke it first and investigate afterward. Deleting a key invalidates both of its values
-immediately, and anyone who holds them gets `401`. Pick one track.
+within about 10 seconds, and anyone who holds them then gets `401`. Pick one track.
 
 On the Bicep + azd track, follow the **Azure CLI** track. Then remove `old-notebook` from the template's list, and
 keep any names you added, so that a later `azd provision` doesn't create it again, with new values:
@@ -1344,7 +1344,7 @@ LEAKED_KEY="$(az aigateway api-key list-secrets -g "$RG" --gateway-name "$GATEWA
   --query primaryKey -o tsv)"
 echo "🔑 Leaked value: in LEAKED_KEY (${#LEAKED_KEY} characters, not shown)"
 
-# Delete the key: both of its values stop working right away
+# Delete the key: both of its values stop working within about 10 seconds
 az aigateway api-key delete -g "$RG" --gateway-name "$GATEWAY" -n old-notebook --yes &&
   echo "🚮 API key old-notebook is deleted"
 ```
@@ -1358,7 +1358,7 @@ $LEAKED_KEY = az aigateway api-key list-secrets -g $RG --gateway-name $GATEWAY -
   --query primaryKey -o tsv
 Write-Host "🔑 Leaked value: in LEAKED_KEY ($($LEAKED_KEY.Length) characters, not shown)"
 
-# Delete the key: both of its values stop working right away
+# Delete the key: both of its values stop working within about 10 seconds
 az aigateway api-key delete -g $RG --gateway-name $GATEWAY -n old-notebook --yes
 if ($?) { Write-Host "🚮 API key old-notebook is deleted" }
 ```

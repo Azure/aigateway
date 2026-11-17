@@ -288,8 +288,8 @@ Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) c
 
 `az aigateway model-provider import --foundry-resource-id` imports the account's deployments as the models of a
 provider. It also turns on the gateway's managed identity and grants it the **Foundry User** role on the account. It
-doesn't create aliases. The command needs the `aigateway` extension 1.0.0b30 or later: if `az aigateway version`
-reports an older one, [run the installer again](../SETUP.md#install-the-aigateway-extension).
+doesn't create aliases. The command needs the `aigateway` extension 1.0.0b30 or later: if the `extensionVersion` that
+`az aigateway version` prints is older, [run the installer again](../SETUP.md#install-the-aigateway-extension).
 
 <details open><summary>Bash</summary> <!-- gh -->
 

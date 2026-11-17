@@ -384,7 +384,7 @@ az aigateway model-alias set -g "$RG" --gateway-name "$GATEWAY" -n "$ALIAS" \
   --backend-model resource-id="$MODELS/$BACKUP" priority=1 weight=1 \
   --only-show-errors -o none &&
   echo "🔖 Alias $ALIAS routes to:" &&
-  az rest --method get --url "$WS/aliases/$ALIAS?$API" | jq -r "$ROUTES"
+  az aigateway model-alias show -g "$RG" --gateway-name "$GATEWAY" -n "$ALIAS" | jq -r "$ROUTES"
 ```
 </details> <!-- gh -->
 
@@ -402,7 +402,7 @@ az aigateway model-alias set -g $RG --gateway-name $GATEWAY -n $ALIAS `
   --only-show-errors -o none
 if ($?) {
   Write-Host "🔖 Alias $ALIAS routes to:"
-  Show-Routes (az rest --method get --url "$WS/aliases/${ALIAS}?$API" | ConvertFrom-Json)
+  Show-Routes (az aigateway model-alias show -g $RG --gateway-name $GATEWAY -n $ALIAS | ConvertFrom-Json)
 }
 ```
 </details> <!-- gh -->
@@ -836,10 +836,6 @@ export AI_GATEWAY_URL="$(azd env get-value AI_GATEWAY_URL)"
 echo "📝 Alias $ALIAS prefers $PRIMARY and falls back to $BACKUP on gateway $GATEWAY in $RG"
 echo "🌐 Runtime URL: $AI_GATEWAY_URL"
 
-# Build the management URL of the gateway's default workspace, and the API version, for the az rest calls
-export WS="https://management.azure.com$GATEWAY_ID/workspaces/default"
-export API="api-version=2026-11-01"
-
 # Read the app-first-call key from the gateway, so that it never shows on screen or lands in a file
 export AI_GATEWAY_API_KEY="$(az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/app-first-call" \
   --query primaryKey --output tsv)"
@@ -853,7 +849,7 @@ export ROUTES='.properties
      else (.failures | to_entries[] | "Rule \(.key + 1): when \(.value.when)  retries \(.value.retryAttempts // 0)"
        + "  exclude for \(.value.excludeFor // "this request only")") end)'
 echo "🔖 Alias $ALIAS routes to:"
-az rest --method get --url "$WS/aliases/$ALIAS?$API" | jq -r "$ROUTES"
+az aigateway model-alias show -g "$RG" --gateway-name "$GATEWAY" -n "$ALIAS" | jq -r "$ROUTES"
 ```
 </details> <!-- gh -->
 
@@ -872,10 +868,6 @@ $FOUNDRY_ID             = azd env get-value FOUNDRY_ACCOUNT_ID
 $env:AI_GATEWAY_URL     = azd env get-value AI_GATEWAY_URL
 Write-Host "📝 Alias $ALIAS prefers $PRIMARY and falls back to $BACKUP on gateway $GATEWAY in $RG"
 Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
-
-# Build the management URL of the gateway's default workspace, and the API version, for the az rest calls
-$WS  = "https://management.azure.com$GATEWAY_ID/workspaces/default"
-$API = "api-version=2026-11-01"
 
 # Read the app-first-call key from the gateway, so that it never shows on screen or lands in a file
 $env:AI_GATEWAY_API_KEY = az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/app-first-call" `
@@ -896,7 +888,7 @@ function Show-Routes($alias) {
   }
 }
 Write-Host "🔖 Alias $ALIAS routes to:"
-Show-Routes (az rest --method get --url "$WS/aliases/${ALIAS}?$API" | ConvertFrom-Json)
+Show-Routes (az aigateway model-alias show -g $RG --gateway-name $GATEWAY -n $ALIAS | ConvertFrom-Json)
 ```
 </details> <!-- gh -->
 
@@ -1204,10 +1196,6 @@ export AI_GATEWAY_URL="$(terraform output -raw ai_gateway_url)"
 echo "📝 Alias $ALIAS prefers $PRIMARY and falls back to $BACKUP on gateway $GATEWAY in $RG"
 echo "🌐 Runtime URL: $AI_GATEWAY_URL"
 
-# Build the management URL of the gateway's default workspace, and the API version, for the az rest calls
-export WS="https://management.azure.com$GATEWAY_ID/workspaces/default"
-export API="api-version=2026-11-01"
-
 # Read the app-first-call key from the gateway, so that it never lands in a file or the Terraform state
 export AI_GATEWAY_API_KEY="$(az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/app-first-call" \
   --query primaryKey --output tsv)"
@@ -1221,7 +1209,7 @@ export ROUTES='.properties
      else (.failures | to_entries[] | "Rule \(.key + 1): when \(.value.when)  retries \(.value.retryAttempts // 0)"
        + "  exclude for \(.value.excludeFor // "this request only")") end)'
 echo "🔖 Alias $ALIAS routes to:"
-az rest --method get --url "$WS/aliases/$ALIAS?$API" | jq -r "$ROUTES"
+az aigateway model-alias show -g "$RG" --gateway-name "$GATEWAY" -n "$ALIAS" | jq -r "$ROUTES"
 
 # Move back to the lab's folder, where the next sections run the burst script
 cd .. &&
@@ -1245,10 +1233,6 @@ $env:AI_GATEWAY_URL     = terraform output -raw ai_gateway_url
 Write-Host "📝 Alias $ALIAS prefers $PRIMARY and falls back to $BACKUP on gateway $GATEWAY in $RG"
 Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
 
-# Build the management URL of the gateway's default workspace, and the API version, for the az rest calls
-$WS  = "https://management.azure.com$GATEWAY_ID/workspaces/default"
-$API = "api-version=2026-11-01"
-
 # Read the app-first-call key from the gateway, so that it never lands in a file or the Terraform state
 $env:AI_GATEWAY_API_KEY = az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/app-first-call" `
   --query primaryKey --output tsv
@@ -1268,7 +1252,7 @@ function Show-Routes($alias) {
   }
 }
 Write-Host "🔖 Alias $ALIAS routes to:"
-Show-Routes (az rest --method get --url "$WS/aliases/${ALIAS}?$API" | ConvertFrom-Json)
+Show-Routes (az aigateway model-alias show -g $RG --gateway-name $GATEWAY -n $ALIAS | ConvertFrom-Json)
 
 # Move back to the lab's folder, where the next sections run the burst script
 Set-Location ..
@@ -1389,7 +1373,7 @@ once, and keep the throttled backend out of the alias for 30 seconds. Cap each r
 The `az aigateway model-alias` commands have no options yet for failure rules or the retry limit, so this step
 sends them to the management API with `az rest`, at API version `2026-11-01`. A `PATCH` changes only the fields that
 it sends, and keeps the backend models. Send `maxRetryAttempts` with the rules: its default, `0`, allows no send to
-the backup.
+the backup. Later `az aigateway model-alias set` and `update` commands keep the rules and the retry limit.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -1622,18 +1606,18 @@ The first burst shows the six `429`s that reached your clients. The second burst
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# Read the alias from the management API, and print its backend models, retry limit, and failure rules
+# Read the alias, and print its backend models, retry limit, and failure rules
 echo "🔖 Alias $ALIAS routes to:"
-az rest --method get --url "$WS/aliases/$ALIAS?$API" | jq -r "$ROUTES"
+az aigateway model-alias show -g "$RG" --gateway-name "$GATEWAY" -n "$ALIAS" | jq -r "$ROUTES"
 ```
 </details> <!-- gh -->
 
 <details><summary>PowerShell</summary> <!-- gh -->
 
 ```powershell title="PowerShell"
-# Read the alias from the management API, and print its backend models, retry limit, and failure rules
+# Read the alias, and print its backend models, retry limit, and failure rules
 Write-Host "🔖 Alias $ALIAS routes to:"
-Show-Routes (az rest --method get --url "$WS/aliases/${ALIAS}?$API" | ConvertFrom-Json)
+Show-Routes (az aigateway model-alias show -g $RG --gateway-name $GATEWAY -n $ALIAS | ConvertFrom-Json)
 ```
 </details> <!-- gh -->
 

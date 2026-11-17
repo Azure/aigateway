@@ -131,12 +131,11 @@ allow both search tools and `*code_sample*` to block the code sample tool. Both 
 cover every backend of the server. For one backend only, start the pattern with its namespace, as in `learn_*`.
 
 > [!NOTE]
-> The `aigateway` extension sets tool availability and blocked tools, but not server access yet, so the Azure CLI
-> track has no step in [Take the whole server offline](#take-the-whole-server-offline). Block the server in the
-> portal, or declare it with the **Bicep + azd** or **Terraform** track: the tool controls are the MCP server's
-> `allowList`, `blockList`, and `accessState` properties. In the generally available API (`2026-11-01`), the blocked
-> tools are `blockList`. The preview name `blocked`, which the extension still prints, is ignored without an error
-> in a template, so check the server after you deploy.
+> The tool controls are the MCP server's `allowList`, `blockList`, and `accessState` properties. The `aigateway`
+> extension sets the first two with `--allow-list` and `--block-list`, but has no option for server access yet, so
+> the Azure CLI track in [Take the whole server offline](#take-the-whole-server-offline) sets `accessState` with
+> `az rest`. In a template, the preview name `blocked` is ignored without an error, so check the server after you
+> deploy.
 
 ## Publish only approved tools
 
@@ -177,15 +176,15 @@ Select **Save**. Under **Tools**, the details page shows **Allowed tools (1)** w
 ### Set the tool controls
 
 `az aigateway mcp update` changes only the properties that you pass, so the backends, versions, and policies stay
-as they are. `--allow-list` sets the allowed tool name patterns, and `--blocked` the blocked ones.
+as they are. `--allow-list` sets the allowed tool name patterns, and `--block-list` the blocked ones.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
 # Publish only the tools that match *_search, block the code sample tools, and show the tool controls
 az aigateway mcp update -g "$RG" --gateway-name "$GATEWAY" -n learn \
-  --allow-list "*_search" --blocked "*code_sample*" \
-  --query "properties.{allowList:allowList,blocked:blocked}" &&
+  --allow-list "*_search" --block-list "*code_sample*" \
+  --query "properties.{allowList:allowList,blockList:blockList}" &&
   echo "🔧 learn publishes the *_search tools and blocks *code_sample*"
 ```
 </details> <!-- gh -->
@@ -195,19 +194,18 @@ az aigateway mcp update -g "$RG" --gateway-name "$GATEWAY" -n learn \
 ```powershell title="PowerShell"
 # Publish only the tools that match *_search, block the code sample tools, and show the tool controls
 az aigateway mcp update -g $RG --gateway-name $GATEWAY -n learn `
-  --allow-list "*_search" --blocked "*code_sample*" `
-  --query "properties.{allowList:allowList,blocked:blocked}"
+  --allow-list "*_search" --block-list "*code_sample*" `
+  --query "properties.{allowList:allowList,blockList:blockList}"
 if ($?) { Write-Host "🔧 learn publishes the *_search tools and blocks *code_sample*" }
 ```
 </details> <!-- gh -->
 
 For several patterns, pass a JSON array, such as `--allow-list '["*_search","*_fetch"]'`. `--allow-list null`
 clears the allow list, so the server publishes every tool, while `--allow-list "[]"` publishes none.
-`--blocked null` clears the blocked tools. The extension still speaks the preview API, so it prints the blocked
-tools as `blocked`. The generally available API stores them as `blockList`.
+`--block-list null` clears the blocked tools. `--blocked` is another name for `--block-list`.
 
 > **Checkpoint**
-> The command prints `"allowList": ["*_search"]` and `"blocked": ["*code_sample*"]`.
+> The command prints `"allowList": ["*_search"]` and `"blockList": ["*code_sample*"]`.
 
 The runtime picks up the change within about 15 seconds, so wait a moment before you check the catalog.
 
@@ -915,6 +913,109 @@ Select **Edit** again, set **MCP server access** to **Active**, and select **Sav
 confirm that the four tools are back.
 
 </details> <!-- gh -->
+<!-- track: cli | Azure CLI -->
+<details><summary><b>⌨️ Azure CLI</b></summary> <!-- gh -->
+
+### Block the server
+
+The `aigateway` extension 1.0.0b34 has no option for server access, so this step calls the management API with
+`az rest`. The `PATCH` changes only the MCP server's `accessState`, so its backends, tool rules, and policies stay
+as they are.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Read the gateway's resource ID, and build the management URL of the learn MCP server, with the API version
+GATEWAY_ID="$(az aigateway show -g "$RG" -n "$GATEWAY" --query id -o tsv)"
+URL="https://management.azure.com$GATEWAY_ID/workspaces/default/toolServers/learn?api-version=2026-11-01"
+echo "🆔 Gateway: $GATEWAY_ID"
+
+# Set the server's access to blocked, and show the new value
+az rest --method patch --url "$URL" --body '{"properties":{"accessState":"blocked"}}' \
+  --query properties.accessState &&
+  echo "🔌 The learn MCP server is blocked"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Read the gateway's resource ID, and build the management URL of the learn MCP server, with the API version
+$GATEWAY_ID = az aigateway show -g $RG -n $GATEWAY --query id -o tsv
+$URL = "https://management.azure.com$GATEWAY_ID/workspaces/default/toolServers/learn`?api-version=2026-11-01"
+Write-Host "🆔 Gateway: $GATEWAY_ID"
+
+# Write the request body to a file, which --body reads with the @ prefix, so that its quotes reach az intact
+# Then set the server's access to blocked, show the new value, and delete the file
+'{"properties":{"accessState":"blocked"}}' | Set-Content -Path patch.json
+az rest --method patch --url $URL --body '@patch.json' --query properties.accessState
+if ($?) { Write-Host "🔌 The learn MCP server is blocked" }
+Remove-Item patch.json
+```
+</details> <!-- gh -->
+
+The command prints `"blocked"`. The runtime picks up the change within about 15 seconds, so wait a moment before
+you connect.
+
+### Confirm that clients can't connect
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Try to connect to the blocked server: the MCP handshake fails before any backend is called
+echo "🚦 Expect initialize to fail with AccessBlockedByGateway:"
+./infra/list-tools.sh learn
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Try to connect to the blocked server: the MCP handshake fails before any backend is called
+Write-Host "🚦 Expect initialize to fail with AccessBlockedByGateway:"
+./infra/list-tools.ps1 -Server learn
+```
+</details> <!-- gh -->
+
+The script stops at `initialize`. The gateway answers with HTTP `200` and a JSON-RPC error,
+`Access to MCP server 'learn' is blocked.`, with the code `AccessBlockedByGateway`. No backend is called.
+
+### Turn the server back on
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Set the server's access back to active, and show the new value
+az rest --method patch --url "$URL" --body '{"properties":{"accessState":"active"}}' \
+  --query properties.accessState &&
+  echo "🔌 The learn MCP server is active"
+
+# Wait for the runtime to pick up the change, then list the tools again, to confirm that clients can connect
+sleep 15
+echo "🔧 Tools on the learn MCP server:"
+./infra/list-tools.sh learn
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Set the server's access back to active, show the new value, and delete the request body file
+'{"properties":{"accessState":"active"}}' | Set-Content -Path patch.json
+az rest --method patch --url $URL --body '@patch.json' --query properties.accessState
+if ($?) { Write-Host "🔌 The learn MCP server is active" }
+Remove-Item patch.json
+
+# Wait for the runtime to pick up the change, then list the tools again, to confirm that clients can connect
+Start-Sleep -Seconds 15
+Write-Host "🔧 Tools on the learn MCP server:"
+./infra/list-tools.ps1 -Server learn
+```
+</details> <!-- gh -->
+
+The command prints `"active"`, and the four tools are back.
+
+</details> <!-- gh -->
 <!-- track: iac | Bicep + azd -->
 <details><summary><b>🏗️ Bicep + azd</b></summary> <!-- gh -->
 
@@ -1188,7 +1289,7 @@ The `mcp show` command prints nothing if the server has never had a policy, and 
 # 5 calls per 30 seconds for each caller identity, in a file that --policies reads with the @ prefix
 az aigateway mcp show -g "$RG" --gateway-name "$GATEWAY" -n learn -o json | jq -c '
     [(.properties.policies // [])[] | select(.type != "requestRateLimit")]
-    + [{type: "requestRateLimit", callsPerPeriod: 5, periodSeconds: 30, counterKey: ["identity"]}]' > policies.json &&
+    + [{type: "requestRateLimit", count: 5, period: "PT30S", counterKey: ["identity"]}]' > policies.json &&
   echo "📄 policies.json has the merged policies"
 
 # Replace the server's whole policies array with the file, show the result, and delete the file
@@ -1206,7 +1307,7 @@ rm policies.json
 # 5 calls per 30 seconds for each caller identity
 $current  = az aigateway mcp show -g $RG --gateway-name $GATEWAY -n learn -o json | ConvertFrom-Json
 $policies = @($current.properties.policies | Where-Object { $_ -and $_.type -ne 'requestRateLimit' })
-$policies += [pscustomobject]@{ type = 'requestRateLimit'; callsPerPeriod = 5; periodSeconds = 30; counterKey = @('identity') }
+$policies += [pscustomobject]@{ type = 'requestRateLimit'; count = 5; period = 'PT30S'; counterKey = @('identity') }
 Write-Host "📝 Policies to write: $($policies.Count), including the request rate limit"
 
 # Write the merged array to a file, which --policies reads with the @ prefix
@@ -1223,16 +1324,9 @@ Remove-Item policies.json
 
 The commands read the whole MCP server, not just `properties.policies`, because the array is missing until the
 server has had a policy. `mcp update` changes only the properties you pass, so the backends and versions stay as
-they are. `periodSeconds` is the renewal period in seconds, from `1` to `300`. The portal offers `30`, `60`,
-`120`, and `300`. `counterKey` is an array with `identity`, `ipAddress`, or both. An empty array gives all callers
-one shared counter.
-
-> [!NOTE]
-> The `az aigateway` extension still speaks the preview property names `callsPerPeriod` and `periodSeconds`. The
-> generally available management API (`2026-11-01`), which the Bicep and Terraform tracks use, stores the same
-> limit as `"count": 5` and `"period": "PT30S"`, an ISO 8601 duration from `PT1S` to `PT300S`, or `"minute"`. It
-> rejects the preview names. In Bash, read the stored shape with
-> `az rest --method get --url "https://management.azure.com$(az aigateway show -g "$RG" -n "$GATEWAY" --query id -o tsv)/workspaces/default/toolServers/learn?api-version=2026-11-01" --query properties.policies`.
+they are. `period` is the renewal period: an ISO 8601 duration from `PT1S` to `PT300S`, such as `PT30S`, or
+`"minute"`. The portal offers 30, 60, 120, and 300 seconds. `counterKey` is an array with `identity`, `ipAddress`,
+or both. An empty array gives all callers one shared counter.
 
 > [!TIP]
 > The same read, merge, and replace pattern sets policies on models, aliases, and the `default` workspace.
@@ -1242,9 +1336,9 @@ one shared counter.
 >
 > ```json
 > {
->   "callsPerPeriod": 5,
+>   "count": 5,
 >   "counterKey": ["identity"],
->   "periodSeconds": 30,
+>   "period": "PT30S",
 >   "scope": "resource",
 >   "type": "requestRateLimit"
 > }
@@ -1550,8 +1644,8 @@ Clear the allow list, so that the server publishes every tool again, and clear t
 
 ```bash title="Bash"
 # Clear the allow list and the blocked tools, so that learn publishes and runs every tool again
-az aigateway mcp update -g "$RG" --gateway-name "$GATEWAY" -n learn --allow-list null --blocked null \
-  --query "properties.{allowList:allowList,blocked:blocked}" &&
+az aigateway mcp update -g "$RG" --gateway-name "$GATEWAY" -n learn --allow-list null --block-list null \
+  --query "properties.{allowList:allowList,blockList:blockList}" &&
   echo "🔌 learn publishes every tool again"
 ```
 </details> <!-- gh -->
@@ -1560,13 +1654,13 @@ az aigateway mcp update -g "$RG" --gateway-name "$GATEWAY" -n learn --allow-list
 
 ```powershell title="PowerShell"
 # Clear the allow list and the blocked tools, so that learn publishes and runs every tool again
-az aigateway mcp update -g $RG --gateway-name $GATEWAY -n learn --allow-list null --blocked null `
-  --query "properties.{allowList:allowList,blocked:blocked}"
+az aigateway mcp update -g $RG --gateway-name $GATEWAY -n learn --allow-list null --block-list null `
+  --query "properties.{allowList:allowList,blockList:blockList}"
 if ($?) { Write-Host "🔌 learn publishes every tool again" }
 ```
 </details> <!-- gh -->
 
-The command prints `"allowList": null` and `"blocked": null`, and the server lists all six tools again.
+The command prints `"allowList": null` and `"blockList": null`, and the server lists all six tools again.
 
 </details> <!-- gh -->
 <!-- track: iac | Bicep + azd -->

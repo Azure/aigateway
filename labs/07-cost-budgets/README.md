@@ -288,8 +288,8 @@ count per client IP address. A new cost limit gets the `id` `default` unless you
 
 `--overrides` sets the whole list of overrides, in order, and the first match wins. Give the `support-bot` key $50
 per day with its resource ID (`apiKeyResourceId`), and your own Microsoft Entra identity $20 per day with your tenant
-ID (`tid`) and object ID (`oid`). The CLI takes `claims` as a map of claim names to values, and stores it as the list
-of `name` and `value` pairs that the API uses.
+ID (`tid`) and object ID (`oid`). `claims` is a list of `name` and `value` pairs, the same shape that the API, the
+Bicep template, and the Terraform configuration use.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -301,7 +301,7 @@ echo "👤 Tenant ID: $TENANT_ID, object ID: $OBJECT_ID"
 
 # Give support-bot 50 US dollars per day, and your Entra identity 20 US dollars per day
 az aigateway model policy set-cost-limit -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL" \
-  --overrides "[{apiKeyResourceId:$GATEWAY_ID/apiKeys/support-bot,amount:50},{claims:{tid:$TENANT_ID,oid:$OBJECT_ID},amount:20}]" \
+  --overrides "[{apiKeyResourceId:$GATEWAY_ID/apiKeys/support-bot,amount:50},{claims:[{name:tid,value:$TENANT_ID},{name:oid,value:$OBJECT_ID}],amount:20}]" \
   --output none &&
   echo "🔐 support-bot gets \$50 and your identity gets \$20 per day on $MODEL"
 ```
@@ -317,7 +317,7 @@ Write-Host "👤 Tenant ID: $TENANT_ID, object ID: $OBJECT_ID"
 
 # Give support-bot 50 US dollars per day, and your Entra identity 20 US dollars per day
 az aigateway model policy set-cost-limit -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER -n $MODEL `
-  --overrides "[{apiKeyResourceId:$GATEWAY_ID/apiKeys/support-bot,amount:50},{claims:{tid:$TENANT_ID,oid:$OBJECT_ID},amount:20}]" `
+  --overrides "[{apiKeyResourceId:$GATEWAY_ID/apiKeys/support-bot,amount:50},{claims:[{name:tid,value:$TENANT_ID},{name:oid,value:$OBJECT_ID}],amount:20}]" `
   --output none
 if ($?) { Write-Host "🔐 support-bot gets `$50 and your identity gets `$20 per day on $MODEL" }
 ```
@@ -349,8 +349,8 @@ az aigateway model policy list -g $RG --gateway-name $GATEWAY --provider-name $P
 > **Checkpoint**
 > The output lists your other policies unchanged plus one `costLimit` entry with `"id": "default"`, `"amount": 5.0`,
 > `"period": "day"`, `"counterKey": ["identity"]`, and `"scope": "resource"`. Its `overrides` list `"amount": 50.0`
-> with the `apiKeyResourceId` of `support-bot`, then `"amount": 20.0` with `claims` that map `oid` and `tid` to your
-> object ID and tenant ID.
+> with the `apiKeyResourceId` of `support-bot`, then `"amount": 20.0` with a `claims` list that holds your `tid` and
+> `oid` as `name` and `value` pairs.
 
 </details> <!-- gh -->
 <!-- track: iac | Bicep + azd -->
@@ -671,10 +671,8 @@ export GATEWAY="$(azd env get-value AI_GATEWAY_NAME)"
 export PROVIDER="$(azd env get-value AI_GATEWAY_PROVIDER)"
 export MODEL="$(azd env get-value AI_GATEWAY_BACKEND_MODEL)"
 
-# Read the gateway's resource ID, and build the management URL of its default workspace for the az rest calls
-export API="api-version=2026-11-01"
+# Read the gateway's resource ID, which the key commands use
 export GATEWAY_ID="$(azd env get-value AI_GATEWAY_ID)"
-export WS="https://management.azure.com$GATEWAY_ID/workspaces/default"
 
 # Read the gateway's runtime URL and the budgeted alias
 export AI_GATEWAY_URL="$(azd env get-value AI_GATEWAY_URL)"
@@ -698,10 +696,8 @@ $GATEWAY                = azd env get-value AI_GATEWAY_NAME
 $PROVIDER               = azd env get-value AI_GATEWAY_PROVIDER
 $MODEL                  = azd env get-value AI_GATEWAY_BACKEND_MODEL
 
-# Read the gateway's resource ID, and build the management URL of its default workspace for the az rest calls
-$API                    = "api-version=2026-11-01"
+# Read the gateway's resource ID, which the key commands use
 $GATEWAY_ID             = azd env get-value AI_GATEWAY_ID
-$WS                     = "https://management.azure.com$GATEWAY_ID/workspaces/default"
 
 # Read the gateway's runtime URL and the budgeted alias
 $env:AI_GATEWAY_URL     = azd env get-value AI_GATEWAY_URL
@@ -718,10 +714,10 @@ Write-Host "🔖 Model alias: $env:AI_GATEWAY_MODEL"
 
 > **Checkpoint**
 > `azd up` ended with `SUCCESS`, and the last command printed `🔖 Model alias: gpt-5-mini-budget`.
-> `az rest --url "$WS/aliases/$AI_GATEWAY_MODEL?$API" --query properties.policies` returns one `costLimit` entry
-> with `"amount": 5.0`, `"period": "day"`, `"counterKey": ["identity"]`, and two `overrides`: `"amount": 50.0`
-> with the `apiKeyResourceId` of `support-bot`, and `"amount": 20.0` with a `claims` list that holds your `tid`
-> and `oid` as `name` and `value` pairs.
+> `az aigateway model-alias show -g "$RG" --gateway-name "$GATEWAY" -n "$AI_GATEWAY_MODEL" --query properties.policies`
+> returns one `costLimit` entry with `"amount": 5.0`, `"period": "day"`, `"counterKey": ["identity"]`, and two
+> `overrides`: `"amount": 50.0` with the `apiKeyResourceId` of `support-bot`, and `"amount": 20.0` with a `claims`
+> list that holds your `tid` and `oid` as `name` and `value` pairs.
 
 ### Change the budget
 
@@ -956,10 +952,8 @@ export GATEWAY="$(terraform output -raw ai_gateway_name)"
 export PROVIDER="$(terraform output -raw ai_gateway_provider)"
 export MODEL="$(terraform output -raw ai_gateway_backend_model)"
 
-# Read the gateway's resource ID, and build the management URL of its default workspace for the az rest calls
-export API="api-version=2026-11-01"
+# Read the gateway's resource ID, which the key commands use
 export GATEWAY_ID="$(terraform output -raw ai_gateway_id)"
-export WS="https://management.azure.com$GATEWAY_ID/workspaces/default"
 
 # Read the gateway's runtime URL and the budgeted alias
 export AI_GATEWAY_URL="$(terraform output -raw ai_gateway_url)"
@@ -985,10 +979,8 @@ $GATEWAY                = terraform output -raw ai_gateway_name
 $PROVIDER               = terraform output -raw ai_gateway_provider
 $MODEL                  = terraform output -raw ai_gateway_backend_model
 
-# Read the gateway's resource ID, and build the management URL of its default workspace for the az rest calls
-$API                    = "api-version=2026-11-01"
+# Read the gateway's resource ID, which the key commands use
 $GATEWAY_ID             = terraform output -raw ai_gateway_id
-$WS                     = "https://management.azure.com$GATEWAY_ID/workspaces/default"
 
 # Read the gateway's runtime URL and the budgeted alias
 $env:AI_GATEWAY_URL     = terraform output -raw ai_gateway_url
@@ -1008,9 +1000,10 @@ if ($?) { Write-Host "📂 Lab folder: $(Get-Location)" }
 
 > **Checkpoint**
 > `terraform apply` ended with `Apply complete! Resources: 12 added, 0 changed, 0 destroyed.`, and the output
-> shows `🔖 Model alias: gpt-5-mini-budget`. `az rest --url "$WS/aliases/$AI_GATEWAY_MODEL?$API" --query
-> properties.policies` returns the same `costLimit` entry as on the Bicep + azd track: `"amount": 5.0`,
-> `"period": "day"`, and the two `overrides` for `support-bot` and your identity.
+> shows `🔖 Model alias: gpt-5-mini-budget`.
+> `az aigateway model-alias show -g "$RG" --gateway-name "$GATEWAY" -n "$AI_GATEWAY_MODEL" --query properties.policies`
+> returns the same `costLimit` entry as on the Bicep + azd track: `"amount": 5.0`, `"period": "day"`, and the two
+> `overrides` for `support-bot` and your identity.
 
 ### Change the budget
 

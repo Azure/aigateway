@@ -267,15 +267,16 @@ az aigateway mcp show -g "$RG" --gateway-name "$GATEWAY" -n learn --query "prope
 ```
 
 > **Checkpoint**
-> The table shows `learn` with `Microsoft Learn` in the **DisplayName** column and `1` in the **Sources** column.
-> The second command returns one endpoint with `"namespace": "learn"` and `"kind": "mcp"`, and a `url` that ends
-> in `/default/toolservers/learn/mcp`.
+> The table shows `learn` with `Microsoft Learn` in the **DisplayName** column, `failClosed` in the
+> **FailureMode** column, and `1` in the **Sources** column. The second command returns one endpoint with
+> `"namespace": "learn"`, `"kind": "mcp"`, and `"mode": "failClosed"`, and a `url` that ends in
+> `/default/toolservers/learn/mcp`.
 
 > [!NOTE]
-> The `az aigateway` extension still speaks the preview property names: `required` and `mcp.url`. The generally
-> available management API (`2026-11-01`), which the Bicep and Terraform tracks use, stores the same backend as
-> `"mode": "failClosed"` (`"failOpen"` for an optional backend) and `mcp.endpoint.url`. In Bash, read the stored shape with
-> `az rest --method get --url "https://management.azure.com$(az aigateway show -g "$RG" -n "$GATEWAY" --query id -o tsv)/workspaces/default/toolServers/learn?api-version=2026-11-01" --query properties.endpoints`.
+> The CLI takes a backend's settings as `required` and `mcp.url`, and stores them with the property names of the
+> generally available management API (`2026-11-01`), which the Bicep and Terraform tracks also use:
+> `"required": true` becomes `"mode": "failClosed"` (`"failOpen"` for an optional backend), and `mcp.url`
+> becomes `mcp.endpoint.url`. `mcp show` prints the stored names.
 
 </details> <!-- gh -->
 <!-- track: iac | Bicep + azd -->
@@ -851,7 +852,7 @@ the description and policies, stay as they are.
 az aigateway mcp source add -g "$RG" --gateway-name "$GATEWAY" -n learn \
   --namespace docs --kind mcp --required false \
   --mcp '{"transport": "streamableHttp", "url": "https://learn.microsoft.com/api/mcp"}' \
-  --query "[].{namespace:namespace,required:required,url:mcp.url}" -o table &&
+  --query "[].{namespace:namespace,mode:mode,url:mcp.endpoint.url}" -o table &&
   echo "🔌 Backend docs is added to learn, as optional"
 ```
 </details> <!-- gh -->
@@ -866,13 +867,14 @@ az aigateway mcp source add -g "$RG" --gateway-name "$GATEWAY" -n learn \
 # Add the Learn MCP server again as an optional backend, under the namespace docs, and list the backends
 az aigateway mcp source add -g $RG --gateway-name $GATEWAY -n learn `
   --namespace docs --kind mcp --required false --mcp "@mcp.json" `
-  --query "[].{namespace:namespace,required:required,url:mcp.url}" -o table
+  --query "[].{namespace:namespace,mode:mode,url:mcp.endpoint.url}" -o table
 if ($?) { Write-Host "🔌 Backend docs is added to learn, as optional" }
 Remove-Item mcp.json
 ```
 </details> <!-- gh -->
 
-The table lists every backend of the server. The command fails with "A source with namespace 'docs' already
+The table lists every backend of the server: `learn` with the **Mode** `failClosed`, and `docs` with `failOpen`,
+which is how the server stores `--required false`. The command fails with "A source with namespace 'docs' already
 exists on this MCP server registration." if you run it twice. For a backend that needs a key, pass the key with
 `--credentials`.
 

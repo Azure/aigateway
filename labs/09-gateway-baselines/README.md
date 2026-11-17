@@ -175,9 +175,10 @@ protection can't be set at Gateway scope; it applies to individual MCP servers.
 
 ## Apply the baseline
 
-Pick one track. Each track creates the same four policies at **Gateway** scope. The Azure CLI track sets them
-with one `az aigateway policy set` command. The Policy as code track keeps them in a reviewed file and applies
-the whole file with a script, and the Terraform track applies the same file with the `azapi` provider.
+Pick one track. Each track creates the same four policies at **Gateway** scope. The Azure CLI track sets three
+of them with one `az aigateway policy set` command and adds content safety with `az rest`. The Policy as code
+track keeps them in a reviewed file and applies the whole file with a script, and the Terraform track applies the
+same file with the `azapi` provider.
 
 <!-- track: portal | Portal -->
 <details open><summary><b>🖥️ Portal</b></summary> <!-- gh -->
@@ -217,15 +218,25 @@ Select **Create**.
 ### Add content safety
 
 The **Add policy** wizard doesn't list **Content safety** for AI Gateway resources, so create this policy with
-one Azure CLI command, for example in [Azure Cloud Shell](https://shell.azure.com), with the variables from
-[Before you begin](#before-you-begin). The command puts **Balanced** (`Medium`) on all four categories at
-**Gateway** scope and keeps every other Gateway scope policy:
+the Azure CLI, for example in [Azure Cloud Shell](https://shell.azure.com), with the variables from
+[Before you begin](#before-you-begin). Gateway scope policies live in the `properties.policies` array of the
+gateway's `default` workspace. The commands read that array, add **Balanced** (`Medium`) content safety on all
+four categories, and write the array back, so every other Gateway scope policy stays:
 
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# Add content safety at Gateway scope, Medium (Balanced) in all four categories
-az aigateway policy set-content-safety -g "$RG" --gateway-name "$GATEWAY" --content-safety Medium --output none &&
+# Build the management URL of the gateway's default workspace, which holds the Gateway scope policies
+GATEWAY_ID="$(az aigateway show -g "$RG" -n "$GATEWAY" --query id -o tsv)"
+URL="https://management.azure.com$GATEWAY_ID/workspaces/default?api-version=2026-11-01"
+
+# Read the policies, drop any content safety policy, and add one at Medium (Balanced) in all four categories
+POLICIES="$(az rest --method get --url "$URL" | jq -c '
+  [(.properties.policies // [])[] | select(.type != "contentSafety")]
+  + [{"type":"contentSafety","scope":"resource","hateSeverity":"Medium","violenceSeverity":"Medium","sexualSeverity":"Medium","selfHarmSeverity":"Medium"}]')"
+
+# Send the merged array back: a PATCH replaces the whole policies array
+az rest --method patch --url "$URL" --body "{\"properties\":{\"policies\":$POLICIES}}" --output none &&
   echo "🔐 Content safety on $GATEWAY is Balanced (Medium) for all four categories at Gateway scope"
 ```
 </details> <!-- gh -->
@@ -233,9 +244,23 @@ az aigateway policy set-content-safety -g "$RG" --gateway-name "$GATEWAY" --cont
 <details><summary>PowerShell</summary> <!-- gh -->
 
 ```powershell title="PowerShell"
-# Add content safety at Gateway scope, Medium (Balanced) in all four categories
-az aigateway policy set-content-safety -g $RG --gateway-name $GATEWAY --content-safety Medium --output none
+# Build the management URL of the gateway's default workspace, which holds the Gateway scope policies
+$GATEWAY_ID = az aigateway show -g $RG -n $GATEWAY --query id -o tsv
+$URL = "https://management.azure.com$GATEWAY_ID/workspaces/default?api-version=2026-11-01"
+
+# Read the policies, drop any content safety policy, and add one at Medium (Balanced) in all four categories
+$current  = az rest --method get --url $URL | ConvertFrom-Json
+$policies = @($current.properties.policies | Where-Object { $_ -and $_.type -ne 'contentSafety' })
+$policies += [pscustomobject]@{
+  type = 'contentSafety'; scope = 'resource'
+  hateSeverity = 'Medium'; violenceSeverity = 'Medium'; sexualSeverity = 'Medium'; selfHarmSeverity = 'Medium'
+}
+
+# Send the merged array back from a file, which keeps the JSON quotes intact: a PATCH replaces the whole array
+@{ properties = @{ policies = $policies } } | ConvertTo-Json -Depth 10 -Compress | Set-Content -Path patch.json
+az rest --method patch --url $URL --body '@patch.json' --output none
 if ($?) { Write-Host "🔐 Content safety on $GATEWAY is Balanced (Medium) for all four categories at Gateway scope" }
+Remove-Item patch.json
 ```
 </details> <!-- gh -->
 
@@ -264,9 +289,9 @@ before you select **Create**.
 
 ### Set the baseline
 
-`az aigateway policy set` creates or updates all four policies at **Gateway** scope in one call. It replaces a
-policy of the same type and keeps every other Gateway scope policy, such as a cost limit. `--allowed-ips` takes a
-list in brackets, so the command removes any spaces from your ranges.
+`az aigateway policy set` creates or updates the token limit, request rate limit, and IP filter at **Gateway**
+scope in one call. It replaces a policy of the same type and keeps every other Gateway scope policy, such as a
+cost limit. `--allowed-ips` takes a list in brackets, so the command removes any spaces from your ranges.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -274,13 +299,12 @@ list in brackets, so the command removes any spaces from your ranges.
 # Check the ranges that the IP filter will allow
 echo "🔐 IP filter allows: $ALLOWED_CIDRS"
 
-# Set the token limit, request rate limit, content safety, and IP filter at Gateway scope
+# Set the token limit, request rate limit, and IP filter at Gateway scope
 az aigateway policy set -g "$RG" --gateway-name "$GATEWAY" --output none \
   --token-limit 100000 --token-period minute --token-counter-key Identity \
   --rate-limit 600 --period-seconds 60 --rate-counter-key Identity \
-  --content-safety Medium \
   --action Allow --allowed-ips "[${ALLOWED_CIDRS// /}]" &&
-  echo "🔐 Baseline of four policies is on $GATEWAY at Gateway scope"
+  echo "🔐 Token limit, request rate limit, and IP filter are on $GATEWAY at Gateway scope"
 ```
 </details> <!-- gh -->
 
@@ -290,13 +314,61 @@ az aigateway policy set -g "$RG" --gateway-name "$GATEWAY" --output none \
 # Check the ranges that the IP filter will allow
 Write-Host "🔐 IP filter allows: $env:ALLOWED_CIDRS"
 
-# Set the token limit, request rate limit, content safety, and IP filter at Gateway scope
+# Set the token limit, request rate limit, and IP filter at Gateway scope
 az aigateway policy set -g $RG --gateway-name $GATEWAY --output none `
   --token-limit 100000 --token-period minute --token-counter-key Identity `
   --rate-limit 600 --period-seconds 60 --rate-counter-key Identity `
-  --content-safety Medium `
   --action Allow --allowed-ips "[$($env:ALLOWED_CIDRS -replace '\s')]"
+if ($?) { Write-Host "🔐 Token limit, request rate limit, and IP filter are on $GATEWAY at Gateway scope" }
+```
+</details> <!-- gh -->
+
+### Add content safety
+
+The `aigateway` extension 1.0.0b34 removed its content safety options until they match API version
+`2026-11-01`, so this step calls the management API with `az rest`. Gateway scope policies live in the
+`properties.policies` array of the gateway's `default` workspace, and a `PATCH` **replaces the whole array**, so
+the commands read it, swap in **Balanced** (`Medium`) content safety, and write the result back. That keeps the
+three policies you just set and every other Gateway scope policy.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Build the management URL of the gateway's default workspace, which holds the Gateway scope policies
+GATEWAY_ID="$(az aigateway show -g "$RG" -n "$GATEWAY" --query id -o tsv)"
+URL="https://management.azure.com$GATEWAY_ID/workspaces/default?api-version=2026-11-01"
+
+# Read the policies, drop any content safety policy, and add one at Medium (Balanced) in all four categories
+POLICIES="$(az rest --method get --url "$URL" | jq -c '
+  [(.properties.policies // [])[] | select(.type != "contentSafety")]
+  + [{"type":"contentSafety","scope":"resource","hateSeverity":"Medium","violenceSeverity":"Medium","sexualSeverity":"Medium","selfHarmSeverity":"Medium"}]')"
+
+# Send the merged array back: a PATCH replaces the whole policies array
+az rest --method patch --url "$URL" --body "{\"properties\":{\"policies\":$POLICIES}}" --output none &&
+  echo "🔐 Baseline of four policies is on $GATEWAY at Gateway scope"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Build the management URL of the gateway's default workspace, which holds the Gateway scope policies
+$GATEWAY_ID = az aigateway show -g $RG -n $GATEWAY --query id -o tsv
+$URL = "https://management.azure.com$GATEWAY_ID/workspaces/default?api-version=2026-11-01"
+
+# Read the policies, drop any content safety policy, and add one at Medium (Balanced) in all four categories
+$current  = az rest --method get --url $URL | ConvertFrom-Json
+$policies = @($current.properties.policies | Where-Object { $_ -and $_.type -ne 'contentSafety' })
+$policies += [pscustomobject]@{
+  type = 'contentSafety'; scope = 'resource'
+  hateSeverity = 'Medium'; violenceSeverity = 'Medium'; sexualSeverity = 'Medium'; selfHarmSeverity = 'Medium'
+}
+
+# Send the merged array back from a file, which keeps the JSON quotes intact: a PATCH replaces the whole array
+@{ properties = @{ policies = $policies } } | ConvertTo-Json -Depth 10 -Compress | Set-Content -Path patch.json
+az rest --method patch --url $URL --body '@patch.json' --output none
 if ($?) { Write-Host "🔐 Baseline of four policies is on $GATEWAY at Gateway scope" }
+Remove-Item patch.json
 ```
 </details> <!-- gh -->
 
@@ -327,23 +399,25 @@ Expected output, in any order, plus a row for every other Gateway scope policy y
 Policy            Scope
 ----------------  ---------
 tokenLimit        workspace
-contentSafety     resource
 requestRateLimit  workspace
 ipFilter          resource
+contentSafety     resource
 ```
 
 > [!NOTE]
 > Run `az aigateway policy list` without `--query` to see each policy's settings. The token and request rate
 > limits have `"counterKey": ["identity"]`, which gives each API key or Entra caller its own counter. The CLI
-> shows the request rate limit as `callsPerPeriod` and `periodSeconds`; the management API version `2026-11-01`,
-> which the Policy as code track calls, names them `count` and `period`. The CLI stores the IP filter action as
-> `"allow"` in lowercase, and the portal shows it as **Allow listed IPs only**.
-> To change one policy later, use `az aigateway policy set-token-limit`, `set-rate-limit`,
-> `set-content-safety`, or `set-ip-filter`. Each keeps the other policies.
+> calls the management API version `2026-11-01`, like the Policy as code track, so it shows the request rate
+> limit as `"count": 600` and `"period": "minute"`: the service stores `--period-seconds 60` as `minute`. The
+> CLI stores the IP filter action as `"allow"` in lowercase, and the portal shows it as **Allow listed IPs only**.
+> To change one policy later, use `az aigateway policy set-token-limit`, `set-rate-limit`, or `set-ip-filter`.
+> Each keeps the other policies, including content safety. To change content safety, run **Add content safety**
+> again with new values.
 
 > **Checkpoint**
-> `az aigateway policy list` returns `tokenLimit`, `requestRateLimit`, `contentSafety`, and `ipFilter`, with
-> your ranges in `cidrRanges`, plus any other Gateway scope policies you had.
+> `az aigateway policy list` returns `tokenLimit`, `requestRateLimit`, `ipFilter`, and `contentSafety` with
+> `"Medium"` for all four categories, with your ranges in `cidrRanges`, plus any other Gateway scope policies you
+> had.
 
 </details> <!-- gh -->
 <!-- track: iac | Policy as code -->
@@ -927,12 +1001,23 @@ Select **Policies**. For each of the four policies with **Gateway** scope, selec
 
 ### Remove the baseline
 
+`az aigateway policy remove` removes the token limit, request rate limit, and IP filter. Content safety has no
+`az aigateway` option in extension 1.0.0b34, so the second command reads the Gateway scope policies, drops the
+content safety policy, and writes the rest back with `az rest`.
+
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# Remove the four baseline policies from Gateway scope, and keep every other policy
+# Remove the token limit, request rate limit, and IP filter from Gateway scope, and keep every other policy
 az aigateway policy remove -g "$RG" --gateway-name "$GATEWAY" --output none \
-  --remove-token-limit true --remove-rate-limit true --remove-content-safety true --remove-ip-filter true &&
+  --remove-token-limit true --remove-rate-limit true --remove-ip-filter true &&
+  echo "🚮 Token limit, request rate limit, and IP filter are removed from $GATEWAY"
+
+# Read the Gateway scope policies, drop the content safety policy, and send the rest back
+GATEWAY_ID="$(az aigateway show -g "$RG" -n "$GATEWAY" --query id -o tsv)"
+URL="https://management.azure.com$GATEWAY_ID/workspaces/default?api-version=2026-11-01"
+POLICIES="$(az rest --method get --url "$URL" | jq -c '[(.properties.policies // [])[] | select(.type != "contentSafety")]')"
+az rest --method patch --url "$URL" --body "{\"properties\":{\"policies\":$POLICIES}}" --output none &&
   echo "🚮 Baseline is removed from $GATEWAY"
 ```
 </details> <!-- gh -->
@@ -940,10 +1025,20 @@ az aigateway policy remove -g "$RG" --gateway-name "$GATEWAY" --output none \
 <details><summary>PowerShell</summary> <!-- gh -->
 
 ```powershell title="PowerShell"
-# Remove the four baseline policies from Gateway scope, and keep every other policy
+# Remove the token limit, request rate limit, and IP filter from Gateway scope, and keep every other policy
 az aigateway policy remove -g $RG --gateway-name $GATEWAY --output none `
-  --remove-token-limit true --remove-rate-limit true --remove-content-safety true --remove-ip-filter true
+  --remove-token-limit true --remove-rate-limit true --remove-ip-filter true
+if ($?) { Write-Host "🚮 Token limit, request rate limit, and IP filter are removed from $GATEWAY" }
+
+# Read the Gateway scope policies, drop the content safety policy, and send the rest back from a file
+$GATEWAY_ID = az aigateway show -g $RG -n $GATEWAY --query id -o tsv
+$URL = "https://management.azure.com$GATEWAY_ID/workspaces/default?api-version=2026-11-01"
+$current  = az rest --method get --url $URL | ConvertFrom-Json
+$policies = @($current.properties.policies | Where-Object { $_ -and $_.type -ne 'contentSafety' })
+ConvertTo-Json -InputObject @{ properties = @{ policies = $policies } } -Depth 10 -Compress | Set-Content -Path patch.json
+az rest --method patch --url $URL --body '@patch.json' --output none
 if ($?) { Write-Host "🚮 Baseline is removed from $GATEWAY" }
+Remove-Item patch.json
 ```
 </details> <!-- gh -->
 

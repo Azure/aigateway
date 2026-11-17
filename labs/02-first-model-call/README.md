@@ -334,7 +334,7 @@ The provider tells the gateway where the account is and to authenticate with its
 az aigateway model-provider create -g "$RG" --gateway-name "$GATEWAY" -n "$PROVIDER" \
   --kind Foundry --display-name "Foundry models" \
   --foundry "{endpoint:'$FOUNDRY_ENDPOINT',resourceIds:[$FOUNDRY_ID],authentication:{kind:ManagedIdentity,managedIdentity:{resource:'https://cognitiveservices.azure.com/'}}}" \
-  --query "{name:name, kind:properties.kind, endpoint:properties.foundry.endpoint}" &&
+  --query "{name:name, kind:properties.modelProviderType, endpoint:properties.foundry.endpoint.url}" &&
   echo "🔌 Model provider $PROVIDER points at $FOUNDRY_ACCOUNT"
 ```
 </details> <!-- gh -->
@@ -346,7 +346,7 @@ az aigateway model-provider create -g "$RG" --gateway-name "$GATEWAY" -n "$PROVI
 az aigateway model-provider create -g $RG --gateway-name $GATEWAY -n $PROVIDER `
   --kind Foundry --display-name "Foundry models" `
   --foundry "{endpoint:'$FOUNDRY_ENDPOINT',resourceIds:[$FOUNDRY_ID],authentication:{kind:ManagedIdentity,managedIdentity:{resource:'https://cognitiveservices.azure.com/'}}}" `
-  --query "{name:name, kind:properties.kind, endpoint:properties.foundry.endpoint}"
+  --query "{name:name, kind:properties.modelProviderType, endpoint:properties.foundry.endpoint.url}"
 if ($?) { Write-Host "🔌 Model provider $PROVIDER points at $FOUNDRY_ACCOUNT" }
 ```
 </details> <!-- gh -->
@@ -841,8 +841,10 @@ The templates use the `2026-11-01` management API. The provider sets `modelProvi
 endpoint in `foundry.endpoint.url`, and the managed identity in a top-level `authentication` object. The model lists
 the API paths it serves in `supportedEndpoints`, and points to the deployment with `deployment.resourceId`,
 `deployment.modelName`, and an optional `deployment.modelVersion`. The provider and the model both need a
-`displayName`. The CLI track's `az aigateway` commands still call the preview API, so their output shows the
-preview names, such as `kind` and `foundry.endpoint`.
+`displayName`. The CLI track's `az aigateway` commands call the same API version, so their output shows the same
+names, such as `modelProviderType` and `foundry.endpoint.url`. Only the `--foundry` input of
+`az aigateway model-provider create` keeps a shorter shape: the endpoint as a string, and the authentication with a
+`kind`.
 
 ### Deploy with azd up
 

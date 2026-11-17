@@ -2376,7 +2376,9 @@ az network private-endpoint create -g "$RG" -n "$GATEWAY_PE" -l "$LOCATION" \
 ### Link the gateway's private DNS zone
 
 Read the zone from the gateway's private link resource, create it, link it to the virtual network, and add it to
-the endpoint's DNS zone group:
+the endpoint's DNS zone group. The `aigateway` extension 1.0.0b34 has no command for private link resources, and
+`az network private-link-resource list` doesn't accept `Microsoft.ApiManagement/aigateways`, so this step reads the
+zone from the management API with `az rest`:
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -2700,6 +2702,11 @@ echo "🔒 Connection from $GATEWAY_PE to the gateway:"
 az network private-endpoint show -g "$RG" -n "$GATEWAY_PE" \
   --query "privateLinkServiceConnections[0].privateLinkServiceConnectionState.{status:status, description:description}" -o table
 
+# Show the same connection from the gateway's side
+echo "🔒 Private endpoint connections of gateway ${GATEWAY}:"
+az aigateway network private-endpoint-connection list -g "$RG" --gateway-name "$GATEWAY" \
+  --query "[].{status:properties.privateLinkServiceConnectionState.status, state:properties.provisioningState}" -o table
+
 # List the A records in the gateway's private DNS zone: the first label of the host name and its private IP
 echo "🔒 A records in ${GATEWAY_ZONE}:"
 az network private-dns record-set a list -g "$RG" -z "$GATEWAY_ZONE" \
@@ -2722,6 +2729,11 @@ Write-Host "🔒 Connection from $GATEWAY_PE to the gateway:"
 az network private-endpoint show -g $RG -n $GATEWAY_PE `
   --query "privateLinkServiceConnections[0].privateLinkServiceConnectionState.{status:status, description:description}" -o table
 
+# Show the same connection from the gateway's side
+Write-Host "🔒 Private endpoint connections of gateway ${GATEWAY}:"
+az aigateway network private-endpoint-connection list -g $RG --gateway-name $GATEWAY `
+  --query "[].{status:properties.privateLinkServiceConnectionState.status, state:properties.provisioningState}" -o table
+
 # List the A records in the gateway's private DNS zone: the first label of the host name and its private IP
 Write-Host "🔒 A records in ${GATEWAY_ZONE}:"
 az network private-dns record-set a list -g $RG -z $GATEWAY_ZONE `
@@ -2729,8 +2741,9 @@ az network private-dns record-set a list -g $RG -z $GATEWAY_ZONE `
 ```
 </details> <!-- gh -->
 
-The connection is `Approved`, with the description `Automatically approved by AI Gateway.`, and the zone has one
-`A` record, named after the first label of the gateway's host name, with an IP in `10.20.1.0/24`.
+The connection is `Approved`, with the description `Automatically approved by AI Gateway.`, the gateway lists it
+as `Approved` and `Succeeded`, and the zone has one `A` record, named after the first label of the gateway's host
+name, with an IP in `10.20.1.0/24`.
 
 ### Call the gateway from inside the virtual network
 

@@ -373,6 +373,8 @@ if ($?) { Write-Host "✨ Model $LARGE_BACKEND is published through $PROVIDER" }
 The `az aigateway model-alias` commands have no options yet for auto model selection, so this step sends the whole
 alias to the management API with `az rest`, at API version `2026-11-01`. A `PUT` creates the alias or replaces all
 of it. Each backend model gets its `selectorModelName`, and `selectionOrder` runs priority before Model Router.
+`az aigateway model-alias show` prints these settings, but `model-alias set` and `update --backend-model` can't send
+`selectorModelName`, so they fail on this alias.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -804,10 +806,6 @@ export AI_GATEWAY_URL="$(azd env get-value AI_GATEWAY_URL)"
 echo "📝 Alias $ALIAS chooses between $SMALL and $LARGE on gateway $GATEWAY in $RG"
 echo "🌐 Runtime URL: $AI_GATEWAY_URL"
 
-# Build the management URL of the gateway's default workspace, and the API version, for the az rest calls
-export WS="https://management.azure.com$GATEWAY_ID/workspaces/default"
-export API="api-version=2026-11-01"
-
 # Read the app-first-call key from the gateway, so that it never shows on screen or lands in a file
 export AI_GATEWAY_API_KEY="$(az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/app-first-call" \
   --query primaryKey --output tsv)"
@@ -820,7 +818,7 @@ export AUTO='.properties
     "Objective: \(.autoModelSelection.objective // "off")",
     "Caller overrides: \((.autoModelSelection.allowedRequestOverrides // []) | if length == 0 then "none" else join(", ") end)"'
 echo "🔖 Alias $ALIAS:"
-az rest --method get --url "$WS/aliases/$ALIAS?$API" | jq -r "$AUTO"
+az aigateway model-alias show -g "$RG" --gateway-name "$GATEWAY" -n "$ALIAS" | jq -r "$AUTO"
 ```
 </details> <!-- gh -->
 
@@ -837,10 +835,6 @@ $ALIAS              = azd env get-value AI_GATEWAY_MODEL
 $env:AI_GATEWAY_URL = azd env get-value AI_GATEWAY_URL
 Write-Host "📝 Alias $ALIAS chooses between $SMALL and $LARGE on gateway $GATEWAY in $RG"
 Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
-
-# Build the management URL of the gateway's default workspace, and the API version, for the az rest calls
-$WS  = "https://management.azure.com$GATEWAY_ID/workspaces/default"
-$API = "api-version=2026-11-01"
 
 # Read the app-first-call key from the gateway, so that it never shows on screen or lands in a file
 $env:AI_GATEWAY_API_KEY = az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/app-first-call" `
@@ -859,7 +853,7 @@ function Show-Auto($alias) {
   "Caller overrides: $(if ($o) { $o -join ', ' } else { 'none' })"
 }
 Write-Host "🔖 Alias ${ALIAS}:"
-Show-Auto (az rest --method get --url "$WS/aliases/${ALIAS}?$API" | ConvertFrom-Json)
+Show-Auto (az aigateway model-alias show -g $RG --gateway-name $GATEWAY -n $ALIAS | ConvertFrom-Json)
 ```
 </details> <!-- gh -->
 
@@ -1161,10 +1155,6 @@ export AI_GATEWAY_URL="$(terraform output -raw ai_gateway_url)"
 echo "📝 Alias $ALIAS chooses between $SMALL and $LARGE on gateway $GATEWAY in $RG"
 echo "🌐 Runtime URL: $AI_GATEWAY_URL"
 
-# Build the management URL of the gateway's default workspace, and the API version, for the az rest calls
-export WS="https://management.azure.com$GATEWAY_ID/workspaces/default"
-export API="api-version=2026-11-01"
-
 # Read the app-first-call key from the gateway, so that it never lands in a file or the Terraform state
 export AI_GATEWAY_API_KEY="$(az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/app-first-call" \
   --query primaryKey --output tsv)"
@@ -1177,7 +1167,7 @@ export AUTO='.properties
     "Objective: \(.autoModelSelection.objective // "off")",
     "Caller overrides: \((.autoModelSelection.allowedRequestOverrides // []) | if length == 0 then "none" else join(", ") end)"'
 echo "🔖 Alias $ALIAS:"
-az rest --method get --url "$WS/aliases/$ALIAS?$API" | jq -r "$AUTO"
+az aigateway model-alias show -g "$RG" --gateway-name "$GATEWAY" -n "$ALIAS" | jq -r "$AUTO"
 # Move back to the lab's folder, which holds the scripts
 cd .. && echo "📂 Lab folder: $(pwd)"
 ```
@@ -1197,10 +1187,6 @@ $env:AI_GATEWAY_URL = terraform output -raw ai_gateway_url
 Write-Host "📝 Alias $ALIAS chooses between $SMALL and $LARGE on gateway $GATEWAY in $RG"
 Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
 
-# Build the management URL of the gateway's default workspace, and the API version, for the az rest calls
-$WS  = "https://management.azure.com$GATEWAY_ID/workspaces/default"
-$API = "api-version=2026-11-01"
-
 # Read the app-first-call key from the gateway, so that it never lands in a file or the Terraform state
 $env:AI_GATEWAY_API_KEY = az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/app-first-call" `
   --query primaryKey --output tsv
@@ -1218,7 +1204,7 @@ function Show-Auto($alias) {
   "Caller overrides: $(if ($o) { $o -join ', ' } else { 'none' })"
 }
 Write-Host "🔖 Alias ${ALIAS}:"
-Show-Auto (az rest --method get --url "$WS/aliases/${ALIAS}?$API" | ConvertFrom-Json)
+Show-Auto (az aigateway model-alias show -g $RG --gateway-name $GATEWAY -n $ALIAS | ConvertFrom-Json)
 # Move back to the lab's folder, which holds the scripts
 Set-Location ..
 if ($?) { Write-Host "📂 Lab folder: $(Get-Location)" }
@@ -1806,18 +1792,18 @@ On the portal track, the playground now shows an objective list and a model list
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# Read the alias from the management API, and print its auto model selection
+# Read the alias, and print its auto model selection
 echo "🔖 Alias $ALIAS:"
-az rest --method get --url "$WS/aliases/$ALIAS?$API" | jq -r "$AUTO"
+az aigateway model-alias show -g "$RG" --gateway-name "$GATEWAY" -n "$ALIAS" | jq -r "$AUTO"
 ```
 </details> <!-- gh -->
 
 <details><summary>PowerShell</summary> <!-- gh -->
 
 ```powershell title="PowerShell"
-# Read the alias from the management API, and print its auto model selection
+# Read the alias, and print its auto model selection
 Write-Host "🔖 Alias ${ALIAS}:"
-Show-Auto (az rest --method get --url "$WS/aliases/${ALIAS}?$API" | ConvertFrom-Json)
+Show-Auto (az aigateway model-alias show -g $RG --gateway-name $GATEWAY -n $ALIAS | ConvertFrom-Json)
 ```
 </details> <!-- gh -->
 
