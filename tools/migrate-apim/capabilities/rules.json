@@ -300,7 +300,30 @@
       },
       "verdict": "handled",
       "capabilityId": "alias.create",
-      "rationale": "Backend selection becomes the alias backend pool."
+      "rationale": "Backend selection becomes the alias backend pool.",
+      "partialWhen": {
+        "hasExpression": true,
+        "underConditional": true
+      },
+      "partial": {
+        "itemKind": "accept-loss",
+        "options": [
+          {
+            "value": "accept",
+            "consequence": "Every call takes the alias backend pool in its own order, whatever the source would have chosen for it."
+          },
+          {
+            "value": "compensate",
+            "consequence": "Say what the condition was for in the priority and weight of the alias backend models, as far as it can be said that way."
+          },
+          {
+            "value": "retain-in-apim",
+            "consequence": "Keep this workload on APIM, where the routing logic still runs."
+          }
+        ],
+        "proposal": "compensate",
+        "rationale": "The source decides where the request goes with logic the target has no place for: a policy expression, a branch of a `choose`, or both. The alias backend pool carries the set of backends and their priority and weight, not the rule that picked among them."
+      }
     },
     {
       "match": {

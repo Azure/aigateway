@@ -59,6 +59,40 @@
         "note": {"type": "string"}
       }
     },
+    "partialWhen": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "description": "What makes this mapping lossy for one element. Any one condition that holds demotes the rule to partial and overlays `partial` on it; requiring all of them would let an element that trips a single condition read as cleanly mapped. Each condition is named by `plan._apply_partial_when`, and a key it does not know would never fire while reading as though it did, so the set is closed here. The booleans take `true` only, for the same reason: there is no condition that holds by an element lacking an expression.",
+      "properties": {
+        "attributeIsExpression": {
+          "type": "string",
+          "description": "The attribute whose value is a policy expression rather than a literal."
+        },
+        "hasExpression": {
+          "const": true,
+          "description": "The element evaluates a policy expression anywhere in it."
+        },
+        "underConditional": {
+          "const": true,
+          "description": "A `choose` branch in the source decides whether the element runs at all."
+        }
+      }
+    },
+    "partialOverlay": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "description": "The rule as it reads once `partialWhen` holds, overlaid on the rule itself. The verdict is already partial by then, so it is not restated here.",
+      "properties": {
+        "itemKind": {"$ref": "#/$defs/itemKind"},
+        "capabilityId": {"type": "string"},
+        "options": {"$ref": "#/$defs/options"},
+        "proposal": {"type": "string"},
+        "rationale": {"type": "string"},
+        "target": {"type": "string"}
+      }
+    },
     "partialNeedsOptions": {
       "if": {"properties": {"verdict": {"const": "partial"}}, "required": ["verdict"]},
       "then": {"required": ["options"]}
@@ -122,6 +156,7 @@
       "required": ["match", "verdict"],
       "additionalProperties": false,
       "allOf": [{"$ref": "#/$defs/partialNeedsOptions"}],
+      "dependentRequired": {"partial": ["partialWhen"]},
       "properties": {
         "match": {
           "type": "object",
@@ -141,8 +176,8 @@
         "rationale": {"type": "string"},
         "note": {"type": "string"},
         "target": {"type": "string"},
-        "partial": {"type": "object"},
-        "partialWhen": {"type": "object"},
+        "partial": {"$ref": "#/$defs/partialOverlay"},
+        "partialWhen": {"$ref": "#/$defs/partialWhen"},
         "batchOn": {"type": "array", "items": {"type": "string"}}
       }
     }

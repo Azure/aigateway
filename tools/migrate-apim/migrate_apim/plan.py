@@ -924,9 +924,16 @@ class PlanBuilder:
                 rule = self.caps.policy_rule(
                     element["name"], family=element.get("family", ""), has_expression=has_expression
                 )
-                if not rule or rule["verdict"] in {"notApplicable", "handled"}:
+                if not rule:
                     continue
+                # Analysed before it is excluded, because `handled` is a claim
+                # about the element and not every element it covers makes it
+                # true. A backend chosen inside a `choose` was excluded on the
+                # strength of an alias pool that holds the backends and not the
+                # logic that picked among them, and left no trace in the plan.
                 rule = _apply_partial_when(rule, element)
+                if rule["verdict"] in {"notApplicable", "handled"}:
+                    continue
                 signature = _policy_signature(element, rule, has_expression)
                 batch = batches.setdefault(signature, {"rule": rule, "element": element,
                                                         "hasExpression": has_expression, "members": []})
@@ -961,8 +968,7 @@ class PlanBuilder:
                     if rule.get("target")
                     else f"`{element['name']}` is carried by another object."
                 ),
-                options=[_opt(value, "") for value in rule.get("options") or []]
-                or _loss_options(rule["verdict"]),
+                options=_options_of(rule) or _loss_options(rule["verdict"]),
                 evidence={
                     "element": element["name"],
                     "target": rule.get("target"),
@@ -1892,9 +1898,22 @@ def _namespace_endpoints(server: dict[str, Any], endpoints: list[dict[str, Any]]
         endpoint["namespace"] = base if index == 0 else f"{base}-{index + 1}"
 
 
+# Control flow that wraps a statement without being its configuration. A
+# statement inside one of these runs on some requests and not others, and the
+# element itself records nothing about that: the path is the only place the
+# branch survives normalization.
+_CONDITIONAL_WRAPPERS = {"choose", "when", "otherwise"}
+
 # Sections and control flow wrap policy statements; anything else that wraps an
 # element makes that element its configuration, not a policy of its own.
-_STATEMENT_WRAPPERS = {"inbound", "backend", "outbound", "on-error", "fragment", "choose", "when", "otherwise"}
+_STATEMENT_WRAPPERS = {
+    "inbound", "backend", "outbound", "on-error", "fragment", *_CONDITIONAL_WRAPPERS,
+}
+
+
+def _ancestors(element: dict[str, Any]) -> list[str]:
+    """The elements enclosing this one, outermost first, occurrence index removed."""
+    return [segment.split("[", 1)[0] for segment in (element.get("path") or "").split("/")[:-1]]
 
 
 def _is_policy_statement(element: dict[str, Any]) -> bool:
@@ -1904,22 +1923,38 @@ def _is_policy_statement(element: dict[str, Any]) -> bool:
     ``<value>`` child is how the header is configured. Walking it separately
     produced phantom items named after configuration elements.
     """
-    ancestors = [segment.split("[", 1)[0] for segment in (element.get("path") or "").split("/")[:-1]]
-    return all(name in _STATEMENT_WRAPPERS for name in ancestors)
+    return all(name in _STATEMENT_WRAPPERS for name in _ancestors(element))
+
+
+def _under_conditional(element: dict[str, Any]) -> bool:
+    """Whether a branch of the source policy decides if this element runs at all."""
+    return any(name in _CONDITIONAL_WRAPPERS for name in _ancestors(element))
 
 
 def _apply_partial_when(rule: dict[str, Any], element: dict[str, Any]) -> dict[str, Any]:
-    """Demote a native mapping to partial only when the rule's condition holds.
+    """Demote a mapping to partial when one of the rule's conditions holds.
 
     A token limit maps natively; it becomes a decision only because its caller
-    partition is an expression APIM evaluates and the target cannot.
+    partition is an expression APIM evaluates and the target cannot. A backend
+    selection is carried by the alias pool; it becomes a decision when the
+    source picked the backend with an expression or inside a ``choose``,
+    because the pool holds the backends and not the rule that chose among them.
+
+    Any one condition demotes. Requiring all of them would let an element that
+    trips a single one read as cleanly mapped, which is the reading this exists
+    to prevent.
     """
     condition = rule.get("partialWhen")
     if not condition:
         return rule
     attribute = condition.get("attributeIsExpression")
     value = (element.get("attributes") or {}).get(attribute or "")
-    if not (isinstance(value, str) and value.lstrip().startswith("@")):
+    holds = (
+        (isinstance(value, str) and value.lstrip().startswith("@"))
+        or (condition.get("hasExpression") and bool(element.get("expressionIds")))
+        or (condition.get("underConditional") and _under_conditional(element))
+    )
+    if not holds:
         return rule
     return {**rule, "verdict": "partial", **(rule.get("partial") or {})}
 
