@@ -277,7 +277,7 @@
         "title": "Coding-agent plugin",
         "lab": "17-coding-agent-plugin",
         "icon": "sparkle",
-        "text": "Let Copilot, Claude Code, Cursor, or Gemini build on your gateway."
+        "text": "Let Copilot, Claude Code, Cursor, or Gemini build on your gateway, and migrate AI assets from API Management."
       },
       {
         "title": "GitHub Copilot on your models and tools",

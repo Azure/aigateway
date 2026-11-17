@@ -150,7 +150,7 @@ Route agent frameworks, hosted agents, and coding agents through the gateway.
 | 15 | [Connect agent frameworks to models and tools](15-agent-frameworks/README.md) | Intermediate | 30 min | Code | [📓](15-agent-frameworks/15-agent-frameworks.ipynb) |
 | 16 | [Deploy a Foundry hosted agent behind AI Gateway](16-foundry-hosted-agent/README.md) | Intermediate | 45 min | Portal · CLI · Code | [📓](16-foundry-hosted-agent/16-foundry-hosted-agent.ipynb) |
 | 32 | [Use gateway models in Microsoft Foundry projects](32-foundry-gateway-connection/README.md) | Intermediate | 35 min | Portal · CLI · Bicep · Terraform · Code | [📓](32-foundry-gateway-connection/32-foundry-gateway-connection.ipynb) |
-| 17 | [Build on your gateway with coding agents](17-coding-agent-plugin/README.md) | Beginner | 15 min | Code | [📓](17-coding-agent-plugin/17-coding-agent-plugin.ipynb) |
+| 17 | [Build on your gateway with coding agents](17-coding-agent-plugin/README.md) | Intermediate | 45 min | Code · CLI · Bicep · Terraform | [📓](17-coding-agent-plugin/17-coding-agent-plugin.ipynb) |
 | 24 | [Use your gateway's models and tools in GitHub Copilot](24-github-copilot-byok/README.md) | Intermediate | 40 min | Portal · CLI · Bicep · Terraform · Code | [📓](24-github-copilot-byok/24-github-copilot-byok.ipynb) |
 | 25 | [Use your gateway's models and tools in Claude Code](25-claude-code/README.md) | Intermediate | 40 min | Portal · CLI · Bicep · Terraform · Code | [📓](25-claude-code/25-claude-code.ipynb) |
 
@@ -189,7 +189,7 @@ every cell stays short.
 | 📓 [`15-agent-frameworks.ipynb`](15-agent-frameworks/15-agent-frameworks.ipynb) | [15 · Agent frameworks](15-agent-frameworks/README.md) | 30 min |
 | 📓 [`16-foundry-hosted-agent.ipynb`](16-foundry-hosted-agent/16-foundry-hosted-agent.ipynb) | [16 · Foundry hosted agent](16-foundry-hosted-agent/README.md) | 45 min |
 | 📓 [`32-foundry-gateway-connection.ipynb`](32-foundry-gateway-connection/32-foundry-gateway-connection.ipynb) | [32 · Foundry gateway connection](32-foundry-gateway-connection/README.md) | 35 min |
-| 📓 [`17-coding-agent-plugin.ipynb`](17-coding-agent-plugin/17-coding-agent-plugin.ipynb) | [17 · Coding-agent plugin](17-coding-agent-plugin/README.md) | 15 min |
+| 📓 [`17-coding-agent-plugin.ipynb`](17-coding-agent-plugin/17-coding-agent-plugin.ipynb) | [17 · Coding-agent plugin](17-coding-agent-plugin/README.md) | 45 min |
 | 📓 [`24-github-copilot-byok.ipynb`](24-github-copilot-byok/24-github-copilot-byok.ipynb) | [24 · GitHub Copilot BYOK](24-github-copilot-byok/README.md) | 40 min |
 | 📓 [`25-claude-code.ipynb`](25-claude-code/25-claude-code.ipynb) | [25 · Claude Code](25-claude-code/README.md) | 40 min |
 <!-- gh:end -->
