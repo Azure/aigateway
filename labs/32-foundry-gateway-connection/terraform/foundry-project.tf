@@ -1,11 +1,11 @@
 # The app team's side of the hub and spoke: a Foundry resource and project, each with a system-assigned managed
-# identity, and the project's connection to the gateway, the same connection that the Foundry portal's Gateway option
-# creates. The project's identity gets AI Gateway Models User on all of the gateway's assets, so the gateway accepts
-# the project's calls, and the identity that uses the project gets Foundry User on the Foundry resource. Foundry shows
-# the connected model as <connection name>/<alias>.
+# identity, and the project's connection to the gateway, the same connection that Add consuming project creates on the
+# gateway's page in the Foundry portal. The project's identity gets AI Gateway Models User on all of the gateway's
+# assets, so the gateway accepts the project's calls, and the identity that uses the project gets Foundry User on the
+# Foundry resource. Foundry shows the connected model as <connection name>/<alias>.
 locals {
   app_account_name     = "aigw${local.suffix}-apps"
-  connection_name      = module.base.gateway_name
+  connection_name      = "${module.base.gateway_name}-model-gateway"
   models_user_role_id  = "a6b68e3d-a1f0-4c60-8678-237c050cf4ea"
   foundry_user_role_id = "53ca6127-db72-4b80-b1b0-d745d6d5456d"
   principal_id         = coalesce(var.principal_id, data.azapi_client_config.current.object_id)

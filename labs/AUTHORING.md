@@ -439,7 +439,7 @@ Kinds: `NOTE`, `TIP`, `IMPORTANT`, `WARNING`, `CAUTION`. A blockquote starting w
   Create API key dialogs, Catalog, the playground, Continue in code, and deleting the gateway from All gateways.
   Each new lab has its own set: `embeddings-01…08-*.webp` (lab 26), `routing-conditions-01…05-*.webp` (lab 27),
   `auto-selection-01…10-*.webp` (lab 28), `failover-01…07-*.webp` (lab 29), `agent-hooks-01…06-*.webp` (lab 30),
-  `jev-01…15-*.webp` (lab 31), and `foundry-conn-01…13-*.webp` (lab 32, in the Microsoft Foundry portal).
+  `jev-01…15-*.webp` (lab 31), and `foundry-conn-01…14-*.webp` (lab 32, in the Microsoft Foundry portal).
 - New screenshots: crop to the relevant area, replace real names, emails, and IDs with Contoso placeholders, mask
   every key, highlight the controls to select with magenta (`#e3008c`) boxes, and save as WebP, 1600 px wide at most.
 - Diagrams in `assets/diagrams/`: `architecture.svg`, `request-lifecycle.svg`, `aliases.svg`,

@@ -112,9 +112,10 @@ export APP_FOUNDRY="$GATEWAY-apps"
 export PROJECT="app-team"
 echo "📝 Project $PROJECT on Foundry resource $APP_FOUNDRY in $APP_RG ($LOCATION)"
 
-# Foundry names the connection after the gateway and shows the model as <connection>/<alias>
+# Foundry names the connection <gateway>-model-gateway and shows the model as <connection>/<alias>
+export CONNECTION="$GATEWAY-model-gateway"
 export FOUNDRY_PROJECT_ENDPOINT="https://$APP_FOUNDRY.services.ai.azure.com/api/projects/$PROJECT"
-export FOUNDRY_MODEL="$GATEWAY/$AI_GATEWAY_MODEL"
+export FOUNDRY_MODEL="$CONNECTION/$AI_GATEWAY_MODEL"
 echo "🌐 Project endpoint: $FOUNDRY_PROJECT_ENDPOINT"
 echo "🤖 Model in Foundry: $FOUNDRY_MODEL"
 ```
@@ -146,9 +147,10 @@ $APP_FOUNDRY = "$GATEWAY-apps"
 $PROJECT     = "app-team"
 Write-Host "📝 Project $PROJECT on Foundry resource $APP_FOUNDRY in $APP_RG ($LOCATION)"
 
-# Foundry names the connection after the gateway and shows the model as <connection>/<alias>
+# Foundry names the connection <gateway>-model-gateway and shows the model as <connection>/<alias>
+$CONNECTION                   = "$GATEWAY-model-gateway"
 $env:FOUNDRY_PROJECT_ENDPOINT = "https://$APP_FOUNDRY.services.ai.azure.com/api/projects/$PROJECT"
-$env:FOUNDRY_MODEL            = "$GATEWAY/$AI_GATEWAY_MODEL"
+$env:FOUNDRY_MODEL            = "$CONNECTION/$AI_GATEWAY_MODEL"
 Write-Host "🌐 Project endpoint: $env:FOUNDRY_PROJECT_ENDPOINT"
 Write-Host "🤖 Model in Foundry: $env:FOUNDRY_MODEL"
 ```
@@ -165,8 +167,8 @@ such as a token limit, and routes the call to the backend model that the platfor
 
 | Connection setting | Value in this lab |
 |---|---|
-| Name | The gateway's name. The Foundry portal sets it, and you can't change it |
-| Connection type | **AI Gateway tier** in the wizard. Foundry stores the category `ApiManagement` and lists the connection as **API Management** |
+| Name | `<gateway>-model-gateway`. The Foundry portal sets it, and you can't change it |
+| Connection type | **Add consuming project** on the gateway's page in **Manage** › **Gateways**. Foundry stores the category `ApiManagement` and lists the connection as **API Management** |
 | Base URL | `<gateway URL>/default/models/openai/v1`, the gateway's OpenAI v1 endpoint |
 | Upstream API | The Responses API: Foundry adds `/responses`, with no `api-version` and no deployment in the path |
 | Authentication | **Managed identity**, stored as `ProjectManagedIdentity`, with the audience `https://azure-api.net/aigateway` |
@@ -233,8 +235,9 @@ if ($?) { Write-Host "📦 Resource group $APP_RG is ready" }
    | **Subscription** | Your subscription |
    | **Resource group** | `rg-aigw-app-team` |
 
-4. Select **Create**. After about three minutes, the portal shows **All set. Let's build your agents.** Select
-   **Let's go**.
+4. Select **Create**. After about a minute, the portal shows **All set. Let's build your agents.** Select
+   **Let's go**. The portal also adds a Log Analytics workspace and Application Insights to the resource group, and
+   connects them to the project.
 
 ### Read the project's identity
 
@@ -290,49 +293,62 @@ then **Access** › **Entra ID** › **Add role assignment**:
 > **Access** › **Entra ID** lists the project with the **AI Gateway Models User** role on **All assets**. The role
 > reaches the runtime within about a minute.
 
-### Start the connection wizard
+### Open the gateway in Foundry
 
-Back in the Foundry portal, in the `app-team` project, select **Build** › **Models**. On the **Deployments** tab,
-select **Connections** › **Connect to a model**. In **Add a connection**, select **Gateway**, then **Continue**.
+Back in the Foundry portal, in the `app-team` project, select **Manage** › **Gateways**. The **AI Gateway** tab lists
+the AI Gateways of the **Subscription** at the top, with the number of **Foundry resources** behind each and its
+**Gateway region**. To find yours in a long list, type its name in **Search**, or pick the lab's Foundry resource in
+the **Foundry resources** filter. Select your gateway.
 
-![The Add a connection dialog on the Connections tab of Models, with the Gateway card selected](../assets/screens/foundry-conn-02-add-connection.webp "Gateway routes the project's model calls through Azure API Management or AI Gateway.")
+![Manage › Gateways in the Foundry portal, with the AI Gateway tab filtered to the lab's Foundry resource and listing the lab's gateway](../assets/screens/foundry-conn-02-gateways.webp "Foundry lists the AI Gateways in your subscription.")
 
-### Select the gateway
+The gateway's page shows what the gateway publishes, on the **Provider**, **Models**, and **MCP servers** tabs.
+Foundry reads them from the gateway: you add providers and models, and set policies and access, in the AI Gateway
+portal, which **Open AI Gateway portal** opens. Here, you choose the projects that consume the gateway's models,
+through connected models.
 
-In **Connection type**, select **AI Gateway tier**: the wizard starts on **Azure API Management (v1 & v2 tiers)**.
-Select your gateway in **Select AI Gateway**, then **Select**.
+![The gateway's page in Foundry, with the Provider tab listing the gateway's model provider and the Add consuming project button](../assets/screens/foundry-conn-03-gateway-page.webp "Add a consuming project to the gateway.")
 
-![The gateway connection wizard with AI Gateway tier selected and a gateway picked in Select AI Gateway](../assets/screens/foundry-conn-03-select-gateway.webp "Pick the AI Gateway tier, then your gateway.")
+### Select the project
 
-### Set the endpoint
+Select **Add consuming project**. **Connect project to gateway** opens on **Project**:
 
-The wizard fills **Base URL** with the gateway's OpenAI v1 endpoint, `…/default/models/openai/v1`. Check
-**Use the Responses API for upstream requests**: **Request URL** then ends with `/responses`. Select **Next**.
+1. Select **Select**. In **Select Foundry project**, pick your Foundry resource, the `APP_FOUNDRY` value, in
+   **Resource**, and `app-team` in **Project**. Select **Select**.
 
-![The connection's endpoint settings, with the Base URL ending in /default/models/openai/v1 and Use the Responses API for upstream requests checked](../assets/screens/foundry-conn-04-connection-type.webp "Foundry sends the project's requests to the gateway's Responses API.")
+   ![The Select Foundry project dialog, with the app team's Foundry resource and the app-team project picked](../assets/screens/foundry-conn-04-select-project.webp "Pick the project that consumes the gateway's models.")
+
+2. The wizard fills **Base URL** with the gateway's OpenAI v1 endpoint, `…/default/models/openai/v1`. Check
+   **Use the Responses API for upstream requests**: **Request URL** then ends with `/responses`. Select **Next**.
+
+   ![The Project step with the app-team project selected, the Base URL ending in /default/models/openai/v1, and Use the Responses API for upstream requests checked](../assets/screens/foundry-conn-05-endpoint.webp "Foundry sends the project's requests to the gateway's Responses API.")
 
 ### Choose managed identity
 
-On **Authentication**, select **Managed identity**: the wizard starts on **API key**. **Audience** shows
+On **Authentication**, select **Managed identity**: the wizard starts on **API key**. Foundry reminds you that the
+project's identity needs the **AI Gateway Models User** role, which you assigned. **Audience** shows
 `https://azure-api.net/aigateway`, the audience of the gateway's tokens. Select **Next**.
 
-![The Authentication step with Managed identity selected and the audience https://azure-api.net/aigateway](../assets/screens/foundry-conn-05-authentication.webp "The project's managed identity authenticates to the gateway. No key is stored.")
+![The Authentication step with Managed identity selected, the Additional access required reminder, and the audience https://azure-api.net/aigateway](../assets/screens/foundry-conn-06-authentication.webp "The project's managed identity authenticates to the gateway. No key is stored.")
 
 ### Pick the models
 
-On **Model configuration**, select **Configure model**, check your alias, and select **Select**. **Models to be
-connected** lists it with its model and version. Select **Connect**.
+On **Model configuration**, select **Select models**. **Configure models** lists the gateway's models with their
+**Type** and **Endpoints**. Check your alias, and select **Select**.
 
-![The Configure model panel listing the gateway's aliases, with gpt-5-mini checked](../assets/screens/foundry-conn-06-configure-models.webp "The wizard lists the gateway's aliases.")
+![The Configure models dialog listing the gateway's models, with gpt-5-mini checked](../assets/screens/foundry-conn-07-select-models.webp "Foundry discovers the models that the gateway publishes.")
 
-![Models to be connected, with gpt-5-mini, version 2025-08-07, ready to connect](../assets/screens/foundry-conn-07-models-to-connect.webp "Select Connect to add the connection to the project.")
+**Models to be connected** lists the alias with its version and Foundry resource. Select **Connect**: the portal
+returns to the gateway's page.
+
+![Models to be connected, with gpt-5-mini, version 2025-08-07, ready to connect](../assets/screens/foundry-conn-08-models-to-connect.webp "Select Connect to add the connection to the project.")
 
 > **Checkpoint**
-> The **Connections** tab lists your alias with the **Connection name** of your gateway, the **Connection type**
-> **API Management**, the **Authentication** **Project Managed Identity**, and your gateway's host name under
-> **Connected to**.
+> On the gateway's **Models** tab, your alias counts `app-team` under **Consuming projects**. Pick `app-team` in
+> **All consuming projects** to list the models that the project consumes. Foundry names the connection
+> `<gateway>-model-gateway`, and the model's Foundry name is `<gateway>-model-gateway/<alias>`.
 
-![The Connections tab listing gpt-5-mini through the aigw-contoso connection, with Project Managed Identity authentication](../assets/screens/foundry-conn-08-connections-list.webp "The project's connected models, with no deployment of their own.")
+![The gateway's Models tab filtered to the app-team project, listing gpt-5-mini with one consuming project](../assets/screens/foundry-conn-12-gateway-consumers.webp "The gateway's models, and the projects that consume them.")
 
 </details> <!-- gh -->
 <!-- track: cli | Azure CLI -->
@@ -513,52 +529,53 @@ keeps the connection to this project's users.
 
 ### Create the connection
 
-Name the connection after the gateway, as the Foundry portal does, so that the model's Foundry name is
-`<gateway>/<alias>`:
+Name the connection `<gateway>-model-gateway`, as the Foundry portal does, so that the model's Foundry name is
+`<gateway>-model-gateway/<alias>`:
 
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# Create the connection, named after the gateway as the Foundry portal names it
+# Create the connection, named <gateway>-model-gateway as the Foundry portal names it
 az rest -m put -o none --body @connection.json \
-  -u "https://management.azure.com$APP_FOUNDRY_ID/projects/$PROJECT/connections/$GATEWAY?api-version=2025-06-01" &&
-  echo "🔌 Connection $GATEWAY is ready in project $PROJECT"
+  -u "https://management.azure.com$APP_FOUNDRY_ID/projects/$PROJECT/connections/$CONNECTION?api-version=2025-06-01" &&
+  echo "🔌 Connection $CONNECTION is ready in project $PROJECT"
 
 # Show the connection
 az cognitiveservices account project connection show -g "$APP_RG" -n "$APP_FOUNDRY" --project-name "$PROJECT" \
-  --connection-name "$GATEWAY" --query "{name: name, category: properties.category, authType: properties.authType, target: properties.target}" -o json
+  --connection-name "$CONNECTION" --query "{name: name, category: properties.category, authType: properties.authType, target: properties.target}" -o json
 ```
 </details> <!-- gh -->
 
 <details><summary>PowerShell</summary> <!-- gh -->
 
 ```powershell title="PowerShell"
-# Create the connection, named after the gateway as the Foundry portal names it
+# Create the connection, named <gateway>-model-gateway as the Foundry portal names it
 az rest -m put -o none --body "@connection.json" `
-  -u "https://management.azure.com$APP_FOUNDRY_ID/projects/$PROJECT/connections/${GATEWAY}?api-version=2025-06-01"
-if ($?) { Write-Host "🔌 Connection $GATEWAY is ready in project $PROJECT" }
+  -u "https://management.azure.com$APP_FOUNDRY_ID/projects/$PROJECT/connections/${CONNECTION}?api-version=2025-06-01"
+if ($?) { Write-Host "🔌 Connection $CONNECTION is ready in project $PROJECT" }
 
 # Show the connection
 az cognitiveservices account project connection show -g $APP_RG -n $APP_FOUNDRY --project-name $PROJECT `
-  --connection-name $GATEWAY --query "{name: name, category: properties.category, authType: properties.authType, target: properties.target}" -o json
+  --connection-name $CONNECTION --query "{name: name, category: properties.category, authType: properties.authType, target: properties.target}" -o json
 ```
 </details> <!-- gh -->
 
 Expected output (your names differ):
 
 ```text
-🔌 Connection aigw-guximp is ready in project app-team
+🔌 Connection aigw-guximp-model-gateway is ready in project app-team
 {
   "authType": "ProjectManagedIdentity",
   "category": "ApiManagement",
-  "name": "aigw-guximp",
+  "name": "aigw-guximp-model-gateway",
   "target": "https://aigw-guxim-jokx32zcn3ol2.eastus2-01.ai.gateway.azure.com/default/models/openai/v1"
 }
 ```
 
 > **Checkpoint**
 > The connection has the category `ApiManagement`, the authentication type `ProjectManagedIdentity`, and a target
-> that ends with `/default/models/openai/v1`. The Foundry portal lists it on the project's **Connections** tab.
+> that ends with `/default/models/openai/v1`. In the Foundry portal, the gateway's **Models** tab in **Manage** ›
+> **Gateways** counts the project under **Consuming projects**.
 
 </details> <!-- gh -->
 <!-- track: iac | Bicep + azd -->
@@ -688,10 +705,10 @@ silences its warning:
 
 ```bicep
 // The app team's side of the hub and spoke: a Foundry resource and project, each with a system-assigned managed
-// identity, and the project's connection to an AI Gateway, the same connection that the Foundry portal's Gateway
-// option creates. The project's identity gets AI Gateway Models User on all of the gateway's assets, so the gateway
-// accepts the project's calls, and the identity that uses the project gets Foundry User on the Foundry resource.
-// Foundry shows the connected model as <connection name>/<alias>.
+// identity, and the project's connection to an AI Gateway, the same connection that Add consuming project creates on
+// the gateway's page in the Foundry portal. The project's identity gets AI Gateway Models User on all of the gateway's
+// assets, so the gateway accepts the project's calls, and the identity that uses the project gets Foundry User on the
+// Foundry resource. Foundry shows the connected model as <connection name>/<alias>.
 targetScope = 'resourceGroup'
 
 @description('Name of the existing AI Gateway (Microsoft.ApiManagement/aigateways).')
@@ -718,8 +735,8 @@ param projectName string = 'app-team'
 param location string = resourceGroup().location
 param tags object = {}
 
-@description('Connection name. The Foundry portal names the connection after the gateway, and so does this template.')
-param connectionName string = gatewayName
+@description('Connection name. The Foundry portal names the connection <gateway>-model-gateway, and so does this template.')
+param connectionName string = '${gatewayName}-model-gateway'
 
 @description('Send the project\'s requests to the gateway\'s Responses API, like Use the Responses API for upstream requests in the portal. When false, the gateway receives Chat Completions requests.')
 param useResponsesApi bool = true
@@ -899,10 +916,10 @@ if ($?) { Write-Host "🚀 Project connected: $(azd env get-value FOUNDRY_MODEL)
 Expected output (your names differ):
 
 ```text
-  (✓) Done: Resource group: rg-aigw-lab32
+  (✓) Done: Foundry project connection: aigwku22po-apps/app-team/aigw-ku22po-model-gateway (1.38s)
 
-SUCCESS: Your application was provisioned and deployed to Azure in 4 minutes 6 seconds.
-🚀 Project connected: aigw-guximp/gpt-5-mini
+SUCCESS: Your application was provisioned and deployed to Azure in 2 minutes 57 seconds.
+🚀 Project connected: aigw-ku22po-model-gateway/gpt-5-mini
 ```
 
 For another region, pick one where AI Gateway, Foundry Agent Service, and the quick start's model are available, as
@@ -970,8 +987,8 @@ Write-Host "🆔 Project identity: $PROJECT_PRINCIPAL_ID"
 </details> <!-- gh -->
 
 > **Checkpoint**
-> `azd up` ended with `SUCCESS`, and the model's Foundry name is `<gateway>/<alias>`, such as
-> `aigw-guximp/gpt-5-mini`.
+> `azd up` ended with `SUCCESS`, and the model's Foundry name is `<gateway>-model-gateway/<alias>`, such as
+> `aigw-ku22po-model-gateway/gpt-5-mini`.
 
 </details> <!-- gh -->
 <!-- track: terraform | Terraform -->
@@ -1052,13 +1069,13 @@ module "base" {
 
 ```tf
 # The app team's side of the hub and spoke: a Foundry resource and project, each with a system-assigned managed
-# identity, and the project's connection to the gateway, the same connection that the Foundry portal's Gateway option
-# creates. The project's identity gets AI Gateway Models User on all of the gateway's assets, so the gateway accepts
-# the project's calls, and the identity that uses the project gets Foundry User on the Foundry resource. Foundry shows
-# the connected model as <connection name>/<alias>.
+# identity, and the project's connection to the gateway, the same connection that Add consuming project creates on the
+# gateway's page in the Foundry portal. The project's identity gets AI Gateway Models User on all of the gateway's
+# assets, so the gateway accepts the project's calls, and the identity that uses the project gets Foundry User on the
+# Foundry resource. Foundry shows the connected model as <connection name>/<alias>.
 locals {
   app_account_name     = "aigw${local.suffix}-apps"
-  connection_name      = module.base.gateway_name
+  connection_name      = "${module.base.gateway_name}-model-gateway"
   models_user_role_id  = "a6b68e3d-a1f0-4c60-8678-237c050cf4ea"
   foundry_user_role_id = "53ca6127-db72-4b80-b1b0-d745d6d5456d"
   principal_id         = coalesce(var.principal_id, data.azapi_client_config.current.object_id)
@@ -1287,7 +1304,7 @@ if ($?) { Write-Host "📂 Lab folder: $(Get-Location)" }
 
 > **Checkpoint**
 > `terraform apply` ended with `Apply complete! Resources: 14 added, 0 changed, 0 destroyed.`, and the model's
-> Foundry name is `<gateway>/<alias>`, such as `aigw-59ad50/gpt-5-mini`.
+> Foundry name is `<gateway>-model-gateway/<alias>`, such as `aigw-8ee59c-model-gateway/gpt-5-mini`.
 
 ### Preview a change
 
@@ -1332,27 +1349,34 @@ and try again.
 
 ### Chat in the playground
 
-In the Foundry portal, select **Build** › **Models** › **Deployments** › **Connections**. Select your alias's row,
-then **Open in playground**. The playground's title is the model's Foundry name, such as `aigw-contoso/gpt-5-mini`,
-with a **Connections** tag. Ask `In one sentence, what does an AI gateway do for an app team?`
+In the Foundry portal, select **Build** › **Models** › **Deployments** › **Connections**. The list shows your alias
+with its model, version, **Connection name**, and the gateway it's **Connected to**.
 
-![The Foundry playground chatting with aigw-contoso/gpt-5-mini, a connected model, and its one-sentence answer](../assets/screens/foundry-conn-09-playground.webp "The playground calls the gateway's alias through the project's connection.")
+![Build › Models › Deployments › Connections, listing gpt-5-mini with the connection aigw-contoso-model-gateway, API Management, Project Managed Identity, and the gateway's host](../assets/screens/foundry-conn-14-connections-list.webp "The project lists the gateway's model as a connected model.")
+
+Select your alias's row, then **Open in playground**. The playground's title is the model's Foundry name, such as
+`aigw-contoso-model-gateway/gpt-5-mini`, with a **Connections** tag. Ask
+`In one sentence, what does an AI gateway do for an app team?`
+
+![The Foundry playground chatting with aigw-contoso-model-gateway/gpt-5-mini, a connected model, and its one-sentence answer](../assets/screens/foundry-conn-09-playground.webp "The playground calls the gateway's alias through the project's connection.")
 
 **Save as agent** is turned off for connected models. Create the agent from **Agents** instead.
 
 ### Build an agent on the gateway model
 
 1. Select **Agents** › **New agent** › **Build an agent**.
-2. In **Create an agent**, enter `gateway-helper` in **Agent name**, and select
+2. In **Create an agent**, enter `gateway-helper` in **Agent name**, keep **Interaction mode** on **Text**, and select
    **Create agent and open playground**. It takes about 20 seconds.
-3. The agent's model is already your connected model, `<gateway>/<alias>`. The agent starts with the **Web search**
-   tool, so ask it `Without searching the web, why route an agent's model calls through a gateway?`
+3. The agent starts on `model-router`. Open **Model**, and pick your alias under **Connections**: the picker shows
+   it as **AI Gateway · `<gateway>-model-gateway`**. Select **Save**, which saves version 2 of the agent.
+4. The agent starts with a toolbox that has the **Web search** tool, so ask it
+   `Without searching the web, why route an agent's model calls through a gateway?`
 
-![The agent playground of gateway-helper, with the model aigw-contoso/gpt-5-mini and its answer](../assets/screens/foundry-conn-10-agent.webp "A Foundry prompt agent runs on the gateway's model.")
+![The agent playground of gateway-helper, with the model aigw-contoso-model-gateway/gpt-5-mini and its answer](../assets/screens/foundry-conn-10-agent.webp "A Foundry prompt agent runs on the gateway's model.")
 
 > **Checkpoint**
-> The playground and the agent answer, and the model picker shows `<gateway>/<alias>`. The project has no model
-> deployments of its own.
+> The playground and the agent answer, and the model picker shows `<gateway>-model-gateway/<alias>`. The project has
+> no model deployments of its own.
 
 </details> <!-- gh -->
 <!-- track: cli | curl and PowerShell -->
@@ -1453,7 +1477,7 @@ python infra/call_model.py
 Expected output (your answers differ):
 
 ```text
-🤖 aigw-guximp/gpt-5-mini: An AI gateway centralizes and secures access to AI models and APIs for an app team—handling routing, authentication, rate limiting, data transformation, caching, observability, and policy enforcement—so developers can integrate and govern AI functionality easily.
+🤖 aigw-guximp-model-gateway/gpt-5-mini: An AI gateway centralizes and secures access to AI models and APIs for an app team—handling routing, authentication, rate limiting, data transformation, caching, observability, and policy enforcement—so developers can integrate and govern AI functionality easily.
 🤖 gateway-helper-sdk (version 1): To centralize security, policy enforcement, observability, rate limiting, caching, and cost/usage control for reliable, auditable model access.
 🚮 Deleted agent gateway-helper-sdk version 1
 ```
@@ -1600,8 +1624,8 @@ The limit reaches the runtime in up to a minute.
 
 Wait a minute, then open the playground of your connected model, as in
 [Call gateway models from Foundry](#call-gateway-models-from-foundry), and ask
-`Write a short paragraph about token limits.` three times in a row. The answer that crosses the limit still arrives.
-The next one shows an error:
+`Write a short paragraph about token limits.` until it shows an error, usually on the third or fourth request. The
+answer that crosses the limit still arrives, and the next request gets the error:
 
 ![The Foundry playground showing the error Model could not be accessed, with the gateway's 429 response Token limit is exceeded](../assets/screens/foundry-conn-13-playground-429.webp "Foundry passes the gateway's 429 to the playground.")
 
@@ -1863,12 +1887,14 @@ Expected output of the Python burst (your values differ):
 
 ## Go further
 
-- **Connect more projects.** Each app team's project needs its own connection and its own role on the gateway. In
-  the Foundry portal, **Manage** › **Gateways** shows the gateways that the Foundry resource uses, with their
-  **Provider**, **Models**, and **MCP servers**, an **Add consuming project** button, and **Open AI Gateway portal**.
-  With the **Identity** counter, a second project still had its full allowance while the first one got `429`.
-
-  ![Manage › Gateways in the Foundry portal, showing a gateway with its Provider, Models, and MCP servers tabs and the Add consuming project button](../assets/screens/foundry-conn-12-gateway-consumers.webp "The Foundry resource's gateways, and the projects that consume them.")
+- **Connect more projects.** Each app team's project needs its own connection and its own role on the gateway. Run
+  **Add consuming project** again on the gateway's page for each project: the **Models** tab then counts every
+  project that consumes each model. With the **Identity** counter, a second project still had its full allowance
+  while the first one got `429`.
+- **Connect from the project's model list instead.** **Build** › **Models** › **Connections** ›
+  **Connect to a model** › **Gateway** › **AI Gateway tier** creates the same kind of connection, but names it after
+  the gateway, so the model's Foundry name is `<gateway>/<alias>`. Pick one path per project, and use its name in
+  your code.
 
 - **Manage the connection.** **Manage** › **Project details** › **Connections** lists the gateway connection with the
   category **ApiManagement**, the authentication **Project Managed Identity**, and **No key available**. Use

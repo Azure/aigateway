@@ -210,8 +210,9 @@ Before you create, change, or delete Azure resources, confirm the subscription a
   target `<runtime URL>/default/models/openai/v1`, `authType: ProjectManagedIdentity`, audience
   `https://azure-api.net/aigateway`). The project's managed identity needs **AI Gateway Models User** on
   `<gateway id>/workspaces/default`, which the Foundry portal doesn't assign; without it, calls answer `403`
-  `Access to model is denied`. The model's Foundry name is `<connection>/<alias>`, and the portal names the
-  connection after the gateway. The playground, prompt agents, and the project's Responses API
+  `Access to model is denied`. The model's Foundry name is `<connection>/<alias>`. **Manage** › **Gateways** ›
+  **Add consuming project** names the connection `<gateway>-model-gateway`, while **Connect to a model** in the
+  project's model list names it after the gateway. The playground, prompt agents, and the project's Responses API
   (`<project endpoint>/openai/v1/responses`, with a token for `https://ai.azure.com`) serve it; the project's Chat
   Completions answers `404` `DeploymentNotFound`. Gateway policies apply per project identity, and Foundry wraps a
   gateway `429` in `rate_limit_exceeded` with the gateway's message and `Retry-After`.

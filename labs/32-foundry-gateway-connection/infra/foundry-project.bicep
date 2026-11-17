@@ -1,8 +1,8 @@
 // The app team's side of the hub and spoke: a Foundry resource and project, each with a system-assigned managed
-// identity, and the project's connection to an AI Gateway, the same connection that the Foundry portal's Gateway
-// option creates. The project's identity gets AI Gateway Models User on all of the gateway's assets, so the gateway
-// accepts the project's calls, and the identity that uses the project gets Foundry User on the Foundry resource.
-// Foundry shows the connected model as <connection name>/<alias>.
+// identity, and the project's connection to an AI Gateway, the same connection that Add consuming project creates on
+// the gateway's page in the Foundry portal. The project's identity gets AI Gateway Models User on all of the gateway's
+// assets, so the gateway accepts the project's calls, and the identity that uses the project gets Foundry User on the
+// Foundry resource. Foundry shows the connected model as <connection name>/<alias>.
 targetScope = 'resourceGroup'
 
 @description('Name of the existing AI Gateway (Microsoft.ApiManagement/aigateways).')
@@ -29,8 +29,8 @@ param projectName string = 'app-team'
 param location string = resourceGroup().location
 param tags object = {}
 
-@description('Connection name. The Foundry portal names the connection after the gateway, and so does this template.')
-param connectionName string = gatewayName
+@description('Connection name. The Foundry portal names the connection <gateway>-model-gateway, and so does this template.')
+param connectionName string = '${gatewayName}-model-gateway'
 
 @description('Send the project\'s requests to the gateway\'s Responses API, like Use the Responses API for upstream requests in the portal. When false, the gateway receives Chat Completions requests.')
 param useResponsesApi bool = true
