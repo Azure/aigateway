@@ -1183,6 +1183,65 @@ class TestPolicyTargetsAreApplied:
         assert "nothing to carry" in stranded[0]["incompleteReason"]
 
 
+class TestEveryPolicyElementIsAccountedFor:
+    """A plan that classified an element and discarded it used to be
+    indistinguishable from one that had never seen it.
+
+    Three dispositions end the walk without raising an item, and a fourth --
+    matching no rule at all -- ended it without raising anything anywhere. The
+    tally is what turns "nothing was dropped" from a claim into a sum.
+    """
+
+    def _unknown(self, inventory, name="quantum-shield", family="other"):
+        document = copy.deepcopy(inventory)
+        target = next(d for d in document["policies"] if d["id"] == "policy:api/aoai-api")
+        target["elements"].append({
+            "section": "inbound", "path": f"inbound/{name}[1]", "name": name,
+            "family": family, "depth": 1, "attributes": {"mode": "strict"},
+            "text": None, "expressionIds": [], "namedValueRefs": [], "childNames": [],
+        })
+        return document
+
+    def test_the_dispositions_sum_to_the_elements_the_inventory_holds(
+        self, inventory, capabilities
+    ):
+        coverage = build_plan(copy.deepcopy(inventory), capabilities)["policyCoverage"]
+        walked = sum(len(d.get("elements") or []) for d in inventory["policies"])
+        assert coverage["walked"] == walked
+        # Exclusive buckets, or the sum says nothing.
+        assert sum(coverage["dispositions"].values()) == walked
+
+    def test_an_element_outside_the_vocabulary_is_named_and_located(
+        self, inventory, capabilities
+    ):
+        document = self._unknown(inventory)
+        coverage = build_plan(document, capabilities)["policyCoverage"]
+        assert coverage["dispositions"]["unrecognised"] == 1
+        [found] = coverage["unrecognised"]
+        assert found["element"] == "quantum-shield"
+        assert found["policyId"] == "policy:api/aoai-api"
+        assert found["path"] == "inbound/quantum-shield[1]"
+
+    def test_it_reaches_the_plan_as_a_decision_rather_than_a_silence(
+        self, inventory, capabilities
+    ):
+        document = self._unknown(inventory)
+        plan = build_plan(document, capabilities)
+        item = next(
+            i for i in plan["items"] if (i.get("source") or {}).get("aspect") == "quantum-shield"
+        )
+        assert item["verdict"] == "gap"
+        assert item["blocking"] is True
+        assert item["status"] == "needs-decision"
+
+    def test_a_recognised_element_is_not_counted_as_unrecognised(self, inventory, capabilities):
+        # The net must not quietly become the mapping: `set-header` has a family
+        # rule, so it is classified even though it raises an accept-loss item.
+        document = self._unknown(inventory, name="set-header", family="transform")
+        coverage = build_plan(document, capabilities)["policyCoverage"]
+        assert coverage["unrecognised"] == []
+
+
 class TestTheGatewayWideBaseline:
     """One baseline, however many source policies.
 

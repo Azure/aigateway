@@ -122,6 +122,9 @@ class PlanBuilder:
         self.previous = previous or {}
         self.items: list[dict[str, Any]] = []
         self.prerequisites: list[dict[str, Any]] = []
+        # What became of every policy element walked, one bucket each.
+        self.policy_coverage: dict[str, int] = {}
+        self.unrecognised_policies: list[dict[str, Any]] = []
         # A model API names the backend it routes to; the provider asset built
         # from that backend is what knows the protocol it speaks.
         self._provider_by_backend: dict[str, dict[str, Any]] = {
@@ -211,6 +214,15 @@ class PlanBuilder:
                 "plannerGaps": len(planner_gaps),
             },
             "prerequisites": self.prerequisites,
+            # What became of every policy element the inventory holds. The
+            # dispositions are exclusive and `walked` is their sum, so a reader
+            # can check the planner against the inventory instead of trusting
+            # that an element which raised no item was one that needed none.
+            "policyCoverage": {
+                "walked": sum(self.policy_coverage.values()),
+                "dispositions": dict(sorted(self.policy_coverage.items())),
+                "unrecognised": self.unrecognised_policies,
+            },
             "plannerGaps": planner_gaps,
             # Settled decisions whose item no longer exists. Dropping them quietly
             # would lose work across a tool change and re-ask as if never asked.
@@ -914,17 +926,32 @@ class PlanBuilder:
     # ----------------------------------------------------------- policies
 
     def _policies(self) -> None:
-        """One item per distinct policy treatment, batched across assets."""
+        """One item per distinct policy treatment, batched across assets.
+
+        Every element walked leaves a count behind, in `policyCoverage`. Three
+        of the dispositions here end the loop without raising anything, and for
+        as long as they were uncounted the plan could not be told apart from one
+        that had never seen the element at all. The tally is what makes "nothing
+        was dropped" a thing a reader can check rather than take on trust.
+        """
         batches: dict[str, dict[str, Any]] = {}
+        terminal = self.caps.terminal_policy_rule()
         for document in self.inventory.get("policies") or []:
             for element in document.get("elements") or []:
                 if not _is_policy_statement(element):
+                    # Not a decision of its own: the configuration of the
+                    # statement above it, which is classified in its own right.
+                    self._count_element("configuration", document, element)
                     continue
                 has_expression = bool(element.get("expressionIds"))
                 rule = self.caps.policy_rule(
                     element["name"], family=element.get("family", ""), has_expression=has_expression
                 )
                 if not rule:
+                    # Unreachable while rules.json carries a terminal rule, and
+                    # counted rather than deleted because that is a property of
+                    # the data, which `compile` enforces and this does not.
+                    self._count_element("unresolved", document, element)
                     continue
                 # Analysed before it is excluded, because `handled` is a claim
                 # about the element and not every element it covers makes it
@@ -933,7 +960,15 @@ class PlanBuilder:
                 # logic that picked among them, and left no trace in the plan.
                 rule = _apply_partial_when(rule, element)
                 if rule["verdict"] in {"notApplicable", "handled"}:
+                    self._count_element(rule["verdict"], document, element)
                     continue
+                # One bucket per element, so the counts sum to what was walked.
+                # An unrecognised element still becomes an item -- it is counted
+                # apart because reaching the terminal rule says the vocabulary
+                # has grown, which is not the same as having been mapped.
+                self._count_element(
+                    "unrecognised" if rule is terminal else "classified", document, element
+                )
                 signature = _policy_signature(element, rule, has_expression)
                 batch = batches.setdefault(signature, {"rule": rule, "element": element,
                                                         "hasExpression": has_expression, "members": []})
@@ -980,6 +1015,25 @@ class PlanBuilder:
                     rule, members, item_id=ids.item("policy", signature)),
                 blocking=rule["verdict"] == "gap",
             )
+
+    def _count_element(
+        self, disposition: str, document: dict[str, Any], element: dict[str, Any]
+    ) -> None:
+        """Account for one policy element under exactly one disposition.
+
+        The unrecognised ones are listed as well as counted, because a number
+        alone cannot be acted on: knowing that one element was not in the
+        vocabulary is only useful alongside which element, and where it is
+        written.
+        """
+        self.policy_coverage[disposition] = self.policy_coverage.get(disposition, 0) + 1
+        if disposition in {"unrecognised", "unresolved"}:
+            self.unrecognised_policies.append({
+                "element": element["name"],
+                "family": element.get("family"),
+                "policyId": document["id"],
+                "path": element["path"],
+            })
 
     # --------------------------------------------------------- structural
 

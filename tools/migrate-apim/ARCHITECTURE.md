@@ -27,7 +27,9 @@ Declares how APIM shapes map to target capabilities. Never versioned separately;
 
 - **`structural[]`** — Rules for cross-asset things (workspaces, subscriptions, telemetry, coverage gaps).
 
-- **`policies[]`** — How APIM policies map to AI Gateway policies. Matched by element name, then by family, with fallbacks for expressions and unknowns.
+- **`policies[]`** — How APIM policies map to AI Gateway policies. Four passes in order: by element name, then by family, then a fallback for anything carrying a policy expression, then one terminal rule (`match: {anyElement: true}`) that answers for everything else.
+
+  The last pass is what makes an unmapped element impossible rather than unlikely: before it, an element matching no rule was dropped where it was classified, and the ones that vanished were those carrying *no* expression, since an expression at least reached the pass above. It is a net and not a mapping, so `compile` holds every element in `policy.FAMILIES` to a rule of its own or a family rule and fails if one is left to it. The planner counts what reaches it into `policyCoverage.unrecognised` on the plan.
 
 - **`publishableRoutes[]`** — The four routes AI Gateway publishes (`/openai/v1/chat/completions`, `/v1/messages`, etc.). Used to decide what part of a model API surface can move.
 

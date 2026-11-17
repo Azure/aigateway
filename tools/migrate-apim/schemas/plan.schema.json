@@ -71,6 +71,38 @@
       }
     },
 
+    "policyCoverage": {
+      "description": "What became of every policy element the inventory holds. Three dispositions raise no item, and while they were uncounted a plan that had classified an element and discarded it was indistinguishable from one that had never seen it. The dispositions are exclusive and `walked` is their sum, so the planner can be checked against the inventory rather than trusted.",
+      "type": "object",
+      "required": ["walked", "dispositions", "unrecognised"],
+      "properties": {
+        "walked": {
+          "description": "Every element accounted for, which is the sum of the dispositions.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "dispositions": {
+          "description": "classified: raised an item. handled / notApplicable: the rule says another object carries it, or that there is nothing to carry. configuration: a child element that configures the statement above it. unrecognised: outside the vocabulary this catalog knows, answered by the terminal rule. unresolved: matched no rule at all, which a rules document carrying a terminal rule cannot produce.",
+          "type": "object",
+          "additionalProperties": {"type": "integer", "minimum": 0}
+        },
+        "unrecognised": {
+          "description": "The elements counted as unrecognised or unresolved, named and located. A count alone cannot be acted on.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["element", "policyId", "path"],
+            "properties": {
+              "element": {"type": "string"},
+              "family": {"type": ["string", "null"]},
+              "policyId": {"type": "string"},
+              "path": {"type": "string"}
+            }
+          }
+        }
+      }
+    },
+
     "plannerGaps": {
       "description": "Work an item commits to that the plan cannot produce: a required field no source supplied, or a settled decision that yields no target object. These are defects in this tool rather than decisions for the operator, and they block apply, so work that will not happen is visible before the first write instead of being discovered when a phase produces nothing.",
       "type": "array",

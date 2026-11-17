@@ -454,6 +454,51 @@ class TestTheRegistryDescribesThePlanner:
         assert not site.governs({"match": {"family": "models"}})
 
 
+class TestTheKnownPolicyVocabularyIsAnswered:
+    """The terminal rule is a net, and a net makes a poor mapping.
+
+    Eleven elements matched no rule at all and were dropped where they were
+    classified, three of them carrying backend credentials. A terminal rule
+    stops the dropping, but it would just as happily answer for an element
+    somebody never got round to -- so what it may answer for is held down here.
+    """
+
+    def _without(self, rules, **match):
+        trimmed = copy.deepcopy(rules)
+        trimmed["policies"] = [
+            rule for rule in trimmed["policies"]
+            if not all((rule.get("match") or {}).get(k) == v for k, v in match.items())
+        ]
+        return trimmed
+
+    def test_an_element_left_to_the_terminal_rule_is_an_error(self, compile_with, shipped):
+        _, rules, _ = shipped
+        result = compile_with(rules=self._without(rules, family="backendAuthentication"))
+        assert "policy-vocabulary" in codes(result)
+        [diagnostic] = [d for d in result.errors if d.check == "policy-vocabulary"]
+        # Named, because "something is unmapped" is not a fix.
+        assert "authentication-basic" in diagnostic.message
+        assert "backendAuthentication" in diagnostic.message
+
+    def test_the_shipped_rules_leave_nothing_to_it(self, compile_with):
+        assert "policy-vocabulary" not in codes(compile_with())
+
+    def test_losing_the_terminal_rule_is_an_error_of_its_own(self, compile_with, shipped):
+        # Without it an unknown element resolves to nothing, and resolving to
+        # nothing is what the planner used to drop in silence.
+        _, rules, _ = shipped
+        result = compile_with(rules=self._without(rules, anyElement=True))
+        assert "policy-terminal" in codes(result)
+
+    def test_a_second_terminal_rule_is_a_tie_and_rejected(self, compile_with, shipped):
+        # Selection is first-match, so two of them means one is never reached.
+        _, rules, _ = shipped
+        doubled = copy.deepcopy(rules)
+        terminal = next(r for r in doubled["policies"] if (r.get("match") or {}).get("anyElement"))
+        doubled["policies"].append(copy.deepcopy(terminal))
+        assert "rule-unique" in codes(compile_with(rules=doubled))
+
+
 class TestACleanRunSaysWhatItChecked:
     """A compile that only speaks up on failure leaves the reader of a green
     run unable to tell thorough from vacuous -- and this contract shipped a
@@ -462,7 +507,7 @@ class TestACleanRunSaysWhatItChecked:
     def test_every_check_reports_what_it_covered(self, compile_with, shipped):
         documented = shipped[0]["cliEvidence"]["documentedVersion"]
         covered = compile_with(newest_release=f"cli-v{documented}").covered
-        assert len(covered) == 5, covered
+        assert len(covered) == 6, covered
 
     def test_the_counts_are_the_real_ones(self, compile_with, shipped):
         catalog, rules, surface = shipped
