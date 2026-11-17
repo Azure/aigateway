@@ -47,7 +47,7 @@ To work on your own machine, install the tools for the tracks you plan to follow
 | [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) 2.75 or later | The Azure CLI tracks, the **Verify** steps, and `azd env new` in the Bicep + azd tracks |
 | The [`aigateway` extension](#install-the-aigateway-extension) | The `az aigateway` commands |
 | [Azure Developer CLI (`azd`)](https://aka.ms/azd-install) | The Bicep + azd tracks. It installs Bicep the first time it needs it. |
-| [Terraform](https://developer.hashicorp.com/terraform/install) 1.9 or later | The Terraform tracks. `terraform init` downloads the `azapi` and `azurerm` providers that each lab pins. Lab 31 needs Terraform 1.11 or later, for write-only arguments. |
+| [Terraform](https://developer.hashicorp.com/terraform/install) 1.9 or later | The Terraform tracks. `terraform init` downloads the `azapi` and `azurerm` providers that each lab pins. Labs 03 and 31 need Terraform 1.11 or later, for write-only arguments. |
 | [Git](https://git-scm.com/downloads) | Cloning the labs repo |
 | [`jq`](https://jqlang.org/download/) | The Bash snippets that build or read JSON. The PowerShell snippets don't need it. |
 | Python, Node.js, or the .NET 8 SDK | The code samples, depending on the language. Each lab lists the versions it needs. |

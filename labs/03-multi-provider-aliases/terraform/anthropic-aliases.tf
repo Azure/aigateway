@@ -1,5 +1,11 @@
 # Adds Anthropic to the gateway as a custom provider, registers two Claude models, and publishes them behind three
 # callable aliases: support-chat and batch-chat, each with its own per-caller token limit, and anthropic/<smart model>.
+
+# Write-only arguments, such as sensitive_body, need Terraform 1.11 or later.
+terraform {
+  required_version = ">= 1.11"
+}
+
 locals {
   provider_name      = "anthropic"
   support_chat_model = var.support_chat_model == "" ? var.fast_model : var.support_chat_model
