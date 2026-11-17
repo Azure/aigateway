@@ -2823,12 +2823,12 @@ Remove the connector from Microsoft 365 first, then the Azure resources.
 
 ### Remove the connector from Microsoft 365
 
-1. In Microsoft 365 Copilot, select **Plugins**, open **AI Gateway OBO demo**, and select **Disconnect**, then turn
-   off the plugin.
-2. In the Microsoft 365 admin center, select **Copilot** › **Connectors** › **Your Connections**, select **AI Gateway
-   OBO demo**, and delete it.
-3. In the Teams Developer Portal, select **Tools** › **OAuth client registration**, and delete **AI Gateway OBO
-   demo**.
+1. In Microsoft 365 Copilot, select **Plugins**. On the **Cowork** tab, open **AI Gateway OBO demo**, select
+   **Disconnect**, and turn off the plugin. Then select **More actions** › **Uninstall**, and confirm.
+2. In the Microsoft 365 admin center, select **Copilot** › **Connectors** › **Your Connections**. On the **AI Gateway
+   OBO demo** row, select **More Actions** › **View Details** › **Delete**, and confirm.
+3. In the Teams Developer Portal, select **Tools** › **OAuth client registration**. On the **AI Gateway OBO demo**
+   row, select the actions menu › **Delete**, and confirm.
 
 <!-- /steps -->
 
