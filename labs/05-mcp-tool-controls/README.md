@@ -4,15 +4,15 @@ summary: Publish only approved MCP tools with name patterns, block risky tools, 
 category: tools
 level: Intermediate
 duration: 20
-tracks: [portal, cli, iac]
+tracks: [portal, cli, iac, terraform]
 order: 5
 illustration: diagrams/mcp-federation.svg
-tags: [MCP, tools, allow list, blocked tools, glob patterns, requestRateLimit, "429", Retry-After]
+tags: [MCP, tools, allow list, blocked tools, glob patterns, requestRateLimit, "429", Retry-After, Terraform]
 objectives:
-  - Choose between allowing all tools and matching tools by exact name or wildcard pattern, in the portal or with Bicep and azd
+  - Choose between allowing all tools and matching tools by exact name or wildcard pattern, in the portal, with the Azure CLI, with Bicep and azd, or with Terraform
   - Block specific tools with patterns that take precedence over the allow list
   - Take a whole MCP server offline without deleting it
-  - Add a request rate limit to an MCP server in the portal, with the Azure CLI, or with Bicep and azd, and trigger a 429
+  - Add a request rate limit to an MCP server in the portal, with the Azure CLI, with Bicep and azd, or with Terraform, and trigger a 429
 prereqs:
   - 04-federate-mcp-tools
 -->
@@ -27,14 +27,14 @@ prereqs:
 
 | ⏱️ Time | 📶 Level | 🧭 Tracks | ✅ Before you start |
 | :-- | :-- | :-- | :-- |
-| 20 min | Intermediate | Portal · Azure CLI · Bicep + azd | [04 · Federate MCP tools](../04-federate-mcp-tools/README.md) |
+| 20 min | Intermediate | Portal · Azure CLI · Bicep + azd · Terraform | [04 · Federate MCP tools](../04-federate-mcp-tools/README.md) |
 
 **You'll learn to**
 
-- Choose between allowing all tools and matching tools by exact name or wildcard pattern, in the portal or with Bicep and azd
+- Choose between allowing all tools and matching tools by exact name or wildcard pattern, in the portal, with the Azure CLI, with Bicep and azd, or with Terraform
 - Block specific tools with patterns that take precedence over the allow list
 - Take a whole MCP server offline without deleting it
-- Add a request rate limit to an MCP server in the portal, with the Azure CLI, or with Bicep and azd, and trigger a 429
+- Add a request rate limit to an MCP server in the portal, with the Azure CLI, with Bicep and azd, or with Terraform, and trigger a 429
 
 **Follow along:** 🌐 [Interactive version](https://azure.github.io/aigateway/labs/05-mcp-tool-controls/) with your own values filled in · 📁 [Lab files](infra/)
 
@@ -65,8 +65,9 @@ this lab you publish only the approved tools, block one explicitly, and give eac
 <!-- gh:end -->
 
 > [!TIP]
-> On the **Bicep + azd** track, `azd up` creates its own gateway, the `learn` MCP server with its tool controls and
-> request rate limit, and a key, so you can skip this section. You need only the one-time setup above.
+> On the **Bicep + azd** and **Terraform** tracks, `azd up` or `terraform apply` creates its own gateway, the `learn`
+> MCP server with its tool controls and request rate limit, and a key, so you can skip this section. You need only
+> the one-time setup above.
 
 - Complete [Federate MCP tools behind one endpoint](../04-federate-mcp-tools/README.md). You need the `learn`
   MCP server with its `learn` and `docs` backends, and a runtime API key from **Access** › **API keys**.
@@ -130,15 +131,16 @@ allow both search tools and `*code_sample*` to block the code sample tool. Both 
 cover every backend of the server. For one backend only, start the pattern with its namespace, as in `learn_*`.
 
 > [!NOTE]
-> The `aigateway` extension doesn't set tool availability, blocked tools, or server access yet, so the Azure CLI
-> track covers only the request rate limit. Configure the rest in the portal, or declare them with the
-> **Bicep + azd** track: they're the MCP server's `allowList`, `blockList`, and `accessState` properties. In the
-> generally available API (`2026-11-01`), the blocked tools are `blockList`. The preview name `blocked` is ignored
-> without an error, so check the server after you deploy.
+> The `aigateway` extension sets tool availability and blocked tools, but not server access yet, so the Azure CLI
+> track has no step in [Take the whole server offline](#take-the-whole-server-offline). Block the server in the
+> portal, or declare it with the **Bicep + azd** or **Terraform** track: the tool controls are the MCP server's
+> `allowList`, `blockList`, and `accessState` properties. In the generally available API (`2026-11-01`), the blocked
+> tools are `blockList`. The preview name `blocked`, which the extension still prints, is ignored without an error
+> in a template, so check the server after you deploy.
 
 ## Publish only approved tools
 
-Pick one track. Both publish the same catalog on the `learn` server: the tools that match `*_search`, with
+Pick one track. Each publishes the same catalog on the `learn` server: the tools that match `*_search`, with
 `*code_sample*` blocked. Make sure the patterns cover every tool that your agents legitimately need before you
 save. Tools that don't match are no longer listed or callable.
 
@@ -167,6 +169,47 @@ row.
 
 Select **Save**. Under **Tools**, the details page shows **Allowed tools (1)** with `*_search` and
 **Blocked tools (1)** with `*code_sample*`.
+
+</details> <!-- gh -->
+<!-- track: cli | Azure CLI -->
+<details><summary><b>⌨️ Azure CLI</b></summary> <!-- gh -->
+
+### Set the tool controls
+
+`az aigateway mcp update` changes only the properties that you pass, so the backends, versions, and policies stay
+as they are. `--allow-list` sets the allowed tool name patterns, and `--blocked` the blocked ones.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Publish only the tools that match *_search, block the code sample tools, and show the tool controls
+az aigateway mcp update -g "$RG" --gateway-name "$GATEWAY" -n learn \
+  --allow-list "*_search" --blocked "*code_sample*" \
+  --query "properties.{allowList:allowList,blocked:blocked}" &&
+  echo "🔧 learn publishes the *_search tools and blocks *code_sample*"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Publish only the tools that match *_search, block the code sample tools, and show the tool controls
+az aigateway mcp update -g $RG --gateway-name $GATEWAY -n learn `
+  --allow-list "*_search" --blocked "*code_sample*" `
+  --query "properties.{allowList:allowList,blocked:blocked}"
+if ($?) { Write-Host "🔧 learn publishes the *_search tools and blocks *code_sample*" }
+```
+</details> <!-- gh -->
+
+For several patterns, pass a JSON array, such as `--allow-list '["*_search","*_fetch"]'`. `--allow-list null`
+clears the allow list, so the server publishes every tool, while `--allow-list "[]"` publishes none.
+`--blocked null` clears the blocked tools. The extension still speaks the preview API, so it prints the blocked
+tools as `blocked`. The generally available API stores them as `blockList`.
+
+> **Checkpoint**
+> The command prints `"allowList": ["*_search"]` and `"blocked": ["*code_sample*"]`.
+
+The runtime picks up the change within about 15 seconds, so wait a moment before you check the catalog.
 
 </details> <!-- gh -->
 <!-- track: iac | Bicep + azd -->
@@ -430,7 +473,7 @@ output mcpEndpoint string = 'https://${gateway.properties.frontend.defaultHostna
 ### Deploy with azd up
 
 Move into the lab's folder, create an azd environment named `aigw-lab05` in your current subscription, then provision
-everything. It takes about three minutes.
+everything. It takes about two minutes.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -526,6 +569,269 @@ az rest --method get --url "https://management.azure.com$GATEWAY_ID/workspaces/d
 
 The server already has the request rate limit, 5 calls per 30 seconds for each key, so wait 30 seconds between
 script runs.
+
+</details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+**What you need:** only the one-time setup from **Before you begin**, plus Terraform 1.9 or later, as in
+[Deploy a lab with Terraform](../SETUP.md#deploy-a-lab-with-terraform). This track doesn't use your gateway or
+`learn` server from lab 04: `terraform apply` creates a new gateway with its own `learn` server, so it works on its
+own.
+
+### Review the configuration
+
+`terraform/main.tf` creates the resource group `rg-<environment_name>` and calls lab 01's
+[gateway module](../01-provision-gateway/terraform/gateway) for a gateway with no model:
+
+<!-- include: terraform/main.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/main.tf`](terraform/main.tf)
+
+```tf
+# Lab 05 with Terraform: creates the resource group rg-<environment_name>, a gateway with lab 01's module, then the
+# learn MCP server with its tool controls and request rate limit, and the runtime API key app-first-call
+# (controlled-tool-server.tf). The runtime API key is never an output.
+data "azapi_client_config" "current" {}
+
+locals {
+  suffix = substr(sha1("${data.azapi_client_config.current.subscription_id}/${var.environment_name}/${var.location}"), 0, 6)
+  tags   = { "environment-name" = var.environment_name }
+}
+
+resource "azurerm_resource_group" "rg" {
+  name     = "rg-${var.environment_name}"
+  location = var.location
+  tags     = local.tags
+}
+
+# Lab 01's module: the gateway, with no model.
+module "gateway" {
+  source = "../../01-provision-gateway/terraform/gateway"
+
+  gateway_name      = "aigw-${local.suffix}"
+  resource_group_id = azurerm_resource_group.rg.id
+  location          = var.location
+  tags              = local.tags
+}
+```
+<!-- gh:end -->
+
+`terraform/controlled-tool-server.tf` declares the same `learn` server as the Bicep template, with the `azapi`
+provider, which sends the AI Gateway API version, `2026-11-01`, as is: `allowList`, `blockList`, and `accessState`
+hold the tool controls, and the `policies` array holds the request rate limit, with a `period` such as `PT30S`. It
+also creates the `app-first-call` key. `terraform/variables.tf` declares the settings with the same defaults as the
+Bicep template:
+
+| Variable | Default |
+|---|---|
+| `allowed_tools` | `["*_search"]` |
+| `blocked_tools` | `["*code_sample*"]` |
+| `server_access` | `active` |
+| `calls_per_period` | `5` |
+| `period_seconds` | `30` |
+| `counter_key` | `["identity"]` |
+
+<!-- include: terraform/controlled-tool-server.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/controlled-tool-server.tf`](terraform/controlled-tool-server.tf)
+
+<details><summary>Show all 69 lines</summary>
+
+```tf
+# Declares the learn MCP server of lab 04, with its learn and docs backends, plus lab 05's tool controls: the tools
+# it publishes (allowList), the tools it refuses to run (blockList), whether clients can reach it (accessState), and
+# a request rate limit for each caller. An apply sends a PUT, which replaces the whole MCP server, so keep this
+# configuration as its only source of truth.
+locals {
+  learn_url = "https://learn.microsoft.com/api/mcp"
+
+  rate_limit = {
+    type       = "requestRateLimit"
+    count      = var.calls_per_period
+    period     = "PT${var.period_seconds}S"
+    counterKey = var.counter_key
+  }
+}
+
+resource "azapi_resource" "tool_server" {
+  type      = "Microsoft.ApiManagement/aigateways/workspaces/toolServers@2026-11-01"
+  name      = "learn"
+  parent_id = "${module.gateway.gateway_id}/workspaces/default"
+
+  body = {
+    properties = {
+      displayName    = "Microsoft Learn"
+      description    = "Search and fetch official Microsoft documentation and code samples."
+      toolServerType = "mcp"
+      accessState    = var.server_access
+      allowList      = var.allowed_tools
+      blockList      = var.blocked_tools
+      endpoints = [
+        {
+          namespace = "learn"
+          kind      = "mcp"
+          mode      = "failClosed"
+          mcp = {
+            endpoint  = { url = local.learn_url }
+            transport = "streamableHttp"
+          }
+        },
+        {
+          namespace = "docs"
+          kind      = "mcp"
+          mode      = "failOpen"
+          mcp = {
+            endpoint  = { url = local.learn_url }
+            transport = "streamableHttp"
+          }
+        },
+      ]
+      policies = var.calls_per_period > 0 ? [local.rate_limit] : []
+    }
+  }
+
+  schema_validation_enabled = false
+}
+
+# A runtime API key for the MCP clients. Read its value with az aigateway api-key list-secrets.
+resource "azapi_resource" "api_key" {
+  type      = "Microsoft.ApiManagement/aigateways/apiKeys@2026-11-01"
+  name      = "app-first-call"
+  parent_id = module.gateway.gateway_id
+
+  body = {
+    properties = {
+      displayName = "app-first-call"
+    }
+  }
+
+  schema_validation_enabled = false
+}
+```
+
+</details>
+<!-- gh:end -->
+
+> [!WARNING]
+> `terraform apply` sends a `PUT`, which replaces the whole MCP server, including backends, tool rules, and policies
+> that you added in the portal. Keep the configuration as the only source of truth for this server, and change it
+> with `terraform apply`.
+
+### Deploy with terraform apply
+
+Move into the lab's Terraform folder, select your current subscription, then plan and apply the configuration. It
+takes about two minutes, most of it while the new gateway activates.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Move into the lab's Terraform folder
+cd ~/aigateway/labs/05-mcp-tool-controls/terraform &&
+  echo "📂 Terraform folder: $(pwd)"
+
+# Deploy to the Azure CLI's current subscription
+export ARM_SUBSCRIPTION_ID="$(az account show --query id --output tsv)" &&
+  echo "📍 Subscription: $ARM_SUBSCRIPTION_ID"
+
+# Download the providers, then plan and apply the gateway, the learn MCP server with its tool controls and request
+# rate limit, and the app-first-call key
+terraform init &&
+  terraform plan -out tfplan &&
+  terraform apply tfplan &&
+  echo "🚀 Gateway $(terraform output -raw ai_gateway_name) is deployed"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Move into the lab's Terraform folder
+Set-Location ~/aigateway/labs/05-mcp-tool-controls/terraform
+if ($?) { Write-Host "📂 Terraform folder: $(Get-Location)" }
+
+# Deploy to the Azure CLI's current subscription
+$env:ARM_SUBSCRIPTION_ID = az account show --query id --output tsv
+if ($?) { Write-Host "📍 Subscription: $env:ARM_SUBSCRIPTION_ID" }
+
+# Download the providers, then plan and apply the gateway, the learn MCP server with its tool controls and request
+# rate limit, and the app-first-call key
+terraform init
+if ($?) { terraform plan -out tfplan }
+if ($?) { terraform apply tfplan }
+if ($?) { Write-Host "🚀 Gateway $(terraform output -raw ai_gateway_name) is deployed" }
+```
+</details> <!-- gh -->
+
+The configuration deploys to `eastus2`. For another region, use its name from [Find the available
+regions](../SETUP.md#find-the-available-regions): run `export TF_VAR_location=<region>` (PowerShell:
+`$env:TF_VAR_location = "<region>"`) before `terraform plan`.
+
+### Read the outputs and the key
+
+Set the variables that the next sections and **Verify** use from the Terraform outputs. The outputs never contain
+the key value, so read it from the gateway straight into a variable, where it never shows on screen or lands in the
+Terraform state.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Read the outputs: the resource group, the gateway, its runtime URL, and its resource ID
+export RG="$(terraform output -raw azure_resource_group)"
+export GATEWAY="$(terraform output -raw ai_gateway_name)"
+export AI_GATEWAY_URL="$(terraform output -raw ai_gateway_url)"
+export GATEWAY_ID="$(terraform output -raw ai_gateway_id)"
+echo "📝 Gateway $GATEWAY in $RG"
+echo "🌐 Runtime URL: $AI_GATEWAY_URL"
+
+# Read the gateway's runtime key from the gateway, so that it never lands in a file or the Terraform state
+export AI_GATEWAY_API_KEY="$(az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/app-first-call" \
+  --query primaryKey --output tsv)"
+echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
+
+# Show the tools that the learn MCP server publishes and blocks, as the generally available API stores them
+echo "🔧 Tool controls on the learn MCP server:"
+az rest --method get --url "https://management.azure.com$GATEWAY_ID/workspaces/default/toolServers/learn?api-version=2026-11-01" \
+  --query "properties.{allowList:allowList,blockList:blockList,accessState:accessState}"
+
+# Move back to the lab's folder, which holds the scripts
+cd .. && echo "📂 Lab folder: $(pwd)"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Read the outputs: the resource group, the gateway, its runtime URL, and its resource ID
+$RG                     = terraform output -raw azure_resource_group
+$GATEWAY                = terraform output -raw ai_gateway_name
+$env:AI_GATEWAY_URL     = terraform output -raw ai_gateway_url
+$GATEWAY_ID             = terraform output -raw ai_gateway_id
+Write-Host "📝 Gateway $GATEWAY in $RG"
+Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
+
+# Read the gateway's runtime key from the gateway, so that it never lands in a file or the Terraform state
+$env:AI_GATEWAY_API_KEY = az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/app-first-call" `
+  --query primaryKey --output tsv
+Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) characters, not shown)"
+
+# Show the tools that the learn MCP server publishes and blocks, as the generally available API stores them
+Write-Host "🔧 Tool controls on the learn MCP server:"
+az rest --method get --url "https://management.azure.com$GATEWAY_ID/workspaces/default/toolServers/learn?api-version=2026-11-01" `
+  --query "properties.{allowList:allowList,blockList:blockList,accessState:accessState}"
+
+# Move back to the lab's folder, which holds the scripts
+Set-Location ..
+if ($?) { Write-Host "📂 Lab folder: $(Get-Location)" }
+```
+</details> <!-- gh -->
+
+> **Checkpoint**
+> `terraform apply` ended with `Apply complete! Resources: 4 added, 0 changed, 0 destroyed.`, and the tool controls
+> printed `"accessState": "active"`, `"allowList": ["*_search"]`, and `"blockList": ["*code_sample*"]`.
+
+The server already has the request rate limit, 5 calls per 30 seconds for each key, so wait 30 seconds between
+script runs. The next sections run from the lab's folder, with `-chdir=terraform` for the `terraform` commands.
 
 </details> <!-- gh -->
 <!-- /tracks -->
@@ -704,6 +1010,110 @@ Write-Host "🔧 Tools on the learn MCP server:"
 The four tools are back.
 
 </details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+### Block the server
+
+Pass `server_access=blocked` to `terraform plan` and apply the plan. Only the MCP server changes. You're in the
+lab's folder, so `-chdir=terraform` points Terraform at the `terraform` folder.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Plan the change: set the server's access to blocked
+terraform -chdir=terraform plan -var server_access=blocked -out tfplan &&
+  echo "📝 The plan updates only the learn MCP server"
+
+# Apply the plan
+terraform -chdir=terraform apply tfplan &&
+  echo "🔌 The learn MCP server is blocked"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Plan the change: set the server's access to blocked
+terraform -chdir=terraform plan -var server_access=blocked -out tfplan
+if ($?) { Write-Host "📝 The plan updates only the learn MCP server" }
+
+# Apply the plan
+terraform -chdir=terraform apply tfplan
+if ($?) { Write-Host "🔌 The learn MCP server is blocked" }
+```
+</details> <!-- gh -->
+
+The plan ends with `Plan: 0 to add, 1 to change, 0 to destroy.`, for `azapi_resource.tool_server`, with
+`accessState` going from `"active"` to `"blocked"`. The apply takes a few seconds, and the runtime picks up the change
+within about 15 seconds after that.
+
+### Confirm that clients can't connect
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Try to connect to the blocked server: the MCP handshake fails before any backend is called
+echo "🚦 Expect initialize to fail with AccessBlockedByGateway:"
+./infra/list-tools.sh learn
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Try to connect to the blocked server: the MCP handshake fails before any backend is called
+Write-Host "🚦 Expect initialize to fail with AccessBlockedByGateway:"
+./infra/list-tools.ps1 -Server learn
+```
+</details> <!-- gh -->
+
+The script stops at `initialize`. The gateway answers with HTTP `200` and a JSON-RPC error,
+`Access to MCP server 'learn' is blocked.`, with the code `AccessBlockedByGateway`. No backend is called.
+
+### Turn the server back on
+
+Plan and apply again without `-var`, to go back to the default, `active`.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Plan the change back to the defaults, where the server's access is active
+terraform -chdir=terraform plan -out tfplan &&
+  echo "📝 The plan updates only the learn MCP server"
+
+# Apply the plan
+terraform -chdir=terraform apply tfplan &&
+  echo "🔌 The learn MCP server is active"
+
+# Wait for the runtime to pick up the change, then list the tools again, to confirm that clients can connect
+sleep 15
+echo "🔧 Tools on the learn MCP server:"
+./infra/list-tools.sh learn
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Plan the change back to the defaults, where the server's access is active
+terraform -chdir=terraform plan -out tfplan
+if ($?) { Write-Host "📝 The plan updates only the learn MCP server" }
+
+# Apply the plan
+terraform -chdir=terraform apply tfplan
+if ($?) { Write-Host "🔌 The learn MCP server is active" }
+
+# Wait for the runtime to pick up the change, then list the tools again, to confirm that clients can connect
+Start-Sleep -Seconds 15
+Write-Host "🔧 Tools on the learn MCP server:"
+./infra/list-tools.ps1 -Server learn
+```
+</details> <!-- gh -->
+
+The four tools are back.
+
+</details> <!-- gh -->
 <!-- /tracks -->
 
 ## Rate-limit the MCP server
@@ -819,9 +1229,9 @@ one shared counter.
 
 > [!NOTE]
 > The `az aigateway` extension still speaks the preview property names `callsPerPeriod` and `periodSeconds`. The
-> generally available management API (`2026-11-01`), which the Bicep track uses, stores the same limit as
-> `"count": 5` and `"period": "PT30S"`, an ISO 8601 duration from `PT1S` to `PT300S`, or `"minute"`. It rejects the
-> preview names. In Bash, read the stored shape with
+> generally available management API (`2026-11-01`), which the Bicep and Terraform tracks use, stores the same
+> limit as `"count": 5` and `"period": "PT30S"`, an ISO 8601 duration from `PT1S` to `PT300S`, or `"minute"`. It
+> rejects the preview names. In Bash, read the stored shape with
 > `az rest --method get --url "https://management.azure.com$(az aigateway show -g "$RG" -n "$GATEWAY" --query id -o tsv)/workspaces/default/toolServers/learn?api-version=2026-11-01" --query properties.policies`.
 
 > [!TIP]
@@ -892,6 +1302,63 @@ if ($?) { Write-Host "🔐 The request rate limit on learn counts calls per clie
 </details> <!-- gh -->
 
 Use `'["identity","ipAddress"]'` for both. Set it back to `'["identity"]'` before **Verify**.
+
+</details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+### Check the policy
+
+`terraform apply` already added the request rate limit: the configuration's `policies` array holds one
+`requestRateLimit` entry with `count`, `period`, and `counterKey`. The command is the same in Bash and PowerShell.
+
+```bash
+# Read the policies on the learn MCP server that terraform apply created, as the generally available API stores them
+echo "🔐 Policies on the learn MCP server:"
+az rest --method get --url "https://management.azure.com$GATEWAY_ID/workspaces/default/toolServers/learn?api-version=2026-11-01" --query properties.policies
+```
+
+> **Checkpoint**
+> The command prints one policy with `"type": "requestRateLimit"`, `"count": 5`, `"period": "PT30S"`,
+> `"counterKey": ["identity"]`, and `"scope": "resource"`.
+
+### Change the limit
+
+To count calls per client IP address instead of per key, pass `counter_key` to `terraform plan` and apply the plan.
+Only the MCP server changes. `calls_per_period` and `period_seconds` work the same way, and `calls_per_period` `0`
+removes the policy.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Plan the change: count calls per client IP address instead of per key
+terraform -chdir=terraform plan -var 'counter_key=["ipAddress"]' -out tfplan &&
+  echo "📝 The plan updates only the learn MCP server"
+
+# Apply the plan
+terraform -chdir=terraform apply tfplan &&
+  echo "🔐 The request rate limit on learn counts calls per client IP address"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Plan the change: count calls per client IP address instead of per key
+terraform -chdir=terraform plan -var 'counter_key=["ipAddress"]' -out tfplan
+if ($?) { Write-Host "📝 The plan updates only the learn MCP server" }
+
+# Apply the plan
+terraform -chdir=terraform apply tfplan
+if ($?) { Write-Host "🔐 The request rate limit on learn counts calls per client IP address" }
+```
+</details> <!-- gh -->
+
+> **Checkpoint**
+> The plan ended with `Plan: 0 to add, 1 to change, 0 to destroy.`, for `azapi_resource.tool_server`.
+
+Use `'counter_key=["identity","ipAddress"]'` for both. Before **Verify**, plan and apply again without `-var`, to go
+back to the default, `["identity"]`.
 
 </details> <!-- gh -->
 <!-- /tracks -->
@@ -1075,8 +1542,31 @@ Remove-Item policies.json
 ```
 </details> <!-- gh -->
 
-Then restore the catalog in the portal: open **MCP servers** › `learn` › **Edit** › **Tools**, select
-**Allow all tools**, remove the `*code_sample*` blocked pattern, and select **Save**.
+### Restore the catalog
+
+Clear the allow list, so that the server publishes every tool again, and clear the blocked tools.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Clear the allow list and the blocked tools, so that learn publishes and runs every tool again
+az aigateway mcp update -g "$RG" --gateway-name "$GATEWAY" -n learn --allow-list null --blocked null \
+  --query "properties.{allowList:allowList,blocked:blocked}" &&
+  echo "🔌 learn publishes every tool again"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Clear the allow list and the blocked tools, so that learn publishes and runs every tool again
+az aigateway mcp update -g $RG --gateway-name $GATEWAY -n learn --allow-list null --blocked null `
+  --query "properties.{allowList:allowList,blocked:blocked}"
+if ($?) { Write-Host "🔌 learn publishes every tool again" }
+```
+</details> <!-- gh -->
+
+The command prints `"allowList": null` and `"blocked": null`, and the server lists all six tools again.
 
 </details> <!-- gh -->
 <!-- track: iac | Bicep + azd -->
@@ -1086,7 +1576,7 @@ Then restore the catalog in the portal: open **MCP servers** › `learn` › **E
 
 In the `aigateway/labs/05-mcp-tool-controls` folder, delete the resource group with the gateway, the `learn` MCP
 server, and the key. [`--purge`](../SETUP.md#delete-what-azd-created) also purges soft-deleted resources. It takes
-about ten minutes.
+about two minutes.
 
 ```bash
 # Delete everything that azd up created, and purge the soft-deleted resources
@@ -1109,10 +1599,28 @@ azd provision &&
 ```
 
 </details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+### Delete everything Terraform created
+
+In the `aigateway/labs/05-mcp-tool-controls` folder, delete the resource group with the gateway, the `learn` MCP
+server, and the key. It takes about a minute.
+
+```bash
+# Delete everything that terraform apply created
+terraform -chdir=terraform destroy -auto-approve &&
+  echo "🚮 Everything that terraform apply created is deleted"
+```
+
+To keep this gateway for other labs instead, skip `terraform destroy`. Open the catalog and remove the limit:
+`terraform -chdir=terraform apply -var 'allowed_tools=["*"]' -var 'blocked_tools=[]' -var calls_per_period=0`.
+
+</details> <!-- gh -->
 <!-- /tracks -->
 
-Keep the gateway, the `learn` MCP server, and your key from lab 04. The next labs reuse them. `azd down` doesn't
-touch them, because the Bicep + azd track created its own gateway.
+Keep the gateway, the `learn` MCP server, and your key from lab 04. The next labs reuse them. `azd down` and
+`terraform destroy` don't touch them, because the Bicep + azd and Terraform tracks created their own gateways.
 
 ## Next steps
 

@@ -4,15 +4,15 @@ summary: Add a content safety policy that screens prompts, tool inputs, and resp
 category: governance
 level: Beginner
 duration: 20
-tracks: [portal, cli, rest, iac]
+tracks: [portal, cli, rest, iac, terraform]
 order: 8
 illustration: diagrams/request-lifecycle.svg
-tags: [contentSafety, Azure AI Content Safety, responsible AI, severity threshold, "400", content filter]
+tags: [contentSafety, Azure AI Content Safety, responsible AI, severity threshold, "400", content filter, Terraform]
 objectives:
   - Explain how content safety severity thresholds decide what the gateway blocks
   - Add a content safety policy to a model in the portal, with the Azure CLI, or with the REST API
   - Override the threshold for one category without changing the others
-  - Publish a screened alias with Bicep and azd, without touching existing clients
+  - Publish a screened alias with Bicep and azd or with Terraform, without touching existing clients
   - Test the policy with benign prompts and tell a gateway block from a Foundry content filter result
 prereqs:
   - 02-first-model-call
@@ -28,14 +28,14 @@ prereqs:
 
 | ⏱️ Time | 📶 Level | 🧭 Tracks | ✅ Before you start |
 | :-- | :-- | :-- | :-- |
-| 20 min | Beginner | Portal · Azure CLI · REST API · Bicep + azd | [02 · First model call](../02-first-model-call/README.md) |
+| 20 min | Beginner | Portal · Azure CLI · REST API · Bicep + azd · Terraform | [02 · First model call](../02-first-model-call/README.md) |
 
 **You'll learn to**
 
 - Explain how content safety severity thresholds decide what the gateway blocks
 - Add a content safety policy to a model in the portal, with the Azure CLI, or with the REST API
 - Override the threshold for one category without changing the others
-- Publish a screened alias with Bicep and azd, without touching existing clients
+- Publish a screened alias with Bicep and azd or with Terraform, without touching existing clients
 - Test the policy with benign prompts and tell a gateway block from a Foundry content filter result
 
 **Follow along:** 🌐 [Interactive version](https://azure.github.io/aigateway/labs/08-content-safety/) with your own values filled in · 📁 [Lab files](infra/)
@@ -67,8 +67,8 @@ gateway, tune it per category, and see what a blocked call looks like to a clien
 <!-- gh:end -->
 
 > [!TIP]
-> On the **Bicep + azd** track, `azd up` creates its own gateway, model, and key, so you can skip this section. You
-> need only the one-time setup above.
+> On the **Bicep + azd** and **Terraform** tracks, `azd up` or `terraform apply` creates its own gateway, model, and
+> key, so you can skip this section. You need only the one-time setup above.
 
 - Complete [Publish a Foundry model and make your first call](../02-first-model-call/README.md). You need a
   gateway, an imported model, a callable alias, and a runtime API key from **Access** › **API keys**.
@@ -155,8 +155,8 @@ block the call.
 ## Add content safety to the model
 
 Pick one track. Each track produces the same policy: **Balanced** (`Medium`) for Hate, Self-harm, and Sexual,
-and **Strict** (`Low`) for Violence. The portal, CLI, and REST tracks put it on your model. The Bicep + azd track
-creates a new gateway and puts it on a new alias of the model. The stricter Violence threshold makes the test in
+and **Strict** (`Low`) for Violence. The portal, CLI, and REST tracks put it on your model. The Bicep + azd and
+Terraform tracks create a new gateway and put it on a new alias of the model. The stricter Violence threshold makes the test in
 **Verify** more likely to show a block, using only a mild, non-graphic prompt.
 
 <!-- track: portal | Portal -->
@@ -544,7 +544,7 @@ output chatCompletionsUrl string = 'https://${gateway.properties.frontend.defaul
 ### Deploy with azd up
 
 Move into the lab's folder, create an azd environment named `aigw-lab08` in your current subscription, then provision
-everything. It takes about three minutes.
+everything. It takes about two minutes.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -644,6 +644,216 @@ Write-Host "🔖 Model alias: $env:AI_GATEWAY_MODEL"
 The parameters come from azd environment values, with the defaults in `infra/main.parameters.json`:
 `CONTENT_SAFETY_HATE`, `CONTENT_SAFETY_SELF_HARM`, `CONTENT_SAFETY_SEXUAL`, and `CONTENT_SAFETY_VIOLENCE`. Change one
 with `azd env set` and run `azd provision`: only the alias changes. **Verify** relaxes Violence this way.
+
+</details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+**What you need:** only the one-time setup from **Before you begin**, plus Terraform 1.9 or later, as in
+[Deploy a lab with Terraform](../SETUP.md#deploy-a-lab-with-terraform). This track doesn't use your gateway from
+lab 02: `terraform apply` creates a new one, so it works on its own.
+
+### Review the configuration
+
+Like the Bicep template, the configuration **adds a new alias**, `<model-name>-safe`, that targets the same backend
+model and carries the content safety policy, rather than redeclaring a model that you imported in the portal.
+
+`terraform/main.tf` creates the resource group `rg-<environment_name>` and calls the quick start's
+[resources module](../quickstart/terraform/resources) for the gateway, the Foundry model, its default alias, and the
+`app-first-call` key:
+
+<!-- include: terraform/main.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/main.tf`](terraform/main.tf)
+
+```tf
+# Lab 08 with Terraform: creates the resource group rg-<environment_name>, the quick start's gateway, Foundry model,
+# default alias, and runtime API key, then a second alias for the same model with a content safety policy
+# (safe-alias.tf). The runtime API key is never an output.
+data "azapi_client_config" "current" {}
+
+locals {
+  suffix = substr(sha1("${data.azapi_client_config.current.subscription_id}/${var.environment_name}/${var.location}"), 0, 6)
+  tags   = { "environment-name" = var.environment_name }
+}
+
+resource "azurerm_resource_group" "rg" {
+  name     = "rg-${var.environment_name}"
+  location = var.location
+  tags     = local.tags
+}
+
+# The quick start's module: a gateway, a Foundry model behind the default alias, and the app-first-call key.
+module "base" {
+  source = "../../quickstart/terraform/resources"
+
+  subscription_id     = data.azapi_client_config.current.subscription_id
+  resource_group_name = azurerm_resource_group.rg.name
+  resource_group_id   = azurerm_resource_group.rg.id
+  location            = var.location
+  tags                = local.tags
+  gateway_name        = "aigw-${local.suffix}"
+  foundry_name        = "aigw${local.suffix}"
+}
+```
+<!-- gh:end -->
+
+`terraform/safe-alias.tf` adds the alias with the `azapi` provider, which sends the AI Gateway API version,
+`2026-11-01`, as is. `terraform/variables.tf` declares the four thresholds with the same defaults as the Bicep
+template, and accepts only `Low`, `Medium`, `High`, or `None`:
+
+<!-- include: terraform/safe-alias.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/safe-alias.tf`](terraform/safe-alias.tf)
+
+```tf
+# Publishes an alias with a content safety policy for the quick start's model. The alias points at the same backend
+# model as the default alias, but screens every prompt and response it serves, so you can test thresholds without
+# changing what other callers get.
+resource "azapi_resource" "safe_alias" {
+  type      = "Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01"
+  name      = "${module.base.model_name}-safe"
+  parent_id = module.base.workspace_id
+
+  body = {
+    properties = {
+      aliasName = "${module.base.model_name}-safe"
+      backendModels = [
+        { resourceId = module.base.model_id }
+      ]
+      policies = [
+        {
+          type             = "contentSafety"
+          hateSeverity     = var.hate_severity
+          selfHarmSeverity = var.self_harm_severity
+          sexualSeverity   = var.sexual_severity
+          violenceSeverity = var.violence_severity
+        }
+      ]
+    }
+  }
+
+  schema_validation_enabled = false
+}
+```
+<!-- gh:end -->
+
+### Deploy with terraform apply
+
+Move into the lab's Terraform folder, select your current subscription, then plan and apply the configuration. It
+takes about three minutes.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Move into the lab's Terraform folder
+cd ~/aigateway/labs/08-content-safety/terraform &&
+  echo "📂 Terraform folder: $(pwd)"
+
+# Deploy to the Azure CLI's current subscription
+export ARM_SUBSCRIPTION_ID="$(az account show --query id --output tsv)" &&
+  echo "📍 Subscription: $ARM_SUBSCRIPTION_ID"
+
+# Download the providers, then plan and apply the gateway, the Foundry model, the key, and the screened alias
+terraform init &&
+  terraform plan -out tfplan &&
+  terraform apply tfplan &&
+  echo "🚀 Gateway deployed: $(terraform output -raw ai_gateway_url)"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Move into the lab's Terraform folder
+Set-Location ~/aigateway/labs/08-content-safety/terraform
+if ($?) { Write-Host "📂 Terraform folder: $(Get-Location)" }
+
+# Deploy to the Azure CLI's current subscription
+$env:ARM_SUBSCRIPTION_ID = az account show --query id --output tsv
+if ($?) { Write-Host "📍 Subscription: $env:ARM_SUBSCRIPTION_ID" }
+
+# Download the providers, then plan and apply the gateway, the Foundry model, the key, and the screened alias
+terraform init
+if ($?) { terraform plan -out tfplan }
+if ($?) { terraform apply tfplan }
+if ($?) { Write-Host "🚀 Gateway deployed: $(terraform output -raw ai_gateway_url)" }
+```
+</details> <!-- gh -->
+
+The configuration deploys to `eastus2`. For another region where AI Gateway and the `gpt-5-mini` model are
+available, as in [Find the available regions](../SETUP.md#find-the-available-regions), run
+`export TF_VAR_location=<region>` (PowerShell: `$env:TF_VAR_location = "<region>"`) before `terraform plan`.
+
+### Read the outputs and the key
+
+Set the variables that **Verify** uses from the Terraform outputs, and read the key from the gateway, so that it
+never shows on screen or lands in the Terraform state.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Read the configuration's outputs: the resource group, the gateway, its model provider, and the backend model
+export RG="$(terraform output -raw azure_resource_group)"
+export GATEWAY="$(terraform output -raw ai_gateway_name)"
+export PROVIDER="$(terraform output -raw ai_gateway_provider)"
+export MODEL="$(terraform output -raw ai_gateway_backend_model)"
+
+# Read the gateway's runtime URL and the screened alias
+export AI_GATEWAY_URL="$(terraform output -raw ai_gateway_url)"
+export AI_GATEWAY_MODEL="$(terraform output -raw ai_gateway_model)"
+
+# Read the key from the gateway, so that it never lands in a file or the Terraform state
+export AI_GATEWAY_API_KEY="$(az aigateway api-key list-secrets --ids "$(terraform output -raw ai_gateway_id)/apiKeys/app-first-call" \
+  --query primaryKey --output tsv)"
+echo "🌐 Runtime URL: $AI_GATEWAY_URL"
+echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
+echo "🔖 Model alias: $AI_GATEWAY_MODEL"
+# Move back to the lab's folder, which holds the scripts
+cd .. && echo "📂 Lab folder: $(pwd)"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Read the configuration's outputs: the resource group, the gateway, its model provider, and the backend model
+$RG                     = terraform output -raw azure_resource_group
+$GATEWAY                = terraform output -raw ai_gateway_name
+$PROVIDER               = terraform output -raw ai_gateway_provider
+$MODEL                  = terraform output -raw ai_gateway_backend_model
+
+# Read the gateway's runtime URL, the screened alias, and the gateway's resource ID
+$env:AI_GATEWAY_URL     = terraform output -raw ai_gateway_url
+$env:AI_GATEWAY_MODEL   = terraform output -raw ai_gateway_model
+$GATEWAY_ID             = terraform output -raw ai_gateway_id
+
+# Read the key from the gateway, so that it never lands in a file or the Terraform state
+$env:AI_GATEWAY_API_KEY = az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/app-first-call" `
+  --query primaryKey --output tsv
+Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
+Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) characters, not shown)"
+Write-Host "🔖 Model alias: $env:AI_GATEWAY_MODEL"
+# Move back to the lab's folder, which holds the scripts
+Set-Location ..
+if ($?) { Write-Host "📂 Lab folder: $(Get-Location)" }
+```
+</details> <!-- gh -->
+
+> **Checkpoint**
+> `terraform apply` ended with `Apply complete! Resources: 10 added, 0 changed, 0 destroyed.`, and the output
+> shows `🔖 Model alias: gpt-5-mini-safe`.
+> `az aigateway model-alias show -g "$RG" --gateway-name "$GATEWAY" -n "$AI_GATEWAY_MODEL" --query properties.policies`
+> returns one `contentSafety` entry with `"violenceSeverity": "Low"`, `"Medium"` for the other three categories,
+> and `"scope": "resource"`.
+
+### Change the thresholds
+
+The next sections run from the lab's folder, with `-chdir=terraform` for the `terraform` commands.
+
+The thresholds are Terraform variables, with the defaults in `terraform/variables.tf`: `hate_severity`,
+`self_harm_severity`, `sexual_severity`, and `violence_severity`. Pass one to `terraform plan` with `-var` and apply
+the plan: only the alias changes. **Verify** relaxes Violence this way.
 
 </details> <!-- gh -->
 <!-- /tracks -->
@@ -764,6 +974,11 @@ if ($?) { Write-Host "🔐 Content safety on $env:AI_GATEWAY_MODEL is Balanced (
 ```
 </details> <!-- gh -->
 
+On the Terraform track, in the lab folder, run
+`terraform -chdir=terraform plan -var violence_severity=Medium -out tfplan`, then
+`terraform -chdir=terraform apply tfplan`. The plan ends with `Plan: 0 to add, 1 to change, 0 to destroy.`, for
+`azapi_resource.safe_alias`.
+
 A prompt that **Strict** blocked is more likely to pass at **Balanced**. Prompts that passed before still pass.
 
 ### Check the Foundry content filter
@@ -841,7 +1056,9 @@ This removes only the content safety policy and keeps every other policy on the 
 
 ### Remove the policy
 
-```bash
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
 # Read the policies and drop the content safety policy, so that the others stay
 POLICIES="$(az rest --method get --url "$URL" | jq -c '[(.properties.policies // [])[] | select(.type != "contentSafety")]')"
 
@@ -849,6 +1066,22 @@ POLICIES="$(az rest --method get --url "$URL" | jq -c '[(.properties.policies //
 az rest --method patch --url "$URL" --body "{\"properties\":{\"policies\":$POLICIES}}" --output none &&
   echo "🚮 Content safety is removed from $MODEL"
 ```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Read the policies and drop the content safety policy, so that the others stay
+$current  = az rest --method get --url $URL | ConvertFrom-Json
+$policies = @($current.properties.policies | Where-Object { $_ -and $_.type -ne 'contentSafety' })
+
+# Send the remaining policies back from a file: a PATCH replaces the whole policies array
+ConvertTo-Json -InputObject @{ properties = @{ policies = $policies } } -Depth 10 -Compress | Set-Content -Path patch.json
+az rest --method patch --url $URL --body '@patch.json' --output none
+if ($?) { Write-Host "🚮 Content safety is removed from $MODEL" }
+Remove-Item patch.json
+```
+</details> <!-- gh -->
 
 </details> <!-- gh -->
 <!-- track: iac | Bicep + azd -->
@@ -858,7 +1091,7 @@ az rest --method patch --url "$URL" --body "{\"properties\":{\"policies\":$POLIC
 
 In the `aigateway/labs/08-content-safety` folder, delete the resource group with the gateway, the Foundry account,
 and the screened alias. [`--purge`](../SETUP.md#delete-what-azd-created) also purges the soft-deleted Foundry account.
-It takes about ten minutes.
+It takes a few minutes.
 
 ```bash
 # Delete the resource group and purge the soft-deleted Foundry account, without prompts
@@ -867,10 +1100,26 @@ azd down --purge --force &&
 ```
 
 </details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+### Delete everything Terraform created
+
+In the `aigateway/labs/08-content-safety` folder, delete the resource group with the gateway, the Foundry
+account, and the screened alias. The [`azurerm` provider](../SETUP.md#delete-what-terraform-created) also purges the
+soft-deleted Foundry account. It takes a few minutes.
+
+```bash
+# Delete everything that terraform apply created, and purge the soft-deleted Foundry account
+terraform -chdir=terraform destroy -auto-approve &&
+  echo "🚮 Everything that terraform apply created is deleted"
+```
+
+</details> <!-- gh -->
 <!-- /tracks -->
 
-Keep the gateway, model, and key from lab 02: the next labs reuse them. `azd down` doesn't touch them, because
-the Bicep + azd track created its own gateway.
+Keep the gateway, model, and key from lab 02: the next labs reuse them. `azd down` and `terraform destroy` don't
+touch them, because the Bicep + azd and Terraform tracks created their own gateways.
 
 ## Next steps
 

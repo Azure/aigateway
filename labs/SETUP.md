@@ -15,8 +15,9 @@ and you can mark each task **Done**: the labs then stop listing it. Your browser
 | [Install the `aigateway` extension](#install-the-aigateway-extension) | The Azure CLI tracks and the **Verify** steps |
 | [Register the resource providers](#register-the-resource-providers) | Once per subscription, before you create a gateway with the Azure CLI |
 | [Find the available regions](#find-the-available-regions) | Before you choose a location |
-| [Clone the labs repo](#clone-the-labs-repo) | The Bicep + azd tracks, the notebooks, and the code samples |
+| [Clone the labs repo](#clone-the-labs-repo) | The Bicep + azd and Terraform tracks, the notebooks, and the code samples |
 | [Deploy a lab with azd](#deploy-a-lab-with-azd) | The Bicep + azd tracks |
+| [Deploy a lab with Terraform](#deploy-a-lab-with-terraform) | The Terraform tracks |
 
 ## Check your subscription and permissions
 
@@ -36,7 +37,7 @@ can't create gateways shows as disabled in the subscription picker.
 ## Choose where to run commands
 
 [Azure Cloud Shell](https://shell.azure.com) is the quickest way. Open it in Bash or PowerShell: it's already signed
-in, and it has the Azure CLI, the Azure Developer CLI (`azd`), Git, `jq`, `curl`, Python, Node.js, and .NET. Add
+in, and it has the Azure CLI, the Azure Developer CLI (`azd`), Terraform, Git, `jq`, `curl`, Python, Node.js, and .NET. Add
 the [`aigateway` extension](#install-the-aigateway-extension), and you're ready for every track.
 
 To work on your own machine, install the tools for the tracks you plan to follow:
@@ -46,6 +47,7 @@ To work on your own machine, install the tools for the tracks you plan to follow
 | [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) 2.75 or later | The Azure CLI tracks, the **Verify** steps, and `azd env new` in the Bicep + azd tracks |
 | The [`aigateway` extension](#install-the-aigateway-extension) | The `az aigateway` commands |
 | [Azure Developer CLI (`azd`)](https://aka.ms/azd-install) | The Bicep + azd tracks. It installs Bicep the first time it needs it. |
+| [Terraform](https://developer.hashicorp.com/terraform/install) 1.9 or later | The Terraform tracks. `terraform init` downloads the `azapi` and `azurerm` providers that each lab pins. Lab 31 needs Terraform 1.11 or later, for write-only arguments. |
 | [Git](https://git-scm.com/downloads) | Cloning the labs repo |
 | [`jq`](https://jqlang.org/download/) | The Bash snippets that build or read JSON. The PowerShell snippets don't need it. |
 | Python, Node.js, or the .NET 8 SDK | The code samples, depending on the language. Each lab lists the versions it needs. |
@@ -132,7 +134,7 @@ az aigateway version
 
 > **Checkpoint**
 > The installer printed `📦 aigateway extension … is installed`, and `az aigateway version` prints the extension
-> version and the API version it calls, `2025-09-01-preview`. The labs need version `1.0.0b31` or later; run the
+> version and the API version it calls, `2025-09-01-preview`. The labs need version `1.0.0b33` or later; run the
 > installer again to upgrade an older one.
 
 > [!NOTE]
@@ -255,7 +257,7 @@ az cognitiveservices model list --location "<location>" `
 
 ## Clone the labs repo
 
-The Bicep + azd tracks, the notebooks, and the code samples run from the
+The Bicep + azd and Terraform tracks, the notebooks, and the code samples run from the
 [labs repo](https://github.com/Azure/aigateway/tree/main/labs). Clone it once into your home folder:
 
 ```bash title="Bash or PowerShell"
@@ -344,6 +346,97 @@ azd down --purge --force &&
 
 `--purge` also purges soft-deleted resources such as the Foundry account, which would otherwise stay soft-deleted
 for 48 hours and keep counting against your quota. `--force` skips the confirmation prompt.
+
+## Deploy a lab with Terraform
+
+Each Terraform track is a root module in its lab's `terraform/` folder. Like the Bicep + azd track, it creates its
+own resource group, gateway, and whatever else the lab needs. AI Gateway resources go through the
+[`azapi` provider](https://registry.terraform.io/providers/Azure/azapi/latest), which sends their ARM API
+version, `2026-11-01`, as is. The resource group, the Foundry account, its model deployments, and the role
+assignments use the [`azurerm` provider](https://registry.terraform.io/providers/hashicorp/azurerm/latest).
+Both providers sign in with your Azure CLI session. Every track follows the same steps:
+
+1. Move into the lab's `terraform/` folder.
+2. Set `ARM_SUBSCRIPTION_ID` to the Azure CLI's current subscription, where the providers deploy, and
+   `TF_VAR_location` to your region. Terraform reads any variable from a `TF_VAR_<name>` environment variable.
+3. Run `terraform init` once, to download the providers, then `terraform plan -out tfplan` and
+   `terraform apply tfplan`. The apply ends with `Apply complete!`. Most of the wait is the new gateway's
+   activation: it usually takes a few minutes, but it can take more than half an hour in some regions, so the
+   configurations wait up to an hour for it.
+4. Read the outputs that the next steps use with `terraform output -raw <name>`, or list them all with
+   `terraform output`.
+
+For example, for [lab 06](06-token-limits/README.md):
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Move into the lab's Terraform folder
+cd ~/aigateway/labs/06-token-limits/terraform &&
+  echo "📂 Terraform folder: $(pwd)"
+
+# Deploy to the Azure CLI's current subscription, in your region
+export ARM_SUBSCRIPTION_ID="$(az account show --query id --output tsv)" &&
+  export TF_VAR_location="<location>" &&
+  echo "📍 Subscription $ARM_SUBSCRIPTION_ID, region $TF_VAR_location"
+
+# Download the providers, plan the deployment, and apply the plan: the resource group rg-aigw-lab06-tf, the
+# gateway, and whatever else the lab needs
+terraform init &&
+  terraform plan -out tfplan &&
+  terraform apply tfplan &&
+  echo "🚀 Lab deployed to $(terraform output -raw azure_resource_group)"
+
+# Read one of the outputs that the next steps use: the gateway's runtime URL
+echo "🌐 Runtime URL: $(terraform output -raw ai_gateway_url)"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Move into the lab's Terraform folder
+Set-Location ~/aigateway/labs/06-token-limits/terraform
+if ($?) { Write-Host "📂 Terraform folder: $(Get-Location)" }
+
+# Deploy to the Azure CLI's current subscription, in your region
+$env:ARM_SUBSCRIPTION_ID = az account show --query id --output tsv
+$env:TF_VAR_location = "<location>"
+Write-Host "📍 Subscription $env:ARM_SUBSCRIPTION_ID, region $env:TF_VAR_location"
+
+# Download the providers, plan the deployment, and apply the plan: the resource group rg-aigw-lab06-tf, the
+# gateway, and whatever else the lab needs
+terraform init
+if ($?) { terraform plan -out tfplan }
+if ($?) { terraform apply tfplan }
+if ($?) { Write-Host "🚀 Lab deployed to $(terraform output -raw azure_resource_group)" }
+
+# Read one of the outputs that the next steps use: the gateway's runtime URL
+Write-Host "🌐 Runtime URL: $(terraform output -raw ai_gateway_url)"
+```
+</details> <!-- gh -->
+
+Each lab's resource group is `rg-<environment_name>`, with a default such as `aigw-lab06-tf`, so it doesn't collide
+with the lab's azd environment. Without `TF_VAR_location`, the region is `eastus2`; pick one where the lab's models
+are available, as in [Find the available regions](#find-the-available-regions), and set it again in each new
+shell, because a plan in another region replaces every resource. To change a lab's setting later, pass it to
+`terraform plan` with `-var "<name>=<value>"`, then apply the plan: Terraform changes only what differs.
+
+Terraform keeps its state, which maps the configuration to the resources it created, in `terraform.tfstate` in
+the lab's folder. The state never holds the runtime API keys, because the labs read them from the gateway with
+`az aigateway api-key list-secrets`. The repo's `.gitignore` keeps the state, the plan, and the downloaded
+providers out of Git.
+
+### Delete what Terraform created
+
+When you finish a lab, run this from its `terraform/` folder. It deletes the resource group and everything in it,
+and purges the soft-deleted Foundry account, usually within a few minutes. It doesn't need `TF_VAR_location`:
+
+```bash title="Bash or PowerShell"
+# Delete everything that terraform apply created, and purge the soft-deleted Foundry account
+terraform destroy -auto-approve &&
+  echo "🚮 Everything that terraform apply created is deleted"
+```
 
 ## Troubleshooting
 

@@ -35,7 +35,7 @@ summary: One or two sentences shown on catalog cards and in search.
 category: governance            # foundations | models | tools | governance | security | observability | agents | production
 level: Beginner                 # Beginner | Intermediate | Advanced
 duration: 25                    # minutes, realistic for a first-timer
-tracks: [portal, cli, rest, iac] # portal | cli | iac | code | rest – only tracks the lab really offers
+tracks: [portal, cli, rest, iac, terraform] # portal | cli | iac | terraform | code | rest – only tracks the lab really offers
 order: 6                        # catalog order (matches folder number; the quick start uses -1)
 status: new                     # optional: new | preview | emerging
 illustration: diagrams/token-limits.svg   # optional, relative to labs/assets/
@@ -205,6 +205,53 @@ lab. Follow [lab 06](06-token-limits/) and the quick start:
   Foundry account. Add a `[!TIP]` to **Before you begin** saying the track needs no earlier lab.
 - The track's label is **Bicep + azd**. The site shows the label of the lab's first `iac` marker instead when a lab
   uses another one, such as **Policy as code** in lab 09 or **Bicep** in lab 21.
+
+Every lab that deploys Azure resources also gets a **Terraform** track (`<!-- track: terraform | Terraform -->`, with
+`terraform` in the `tracks` metadata), a root module in the lab's `terraform/` folder that mirrors its Bicep:
+
+```text
+06-token-limits/terraform/
+├── providers.tf        # azapi 2.10.0 and azurerm 5.12.0, pinned exactly, and the azurerm features block
+├── main.tf             # rg-<environment_name>, the base module, then the lab's resources
+├── variables.tf        # environment_name (default aigw-labNN-tf), location (default eastus2), and the lab's knobs
+├── outputs.tf          # the Bicep outputs in snake_case: azure_resource_group, ai_gateway_url, …
+└── limited-alias.tf    # the lab's own resources, named after what they declare
+```
+
+- Declare every `Microsoft.ApiManagement/aigateways` resource with `azapi_resource` at `@2026-11-01` and
+  `schema_validation_enabled = false`, since the provider has no schema for it yet. Use `azurerm` for the resource
+  group, Foundry accounts and deployments, and role assignments: `azurerm_cognitive_account` purges the Foundry
+  account on `terraform destroy` with the `purge_soft_delete_on_destroy` feature, and the
+  `log_analytics_workspace` feature deletes workspaces permanently, like `azd down --purge`.
+- Reuse a base module rather than copying resources:
+  [`quickstart/terraform/resources`](quickstart/terraform/resources) (the counterpart of `resources.bicep`) or
+  [lab 01's `terraform/gateway`](01-provision-gateway/terraform/gateway) (the counterpart of `gateway.bicep`).
+- Name resources with `substr(sha1("<subscription>/<environment_name>/<location>"), 0, 6)` and tag them with
+  `environment-name`. The default `environment_name` ends in `-tf`, so the resource group doesn't collide with the
+  lab's azd environment.
+- Never output a secret. The track reads the runtime key with `az aigateway api-key list-secrets --ids
+  "$(terraform output -raw ai_gateway_id)/apiKeys/<key>"`, so it stays out of the state file. To send a secret,
+  such as a model provider's key, use a write-only argument (`sensitive_body`) and an `ephemeral` variable, which
+  need Terraform 1.11 or later: set `required_version` in the file that uses them, as lab 31 does.
+- `azapi_resource` compares only the keys in `body`, so dropping a key (for example with `merge()`) never shows a
+  change. Set the key to `null` to remove it, as lab 12's `model-provider.tf` does, or list the variable in
+  `replace_triggers_external_values` when the service needs a new resource, as lab 32's connection does.
+- To read a value that the service sets after creation, use `azapi_resource_action` with `method = "GET"` and
+  `replace_triggered_by`, not a data source: a data source reads again on every plan and shows drift.
+- Don't commit `.terraform.lock.hcl`, the state, or plans: `labs/.gitignore` excludes them, and `providers.tf`
+  pins the versions.
+- The track's sections are **Review the configuration** (with `<!-- include: terraform/main.tf -->`), **Deploy
+  with terraform apply** (`cd ~/aigateway/labs/<lab>/terraform`, set `ARM_SUBSCRIPTION_ID`, then `terraform init`,
+  `terraform plan -out tfplan`, and `terraform apply tfplan`), and **Read the outputs and the key**. To change a
+  setting, the reader passes `-var name=value` to `terraform plan` and applies again. Its **Clean up** section runs
+  `terraform destroy -auto-approve`.
+- When **Verify** or a later step runs a script or sample from the lab's folder (`./infra/…`, `python infra/…`),
+  end **Read the outputs and the key** with `cd ..` (PowerShell: `Set-Location ..`), and run every later
+  `terraform` command with `-chdir=terraform`, as labs 02 and 06 do. When a step moves elsewhere, such as a
+  sample app's folder, the next `terraform` command starts with `cd ~/aigateway/labs/<lab>/terraform`. The build warns when a lab has a `terraform/` folder but no Terraform track,
+  or the reverse, or when the track never moves into the folder or never runs `terraform destroy`.
+- Verify each track live: `terraform apply`, then `terraform plan -detailed-exitcode` must exit with 0 (no drift),
+  then the lab's **Verify** steps, then `terraform destroy`.
 
 ## GitHub view
 
@@ -481,7 +528,7 @@ Keep the video optional: every step it shows must also be written in the lab.
   `https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com` for `aigw-labs-001`. Always read it from the
   gateway, never build it from the name, and write it as `<gateway-url>` in commands and code.
 - Policy `counterKey` values are arrays: `counterKey: [ 'identity' ]` or `[ 'ipAddress' ]`.
-- CLI tracks use the `az aigateway` extension (1.0.0b31 or later, see
+- CLI tracks use the `az aigateway` extension (1.0.0b33 or later, see
   [Install the aigateway extension](SETUP.md#install-the-aigateway-extension)). The extension still calls API
   version `2025-09-01-preview`, so its output shows the preview field names (`kind`, `foundry.endpoint`, `blocked`,
   `required`, `callsPerPeriod`): CLI checkpoints quote those, and REST and Bicep checkpoints quote the
@@ -491,9 +538,9 @@ Keep the video optional: every step it shows must also be written in the lab.
   exporters, API keys (including `api-key update --state` and `api-key regenerate --key-type secondary`), and MCP
   servers (including `mcp update --versions`). Don't pass `--sku` to `az aigateway create`: the service default,
   `Standard`, is the only SKU it accepts. `api-key create` sets the display name to the key name when you omit
-  `--display-name`. Create models with
-  `--deployment-config "{resourceId:…,modelName:…}"`, because `model create --foundry-resource-id --deployment`
-  still crashes in 1.0.0b31, or import every deployment with `model-provider import --foundry-resource-id`.
+  `--display-name`. Create a model with `model create --foundry-resource-id --deployment`, which works from
+  1.0.0b33, or with `--deployment-config "{resourceId:…,modelName:…}"`, or import every deployment with
+  `model-provider import --foundry-resource-id`.
   `--api-format` can't express embeddings or decision models: pass `--supported-endpoints /openai/v1/embeddings`
   or `typesafe/v1/systemone` instead. Call ARM with `az rest` only for what the extension can't do yet: MCP tool
   rules (`allowList`, `blockList`, `accessState`), backend conditions, session affinity, failover, auto model

@@ -4,15 +4,15 @@ summary: Give every app, agent, and user a dollar budget per hour, day, or month
 category: governance
 level: Intermediate
 duration: 30
-tracks: [portal, cli, iac]
+tracks: [portal, cli, iac, terraform]
 order: 7
 illustration: diagrams/policy-scopes.svg
-tags: [costLimit, budget, FinOps, LlmCostQuotaExceeded, "403", overrides, Entra ID, chargeback]
+tags: [costLimit, budget, FinOps, LlmCostQuotaExceeded, "403", overrides, Entra ID, chargeback, Terraform]
 objectives:
   - Explain how a cost limit estimates spend and counts it per caller in fixed calendar windows
   - Add a daily cost limit to a model in the portal or with the Azure CLI
   - Give specific API keys and Microsoft Entra identities their own budget with overrides
-  - Declare a budgeted alias, its API keys, and their overrides with Bicep and azd
+  - Declare a budgeted alias, its API keys, and their overrides with Bicep and azd or with Terraform
   - Trigger a 403 LlmCostQuotaExceeded response, find the remaining budget header, and review estimated spend in Monitoring
 prereqs:
   - 06-token-limits
@@ -29,14 +29,14 @@ prereqs:
 
 | ⏱️ Time | 📶 Level | 🧭 Tracks | ✅ Before you start |
 | :-- | :-- | :-- | :-- |
-| 30 min | Intermediate | Portal · Azure CLI · Bicep + azd · Notebook | [06 · Token limits](../06-token-limits/README.md)<br>[10 · Runtime API keys](../10-api-keys/README.md) |
+| 30 min | Intermediate | Portal · Azure CLI · Bicep + azd · Terraform · Notebook | [06 · Token limits](../06-token-limits/README.md)<br>[10 · Runtime API keys](../10-api-keys/README.md) |
 
 **You'll learn to**
 
 - Explain how a cost limit estimates spend and counts it per caller in fixed calendar windows
 - Add a daily cost limit to a model in the portal or with the Azure CLI
 - Give specific API keys and Microsoft Entra identities their own budget with overrides
-- Declare a budgeted alias, its API keys, and their overrides with Bicep and azd
+- Declare a budgeted alias, its API keys, and their overrides with Bicep and azd or with Terraform
 - Trigger a 403 LlmCostQuotaExceeded response, find the remaining budget header, and review estimated spend in Monitoring
 
 **Follow along:** 🌐 [Interactive version](https://azure.github.io/aigateway/labs/07-cost-budgets/) with your own values filled in · 📓 [Jupyter notebook](07-cost-budgets.ipynb) · 📁 [Lab files](infra/)
@@ -70,8 +70,8 @@ called.
 <!-- gh:end -->
 
 > [!TIP]
-> On the **Bicep + azd** track, `azd up` creates its own gateway, model, and keys, so you can skip this section. You
-> need only the one-time setup above.
+> On the **Bicep + azd** and **Terraform** tracks, `azd up` or `terraform apply` creates its own gateway, model, and
+> keys, so you can skip this section. You need only the one-time setup above.
 
 - Complete [Throttle tokens per caller with token limits](../06-token-limits/README.md). This lab reuses the
   **Policies** › **Add policy** wizard and the idea of per-caller counters.
@@ -176,9 +176,8 @@ that model, or at **Gateway** scope to track **one budget per caller across all 
 ## Add a cost limit to the model
 
 Pick one track. Each one produces the same default budget: **$5 per day for each caller identity**. The portal and
-Azure CLI tracks put it on your model. The Bicep + azd track creates a new gateway and puts it on a new alias of the
-model. The portal and Bicep + azd tracks also add the overrides for specific callers. The Azure CLI track points to
-the portal for them.
+Azure CLI tracks put it on your model. The Bicep + azd and Terraform tracks create a new gateway and put it on a new
+alias of the model. Every track also adds the overrides for specific callers.
 
 <!-- track: portal | Portal -->
 <details open><summary><b>🖥️ Portal</b></summary> <!-- gh -->
@@ -285,12 +284,47 @@ if ($?) { Write-Host "🔐 Cost limit of `$5 per day for each caller is on $MODE
 `--period` accepts `hour`, `day`, `week`, `month`, or `year`. `--counter-key` accepts `identity`, or `ipAddress` to
 count per client IP address. A new cost limit gets the `id` `default` unless you pass `--id`.
 
-### Add overrides in the portal
+### Give specific callers their own budget
 
-Configure overrides for API keys and Microsoft Entra identities in the portal: select **Policies**, open the
-**Cost limit**, select **Edit**, and use the **Overrides (optional)** section as described in the portal track.
-The command above keeps those overrides when you change the amount later. Its `--overrides` argument doesn't
-accept override objects yet.
+`--overrides` sets the whole list of overrides, in order, and the first match wins. Give the `support-bot` key $50
+per day with its resource ID (`apiKeyResourceId`), and your own Microsoft Entra identity $20 per day with your tenant
+ID (`tid`) and object ID (`oid`). The CLI takes `claims` as a map of claim names to values, and stores it as the list
+of `name` and `value` pairs that the API uses.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Read your tenant ID and object ID, which the Entra override matches
+TENANT_ID="$(az account show --query tenantId -o tsv)"
+OBJECT_ID="$(az ad signed-in-user show --query id -o tsv)"
+echo "👤 Tenant ID: $TENANT_ID, object ID: $OBJECT_ID"
+
+# Give support-bot 50 US dollars per day, and your Entra identity 20 US dollars per day
+az aigateway model policy set-cost-limit -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL" \
+  --overrides "[{apiKeyResourceId:$GATEWAY_ID/apiKeys/support-bot,amount:50},{claims:{tid:$TENANT_ID,oid:$OBJECT_ID},amount:20}]" \
+  --output none &&
+  echo "🔐 support-bot gets \$50 and your identity gets \$20 per day on $MODEL"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Read your tenant ID and object ID, which the Entra override matches
+$TENANT_ID = az account show --query tenantId -o tsv
+$OBJECT_ID = az ad signed-in-user show --query id -o tsv
+Write-Host "👤 Tenant ID: $TENANT_ID, object ID: $OBJECT_ID"
+
+# Give support-bot 50 US dollars per day, and your Entra identity 20 US dollars per day
+az aigateway model policy set-cost-limit -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER -n $MODEL `
+  --overrides "[{apiKeyResourceId:$GATEWAY_ID/apiKeys/support-bot,amount:50},{claims:{tid:$TENANT_ID,oid:$OBJECT_ID},amount:20}]" `
+  --output none
+if ($?) { Write-Host "🔐 support-bot gets `$50 and your identity gets `$20 per day on $MODEL" }
+```
+</details> <!-- gh -->
+
+A later `set-cost-limit` without `--overrides` keeps them. To remove every override, pass `--overrides "[]"`. For a
+service principal, use its **object ID**, not its application (client) ID.
 
 ### Confirm the policy
 
@@ -313,8 +347,10 @@ az aigateway model policy list -g $RG --gateway-name $GATEWAY --provider-name $P
 </details> <!-- gh -->
 
 > **Checkpoint**
-> The output lists your other policies unchanged plus one `costLimit` entry with its `id`, `"amount": 5.0`,
-> `"period": "day"`, `"counterKey": ["identity"]`, and `"scope": "resource"`.
+> The output lists your other policies unchanged plus one `costLimit` entry with `"id": "default"`, `"amount": 5.0`,
+> `"period": "day"`, `"counterKey": ["identity"]`, and `"scope": "resource"`. Its `overrides` list `"amount": 50.0`
+> with the `apiKeyResourceId` of `support-bot`, then `"amount": 20.0` with `claims` that map `oid` and `tid` to your
+> object ID and tenant ID.
 
 </details> <!-- gh -->
 <!-- track: iac | Bicep + azd -->
@@ -582,7 +618,7 @@ output chatCompletionsUrl string = 'https://${gateway.properties.frontend.defaul
 ### Deploy with azd up
 
 Move into the lab's folder, create an azd environment named `aigw-lab07` in your current subscription, then provision
-everything. It takes about three minutes.
+everything. It takes about two minutes.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -696,6 +732,297 @@ The parameters come from azd environment values, with the defaults in `infra/mai
 `COST_LIMIT_AMOUNT` this way.
 
 </details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+**What you need:** only the one-time setup from **Before you begin**, plus Terraform 1.9 or later, as in
+[Deploy a lab with Terraform](../SETUP.md#deploy-a-lab-with-terraform). This track doesn't use your gateway from
+lab 02: `terraform apply` creates a new one, so it works on its own.
+
+### Review the configuration
+
+Like the Bicep template, the configuration **adds a new alias**, `<model-name>-budget`, that targets the same
+backend model and carries the cost limit, rather than redeclaring a model that you imported in the portal. It also
+declares the `app-dev` and `support-bot` runtime keys, and two overrides, which are evaluated in order: $50 per day
+for the `support-bot` key, matched by its resource ID, and $20 per day for your Microsoft Entra identity, matched by
+the `tid` and `oid` claims.
+
+`terraform/main.tf` creates the resource group `rg-<environment_name>` and calls the quick start's
+[resources module](../quickstart/terraform/resources) for the gateway, the Foundry model, its default alias, and the
+`app-first-call` key:
+
+<!-- include: terraform/main.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/main.tf`](terraform/main.tf)
+
+```tf
+# Lab 07 with Terraform: creates the resource group rg-<environment_name>, the quick start's gateway, Foundry model,
+# default alias, and runtime API key, then the app-dev and support-bot keys and a second alias for the same model
+# with a cost limit and per-caller overrides (budget-alias.tf). Runtime API key values are never outputs.
+data "azapi_client_config" "current" {}
+
+locals {
+  suffix = substr(sha1("${data.azapi_client_config.current.subscription_id}/${var.environment_name}/${var.location}"), 0, 6)
+  tags   = { "environment-name" = var.environment_name }
+}
+
+resource "azurerm_resource_group" "rg" {
+  name     = "rg-${var.environment_name}"
+  location = var.location
+  tags     = local.tags
+}
+
+# The quick start's module: a gateway, a Foundry model behind the default alias, and the app-first-call key.
+module "base" {
+  source = "../../quickstart/terraform/resources"
+
+  subscription_id     = data.azapi_client_config.current.subscription_id
+  resource_group_name = azurerm_resource_group.rg.name
+  resource_group_id   = azurerm_resource_group.rg.id
+  location            = var.location
+  tags                = local.tags
+  gateway_name        = "aigw-${local.suffix}"
+  foundry_name        = "aigw${local.suffix}"
+}
+```
+<!-- gh:end -->
+
+`terraform/budget-alias.tf` adds the keys and the alias with the `azapi` provider, which sends the AI Gateway API
+version, `2026-11-01`, as is. The Entra override uses the object ID of the identity that runs Terraform, and the
+policy `id` is a UUID derived from the gateway and the alias name, so a new amount keeps the spend accumulated so
+far. `terraform/variables.tf` declares the budgets with the same defaults as the Bicep template:
+
+<!-- include: terraform/budget-alias.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/budget-alias.tf`](terraform/budget-alias.tf)
+
+<details><summary>Show all 89 lines</summary>
+
+```tf
+# Publishes an alias with a cost limit for the quick start's model, creates the app-dev and support-bot runtime API
+# keys, and gives support-bot, and optionally one Microsoft Entra identity, a budget of its own with overrides. The
+# alias points at the same backend model as the default alias, so only callers that send the new alias name are
+# budgeted. Key values are never outputs: read them with az aigateway api-key list-secrets.
+
+# Each key is a separate caller identity, so each one gets its own budget counter.
+resource "azapi_resource" "default_key" {
+  type      = "Microsoft.ApiManagement/aigateways/apiKeys@2026-11-01"
+  name      = var.default_key_name
+  parent_id = module.base.gateway_id
+
+  body = {
+    properties = {
+      displayName = var.default_key_name
+    }
+  }
+
+  schema_validation_enabled = false
+}
+
+resource "azapi_resource" "override_key" {
+  type      = "Microsoft.ApiManagement/aigateways/apiKeys@2026-11-01"
+  name      = var.override_key_name
+  parent_id = module.base.gateway_id
+
+  body = {
+    properties = {
+      displayName = var.override_key_name
+    }
+  }
+
+  schema_validation_enabled = false
+}
+
+locals {
+  alias_name = "${module.base.model_name}-budget"
+
+  # Your own object ID unless you pass another one; an empty string adds no Entra override.
+  entra_object_id = var.entra_object_id == null ? data.azapi_client_config.current.object_id : var.entra_object_id
+
+  # Overrides are evaluated in order, and the first match wins. An API key override matches the key's resource ID.
+  # An Entra override matches validated token claims, as name and value pairs that must all match: here the tenant
+  # ID and the object ID of one identity.
+  key_overrides = [
+    {
+      apiKeyResourceId = azapi_resource.override_key.id
+      amount           = var.override_amount
+    }
+  ]
+  entra_overrides = local.entra_object_id == "" ? [] : [
+    {
+      claims = [
+        { name = "tid", value = data.azapi_client_config.current.tenant_id },
+        { name = "oid", value = local.entra_object_id },
+      ]
+      amount = var.entra_amount
+    }
+  ]
+}
+
+resource "azapi_resource" "budget_alias" {
+  type      = "Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01"
+  name      = local.alias_name
+  parent_id = module.base.workspace_id
+
+  body = {
+    properties = {
+      aliasName = local.alias_name
+      backendModels = [
+        { resourceId = module.base.model_id }
+      ]
+      policies = [
+        {
+          type = "costLimit"
+          # A stable ID: changing the amount on a later apply keeps the spend accumulated so far.
+          id     = uuidv5("url", "${module.base.gateway_id}/${local.alias_name}/costLimit")
+          amount = var.budget_amount
+          period = var.period
+          # Overrides need per-caller counters, so the configuration always counts by caller identity.
+          counterKey = ["identity"]
+          overrides  = concat(local.key_overrides, local.entra_overrides)
+        }
+      ]
+    }
+  }
+
+  schema_validation_enabled = false
+  depends_on                = [azapi_resource.default_key]
+}
+```
+
+</details>
+<!-- gh:end -->
+
+### Deploy with terraform apply
+
+Move into the lab's Terraform folder, select your current subscription, then plan and apply the configuration. It
+takes about three minutes.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Move into the lab's Terraform folder
+cd ~/aigateway/labs/07-cost-budgets/terraform &&
+  echo "📂 Terraform folder: $(pwd)"
+
+# Deploy to the Azure CLI's current subscription
+export ARM_SUBSCRIPTION_ID="$(az account show --query id --output tsv)" &&
+  echo "📍 Subscription: $ARM_SUBSCRIPTION_ID"
+
+# Download the providers, then plan and apply the gateway, the Foundry model, the app-dev and support-bot keys, and
+# the budgeted alias
+terraform init &&
+  terraform plan -out tfplan &&
+  terraform apply tfplan &&
+  echo "🚀 Gateway deployed: $(terraform output -raw ai_gateway_url)"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Move into the lab's Terraform folder
+Set-Location ~/aigateway/labs/07-cost-budgets/terraform
+if ($?) { Write-Host "📂 Terraform folder: $(Get-Location)" }
+
+# Deploy to the Azure CLI's current subscription
+$env:ARM_SUBSCRIPTION_ID = az account show --query id --output tsv
+if ($?) { Write-Host "📍 Subscription: $env:ARM_SUBSCRIPTION_ID" }
+
+# Download the providers, then plan and apply the gateway, the Foundry model, the app-dev and support-bot keys, and
+# the budgeted alias
+terraform init
+if ($?) { terraform plan -out tfplan }
+if ($?) { terraform apply tfplan }
+if ($?) { Write-Host "🚀 Gateway deployed: $(terraform output -raw ai_gateway_url)" }
+```
+</details> <!-- gh -->
+
+The configuration deploys to `eastus2`. For another region where AI Gateway and the `gpt-5-mini` model are
+available, as in [Find the available regions](../SETUP.md#find-the-available-regions), run
+`export TF_VAR_location=<region>` (PowerShell: `$env:TF_VAR_location = "<region>"`) before `terraform plan`.
+
+### Read the outputs and the key
+
+Set the variables that **Verify** and **Go further** use from the Terraform outputs, and read the `app-dev` key from
+the gateway, so that it never shows on screen or lands in the Terraform state.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Read the configuration's outputs: the resource group, the gateway, its model provider, and the backend model
+export RG="$(terraform output -raw azure_resource_group)"
+export GATEWAY="$(terraform output -raw ai_gateway_name)"
+export PROVIDER="$(terraform output -raw ai_gateway_provider)"
+export MODEL="$(terraform output -raw ai_gateway_backend_model)"
+
+# Read the gateway's resource ID, and build the management URL of its default workspace for the az rest calls
+export API="api-version=2026-11-01"
+export GATEWAY_ID="$(terraform output -raw ai_gateway_id)"
+export WS="https://management.azure.com$GATEWAY_ID/workspaces/default"
+
+# Read the gateway's runtime URL and the budgeted alias
+export AI_GATEWAY_URL="$(terraform output -raw ai_gateway_url)"
+export AI_GATEWAY_MODEL="$(terraform output -raw ai_gateway_model)"
+
+# Read the app-dev key from the gateway, so that it never lands in a file or the Terraform state
+export AI_GATEWAY_API_KEY="$(az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/app-dev" \
+  --query primaryKey --output tsv)"
+echo "🌐 Runtime URL: $AI_GATEWAY_URL"
+echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
+echo "🔖 Model alias: $AI_GATEWAY_MODEL"
+# Move back to the lab's folder, which holds the scripts
+cd .. && echo "📂 Lab folder: $(pwd)"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Read the configuration's outputs: the resource group, the gateway, its model provider, and the backend model
+$RG                     = terraform output -raw azure_resource_group
+$GATEWAY                = terraform output -raw ai_gateway_name
+$PROVIDER               = terraform output -raw ai_gateway_provider
+$MODEL                  = terraform output -raw ai_gateway_backend_model
+
+# Read the gateway's resource ID, and build the management URL of its default workspace for the az rest calls
+$API                    = "api-version=2026-11-01"
+$GATEWAY_ID             = terraform output -raw ai_gateway_id
+$WS                     = "https://management.azure.com$GATEWAY_ID/workspaces/default"
+
+# Read the gateway's runtime URL and the budgeted alias
+$env:AI_GATEWAY_URL     = terraform output -raw ai_gateway_url
+$env:AI_GATEWAY_MODEL   = terraform output -raw ai_gateway_model
+
+# Read the app-dev key from the gateway, so that it never lands in a file or the Terraform state
+$env:AI_GATEWAY_API_KEY = az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/app-dev" `
+  --query primaryKey --output tsv
+Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
+Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) characters, not shown)"
+Write-Host "🔖 Model alias: $env:AI_GATEWAY_MODEL"
+# Move back to the lab's folder, which holds the scripts
+Set-Location ..
+if ($?) { Write-Host "📂 Lab folder: $(Get-Location)" }
+```
+</details> <!-- gh -->
+
+> **Checkpoint**
+> `terraform apply` ended with `Apply complete! Resources: 12 added, 0 changed, 0 destroyed.`, and the output
+> shows `🔖 Model alias: gpt-5-mini-budget`. `az rest --url "$WS/aliases/$AI_GATEWAY_MODEL?$API" --query
+> properties.policies` returns the same `costLimit` entry as on the Bicep + azd track: `"amount": 5.0`,
+> `"period": "day"`, and the two `overrides` for `support-bot` and your identity.
+
+### Change the budget
+
+The next sections run from the lab's folder, with `-chdir=terraform` for the `terraform` commands.
+
+The settings are Terraform variables, with the defaults in `terraform/variables.tf`: `budget_amount` for the
+default budget, `period` (`hour`, `day`, `week`, `month`, or `year`), `override_amount` for `support-bot`, and
+`entra_amount` for your identity. Pass one to `terraform plan` with `-var` and apply the plan: only the alias
+changes, and it keeps the policy `id`. **Verify** lowers `budget_amount` this way. To give the Entra budget to
+another user or service principal, set `entra_object_id` to its object ID, or to `""` for no Entra override.
+
+</details> <!-- gh -->
 <!-- /tracks -->
 
 ## Verify
@@ -742,6 +1069,10 @@ azd provision
 if ($?) { Write-Host "🔐 Default budget on $env:AI_GATEWAY_MODEL is now `$0.001 for each caller" }
 ```
 </details> <!-- gh -->
+
+On the Terraform track, in the lab folder, run `terraform -chdir=terraform plan -var budget_amount=0.001 -out tfplan`,
+then `terraform -chdir=terraform apply tfplan`. The plan ends with `Plan: 0 to add, 1 to change, 0 to destroy.`, for
+`azapi_resource.budget_alias`, which keeps its policy `id` and the spend so far.
 
 ### Run the requests
 
@@ -815,7 +1146,7 @@ renewal period starts or you raise the budget.
 
 Set `AI_GATEWAY_API_KEY` to the `support-bot` key in a new terminal (repeat the variable block) and run the
 script again. Every request succeeds, because that key has its own counter and a $50 override. On the Bicep + azd
-track, read that key from the gateway instead:
+and Terraform tracks, read that key from the gateway instead:
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -845,7 +1176,7 @@ Write-Host "📊 Expect 200 for every request, because support-bot has its own `
 ```
 </details> <!-- gh -->
 
-If you added an Entra override (the Bicep + azd track adds one for you), call the gateway with that identity's
+If you added an Entra override (the Bicep + azd and Terraform tracks add one for you), call the gateway with that identity's
 token as shown in
 [Go keyless with Microsoft Entra ID and RBAC](../11-entra-rbac/README.md): it gets its own counter too, keyed
 by tenant ID and object ID.
@@ -928,7 +1259,7 @@ To keep the policy instead, run **Set the cost limit** again with a production b
 
 In the `aigateway/labs/07-cost-budgets` folder, delete the resource group with the gateway, the Foundry account, the
 keys, and the budgeted alias. [`--purge`](../SETUP.md#delete-what-azd-created) also purges the soft-deleted Foundry
-account. It takes about ten minutes.
+account. It takes a few minutes.
 
 ```bash
 # Delete everything that azd up created, and purge the Foundry account
@@ -940,10 +1271,29 @@ To keep this gateway for other labs instead, skip `azd down` and raise the budge
 `azd env set COST_LIMIT_AMOUNT 100`, then `azd provision`.
 
 </details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+### Delete everything Terraform created
+
+In the `aigateway/labs/07-cost-budgets` folder, delete the resource group with the gateway, the Foundry
+account, the keys, and the budgeted alias. The [`azurerm` provider](../SETUP.md#delete-what-terraform-created) also
+purges the soft-deleted Foundry account. It takes a few minutes.
+
+```bash
+# Delete everything that terraform apply created, and purge the soft-deleted Foundry account
+terraform -chdir=terraform destroy -auto-approve &&
+  echo "🚮 Everything that terraform apply created is deleted"
+```
+
+To keep this gateway for other labs instead, skip `terraform destroy` and raise the budget to a production value:
+`terraform -chdir=terraform apply -var budget_amount=100`.
+
+</details> <!-- gh -->
 <!-- /tracks -->
 
-Keep the gateway, model, and keys from earlier labs: the next labs reuse them. `azd down` doesn't touch them,
-because the Bicep + azd track created its own gateway.
+Keep the gateway, model, and keys from earlier labs: the next labs reuse them. `azd down` and `terraform destroy`
+don't touch them, because the Bicep + azd and Terraform tracks created their own gateways.
 
 ## Next steps
 

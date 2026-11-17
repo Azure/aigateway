@@ -50,6 +50,7 @@ export const I = {
   portal: TRACK_ICONS.portal.replace('<svg ', '<svg class="i" '),
   cli: TRACK_ICONS.cli.replace('<svg ', '<svg class="i" '),
   iac: TRACK_ICONS.iac.replace('<svg ', '<svg class="i" '),
+  terraform: TRACK_ICONS.terraform.replace('<svg ', '<svg class="i" '),
   rest: TRACK_ICONS.rest.replace('<svg ', '<svg class="i" '),
   checkpoint: P('<circle cx="10" cy="10" r="7.5"/><path d="m6.5 10.2 2.3 2.3 4.7-4.8"/>'),
   broom: P('<path d="m13 3-4.5 7.5M5 10.5h7l1.5 7h-10Z"/><path d="M7 13.5v4M10 13.5v4"/>'),
@@ -62,7 +63,7 @@ export const CATEGORY_ICONS = {
   security: 'shield', observability: 'chart', agents: 'agent', production: 'building',
 };
 const trackIcon = (t) => (t === 'notebook' ? I.notebook : (TRACK_ICONS[t] || TRACK_ICONS.code).replace('<svg ', '<svg class="i" '));
-const SHORT_TRACK = { portal: 'Portal', cli: 'CLI', iac: 'Bicep', code: 'Code', rest: 'REST', notebook: 'Notebook' };
+const SHORT_TRACK = { portal: 'Portal', cli: 'CLI', iac: 'Bicep', terraform: 'Terraform', code: 'Code', rest: 'REST', notebook: 'Notebook' };
 // A lab's tracks, plus a notebook chip when the lab has a Jupyter notebook.
 const labTracks = (lab) => [...lab.tracks, ...(lab.notebook ? ['notebook'] : [])];
 const fmtDuration = (m) => (m >= 60 ? `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}` : `${m} min`);
@@ -347,7 +348,7 @@ export function homePage({ rel, site, catalog, labs, totals, latest }) {
   const trackCards = [
     { id: 'portal', title: 'Portal', text: 'Click-by-click guides in the AI Gateway portal, with exact labels and screenshots.' },
     { id: 'cli', title: 'Azure CLI', text: 'Repeatable az aigateway and az deployment commands you can paste into Bash or PowerShell.' },
-    { id: 'iac', title: 'Bicep + azd', text: 'Self-contained azd templates: clone a lab, run azd up, and clean up with azd down.' },
+    { id: 'iac', title: 'Bicep & Terraform', text: 'Infrastructure as code: deploy a lab with azd up or terraform apply, and remove it with one command.' },
     { id: 'code', title: 'Code & REST', text: 'Python, TypeScript, and .NET clients, agent frameworks, and REST calls.' },
   ];
 
@@ -507,7 +508,7 @@ ${quick ? `
 export function catalogPage({ rel, catalog, labs }) {
   const cats = Object.fromEntries(catalog.categories.map((c) => [c.id, c]));
   const levels = ['Beginner', 'Intermediate', 'Advanced'];
-  const tracks = ['portal', 'cli', 'iac', 'rest', 'code', 'notebook'];
+  const tracks = ['portal', 'cli', 'iac', 'terraform', 'rest', 'code', 'notebook'];
   const chip = (group, value, label, extra = '') => `<button class="chip" type="button" data-filter="${group}" data-value="${value}" aria-pressed="false"${extra}>${label}</button>`;
   return `<main id="main" class="catalog">
   <section class="page-hero">

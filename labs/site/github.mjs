@@ -27,9 +27,9 @@ export const VIDEO_RE = /^<!--\s*video:\s*(\S+)\s*(?:\|\s*([^>]*?))?\s*-->[ \t]*
 const SETUP_LINE_RE = /^<!--\s*setup:\s*([\w\s-]+?)\s*-->[ \t]*$/;
 const LONG_INCLUDE = 28;
 
-export const GH_TRACK_LABELS = { portal: 'Portal', cli: 'Azure CLI', rest: 'REST API', iac: 'Bicep + azd', code: 'Code' };
-const SHORT_TRACK_LABELS = { portal: 'Portal', cli: 'CLI', rest: 'REST', iac: 'Bicep', code: 'Code' };
-const TRACK_EMOJI = { portal: '🖥️', cli: '⌨️', rest: '🔗', iac: '🏗️', code: '🧑‍💻' };
+export const GH_TRACK_LABELS = { portal: 'Portal', cli: 'Azure CLI', rest: 'REST API', iac: 'Bicep + azd', terraform: 'Terraform', code: 'Code' };
+const SHORT_TRACK_LABELS = { portal: 'Portal', cli: 'CLI', rest: 'REST', iac: 'Bicep', terraform: 'Terraform', code: 'Code' };
+const TRACK_EMOJI = { portal: '🖥️', cli: '⌨️', rest: '🔗', iac: '🏗️', terraform: '🌍', code: '🧑‍💻' };
 const WIDGET_TITLES = {
   'request-lifecycle': 'request lifecycle explorer',
   'policy-layers': 'policy layers explorer',
@@ -332,7 +332,7 @@ export function syncIndex(raw, { labs, catalog }) {
       `  ${badge('labs', labs.length, '5C2D91')}`,
       `  ${badge('learning paths', catalog.paths.length, '107C10')}`,
       `  ${badge('notebooks', notebooks.length, 'F37626', 'jupyter')}`,
-      `  ${badge('tracks', 'Portal · CLI · REST · Bicep · Code', '505050')}`,
+      `  ${badge('tracks', 'Portal · CLI · REST · Bicep · Terraform · Code', '505050')}`,
       '</p>',
     ],
     notebooks: notebooks.length ? [

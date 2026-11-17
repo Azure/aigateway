@@ -8,7 +8,7 @@
   <img alt="labs: 34" src="https://img.shields.io/badge/labs-34-5C2D91">
   <img alt="learning paths: 5" src="https://img.shields.io/badge/learning_paths-5-107C10">
   <img alt="notebooks: 16" src="https://img.shields.io/badge/notebooks-16-F37626?logo=jupyter&amp;logoColor=white">
-  <img alt="tracks: Portal · CLI · REST · Bicep · Code" src="https://img.shields.io/badge/tracks-Portal_%C2%B7_CLI_%C2%B7_REST_%C2%B7_Bicep_%C2%B7_Code-505050">
+  <img alt="tracks: Portal · CLI · REST · Bicep · Terraform · Code" src="https://img.shields.io/badge/tracks-Portal_%C2%B7_CLI_%C2%B7_REST_%C2%B7_Bicep_%C2%B7_Terraform_%C2%B7_Code-505050">
 </p>
 <!-- gh:end -->
 
@@ -39,7 +39,7 @@ Every lab is one Markdown file, so you get the same steps whichever way you foll
 | 📖 | **Here on GitHub** | Reading next to the code. Each track and each Bash/PowerShell variant is a collapsible section, and included files are shown inline. |
 | 📓 | **[Jupyter notebooks](#run-the-notebooks)** | Running a lab end to end from VS Code or Jupyter with Python, the Azure CLI sign-in, and no copy and paste. |
 | 🤖 | **[Agent skill](#use-the-labs-with-a-coding-agent)** | Letting GitHub Copilot, Claude Code, or another coding agent pick the right lab, run one track step by step, verify it, and clean up. |
-| 🏗️ | **`infra/` folders** | Running a lab with one `azd up`, or reusing its Bicep modules, scripts, and samples in your own pipelines. |
+| 🏗️ | **`infra/` and `terraform/` folders** | Running a lab with one `azd up` or `terraform apply`, or reusing its Bicep modules, Terraform configuration, scripts, and samples in your own pipelines. |
 
 Every lab follows the same structure: a scenario, a diagram of how it works, step-by-step tasks with checkpoints,
 a **Verify** section, **Go further** ideas, and clean-up. The [Troubleshooting](TROUBLESHOOTING.md) page lists the
@@ -51,6 +51,7 @@ errors you might hit in each lab, with their likely causes and fixes. Most labs 
 | ⌨️ **CLI** | Azure CLI commands (`az aigateway`, plus `az rest` where the extension can't do the job yet) for Bash and PowerShell against the `Microsoft.ApiManagement/aigateways` resource |
 | 🔗 **REST** | Direct calls to the Azure Resource Manager REST API, for when you script against the API yourself |
 | 🏗️ **Bicep + azd** | A self-contained azd template in each lab folder: clone the repo, run `azd up` to create a gateway with the lab's feature, and `azd down` to delete it |
+| 🌍 **Terraform** | A Terraform configuration in each lab's `terraform/` folder, with the `azapi` and `azurerm` providers: run `terraform apply` to create a gateway with the lab's feature, and `terraform destroy` to delete it |
 | 🧑‍💻 **Code** | Python, TypeScript, and .NET clients, agent frameworks, and runtime calls |
 
 ## Learning paths
@@ -80,10 +81,10 @@ Concepts, provisioning, and your first governed call.
 
 | # | Lab | Level | Time | Tracks | Notebook |
 | :-: | :-- | :-- | --: | :-- | :-: |
-| ⚡ | [Your first model call in 5 minutes](quickstart/README.md) | Beginner | 5 min | Portal · CLI · Bicep |  |
+| ⚡ | [Your first model call in 5 minutes](quickstart/README.md) | Beginner | 5 min | Portal · CLI · Bicep · Terraform |  |
 | 00 | [How Azure AI Gateway works](00-how-ai-gateway-works/README.md) | Beginner | 20 min | Portal |  |
-| 01 | [Provision your AI Gateway](01-provision-gateway/README.md) | Beginner | 15 min | Portal · CLI · Bicep | [📓](01-provision-gateway/01-provision-gateway.ipynb) |
-| 02 | [Publish a Foundry model and make your first call](02-first-model-call/README.md) | Beginner | 25 min | Portal · CLI · Bicep · Code | [📓](02-first-model-call/02-first-model-call.ipynb) |
+| 01 | [Provision your AI Gateway](01-provision-gateway/README.md) | Beginner | 15 min | Portal · CLI · Bicep · Terraform | [📓](01-provision-gateway/01-provision-gateway.ipynb) |
+| 02 | [Publish a Foundry model and make your first call](02-first-model-call/README.md) | Beginner | 25 min | Portal · CLI · Bicep · Terraform · Code | [📓](02-first-model-call/02-first-model-call.ipynb) |
 
 ### Models & routing
 
@@ -91,14 +92,14 @@ Publish models behind stable aliases, then route, fail over, and auto-select acr
 
 | # | Lab | Level | Time | Tracks | Notebook |
 | :-: | :-- | :-- | --: | :-- | :-: |
-| 03 | [Publish models from any provider behind stable aliases](03-multi-provider-aliases/README.md) | Intermediate | 30 min | Portal · CLI · Bicep |  |
-| 22 | [Route an alias across models by priority and weight](22-model-routing/README.md) | Intermediate | 25 min | Portal · CLI · Bicep |  |
-| 27 | [Route alias requests with conditions and session affinity](27-conditional-routing/README.md) | Intermediate | 30 min | Portal · CLI · Bicep |  |
-| 28 | [Let the gateway choose the model for each request](28-auto-model-selection/README.md) | Intermediate | 25 min | Portal · CLI · Bicep | [📓](28-auto-model-selection/28-auto-model-selection.ipynb) |
-| 29 | [Fail over to a backup model when a backend fails](29-model-failover/README.md) | Intermediate | 30 min | Portal · CLI · Bicep |  |
-| 23 | [Stream responses and count every token](23-streaming-responses/README.md) | Intermediate | 20 min | CLI · Code · Portal · Bicep | [📓](23-streaming-responses/23-streaming-responses.ipynb) |
-| 26 | [Publish embedding models for search and RAG](26-embeddings/README.md) | Intermediate | 30 min | Portal · CLI · Bicep · Code | [📓](26-embeddings/26-embeddings.ipynb) |
-| 31 | [Publish Jev decision models for typed answers](31-jev-decisions/README.md) | Intermediate | 25 min | Portal · CLI · Bicep · Code | [📓](31-jev-decisions/31-jev-decisions.ipynb) |
+| 03 | [Publish models from any provider behind stable aliases](03-multi-provider-aliases/README.md) | Intermediate | 30 min | Portal · CLI · Bicep · Terraform |  |
+| 22 | [Route an alias across models by priority and weight](22-model-routing/README.md) | Intermediate | 25 min | Portal · CLI · Bicep · Terraform |  |
+| 27 | [Route alias requests with conditions and session affinity](27-conditional-routing/README.md) | Intermediate | 30 min | Portal · CLI · Bicep · Terraform |  |
+| 28 | [Let the gateway choose the model for each request](28-auto-model-selection/README.md) | Intermediate | 25 min | Portal · CLI · Bicep · Terraform | [📓](28-auto-model-selection/28-auto-model-selection.ipynb) |
+| 29 | [Fail over to a backup model when a backend fails](29-model-failover/README.md) | Intermediate | 30 min | Portal · CLI · Bicep · Terraform |  |
+| 23 | [Stream responses and count every token](23-streaming-responses/README.md) | Intermediate | 20 min | CLI · Code · Portal · Bicep · Terraform | [📓](23-streaming-responses/23-streaming-responses.ipynb) |
+| 26 | [Publish embedding models for search and RAG](26-embeddings/README.md) | Intermediate | 30 min | Portal · CLI · Bicep · Terraform · Code | [📓](26-embeddings/26-embeddings.ipynb) |
+| 31 | [Publish Jev decision models for typed answers](31-jev-decisions/README.md) | Intermediate | 25 min | Portal · CLI · Bicep · Terraform · Code | [📓](31-jev-decisions/31-jev-decisions.ipynb) |
 
 ### MCP & tools
 
@@ -106,9 +107,9 @@ Federate MCP servers, APIs, and connectors behind one endpoint.
 
 | # | Lab | Level | Time | Tracks | Notebook |
 | :-: | :-- | :-- | --: | :-- | :-: |
-| 04 | [Federate MCP tools behind one endpoint](04-federate-mcp-tools/README.md) | Beginner | 30 min | Portal · CLI · Bicep · Code | [📓](04-federate-mcp-tools/04-federate-mcp-tools.ipynb) |
-| 05 | [Control which tools agents can call](05-mcp-tool-controls/README.md) | Intermediate | 20 min | Portal · CLI · Bicep |  |
-| 30 | [Govern MCP tool calls with agent hooks](30-agent-hooks/README.md) | Advanced | 40 min | Portal · CLI · Bicep |  |
+| 04 | [Federate MCP tools behind one endpoint](04-federate-mcp-tools/README.md) | Beginner | 30 min | Portal · CLI · Bicep · Terraform · Code | [📓](04-federate-mcp-tools/04-federate-mcp-tools.ipynb) |
+| 05 | [Control which tools agents can call](05-mcp-tool-controls/README.md) | Intermediate | 20 min | Portal · CLI · Bicep · Terraform |  |
+| 30 | [Govern MCP tool calls with agent hooks](30-agent-hooks/README.md) | Advanced | 40 min | Portal · CLI · Bicep · Terraform |  |
 
 ### Governance & cost
 
@@ -116,10 +117,10 @@ Token limits, budgets, content safety, and gateway-wide baselines.
 
 | # | Lab | Level | Time | Tracks | Notebook |
 | :-: | :-- | :-- | --: | :-- | :-: |
-| 06 | [Throttle tokens per caller with token limits](06-token-limits/README.md) | Beginner | 25 min | Portal · CLI · REST · Bicep | [📓](06-token-limits/06-token-limits.ipynb) |
-| 07 | [Enforce cost budgets with per-caller overrides](07-cost-budgets/README.md) | Intermediate | 30 min | Portal · CLI · Bicep | [📓](07-cost-budgets/07-cost-budgets.ipynb) |
-| 08 | [Screen prompts and responses with content safety](08-content-safety/README.md) | Beginner | 20 min | Portal · CLI · REST · Bicep |  |
-| 09 | [Set gateway-wide policy baselines](09-gateway-baselines/README.md) | Intermediate | 25 min | Portal · CLI · Bicep |  |
+| 06 | [Throttle tokens per caller with token limits](06-token-limits/README.md) | Beginner | 25 min | Portal · CLI · REST · Bicep · Terraform | [📓](06-token-limits/06-token-limits.ipynb) |
+| 07 | [Enforce cost budgets with per-caller overrides](07-cost-budgets/README.md) | Intermediate | 30 min | Portal · CLI · Bicep · Terraform | [📓](07-cost-budgets/07-cost-budgets.ipynb) |
+| 08 | [Screen prompts and responses with content safety](08-content-safety/README.md) | Beginner | 20 min | Portal · CLI · REST · Bicep · Terraform |  |
+| 09 | [Set gateway-wide policy baselines](09-gateway-baselines/README.md) | Intermediate | 25 min | Portal · CLI · Bicep · Terraform |  |
 
 ### Security & identity
 
@@ -127,9 +128,9 @@ API keys, Microsoft Entra ID, RBAC, and backend identities.
 
 | # | Lab | Level | Time | Tracks | Notebook |
 | :-: | :-- | :-- | --: | :-- | :-: |
-| 10 | [Issue and rotate runtime API keys](10-api-keys/README.md) | Beginner | 15 min | Portal · CLI · Bicep |  |
-| 11 | [Go keyless with Microsoft Entra ID and RBAC](11-entra-rbac/README.md) | Intermediate | 45 min | Portal · CLI · Bicep · Code | [📓](11-entra-rbac/11-entra-rbac.ipynb) |
-| 12 | [Call backends with managed identities](12-backend-identity/README.md) | Intermediate | 20 min | Portal · CLI · Bicep |  |
+| 10 | [Issue and rotate runtime API keys](10-api-keys/README.md) | Beginner | 15 min | Portal · CLI · Bicep · Terraform |  |
+| 11 | [Go keyless with Microsoft Entra ID and RBAC](11-entra-rbac/README.md) | Intermediate | 45 min | Portal · CLI · Bicep · Code · Terraform | [📓](11-entra-rbac/11-entra-rbac.ipynb) |
+| 12 | [Call backends with managed identities](12-backend-identity/README.md) | Intermediate | 20 min | Portal · CLI · Bicep · Terraform |  |
 
 ### Observability & FinOps
 
@@ -137,8 +138,8 @@ Dashboards, traces, OpenTelemetry, and chargeback.
 
 | # | Lab | Level | Time | Tracks | Notebook |
 | :-: | :-- | :-- | --: | :-- | :-: |
-| 13 | [Monitor usage, cost, and traces](13-monitoring/README.md) | Beginner | 25 min | Portal · CLI · Bicep |  |
-| 14 | [Attribute tokens and cost with OpenTelemetry](14-otel-chargeback/README.md) | Advanced | 35 min | Portal · CLI · Bicep |  |
+| 13 | [Monitor usage, cost, and traces](13-monitoring/README.md) | Beginner | 25 min | Portal · CLI · Bicep · Terraform |  |
+| 14 | [Attribute tokens and cost with OpenTelemetry](14-otel-chargeback/README.md) | Advanced | 35 min | Portal · CLI · Bicep · Terraform |  |
 
 ### Agents
 
@@ -148,10 +149,10 @@ Route agent frameworks, hosted agents, and coding agents through the gateway.
 | :-: | :-- | :-- | --: | :-- | :-: |
 | 15 | [Connect agent frameworks to models and tools](15-agent-frameworks/README.md) | Intermediate | 30 min | Code | [📓](15-agent-frameworks/15-agent-frameworks.ipynb) |
 | 16 | [Deploy a Foundry hosted agent behind AI Gateway](16-foundry-hosted-agent/README.md) | Intermediate | 45 min | Portal · CLI · Code | [📓](16-foundry-hosted-agent/16-foundry-hosted-agent.ipynb) |
-| 32 | [Use gateway models in Microsoft Foundry projects](32-foundry-gateway-connection/README.md) | Intermediate | 35 min | Portal · CLI · Bicep · Code | [📓](32-foundry-gateway-connection/32-foundry-gateway-connection.ipynb) |
+| 32 | [Use gateway models in Microsoft Foundry projects](32-foundry-gateway-connection/README.md) | Intermediate | 35 min | Portal · CLI · Bicep · Terraform · Code | [📓](32-foundry-gateway-connection/32-foundry-gateway-connection.ipynb) |
 | 17 | [Build on your gateway with coding agents](17-coding-agent-plugin/README.md) | Beginner | 15 min | Code | [📓](17-coding-agent-plugin/17-coding-agent-plugin.ipynb) |
-| 24 | [Use your gateway's models and tools in GitHub Copilot](24-github-copilot-byok/README.md) | Intermediate | 40 min | Portal · CLI · Bicep · Code | [📓](24-github-copilot-byok/24-github-copilot-byok.ipynb) |
-| 25 | [Use your gateway's models and tools in Claude Code](25-claude-code/README.md) | Intermediate | 40 min | Portal · CLI · Bicep · Code | [📓](25-claude-code/25-claude-code.ipynb) |
+| 24 | [Use your gateway's models and tools in GitHub Copilot](24-github-copilot-byok/README.md) | Intermediate | 40 min | Portal · CLI · Bicep · Terraform · Code | [📓](24-github-copilot-byok/24-github-copilot-byok.ipynb) |
+| 25 | [Use your gateway's models and tools in Claude Code](25-claude-code/README.md) | Intermediate | 40 min | Portal · CLI · Bicep · Terraform · Code | [📓](25-claude-code/25-claude-code.ipynb) |
 
 ### Enterprise readiness
 
@@ -159,10 +160,10 @@ Private networking, Agent 365, threat protection, and reference architectures.
 
 | # | Lab | Level | Time | Tracks | Notebook |
 | :-: | :-- | :-- | --: | :-- | :-: |
-| 18 | [Lock down backend traffic with private networking](18-private-networking/README.md) | Advanced | 75 min | Portal · CLI · Bicep |  |
-| 19 | [Protect tool calls with Agent 365 threat protection](19-tool-threat-protection/README.md) | Advanced | 30 min | Portal · Bicep |  |
+| 18 | [Lock down backend traffic with private networking](18-private-networking/README.md) | Advanced | 75 min | Portal · CLI · Bicep · Terraform |  |
+| 19 | [Protect tool calls with Agent 365 threat protection](19-tool-threat-protection/README.md) | Advanced | 30 min | Portal · Bicep · Terraform |  |
 | 20 | [Govern MCP servers with Agent 365](20-agent-365-governance/README.md) | Intermediate | 20 min | Portal |  |
-| 21 | [Deploy an enterprise reference architecture](21-enterprise-reference/README.md) | Advanced | 60 min | Bicep |  |
+| 21 | [Deploy an enterprise reference architecture](21-enterprise-reference/README.md) | Advanced | 60 min | Bicep · Terraform |  |
 <!-- gh:end -->
 
 ## Run the notebooks

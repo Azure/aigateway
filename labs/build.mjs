@@ -80,6 +80,21 @@ function checkTemplate(lab, site) {
   }
 }
 
+// A Terraform track runs from the lab's terraform/ folder (AUTHORING.md, "Terraform").
+function checkTerraform(lab) {
+  const dir = path.join(lab.dir, 'terraform');
+  const has = fs.existsSync(path.join(dir, 'main.tf'));
+  const listed = lab.tracks.includes('terraform');
+  if (has && !listed) warn(`${lab.slug}: has terraform/main.tf, but no terraform track in front matter tracks`);
+  if (listed && !has) warn(`${lab.slug}: lists the terraform track, but has no terraform/main.tf`);
+  if (!has || !listed) return;
+  const folder = `labs/${lab.slug}/terraform`;
+  const cd = new RegExp(`\\b(?:cd|Set-Location)\\s+\\S*${folder}/?(?=\\s|$)`, 'm');
+  const blocks = [...lab.content.matchAll(/^```[^\n]*\n([\s\S]*?)^```/gm)].map((m) => m[1]);
+  if (!blocks.some((b) => cd.test(b))) warn(`${lab.slug}: has a Terraform track, but no code block moves into ${folder}`);
+  if (!blocks.some((b) => /\bterraform destroy\b/.test(b))) warn(`${lab.slug}: has a Terraform track, but no code block runs terraform destroy`);
+}
+
 // Readers paste shell blocks into macOS zsh, so keep them paste-safe (AUTHORING.md, "CLI comments and status lines").
 // Status-line emoji must come from the AUTHORING.md table: zsh 5.9 draws newer emoji as <0001f9e0> and miscounts
 // the width of emoji with a variation selector. And when a paste arrives line by line, oh-my-zsh's url-quote-magic
@@ -556,6 +571,7 @@ export async function build({ strict = false } = {}) {
       fs.copyFileSync(path.join(lab.dir, m), dest);
     }
     checkTemplate(lab, site);
+    checkTerraform(lab);
     checkShellBlocks(lab.slug, lab.content);
     const headings = [...lab.html.matchAll(/<h([23]) id="([^"]+)"><a class="anchor"[^>]*>#<\/a>([\s\S]*?)<\/h\1>/g)]
       .map((m) => ({ id: m[2], text: htmlToText(m[3]), level: Number(m[1]) }));

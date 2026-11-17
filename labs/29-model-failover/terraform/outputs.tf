@@ -1,0 +1,39 @@
+output "azure_resource_group" {
+  value = azurerm_resource_group.rg.name
+}
+
+output "ai_gateway_name" {
+  value = module.base.gateway_name
+}
+
+output "ai_gateway_id" {
+  value = module.base.gateway_id
+}
+
+output "ai_gateway_url" {
+  value = module.base.gateway_url
+}
+
+output "ai_gateway_provider" {
+  value = module.base.provider_name
+}
+
+output "ai_gateway_backend_model" {
+  value = azapi_resource.primary.name
+}
+
+output "ai_gateway_backup_model" {
+  value = azapi_resource.backup.name
+}
+
+output "ai_gateway_model" {
+  value = azapi_resource.alias.name
+}
+
+output "foundry_account_name" {
+  value = module.base.foundry_name
+}
+
+output "foundry_account_id" {
+  value = module.base.foundry_id
+}

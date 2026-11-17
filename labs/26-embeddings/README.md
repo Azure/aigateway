@@ -4,7 +4,7 @@ summary: Publish a Foundry embedding model through the gateway behind its own al
 category: models
 level: Intermediate
 duration: 30
-tracks: [portal, cli, iac, code]
+tracks: [portal, cli, iac, terraform, code]
 order: 3.8
 status: new
 illustration: diagrams/embeddings.svg
@@ -28,7 +28,7 @@ prereqs:
 
 | ⏱️ Time | 📶 Level | 🧭 Tracks | ✅ Before you start |
 | :-- | :-- | :-- | :-- |
-| 30 min | Intermediate | Portal · Azure CLI · Bicep + azd · Code · Notebook | [02 · First model call](../02-first-model-call/README.md) |
+| 30 min | Intermediate | Portal · Azure CLI · Bicep + azd · Terraform · Code · Notebook | [02 · First model call](../02-first-model-call/README.md) |
 
 **You'll learn to**
 
@@ -63,8 +63,8 @@ the ingestion job with a token limit.
 <!-- gh:end -->
 
 > [!TIP]
-> On the **Bicep + azd** track, `azd up` creates its own gateway, Foundry account with both models, aliases, token
-> limit, and key, so you can skip this section. Run that track in
+> On the **Bicep + azd** and **Terraform** tracks, `azd up` or `terraform apply` creates its own gateway, Foundry
+> account with both models, aliases, token limit, and key, so you can skip this section. Run that track in
 > [Publish the embedding model](#publish-the-embedding-model) first: it sets the variables that the next sections
 > and **Verify** use. You need only the one-time setup above, and Python 3.10 or later.
 
@@ -260,7 +260,8 @@ The alias's overview opens. Under **Endpoints**, **Embeddings** shows the **Base
 
 ### Register the embedding model
 
-`az aigateway model create` registers the deployment under the provider. Set `--supported-endpoints` to the
+`az aigateway model create` registers the deployment under the provider. `--foundry-resource-id` and `--deployment`
+name the Foundry deployment, and the CLI reads its model name and version. Set `--supported-endpoints` to the
 embeddings endpoint, and leave out `--api-format`: its values, such as `OpenAIChatCompletions`, describe chat APIs.
 
 <details open><summary>Bash</summary> <!-- gh -->
@@ -269,7 +270,7 @@ embeddings endpoint, and leave out `--api-format`: its values, such as `OpenAICh
 # Register the deployment as a backend model that supports only the embeddings endpoint
 az aigateway model create -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$EMBEDDINGS" \
   --display-name "$EMBEDDINGS" --supported-endpoints /openai/v1/embeddings \
-  --deployment-config "{resourceId:$FOUNDRY_ID/deployments/$EMBEDDINGS,modelName:text-embedding-3-small,modelVersion:'1'}" \
+  --foundry-resource-id "$FOUNDRY_ID" --deployment "$EMBEDDINGS" \
   --query "{name:name, endpoints:properties.supportedEndpoints}" &&
   echo "✨ Model $EMBEDDINGS is published through $PROVIDER"
 ```
@@ -281,7 +282,7 @@ az aigateway model create -g "$RG" --gateway-name "$GATEWAY" --provider-name "$P
 # Register the deployment as a backend model that supports only the embeddings endpoint
 az aigateway model create -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER -n $EMBEDDINGS `
   --display-name $EMBEDDINGS --supported-endpoints /openai/v1/embeddings `
-  --deployment-config "{resourceId:$FOUNDRY_ID/deployments/$EMBEDDINGS,modelName:text-embedding-3-small,modelVersion:'1'}" `
+  --foundry-resource-id $FOUNDRY_ID --deployment $EMBEDDINGS `
   --query "{name:name, endpoints:properties.supportedEndpoints}"
 if ($?) { Write-Host "✨ Model $EMBEDDINGS is published through $PROVIDER" }
 ```
@@ -531,7 +532,7 @@ output embeddingsUrl string = 'https://${aiGateway.properties.frontend.defaultHo
 ### Deploy with azd up
 
 Move into the lab's folder, create an azd environment named `aigw-lab26` in your current subscription, then provision
-everything. It takes a few minutes.
+everything. It takes about 27 minutes, most of it while the new gateway activates.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -575,7 +576,7 @@ Expected output (your names differ):
   (✓) Done: Azure AI Services Model Deployment: aigw2bn3tl/gpt-5-mini
   (✓) Done: Azure AI Services Model Deployment: aigw2bn3tl/text-embedding-3-small
 
-SUCCESS: Your application was provisioned and deployed to Azure in 2 minutes 5 seconds.
+SUCCESS: Your application was provisioned and deployed to Azure in 26 minutes 37 seconds.
 ```
 
 For another region, pick one where AI Gateway, `gpt-5-mini`, and `text-embedding-3-small` are available, as in
@@ -637,6 +638,291 @@ Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) c
 
 > **Checkpoint**
 > `azd up` ended with `SUCCESS`, the variables point to the new gateway, and the key has 32 characters.
+
+</details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+**What you need:** only the one-time setup from **Before you begin**, plus Terraform 1.9 or later, as in
+[Deploy a lab with Terraform](../SETUP.md#deploy-a-lab-with-terraform). This track doesn't use your gateway from
+lab 02: `terraform apply` creates a new one, so it works on its own.
+
+### Review the configuration
+
+`terraform/main.tf` creates the resource group `rg-<environment_name>` and calls the quick start's
+[resources module](../quickstart/terraform/resources) for the gateway, `gpt-5-mini`, its alias, and the
+`app-first-call` key:
+
+<!-- include: terraform/main.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/main.tf`](terraform/main.tf)
+
+<details><summary>Show all 29 lines</summary>
+
+```tf
+# Lab 26 with Terraform: creates the resource group rg-<environment_name>, the quick start's gateway, Foundry account,
+# gpt-5-mini model, default alias, and runtime API key, then deploys text-embedding-3-small in the same Foundry
+# account and publishes it through the gateway with its own alias and token limit (embeddings.tf).
+# The runtime API key is never an output.
+data "azapi_client_config" "current" {}
+
+locals {
+  suffix = substr(sha1("${data.azapi_client_config.current.subscription_id}/${var.environment_name}/${var.location}"), 0, 6)
+  tags   = { "environment-name" = var.environment_name }
+}
+
+resource "azurerm_resource_group" "rg" {
+  name     = "rg-${var.environment_name}"
+  location = var.location
+  tags     = local.tags
+}
+
+# The quick start's module: a gateway, gpt-5-mini behind the default alias, and the app-first-call key.
+module "base" {
+  source = "../../quickstart/terraform/resources"
+
+  subscription_id     = data.azapi_client_config.current.subscription_id
+  resource_group_name = azurerm_resource_group.rg.name
+  resource_group_id   = azurerm_resource_group.rg.id
+  location            = var.location
+  tags                = local.tags
+  gateway_name        = "aigw-${local.suffix}"
+  foundry_name        = "aigw${local.suffix}"
+}
+```
+
+</details>
+<!-- gh:end -->
+
+`terraform/embeddings.tf` deploys `text-embedding-3-small` in the same Foundry account with the `azurerm` provider,
+then registers it as a backend model with its token limit, and publishes its alias, with the `azapi` provider, which
+sends the AI Gateway API version, `2026-11-01`, as is:
+
+<!-- include: terraform/embeddings.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/embeddings.tf`](terraform/embeddings.tf)
+
+<details><summary>Show all 68 lines</summary>
+
+```tf
+# text-embedding-3-small, deployed in the quick start's Foundry account and published through the gateway. The
+# gateway's Foundry User role on the account already covers the new deployment.
+resource "azurerm_cognitive_deployment" "embeddings" {
+  name                 = "text-embedding-3-small"
+  cognitive_account_id = module.base.foundry_id
+
+  sku {
+    name     = "GlobalStandard"
+    capacity = 20
+  }
+
+  model {
+    format  = "OpenAI"
+    name    = "text-embedding-3-small"
+    version = "1"
+  }
+}
+
+# The deployment as a backend model under the quick start's provider, with a per-caller token limit. An embedding
+# model supports only the embeddings endpoint, so chat calls to it fail with unsupported_endpoint.
+resource "azapi_resource" "embeddings_model" {
+  type      = "Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2026-11-01"
+  name      = azurerm_cognitive_deployment.embeddings.name
+  parent_id = module.base.provider_id
+
+  body = {
+    properties = {
+      displayName = azurerm_cognitive_deployment.embeddings.name
+      description = "Foundry embedding deployment ${azurerm_cognitive_deployment.embeddings.name} published through AI Gateway."
+      supportedEndpoints = [
+        "/openai/v1/embeddings",
+      ]
+      deployment = {
+        resourceId   = azurerm_cognitive_deployment.embeddings.id
+        modelName    = azurerm_cognitive_deployment.embeddings.model[0].name
+        modelVersion = azurerm_cognitive_deployment.embeddings.model[0].version
+      }
+      policies = [
+        {
+          type       = "tokenLimit"
+          period     = "minute"
+          count      = var.embeddings_tokens_per_minute
+          counterKey = ["identity"]
+        },
+      ]
+    }
+  }
+
+  schema_validation_enabled = false
+}
+
+# The alias that apps send in the request "model" field, with the same name as the deployment.
+resource "azapi_resource" "embeddings_alias" {
+  type      = "Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01"
+  name      = azapi_resource.embeddings_model.name
+  parent_id = module.base.workspace_id
+
+  body = {
+    properties = {
+      description = "Embeddings for search and RAG"
+      backendModels = [
+        { resourceId = azapi_resource.embeddings_model.id },
+      ]
+    }
+  }
+
+  schema_validation_enabled = false
+}
+```
+
+</details>
+<!-- gh:end -->
+
+`terraform/variables.tf` declares the token limit with the same default as the Bicep template, and
+`terraform/outputs.tf` returns the names that the next sections use:
+
+<!-- include: terraform/variables.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/variables.tf`](terraform/variables.tf)
+
+```tf
+variable "environment_name" {
+  description = "Names the resource group rg-<environment_name> and seeds the unique resource names."
+  type        = string
+  default     = "aigw-lab26-tf"
+}
+
+variable "location" {
+  description = "Region for every resource. Pick one where AI Gateway, gpt-5-mini, and text-embedding-3-small are available."
+  type        = string
+  default     = "eastus2"
+}
+
+variable "embeddings_tokens_per_minute" {
+  description = "Tokens per minute that each caller identity can send to the embedding model."
+  type        = number
+  default     = 2000
+
+  validation {
+    condition     = var.embeddings_tokens_per_minute >= 1
+    error_message = "The token limit must be at least 1."
+  }
+}
+```
+<!-- gh:end -->
+
+### Deploy with terraform apply
+
+Move into the lab's Terraform folder, select your current subscription, then plan and apply the configuration. It
+takes about three minutes, most of it while the new gateway activates.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Move into the lab's Terraform folder
+cd ~/aigateway/labs/26-embeddings/terraform &&
+  echo "📂 Terraform folder: $(pwd)"
+
+# Deploy to the Azure CLI's current subscription
+export ARM_SUBSCRIPTION_ID="$(az account show --query id --output tsv)" &&
+  echo "📍 Subscription: $ARM_SUBSCRIPTION_ID"
+
+# Download the providers, then plan and apply the gateway, the Foundry account with both models, the aliases, the
+# token limit, and the key
+terraform init &&
+  terraform plan -out tfplan &&
+  terraform apply tfplan &&
+  echo "🚀 Gateway deployed: $(terraform output -raw ai_gateway_url)"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Move into the lab's Terraform folder
+Set-Location ~/aigateway/labs/26-embeddings/terraform
+if ($?) { Write-Host "📂 Terraform folder: $(Get-Location)" }
+
+# Deploy to the Azure CLI's current subscription
+$env:ARM_SUBSCRIPTION_ID = az account show --query id --output tsv
+if ($?) { Write-Host "📍 Subscription: $env:ARM_SUBSCRIPTION_ID" }
+
+# Download the providers, then plan and apply the gateway, the Foundry account with both models, the aliases, the
+# token limit, and the key
+terraform init
+if ($?) { terraform plan -out tfplan }
+if ($?) { terraform apply tfplan }
+if ($?) { Write-Host "🚀 Gateway deployed: $(terraform output -raw ai_gateway_url)" }
+```
+</details> <!-- gh -->
+
+The configuration deploys to `eastus2`. For another region where AI Gateway, `gpt-5-mini`, and
+`text-embedding-3-small` are available, as in [Find the available regions](../SETUP.md#find-the-available-regions),
+run `export TF_VAR_location=<region>` (PowerShell: `$env:TF_VAR_location = "<region>"`) before `terraform plan`.
+
+### Read the outputs and the key
+
+Set the variables that the next sections and **Verify** use from the Terraform outputs, and read the key from the
+gateway, so that it never shows on screen or lands in the Terraform state.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Read the configuration's outputs into the variables that the next sections use
+export RG="$(terraform output -raw azure_resource_group)"
+export GATEWAY="$(terraform output -raw ai_gateway_name)"
+export GATEWAY_ID="$(terraform output -raw ai_gateway_id)"
+export PROVIDER="$(terraform output -raw ai_gateway_provider)"
+export AI_GATEWAY_MODEL="$(terraform output -raw ai_gateway_model)"
+export AI_GATEWAY_EMBEDDINGS_MODEL="$(terraform output -raw ai_gateway_embeddings_model)"
+export EMBEDDINGS="$AI_GATEWAY_EMBEDDINGS_MODEL"
+export FOUNDRY_RG="$RG"
+export FOUNDRY_ACCOUNT="$(terraform output -raw foundry_account_name)"
+export AI_GATEWAY_URL="$(terraform output -raw ai_gateway_url)"
+echo "📝 Aliases $AI_GATEWAY_EMBEDDINGS_MODEL and $AI_GATEWAY_MODEL on gateway $GATEWAY in $RG"
+echo "🌐 Runtime URL: $AI_GATEWAY_URL"
+
+# Read the app-first-call key from the gateway, so that it never lands in a file or the Terraform state
+export AI_GATEWAY_API_KEY="$(az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/app-first-call" \
+  --query primaryKey --output tsv)"
+echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
+# Move back to the lab's folder, which holds the scripts
+cd .. && echo "📂 Lab folder: $(pwd)"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Read the configuration's outputs into the variables that the next sections use
+$RG                              = terraform output -raw azure_resource_group
+$GATEWAY                         = terraform output -raw ai_gateway_name
+$GATEWAY_ID                      = terraform output -raw ai_gateway_id
+$PROVIDER                        = terraform output -raw ai_gateway_provider
+$env:AI_GATEWAY_MODEL            = terraform output -raw ai_gateway_model
+$env:AI_GATEWAY_EMBEDDINGS_MODEL = terraform output -raw ai_gateway_embeddings_model
+$EMBEDDINGS                      = $env:AI_GATEWAY_EMBEDDINGS_MODEL
+$FOUNDRY_RG                      = $RG
+$FOUNDRY_ACCOUNT                 = terraform output -raw foundry_account_name
+$env:AI_GATEWAY_URL              = terraform output -raw ai_gateway_url
+Write-Host "📝 Aliases $env:AI_GATEWAY_EMBEDDINGS_MODEL and $env:AI_GATEWAY_MODEL on gateway $GATEWAY in $RG"
+Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
+
+# Read the app-first-call key from the gateway, so that it never lands in a file or the Terraform state
+$env:AI_GATEWAY_API_KEY = az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/app-first-call" `
+  --query primaryKey --output tsv
+Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) characters, not shown)"
+# Move back to the lab's folder, which holds the scripts
+Set-Location ..
+if ($?) { Write-Host "📂 Lab folder: $(Get-Location)" }
+```
+</details> <!-- gh -->
+
+> **Checkpoint**
+> `terraform apply` ended with `Apply complete! Resources: 12 added, 0 changed, 0 destroyed.`, the variables point
+> to the new gateway, and the key has 32 characters.
+
+The next sections run from the lab's folder, with `-chdir=terraform` for the `terraform` commands.
 
 </details> <!-- gh -->
 <!-- /tracks -->
@@ -1102,6 +1388,41 @@ az aigateway model show -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER
 > The output has one `tokenLimit` with `count` `2000`, `period` `minute`, and `counterKey` `["identity"]`.
 
 </details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+### Check the token limit
+
+`terraform/embeddings.tf` already put the token limit in the model's `policies`. Print it:
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Print the policies of the embedding model that Terraform deployed
+echo "🔐 Policies on $EMBEDDINGS:"
+az aigateway model show -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$EMBEDDINGS" \
+  --query properties.policies -o json
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Print the policies of the embedding model that Terraform deployed
+Write-Host "🔐 Policies on ${EMBEDDINGS}:"
+az aigateway model show -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER -n $EMBEDDINGS `
+  --query properties.policies -o json
+```
+</details> <!-- gh -->
+
+> **Checkpoint**
+> The output has one `tokenLimit` with `count` `2000`, `period` `minute`, and `counterKey` `["identity"]`.
+
+To size the limit for production later, pass `embeddings_tokens_per_minute` to `terraform plan` and apply the plan,
+for example `terraform -chdir=terraform plan -var embeddings_tokens_per_minute=20000 -out tfplan`. Only the
+embedding model changes: the plan ends with `Plan: 0 to add, 1 to change, 0 to destroy.` Keep `2000` for **Verify**.
+
+</details> <!-- gh -->
 <!-- /tracks -->
 
 ## Verify
@@ -1320,10 +1641,28 @@ if ($?) { Write-Host "🚮 Model $EMBEDDINGS is deleted" }
 
 ### Delete everything azd created
 
+In the `aigateway/labs/26-embeddings` folder, delete everything that `azd up` created. It takes about two minutes.
+
 ```bash title="Bash or PowerShell"
 # Delete the resource group with the gateway and the Foundry account, and purge the account so its name is free
 azd down --purge --force &&
   echo "🚮 The lab's resources are deleted"
+```
+
+</details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+### Delete everything Terraform created
+
+In the `aigateway/labs/26-embeddings` folder, delete the resource group with the gateway, the Foundry
+account with both models, and the aliases. The [`azurerm` provider](../SETUP.md#delete-what-terraform-created) also
+purges the soft-deleted Foundry account. It takes about two minutes.
+
+```bash title="Bash or PowerShell"
+# Delete everything that terraform apply created, and purge the soft-deleted Foundry account
+terraform -chdir=terraform destroy -auto-approve &&
+  echo "🚮 Everything that terraform apply created is deleted"
 ```
 
 </details> <!-- gh -->
@@ -1349,8 +1688,8 @@ if ($?) { Write-Host "🚮 Model deployment $EMBEDDINGS is deleted" }
 ```
 </details> <!-- gh -->
 
-Keep the gateway, `gpt-5-mini`, and the key from lab 02: the next labs reuse them. `azd down` doesn't touch them,
-because the Bicep + azd track created its own gateway.
+Keep the gateway, `gpt-5-mini`, and the key from lab 02: the next labs reuse them. `azd down` and `terraform destroy`
+don't touch them, because the Bicep + azd and Terraform tracks created their own gateways.
 
 ## Next steps
 

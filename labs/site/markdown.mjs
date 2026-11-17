@@ -23,15 +23,15 @@ import { stripGitHub, videoInfo } from './github.mjs';
 import { SETUP_RE, SETUP_DONE_RE, setupKeys, inlineMd, plainMd } from './setup.mjs';
 
 const LANGS = ['bash', 'shellscript', 'powershell', 'python', 'json', 'jsonc', 'typescript', 'javascript',
-  'csharp', 'yaml', 'http', 'bicep', 'kusto', 'text', 'dotenv', 'toml', 'markdown', 'html', 'css', 'xml', 'sql'];
+  'csharp', 'yaml', 'http', 'bicep', 'kusto', 'text', 'dotenv', 'toml', 'markdown', 'html', 'css', 'xml', 'sql', 'terraform'];
 const LANG_ALIASES = { sh: 'bash', shell: 'bash', zsh: 'bash', ps1: 'powershell', pwsh: 'powershell', py: 'python',
   ts: 'typescript', js: 'javascript', cs: 'csharp', 'c#': 'csharp', yml: 'yaml', kql: 'kusto', promql: 'text',
   env: 'dotenv', txt: 'text', plaintext: 'text', console: 'bash', jsonl: 'json', mjs: 'javascript', cjs: 'javascript',
   tsx: 'typescript', jsx: 'javascript', bicepparam: 'bicep', md: 'markdown', csproj: 'xml', example: 'text', http: 'http',
-  azcli: 'bash', azurecli: 'bash', dockerfile: 'text', ini: 'toml' };
+  azcli: 'bash', azurecli: 'bash', dockerfile: 'text', ini: 'toml', tf: 'terraform', hcl: 'terraform', tfvars: 'terraform' };
 const LANG_LABELS = { bash: 'Bash', powershell: 'PowerShell', python: 'Python', json: 'JSON', jsonc: 'JSON',
   typescript: 'TypeScript', javascript: 'JavaScript', csharp: 'C#', yaml: 'YAML', http: 'HTTP', bicep: 'Bicep',
-  kusto: 'KQL', text: 'Text', dotenv: '.env', toml: 'TOML', markdown: 'Markdown', html: 'HTML', css: 'CSS', xml: 'XML', sql: 'SQL' };
+  kusto: 'KQL', text: 'Text', dotenv: '.env', toml: 'TOML', markdown: 'Markdown', html: 'HTML', css: 'CSS', xml: 'XML', sql: 'SQL', terraform: 'Terraform' };
 
 // Placeholders that readers can personalise in the lab settings panel. Keys are never stored.
 export const PLACEHOLDERS = {
@@ -280,10 +280,11 @@ const TRACK_ICONS = {
   portal: '<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="3.5" width="15" height="11" rx="2"/><path d="M7 17.5h6M10 14.5v3"/><path d="m9 7 4 2-1.7.7-.7 1.8Z"/></svg>',
   cli: '<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="3.5" width="15" height="13" rx="2"/><path d="m6 8 2.5 2L6 12M10.5 12.5H14"/></svg>',
   iac: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5 17 6.5v7L10 17.5 3 13.5v-7Z"/><path d="M3 6.5 10 10.5l7-4M10 10.5v7"/></svg>',
+  terraform: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2.5 1.5 7 4v5L2.5 6.5Z"/><path d="M8.5 4.8 13 7.3v5l-4.5-2.5Z"/><path d="M8.5 11 13 13.5v5L8.5 16Z"/><path d="M14.5 7.3 19 4.8v5l-4.5 2.5Z"/></svg>',
   code: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="m7 6-4 4 4 4M13 6l4 4-4 4"/></svg>',
   rest: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 7h14M3 13h14"/><path d="m13 4 4 3-4 3M7 10l-4 3 4 3"/></svg>',
 };
-export const TRACK_LABELS = { portal: 'Portal', cli: 'Azure CLI', iac: 'Bicep + azd', code: 'Code', rest: 'REST' };
+export const TRACK_LABELS = { portal: 'Portal', cli: 'Azure CLI', iac: 'Bicep + azd', terraform: 'Terraform', code: 'Code', rest: 'REST' };
 export { TRACK_ICONS };
 
 export async function renderLab(markdown, ctx) {

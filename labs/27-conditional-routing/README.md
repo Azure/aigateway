@@ -4,7 +4,7 @@ summary: Send the requests that carry a research header to a larger model with a
 category: models
 level: Intermediate
 duration: 30
-tracks: [portal, cli, iac]
+tracks: [portal, cli, iac, terraform]
 order: 3.55
 status: new
 illustration: diagrams/conditional-routing.svg
@@ -28,7 +28,7 @@ prereqs:
 
 | ⏱️ Time | 📶 Level | 🧭 Tracks | ✅ Before you start |
 | :-- | :-- | :-- | :-- |
-| 30 min | Intermediate | Portal · Azure CLI · Bicep + azd | [02 · First model call](../02-first-model-call/README.md) |
+| 30 min | Intermediate | Portal · Azure CLI · Bicep + azd · Terraform | [02 · First model call](../02-first-model-call/README.md) |
 
 **You'll learn to**
 
@@ -62,8 +62,8 @@ prompt caches warm. The apps never change the model name they send.
 <!-- gh:end -->
 
 > [!TIP]
-> On the **Bicep + azd** track, `azd up` creates its own gateway, both models, the alias, and a key, so you can skip
-> this section. You need only the one-time setup above.
+> On the **Bicep + azd** and **Terraform** tracks, `azd up` or `terraform apply` creates its own gateway, both
+> models, the alias, and a key, so you can skip this section. You need only the one-time setup above.
 
 - Complete [Publish a Foundry model and make your first call](../02-first-model-call/README.md). You need the
   gateway, the `app-first-call` runtime key, and the `gpt-5-mini` backend model. Lab 02 also gave the gateway the
@@ -226,7 +226,7 @@ the request fails before it reaches a provider.
 Conditions and session keys are [CEL](https://ai.gateway.azure.com/docs/cel) expressions over the request.
 `request.headers` maps each header name, in lowercase, to a list of values, so read the first value with `[0]`.
 Other roots include `authorization.key.resource.name` (the runtime key's name) and `authorization.jwt.claims`.
-Over the API and in Bicep, wrap each expression in `@cel('…')`. The portal adds the wrapper for you.
+Over the API, in Bicep, and in Terraform, wrap each expression in `@cel('…')`. The portal adds the wrapper for you.
 
 Three habits keep expressions safe:
 
@@ -315,8 +315,9 @@ make the same changes on one page.
 
 ### Register the research model
 
-A backend model registers one deployment under the provider. This is the same command as in lab 22. If you kept
-`gpt-6.1-sol` from lab 22, skip this step.
+A backend model registers one deployment under the provider. `--foundry-resource-id` and `--deployment` name the
+Foundry deployment, and the CLI reads its model name and version. If you kept `gpt-6.1-sol` from lab 22, skip this
+step.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -325,7 +326,7 @@ A backend model registers one deployment under the provider. This is the same co
 az aigateway model create -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$RESEARCH" \
   --display-name "$RESEARCH" --api-format OpenAIChatCompletions \
   --supported-endpoints /openai/v1/chat/completions /openai/v1/responses \
-  --deployment-config "{resourceId:$FOUNDRY_ID/deployments/$RESEARCH,modelName:$RESEARCH,modelVersion:$RESEARCH_VERSION}" \
+  --foundry-resource-id "$FOUNDRY_ID" --deployment "$RESEARCH" \
   --query "{name:name, version:properties.deployment.modelVersion}" &&
   echo "✨ Model $RESEARCH is published through $PROVIDER"
 ```
@@ -338,7 +339,7 @@ az aigateway model create -g "$RG" --gateway-name "$GATEWAY" --provider-name "$P
 az aigateway model create -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER -n $RESEARCH `
   --display-name $RESEARCH --api-format OpenAIChatCompletions `
   --supported-endpoints /openai/v1/chat/completions /openai/v1/responses `
-  --deployment-config "{resourceId:$FOUNDRY_ID/deployments/$RESEARCH,modelName:$RESEARCH,modelVersion:$RESEARCH_VERSION}" `
+  --foundry-resource-id $FOUNDRY_ID --deployment $RESEARCH `
   --query "{name:name, version:properties.deployment.modelVersion}"
 if ($?) { Write-Host "✨ Model $RESEARCH is published through $PROVIDER" }
 ```
@@ -707,7 +708,7 @@ output chatCompletionsUrl string = 'https://${aiGateway.properties.frontend.defa
 ### Deploy with azd up
 
 Move into the lab's folder, create an azd environment named `aigw-lab27` in your current subscription, then
-provision everything. It takes about three minutes.
+provision everything. It takes about 29 minutes, most of it while the new gateway activates.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -828,6 +829,375 @@ Show-Routes (az rest --method get --url "$WS/aliases/${ALIAS}?$API" | ConvertFro
 > **Checkpoint**
 > `azd up` ended with `SUCCESS`, and the last command printed `gpt-6.1-sol  priority 0  weight 1  when @cel(…)`,
 > `gpt-5-mini  priority 1  weight 1  always included`, and `Routing order: priority`.
+
+</details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+**What you need:** only the one-time setup from **Before you begin**, plus Terraform 1.9 or later, as in
+[Deploy a lab with Terraform](../SETUP.md#deploy-a-lab-with-terraform). This track doesn't use your gateway from
+lab 02: `terraform apply` creates a new one, so it works on its own.
+
+### Review the configuration
+
+`terraform/main.tf` creates the resource group `rg-<environment_name>` and calls the quick start's
+[resources module](../quickstart/terraform/resources) for the gateway, `gpt-5-mini`, its default alias, and the
+`app-first-call` key:
+
+<!-- include: terraform/main.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/main.tf`](terraform/main.tf)
+
+<details><summary>Show all 29 lines</summary>
+
+```tf
+# Lab 27 with Terraform: creates the resource group rg-<environment_name>, the quick start's gateway, Foundry model,
+# default alias, and runtime API key, then deploys a research model in the same Foundry account (research-model.tf)
+# and publishes the chat alias, which routes by request header (conditions) or keeps each session on one backend
+# model (affinity) (conditional-alias.tf). The runtime API key is never an output.
+data "azapi_client_config" "current" {}
+
+locals {
+  suffix = substr(sha1("${data.azapi_client_config.current.subscription_id}/${var.environment_name}/${var.location}"), 0, 6)
+  tags   = { "environment-name" = var.environment_name }
+}
+
+resource "azurerm_resource_group" "rg" {
+  name     = "rg-${var.environment_name}"
+  location = var.location
+  tags     = local.tags
+}
+
+# The quick start's module: a gateway, gpt-5-mini behind the default alias, and the app-first-call key.
+module "base" {
+  source = "../../quickstart/terraform/resources"
+
+  subscription_id     = data.azapi_client_config.current.subscription_id
+  resource_group_name = azurerm_resource_group.rg.name
+  resource_group_id   = azurerm_resource_group.rg.id
+  location            = var.location
+  tags                = local.tags
+  gateway_name        = "aigw-${local.suffix}"
+  foundry_name        = "aigw${local.suffix}"
+}
+```
+
+</details>
+<!-- gh:end -->
+
+`terraform/research-model.tf` deploys the research model in the same Foundry account with the `azurerm` provider,
+and registers it as a backend model with the `azapi` provider, which sends the AI Gateway API version,
+`2026-11-01`, as is:
+
+<!-- include: terraform/research-model.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/research-model.tf`](terraform/research-model.tf)
+
+<details><summary>Show all 42 lines</summary>
+
+```tf
+# The research model, deployed in the quick start's Foundry account next to gpt-5-mini and registered as a second
+# backend model under the quick start's provider. The gateway's Foundry User role on the account already covers it.
+resource "azurerm_cognitive_deployment" "research" {
+  name                 = var.research_model_name
+  cognitive_account_id = module.base.foundry_id
+
+  # 50 also allows 50 requests per minute, enough for the lab's scripts.
+  sku {
+    name     = "GlobalStandard"
+    capacity = 50
+  }
+
+  model {
+    format  = "OpenAI"
+    name    = var.research_model_name
+    version = var.research_model_version
+  }
+}
+
+resource "azapi_resource" "research_model" {
+  type      = "Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2026-11-01"
+  name      = azurerm_cognitive_deployment.research.name
+  parent_id = module.base.provider_id
+
+  body = {
+    properties = {
+      displayName = azurerm_cognitive_deployment.research.name
+      description = "Research model that the chat alias routes to."
+      supportedEndpoints = [
+        "/openai/v1/chat/completions",
+        "/openai/v1/responses",
+      ]
+      deployment = {
+        resourceId   = azurerm_cognitive_deployment.research.id
+        modelName    = var.research_model_name
+        modelVersion = var.research_model_version
+      }
+    }
+  }
+
+  schema_validation_enabled = false
+}
+```
+
+</details>
+<!-- gh:end -->
+
+`terraform/conditional-alias.tf` publishes the `chat` alias. It keeps both routing modes in a map, and the
+`routing_mode` variable picks one, so switching modes changes only the alias:
+
+<!-- include: terraform/conditional-alias.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/conditional-alias.tf`](terraform/conditional-alias.tf)
+
+<details><summary>Show all 42 lines</summary>
+
+```tf
+# The chat alias, which routes across gpt-5-mini and the research model with CEL expressions. The gpt-5-mini backend
+# model comes from the quick start's module and is only referenced, so its policies stay untouched.
+locals {
+  general_model = module.base.model_name
+  research      = azapi_resource.research_model.name
+
+  routing = {
+    # Conditions: the research model is preferred (priority 0) but only included when its condition is true, so
+    # every other request falls through to gpt-5-mini at priority 1.
+    conditions = {
+      description = "Sends x-workload: research requests to ${local.research}, everything else to ${local.general_model}."
+      backendModels = [
+        { resourceId = azapi_resource.research_model.id, priority = 0, weight = 1, when = var.research_condition },
+        { resourceId = module.base.model_id, priority = 1, weight = 1 },
+      ]
+      selectionOrder = ["priority"]
+    }
+
+    # Affinity: both models share priority 0, and the session key picks the backend before priority and weight do.
+    affinity = {
+      description = "Splits sessions between ${local.general_model} and ${local.research}, and keeps each session on one of them."
+      backendModels = [
+        { resourceId = module.base.model_id, priority = 0, weight = 1 },
+        { resourceId = azapi_resource.research_model.id, priority = 0, weight = 1 },
+      ]
+      selectionOrder           = ["sessionBackendPreference", "priority"]
+      sessionBackendPreference = { key = var.session_key }
+    }
+  }
+}
+
+resource "azapi_resource" "chat_alias" {
+  type      = "Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01"
+  name      = "chat"
+  parent_id = module.base.workspace_id
+
+  body = {
+    properties = local.routing[var.routing_mode]
+  }
+
+  schema_validation_enabled = false
+}
+```
+
+</details>
+<!-- gh:end -->
+
+`terraform/variables.tf` declares the research model, the routing mode, and both CEL expressions, with the same
+defaults as the Bicep templates:
+
+<!-- include: terraform/variables.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/variables.tf`](terraform/variables.tf)
+
+<details><summary>Show all 46 lines</summary>
+
+```tf
+variable "environment_name" {
+  description = "Names the resource group rg-<environment_name> and seeds the unique resource names."
+  type        = string
+  default     = "aigw-lab27-tf"
+}
+
+variable "location" {
+  description = "Region for every resource. Pick one where AI Gateway and the lab's Foundry models are available."
+  type        = string
+  default     = "eastus2"
+}
+
+variable "research_model_name" {
+  description = "Research model to deploy in Foundry and route to. The deployment and the backend model use this name."
+  type        = string
+  default     = "gpt-6.1-sol"
+}
+
+variable "research_model_version" {
+  description = "Version of the research model."
+  type        = string
+  default     = "2026-09-29"
+}
+
+variable "routing_mode" {
+  description = "conditions: x-workload: research requests go to the research model, the rest to gpt-5-mini. affinity: both models share the traffic, and each session stays on one of them."
+  type        = string
+  default     = "conditions"
+
+  validation {
+    condition     = contains(["conditions", "affinity"], var.routing_mode)
+    error_message = "The routing mode must be conditions or affinity."
+  }
+}
+
+variable "research_condition" {
+  description = "Conditions mode: the CEL expression that includes the research model for a request. It must return a Boolean."
+  type        = string
+  default     = "@cel('x-workload' in request.headers && request.headers['x-workload'][0] == 'research')"
+}
+
+variable "session_key" {
+  description = "Affinity mode: the CEL expression that returns the session key. An empty string means no affinity for the request."
+  type        = string
+  default     = "@cel('session-id' in request.headers ? request.headers['session-id'][0] : '')"
+}
+```
+
+</details>
+<!-- gh:end -->
+
+### Deploy with terraform apply
+
+Move into the lab's Terraform folder, select your current subscription, then plan and apply the configuration. It
+takes about three minutes, most of it while the new gateway activates.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Move into the lab's Terraform folder
+cd ~/aigateway/labs/27-conditional-routing/terraform &&
+  echo "📂 Terraform folder: $(pwd)"
+
+# Deploy to the Azure CLI's current subscription
+export ARM_SUBSCRIPTION_ID="$(az account show --query id --output tsv)" &&
+  echo "📍 Subscription: $ARM_SUBSCRIPTION_ID"
+
+# Download the providers, then plan and apply the gateway, the Foundry account with both models, the chat alias,
+# and the key
+terraform init &&
+  terraform plan -out tfplan &&
+  terraform apply tfplan &&
+  echo "🚀 Gateway deployed: $(terraform output -raw ai_gateway_url)"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Move into the lab's Terraform folder
+Set-Location ~/aigateway/labs/27-conditional-routing/terraform
+if ($?) { Write-Host "📂 Terraform folder: $(Get-Location)" }
+
+# Deploy to the Azure CLI's current subscription
+$env:ARM_SUBSCRIPTION_ID = az account show --query id --output tsv
+if ($?) { Write-Host "📍 Subscription: $env:ARM_SUBSCRIPTION_ID" }
+
+# Download the providers, then plan and apply the gateway, the Foundry account with both models, the chat alias,
+# and the key
+terraform init
+if ($?) { terraform plan -out tfplan }
+if ($?) { terraform apply tfplan }
+if ($?) { Write-Host "🚀 Gateway deployed: $(terraform output -raw ai_gateway_url)" }
+```
+</details> <!-- gh -->
+
+The configuration deploys to `eastus2`. For another region where AI Gateway and the `gpt-5-mini` and `gpt-6.1-sol`
+models are available, as in [Find the available regions](../SETUP.md#find-the-available-regions), run
+`export TF_VAR_location=<region>` (PowerShell: `$env:TF_VAR_location = "<region>"`) before `terraform plan`.
+
+### Read the outputs and the key
+
+Set the variables that the next sections and **Verify** use from the Terraform outputs, read the key from the
+gateway so that it never shows on screen or lands in the Terraform state, then print the alias's routing.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Read the configuration's outputs into the variables that the next sections use
+export RG="$(terraform output -raw azure_resource_group)"
+export GATEWAY="$(terraform output -raw ai_gateway_name)"
+export GATEWAY_ID="$(terraform output -raw ai_gateway_id)"
+export GENERAL="$(terraform output -raw ai_gateway_backend_model)"
+export RESEARCH="$(terraform output -raw ai_gateway_research_model)"
+export ALIAS="$(terraform output -raw ai_gateway_model)"
+export AI_GATEWAY_URL="$(terraform output -raw ai_gateway_url)"
+echo "📝 Alias $ALIAS routes between $GENERAL and $RESEARCH on gateway $GATEWAY in $RG"
+echo "🌐 Runtime URL: $AI_GATEWAY_URL"
+
+# Build the management URL of the gateway's default workspace, and the API version, for the az rest calls
+export WS="https://management.azure.com$GATEWAY_ID/workspaces/default"
+export API="api-version=2026-11-01"
+
+# Read the app-first-call key from the gateway, so that it never lands in a file or the Terraform state
+export AI_GATEWAY_API_KEY="$(az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/app-first-call" \
+  --query primaryKey --output tsv)"
+echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
+
+# Keep a jq filter that prints the alias's routing, then print it
+export ROUTES='.properties
+  | (.backendModels[] | "\(.resourceId | split("/") | last)  priority \(.priority)  weight \(.weight)  "
+      + (if .when then "when \(.when)" else "always included" end)),
+    "Routing order: \((.selectionOrder // ["priority"]) | join(", "))",
+    "Session key: \(.sessionBackendPreference.key // "none")"'
+echo "🔖 Alias $ALIAS routes to:"
+az rest --method get --url "$WS/aliases/$ALIAS?$API" | jq -r "$ROUTES"
+# Move back to the lab's folder, which holds the scripts
+cd .. && echo "📂 Lab folder: $(pwd)"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Read the configuration's outputs into the variables that the next sections use
+$RG                     = terraform output -raw azure_resource_group
+$GATEWAY                = terraform output -raw ai_gateway_name
+$GATEWAY_ID             = terraform output -raw ai_gateway_id
+$GENERAL                = terraform output -raw ai_gateway_backend_model
+$RESEARCH               = terraform output -raw ai_gateway_research_model
+$ALIAS                  = terraform output -raw ai_gateway_model
+$env:AI_GATEWAY_URL     = terraform output -raw ai_gateway_url
+Write-Host "📝 Alias $ALIAS routes between $GENERAL and $RESEARCH on gateway $GATEWAY in $RG"
+Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
+
+# Build the management URL of the gateway's default workspace, and the API version, for the az rest calls
+$WS  = "https://management.azure.com$GATEWAY_ID/workspaces/default"
+$API = "api-version=2026-11-01"
+
+# Read the app-first-call key from the gateway, so that it never lands in a file or the Terraform state
+$env:AI_GATEWAY_API_KEY = az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/app-first-call" `
+  --query primaryKey --output tsv
+Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) characters, not shown)"
+
+# Define a function that prints the alias's routing, then print it
+function Show-Routes($alias) {
+  $p = $alias.properties
+  $p.backendModels | ForEach-Object {
+    $rule = if ($_.when) { "when $($_.when)" } else { 'always included' }
+    '{0}  priority {1}  weight {2}  {3}' -f ($_.resourceId -split '/')[-1], $_.priority, $_.weight, $rule
+  }
+  "Routing order: $(if ($p.selectionOrder) { $p.selectionOrder -join ', ' } else { 'priority' })"
+  "Session key: $(if ($p.sessionBackendPreference) { $p.sessionBackendPreference.key } else { 'none' })"
+}
+Write-Host "🔖 Alias $ALIAS routes to:"
+Show-Routes (az rest --method get --url "$WS/aliases/${ALIAS}?$API" | ConvertFrom-Json)
+# Move back to the lab's folder, which holds the scripts
+Set-Location ..
+if ($?) { Write-Host "📂 Lab folder: $(Get-Location)" }
+```
+</details> <!-- gh -->
+
+> **Checkpoint**
+> `terraform apply` ended with `Apply complete! Resources: 12 added, 0 changed, 0 destroyed.`, and the output
+> shows `gpt-6.1-sol  priority 0  weight 1  when @cel(…)`, `gpt-5-mini  priority 1  weight 1  always included`,
+> and `Routing order: priority`.
+
+The next sections run from the lab's folder, with `-chdir=terraform` for the `terraform` commands.
 
 </details> <!-- gh -->
 <!-- /tracks -->
@@ -1024,8 +1394,8 @@ Remove-Item alias.json
 
 ### Provision the affinity mode
 
-Set `ROUTING_MODE` to `affinity` and provision again. Only the alias changes: both models get priority `0` and no
-condition, and the alias gets the session key and the routing order.
+Set `ROUTING_MODE` to `affinity` and provision again. It takes about a minute. Only the alias changes: both models
+get priority `0` and no condition, and the alias gets the session key and the routing order.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -1058,6 +1428,49 @@ To go back to the condition, run `azd env set ROUTING_MODE conditions` and `azd 
 > **Checkpoint**
 > `azd provision` ended with `SUCCESS`. **Read the alias** in **Verify** shows both models at
 > `priority 0  weight 1  always included` and `Routing order: sessionBackendPreference, priority`.
+
+</details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+### Apply the affinity mode
+
+Pass `routing_mode=affinity` to `terraform plan` and apply the plan. Only the alias changes: both models get
+priority `0` and no condition, and the alias gets the session key and the routing order.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Plan the change: switch the routing mode from conditions to session affinity
+terraform -chdir=terraform plan -var routing_mode=affinity -out tfplan &&
+  echo "📝 The plan updates only the $ALIAS alias"
+
+# Apply the plan
+terraform -chdir=terraform apply tfplan &&
+  echo "🚀 The $ALIAS alias now keeps each session on one backend model"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Plan the change: switch the routing mode from conditions to session affinity
+terraform -chdir=terraform plan -var routing_mode=affinity -out tfplan
+if ($?) { Write-Host "📝 The plan updates only the $ALIAS alias" }
+
+# Apply the plan
+terraform -chdir=terraform apply tfplan
+if ($?) { Write-Host "🚀 The $ALIAS alias now keeps each session on one backend model" }
+```
+</details> <!-- gh -->
+
+To go back to the condition, plan and apply again without `-var`. Pass `-var routing_mode=affinity` to every later
+`terraform plan` or `terraform apply` that should keep the affinity mode.
+
+> **Checkpoint**
+> The plan ended with `Plan: 0 to add, 1 to change, 0 to destroy.`, for `azapi_resource.chat_alias`. **Read the
+> alias** in **Verify** shows both models at `priority 0  weight 1  always included` and
+> `Routing order: sessionBackendPreference, priority`.
 
 </details> <!-- gh -->
 <!-- /tracks -->
@@ -1256,10 +1669,27 @@ azd down --purge --force &&
 ```
 
 </details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+### Delete everything Terraform created
+
+In the `aigateway/labs/27-conditional-routing` folder, delete the resource group with the gateway, the
+Foundry account and its two deployments, and the `chat` alias. The
+[`azurerm` provider](../SETUP.md#delete-what-terraform-created) also purges the soft-deleted Foundry account. It
+takes about two minutes.
+
+```bash
+# Delete everything that terraform apply created, and purge the soft-deleted Foundry account
+terraform -chdir=terraform destroy -auto-approve &&
+  echo "🚮 Everything that terraform apply created is deleted"
+```
+
+</details> <!-- gh -->
 <!-- /tracks -->
 
-`azd down` doesn't touch the gateway, key, and `gpt-5-mini` from lab 02, because the Bicep + azd track created its
-own gateway.
+`azd down` and `terraform destroy` don't touch the gateway, key, and `gpt-5-mini` from lab 02, because the
+Bicep + azd and Terraform tracks created their own gateways.
 
 ## Next steps
 

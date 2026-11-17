@@ -4,13 +4,13 @@ summary: Send the gateway's OpenTelemetry metrics, logs, and traces to Applicati
 category: observability
 level: Beginner
 duration: 25
-tracks: [portal, cli, iac]
+tracks: [portal, cli, iac, terraform]
 order: 13
 illustration: diagrams/observability.svg
 tags: [OpenTelemetry, OTLP, Application Insights, traces, estimated cost, KQL, GenAI semantic conventions]
 objectives:
   - Explain how the gateway exports metrics, logs, and traces independently over OTLP
-  - Connect the gateway to Application Insights in the portal, with the Azure CLI, or with Bicep and azd
+  - Connect the gateway to Application Insights in the portal, with the Azure CLI, with Bicep and azd, or with Terraform
   - Read health, outcomes, policy impact, tokens, and estimated cost on the Monitoring dashboard
   - Follow one request through the trace waterfall, including its policy child spans
   - Query gateway telemetry in Log Analytics with KQL
@@ -28,12 +28,12 @@ prereqs:
 
 | ⏱️ Time | 📶 Level | 🧭 Tracks | ✅ Before you start |
 | :-- | :-- | :-- | :-- |
-| 25 min | Beginner | Portal · Azure CLI · Bicep + azd | [02 · First model call](../02-first-model-call/README.md) |
+| 25 min | Beginner | Portal · Azure CLI · Bicep + azd · Terraform | [02 · First model call](../02-first-model-call/README.md) |
 
 **You'll learn to**
 
 - Explain how the gateway exports metrics, logs, and traces independently over OTLP
-- Connect the gateway to Application Insights in the portal, with the Azure CLI, or with Bicep and azd
+- Connect the gateway to Application Insights in the portal, with the Azure CLI, with Bicep and azd, or with Terraform
 - Read health, outcomes, policy impact, tokens, and estimated cost on the Monitoring dashboard
 - Follow one request through the trace waterfall, including its policy child spans
 - Query gateway telemetry in Log Analytics with KQL
@@ -67,9 +67,9 @@ send the gateway's OpenTelemetry signals to Application Insights and answer all 
 <!-- gh:end -->
 
 > [!TIP]
-> On the **Bicep + azd** track, `azd up` creates its own gateway, model, key, and Application Insights, so you can
-> skip this section. You need only the one-time setup above, and permission to create role assignments, for example
-> **Owner** on the subscription.
+> On the **Bicep + azd** and **Terraform** tracks, `azd up` or `terraform apply` creates its own gateway, model, key,
+> and Application Insights, so you can skip this section. You need only the one-time setup above, and permission to
+> create role assignments, for example **Owner** on the subscription.
 
 - Complete [Publish a Foundry model and make your first call](../02-first-model-call/README.md). You need a gateway,
   an imported model, a callable alias, and a runtime API key from **Access** › **API keys**.
@@ -380,12 +380,14 @@ az aigateway telemetry-exporter list -g $RG --gateway-name $GATEWAY --query "[].
 </details> <!-- gh -->
 
 To change the exporter later, such as to turn on `--payload-capture`, run `az aigateway telemetry-exporter update`
-with the same name and only the settings that change.
+with the same name and only the settings that change. `create` doesn't overwrite an exporter: when you run this step
+again, it fails with `The telemetry exporter already exists; use telemetry-exporter update.` Run the same command
+with `update` in place of `create` instead.
 
 > [!NOTE]
 > The `aigateway` extension nests the managed identity in `--open-telemetry` as `credentials`. In the management API
-> version `2026-11-01`, which the Bicep track uses, the same setting is a top-level `authentication` property and
-> each endpoint is an object with a `url`.
+> version `2026-11-01`, which the Bicep + azd and Terraform tracks use, the same setting is a top-level
+> `authentication` property and each endpoint is an object with a `url`.
 
 > **Checkpoint**
 > The list shows one exporter, `appinsights`, of kind `OpenTelemetry`. In the portal, the gateway's **Monitoring**
@@ -856,6 +858,374 @@ az aigateway telemetry-exporter list -g $RG --gateway-name $GATEWAY --query "[].
 > **Traces** tabs.
 
 </details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+**What you need:** only the one-time setup from **Before you begin**, plus Terraform 1.9 or later, as in
+[Deploy a lab with Terraform](../SETUP.md#deploy-a-lab-with-terraform). This track doesn't use your gateway from
+lab 02: `terraform apply` creates a new one, so it works on its own. The apply also runs the Azure CLI that you
+signed in with, to wait for the OTLP endpoints.
+
+### Choose what to declare
+
+The configuration declares the same setup as the Bicep + azd track: a Log Analytics workspace, a workspace-based
+Application Insights component with OTLP ingestion turned on, **Monitoring Metrics Publisher** for the gateway's
+managed identity on the component's Data Collection Rule, and a telemetry exporter of type `OpenTelemetry` with the
+recommended token claims.
+
+Terraform does it in one `terraform apply`, without a hook. The `azurerm` provider assigns the role with the role
+assignment API, which the managed resource group's deny assignment doesn't block. And a `terraform_data` resource
+waits for the OTLP endpoints with the Azure CLI, as `connect-telemetry.sh` does, before Terraform reads them and
+creates the role assignment and the exporter.
+
+### Review the configuration
+
+`terraform/main.tf` creates the resource group `rg-<environment_name>` and calls the quick start's
+[resources module](../quickstart/terraform/resources) for the gateway, the Foundry model, its default alias, and the
+`app-first-call` key. Then it calls the lab's `telemetry` module, which lab 14 reuses:
+
+<!-- include: terraform/main.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/main.tf`](terraform/main.tf)
+
+<details><summary>Show all 42 lines</summary>
+
+```tf
+# Lab 13 with Terraform: creates the resource group rg-<environment_name>, the quick start's gateway, Foundry model,
+# default alias, and runtime API key, then the Application Insights destination and the OpenTelemetry exporter that
+# sends the gateway's metrics, logs, and traces to it (the telemetry module). The runtime API key is never an output.
+data "azapi_client_config" "current" {}
+
+locals {
+  suffix = substr(sha1("${data.azapi_client_config.current.subscription_id}/${var.environment_name}/${var.location}"), 0, 6)
+  tags   = { "environment-name" = var.environment_name }
+}
+
+resource "azurerm_resource_group" "rg" {
+  name     = "rg-${var.environment_name}"
+  location = var.location
+  tags     = local.tags
+}
+
+# The quick start's module: a gateway, a Foundry model behind the default alias, and the app-first-call key.
+module "base" {
+  source = "../../quickstart/terraform/resources"
+
+  subscription_id     = data.azapi_client_config.current.subscription_id
+  resource_group_name = azurerm_resource_group.rg.name
+  resource_group_id   = azurerm_resource_group.rg.id
+  location            = var.location
+  tags                = local.tags
+  gateway_name        = "aigw-${local.suffix}"
+  foundry_name        = "aigw${local.suffix}"
+}
+
+# The destination, the role, and the exporter, with the recommended token claims (the module's default).
+module "telemetry" {
+  source = "./telemetry"
+
+  resource_group_name  = azurerm_resource_group.rg.name
+  resource_group_id    = azurerm_resource_group.rg.id
+  location             = var.location
+  tags                 = local.tags
+  gateway_name         = module.base.gateway_name
+  gateway_principal_id = module.base.gateway_principal_id
+  workspace_id         = module.base.workspace_id
+  payload_capture      = var.payload_capture
+}
+```
+
+</details>
+<!-- gh:end -->
+
+`terraform/telemetry/monitoring.tf` creates the destination. The `azapi` provider creates the component, because
+`azurerm_application_insights` can't turn on OTLP ingestion. Then Terraform waits up to 15 minutes for the endpoints
+and reads them once, with a `GET` that keeps them in the state:
+
+<!-- include: terraform/telemetry/monitoring.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/telemetry/monitoring.tf`](terraform/telemetry/monitoring.tf)
+
+<details><summary>Show all 81 lines</summary>
+
+```tf
+# The destination for the gateway's telemetry, like monitoring.bicep with enableOtlpIngestion: a Log Analytics
+# workspace and a workspace-based Application Insights component with OTLP ingestion on. Azure then creates a managed
+# resource group, ai_<component>_<id>_managed, with the Data Collection Rule and the Azure Monitor workspace for the
+# metrics, and the component reports its OTLP endpoints a few minutes later. Labs 13 and 14 reuse this module.
+terraform {
+  required_providers {
+    azapi = {
+      source = "Azure/azapi"
+    }
+    azurerm = {
+      source = "hashicorp/azurerm"
+    }
+  }
+}
+
+resource "azurerm_log_analytics_workspace" "logs" {
+  name                            = substr("${var.gateway_name}-logs", 0, 63)
+  location                        = var.location
+  resource_group_name             = var.resource_group_name
+  sku                             = "PerGB2018"
+  retention_in_days               = 30
+  allow_resource_only_permissions = true
+  tags                            = var.tags
+}
+
+# azurerm_application_insights can't turn on OTLP ingestion, so azapi sends AzureMonitorWorkspaceIngestionMode as is.
+resource "azapi_resource" "insights" {
+  type      = "Microsoft.Insights/components@2020-02-02"
+  name      = "${var.gateway_name}-insights"
+  parent_id = var.resource_group_id
+  location  = var.location
+  tags      = var.tags
+
+  body = {
+    kind = "web"
+    properties = {
+      Application_Type                   = "web"
+      WorkspaceResourceId                = azurerm_log_analytics_workspace.logs.id
+      AzureMonitorWorkspaceIngestionMode = "Enabled"
+    }
+  }
+
+  schema_validation_enabled = false
+}
+
+# Like connect-telemetry.sh: register Microsoft.Monitor, which the managed Azure Monitor workspace needs, then wait
+# up to 15 minutes for the three OTLP endpoints and the Data Collection Rule. Terraform runs it once, with the Azure
+# CLI, after it creates the component.
+resource "terraform_data" "otlp_endpoints" {
+  triggers_replace = [azapi_resource.insights.id]
+
+  provisioner "local-exec" {
+    command = "az provider register --namespace Microsoft.Monitor --wait && az resource wait --ids ${azapi_resource.insights.id} --api-version 2020-02-02 --custom \"properties.OTLPMetricsEndpoint && properties.OTLPLogsEndpoint && properties.OTLPTracesEndpoint && properties.DataCollectionRuleResourceId\" --interval 10 --timeout 900"
+  }
+}
+
+# Then read the endpoints and the rule from the component once, with a GET that keeps its result in the state. A
+# data source would read them again each time the gateway or the component changes, and replace the role assignment.
+resource "azapi_resource_action" "otlp" {
+  type        = "Microsoft.Insights/components@2020-02-02"
+  resource_id = azapi_resource.insights.id
+  method      = "GET"
+
+  response_export_values = {
+    metrics_endpoint = "properties.OTLPMetricsEndpoint"
+    logs_endpoint    = "properties.OTLPLogsEndpoint"
+    traces_endpoint  = "properties.OTLPTracesEndpoint"
+    dcr_id           = "properties.DataCollectionRuleResourceId"
+  }
+
+  depends_on = [terraform_data.otlp_endpoints]
+
+  lifecycle {
+    replace_triggered_by = [terraform_data.otlp_endpoints]
+
+    postcondition {
+      condition     = alltrue([for k in ["metrics_endpoint", "logs_endpoint", "traces_endpoint", "dcr_id"] : try(length(self.output[k]) > 0, false)])
+      error_message = "The component has no OTLP endpoints yet. Wait a few minutes, then run terraform apply -replace=module.telemetry.azapi_resource_action.otlp."
+    }
+  }
+}
+```
+
+</details>
+<!-- gh:end -->
+
+`terraform/telemetry/otel-exporter.tf` assigns the role, then creates the exporter with the `2026-11-01` API: each
+endpoint is an object with a `url`, and the managed identity sits in a top-level `authentication` block. The claims
+come from the module's `claim_attributes` variable, whose default is the recommended preset:
+
+<!-- include: terraform/telemetry/otel-exporter.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/telemetry/otel-exporter.tf`](terraform/telemetry/otel-exporter.tf)
+
+<details><summary>Show all 52 lines</summary>
+
+```tf
+# Connects the gateway to the destination, like connect-telemetry.sh and otel-exporter.bicep: the gateway's
+# managed identity gets Monitoring Metrics Publisher on the Data Collection Rule, then an OpenTelemetry exporter sends
+# metrics, logs, and traces to the component's OTLP endpoints, with the token claims in claim_attributes.
+locals {
+  monitoring_metrics_publisher_role_id = "3913510d-42f4-4e42-8a64-420c390055eb"
+  dcr_id                               = azapi_resource_action.otlp.output.dcr_id
+}
+
+# The rule lives in the managed resource group. Its deny assignment blocks deployments, which is why Bicep can't
+# assign this role, but not the role assignment API that azurerm calls.
+resource "azurerm_role_assignment" "metrics_publisher" {
+  name                             = uuidv5("url", "${local.dcr_id}/${var.gateway_principal_id}/${local.monitoring_metrics_publisher_role_id}")
+  scope                            = local.dcr_id
+  role_definition_id               = "/subscriptions/${split("/", local.dcr_id)[2]}/providers/Microsoft.Authorization/roleDefinitions/${local.monitoring_metrics_publisher_role_id}"
+  principal_id                     = var.gateway_principal_id
+  principal_type                   = "ServicePrincipal"
+  skip_service_principal_aad_check = true
+}
+
+resource "azapi_resource" "exporter" {
+  type      = "Microsoft.ApiManagement/aigateways/workspaces/telemetryExporters@2026-11-01"
+  name      = var.exporter_name
+  parent_id = var.workspace_id
+
+  body = {
+    properties = {
+      telemetryExporterType = "OpenTelemetry"
+      payloadCapture        = var.payload_capture
+      # No applicationInsights block: an OpenTelemetry exporter can't carry one.
+      openTelemetry = {
+        metricsEndpoint = { url = azapi_resource_action.otlp.output.metrics_endpoint }
+        logsEndpoint    = { url = azapi_resource_action.otlp.output.logs_endpoint }
+        tracesEndpoint  = { url = azapi_resource_action.otlp.output.traces_endpoint }
+      }
+      # The gateway's system-assigned identity gets a token for Azure Monitor ingestion.
+      authentication = {
+        managedIdentity = { resource = "https://monitor.azure.com" }
+      }
+      telemetry = {
+        attributes = [
+          for a in var.claim_attributes : {
+            source  = { kind = "claims", value = a.claim }
+            signals = a.signals
+          }
+        ]
+      }
+    }
+  }
+
+  schema_validation_enabled = false
+  depends_on                = [azurerm_role_assignment.metrics_publisher]
+}
+```
+
+</details>
+<!-- gh:end -->
+
+`terraform/variables.tf` keeps payload capture off. To turn it on later, pass `-var payload_capture=true` to
+`terraform plan` in the `terraform` folder, and apply the plan: only the exporter changes.
+
+### Deploy with terraform apply
+
+Move into the lab's Terraform folder, select your current subscription, then plan and apply the configuration. It
+takes about four minutes, most of it while the new gateway activates.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Move into the lab's Terraform folder
+cd ~/aigateway/labs/13-monitoring/terraform &&
+  echo "📂 Terraform folder: $(pwd)"
+
+# Deploy to the Azure CLI's current subscription
+export ARM_SUBSCRIPTION_ID="$(az account show --query id --output tsv)" &&
+  echo "📍 Subscription: $ARM_SUBSCRIPTION_ID"
+
+# Download the providers, then plan and apply the gateway, its model, alias, and key, Application Insights, and the
+# exporter that connects the gateway to it
+terraform init &&
+  terraform plan -out tfplan &&
+  terraform apply tfplan &&
+  echo "🚀 Gateway deployed: $(terraform output -raw ai_gateway_url)"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Move into the lab's Terraform folder
+Set-Location ~/aigateway/labs/13-monitoring/terraform
+if ($?) { Write-Host "📂 Terraform folder: $(Get-Location)" }
+
+# Deploy to the Azure CLI's current subscription
+$env:ARM_SUBSCRIPTION_ID = az account show --query id --output tsv
+if ($?) { Write-Host "📍 Subscription: $env:ARM_SUBSCRIPTION_ID" }
+
+# Download the providers, then plan and apply the gateway, its model, alias, and key, Application Insights, and the
+# exporter that connects the gateway to it
+terraform init
+if ($?) { terraform plan -out tfplan }
+if ($?) { terraform apply tfplan }
+if ($?) { Write-Host "🚀 Gateway deployed: $(terraform output -raw ai_gateway_url)" }
+```
+</details> <!-- gh -->
+
+The configuration deploys to `eastus2`. For another region where AI Gateway and the `gpt-5-mini` model are
+available, as in [Find the available regions](../SETUP.md#find-the-available-regions), run
+`export TF_VAR_location=<region>` (PowerShell: `$env:TF_VAR_location = "<region>"`) before `terraform plan`.
+
+### Read the outputs and the key
+
+Set the variables that the next sections and **Verify** use from the Terraform outputs, and read the key from the
+gateway, so that it never shows on screen or lands in the Terraform state. The commands list the gateway's
+telemetry exporters, then move back to the lab's folder, which holds the traffic script.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Read the gateway's names, URLs, and alias, and the Log Analytics workspace ID, from the Terraform outputs
+export RG="$(terraform output -raw azure_resource_group)"
+export GATEWAY="$(terraform output -raw ai_gateway_name)"
+export AI_GATEWAY_MODEL="$(terraform output -raw ai_gateway_model)"
+export GATEWAY_ID="$(terraform output -raw ai_gateway_id)"
+export AI_GATEWAY_URL="$(terraform output -raw ai_gateway_url)"
+export LAW_CUSTOMER_ID="$(terraform output -raw log_analytics_customer_id)"
+echo "📝 Gateway $GATEWAY in $RG"
+echo "🌐 Runtime URL: $AI_GATEWAY_URL"
+echo "🔖 Model alias: $AI_GATEWAY_MODEL"
+echo "🆔 Log Analytics workspace ID: $LAW_CUSTOMER_ID"
+
+# Read the key from the gateway, so that it never lands in a file or the Terraform state
+export AI_GATEWAY_API_KEY="$(az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/app-first-call" \
+  --query primaryKey --output tsv)"
+echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
+
+# List the gateway's telemetry exporters, with the kind of each one
+echo "📊 Telemetry exporters on $GATEWAY:"
+az aigateway telemetry-exporter list -g "$RG" --gateway-name "$GATEWAY" --query "[].{name:name, kind:properties.kind}" -o table
+
+# Move back to the lab's folder, which holds the traffic script
+cd .. && echo "📂 Lab folder: $(pwd)"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Read the gateway's names, URLs, and alias, and the Log Analytics workspace ID, from the Terraform outputs
+$RG                     = terraform output -raw azure_resource_group
+$GATEWAY                = terraform output -raw ai_gateway_name
+$env:AI_GATEWAY_MODEL   = terraform output -raw ai_gateway_model
+$GATEWAY_ID             = terraform output -raw ai_gateway_id
+$env:AI_GATEWAY_URL     = terraform output -raw ai_gateway_url
+$LAW_CUSTOMER_ID        = terraform output -raw log_analytics_customer_id
+Write-Host "📝 Gateway $GATEWAY in $RG"
+Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
+Write-Host "🔖 Model alias: $env:AI_GATEWAY_MODEL"
+Write-Host "🆔 Log Analytics workspace ID: $LAW_CUSTOMER_ID"
+
+# Read the key from the gateway, so that it never lands in a file or the Terraform state
+$env:AI_GATEWAY_API_KEY = az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/app-first-call" `
+  --query primaryKey --output tsv
+Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) characters, not shown)"
+
+# List the gateway's telemetry exporters, with the kind of each one
+Write-Host "📊 Telemetry exporters on ${GATEWAY}:"
+az aigateway telemetry-exporter list -g $RG --gateway-name $GATEWAY --query "[].{name:name, kind:properties.kind}" -o table
+
+# Move back to the lab's folder, which holds the traffic script
+Set-Location ..
+if ($?) { Write-Host "📂 Lab folder: $(Get-Location)" }
+```
+</details> <!-- gh -->
+
+> **Checkpoint**
+> `terraform apply` ended with `Apply complete! Resources: 15 added, 0 changed, 0 destroyed.`, and the list shows one
+> exporter, `appinsights`, of kind `OpenTelemetry`. In the portal, the gateway's **Monitoring** page shows the
+> **Overview**, **Models**, **Tools**, **Policies**, and **Traces** tabs.
+
+</details> <!-- gh -->
 <!-- /tracks -->
 
 ## Generate traffic
@@ -1036,7 +1406,7 @@ editor to **KQL mode**:
 - **Portal track**: the wizard's Application Insights resource stores its data in a managed workspace,
   `managed-<insights>-ws`, in a managed resource group whose name starts with `ai_<insights>_`. The resource's
   **Overview** page links to it.
-- **Azure CLI and Bicep + azd tracks**: `<gateway>-logs`.
+- **Azure CLI, Bicep + azd, and Terraform tracks**: `<gateway>-logs`.
 
 ### Run the starter queries
 
@@ -1216,7 +1586,7 @@ On GitHub, open [infra/queries.kql](infra/queries.kql).
 
 To run a query from the command line instead, pass the workspace's customer ID to
 `az monitor log-analytics query`. The command comes from the `log-analytics` extension, which the Azure CLI offers to
-install the first time. On the Azure CLI and Bicep + azd tracks, `LAW_CUSTOMER_ID` already holds the ID. Otherwise, set it to the
+install the first time. On the Azure CLI, Bicep + azd, and Terraform tracks, `LAW_CUSTOMER_ID` already holds the ID. Otherwise, set it to the
 **Workspace ID** on the workspace's **Overview** page. This short query counts the model calls of the last hour by
 alias and status code:
 
@@ -1449,7 +1819,7 @@ if ($?) { Write-Host "🚮 Log Analytics workspace $GATEWAY-logs is deleted" }
 In the `aigateway/labs/13-monitoring` folder, delete the resource group with the gateway, the Foundry account, the
 Application Insights component, and the Log Analytics workspace. Azure deletes the component's managed resource group
 too, once the Azure Monitor workspace in it is gone, which can take longer than `azd down`.
-[`--purge`](../SETUP.md#delete-what-azd-created) also purges the soft-deleted Foundry account. It takes about ten
+[`--purge`](../SETUP.md#delete-what-azd-created) also purges the soft-deleted Foundry account. It takes a few
 minutes.
 
 ```bash
@@ -1462,10 +1832,31 @@ The Bicep + azd track of [Attribute tokens and cost with OpenTelemetry](../14-ot
 own gateway and destination, so you don't need to keep these for it.
 
 </details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+### Delete everything Terraform created
+
+In the `aigateway/labs/13-monitoring` folder, delete the resource group with the gateway, the Foundry
+account, the Application Insights component, and the Log Analytics workspace. Azure deletes the component's managed
+resource group too, once the Azure Monitor workspace in it is gone, which can take longer than `terraform destroy`.
+The [`azurerm` provider](../SETUP.md#delete-what-terraform-created) also purges the soft-deleted Foundry account. It
+takes a few minutes.
+
+```bash
+# Delete everything that terraform apply created, and purge the soft-deleted Foundry account
+terraform -chdir=terraform destroy -auto-approve &&
+  echo "🚮 Everything that terraform apply created is deleted"
+```
+
+The Terraform track of [Attribute tokens and cost with OpenTelemetry](../14-otel-chargeback/README.md) creates its own
+gateway and destination, so you don't need to keep these for it.
+
+</details> <!-- gh -->
 <!-- /tracks -->
 
-Keep the gateway, model, and key from lab 02: the next labs reuse them. `azd down` doesn't touch them, because the
-Bicep + azd track created its own gateway.
+Keep the gateway, model, and key from lab 02: the next labs reuse them. `azd down` and `terraform destroy` don't touch
+them, because the Bicep + azd and Terraform tracks created their own gateways.
 
 ## Next steps
 

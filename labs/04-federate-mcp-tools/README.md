@@ -4,13 +4,13 @@ summary: Register a remote MCP server in Azure AI Gateway, add a second backend 
 category: tools
 level: Beginner
 duration: 30
-tracks: [portal, cli, iac, code]
+tracks: [portal, cli, iac, terraform, code]
 order: 4
 illustration: diagrams/mcp-federation.svg
-tags: [MCP, tools, federation, toolServers, Streamable HTTP, namespace, protocol versions, VS Code]
+tags: [MCP, tools, federation, toolServers, Streamable HTTP, namespace, protocol versions, VS Code, Terraform]
 objectives:
   - Explain the four tool source types and how AI Gateway namespaces the tools of each backend
-  - Register the public Microsoft Learn MCP server in the portal, with the Azure CLI, or with Bicep and azd
+  - Register the public Microsoft Learn MCP server in the portal, with the Azure CLI, with Bicep and azd, or with Terraform
   - Federate a second backend into the same MCP server and mark it optional
   - Choose the MCP protocol versions the server supports and check what clients negotiate
   - Connect curl, VS Code, and a Python MCP client to the governed endpoint with a runtime key
@@ -28,12 +28,12 @@ prereqs:
 
 | ⏱️ Time | 📶 Level | 🧭 Tracks | ✅ Before you start |
 | :-- | :-- | :-- | :-- |
-| 30 min | Beginner | Portal · Azure CLI · Bicep + azd · Code · Notebook | [01 · Provision a gateway](../01-provision-gateway/README.md) |
+| 30 min | Beginner | Portal · Azure CLI · Bicep + azd · Terraform · Code · Notebook | [01 · Provision a gateway](../01-provision-gateway/README.md) |
 
 **You'll learn to**
 
 - Explain the four tool source types and how AI Gateway namespaces the tools of each backend
-- Register the public Microsoft Learn MCP server in the portal, with the Azure CLI, or with Bicep and azd
+- Register the public Microsoft Learn MCP server in the portal, with the Azure CLI, with Bicep and azd, or with Terraform
 - Federate a second backend into the same MCP server and mark it optional
 - Choose the MCP protocol versions the server supports and check what clients negotiate
 - Connect curl, VS Code, and a Python MCP client to the governed endpoint with a runtime key
@@ -62,8 +62,8 @@ Learn MCP server, so agents get tools through the same front door they already u
 <!-- gh:end -->
 
 > [!TIP]
-> On the **Bicep + azd** track, `azd up` creates its own gateway, the `learn` MCP server, and a key, so you can skip
-> this section. You need only the one-time setup above.
+> On the **Bicep + azd** and **Terraform** tracks, `azd up` or `terraform apply` creates its own gateway, the `learn`
+> MCP server, and a key, so you can skip this section. You need only the one-time setup above.
 
 - Complete [Provision your AI Gateway](../01-provision-gateway/README.md).
 - A runtime API key, for example `app-first-call` from [lab 02](../02-first-model-call/README.md). If you don't have
@@ -273,7 +273,7 @@ az aigateway mcp show -g "$RG" --gateway-name "$GATEWAY" -n learn --query "prope
 
 > [!NOTE]
 > The `az aigateway` extension still speaks the preview property names: `required` and `mcp.url`. The generally
-> available management API (`2026-11-01`), which the Bicep track uses, stores the same backend as
+> available management API (`2026-11-01`), which the Bicep and Terraform tracks use, stores the same backend as
 > `"mode": "failClosed"` (`"failOpen"` for an optional backend) and `mcp.endpoint.url`. In Bash, read the stored shape with
 > `az rest --method get --url "https://management.azure.com$(az aigateway show -g "$RG" -n "$GATEWAY" --query id -o tsv)/workspaces/default/toolServers/learn?api-version=2026-11-01" --query properties.endpoints`.
 
@@ -487,7 +487,7 @@ output mcpEndpoint string = 'https://${gateway.properties.frontend.defaultHostna
 ### Deploy with azd up
 
 Move into the lab's folder, create an azd environment named `aigw-lab04` in your current subscription, then provision
-everything. It takes about three minutes.
+everything. It takes about two minutes.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -575,6 +575,245 @@ Write-Host "🌐 MCP endpoint: $(azd env get-value MCP_ENDPOINT)"
 > **Checkpoint**
 > `azd up` ended with `SUCCESS`, and the last line is `🌐 MCP endpoint:` with a URL that ends in
 > `/default/toolservers/learn/mcp`. In the portal, **MCP servers** lists `learn` with one backend, `learn`.
+
+</details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+**What you need:** only the one-time setup from **Before you begin**, plus Terraform 1.9 or later, as in
+[Deploy a lab with Terraform](../SETUP.md#deploy-a-lab-with-terraform). This track doesn't use your gateway from
+lab 01: `terraform apply` creates a new one, so it works on its own.
+
+### Review the configuration
+
+`terraform/main.tf` creates the resource group `rg-<environment_name>` and calls lab 01's
+[gateway module](../01-provision-gateway/terraform/gateway) for a gateway with no model:
+
+<!-- include: terraform/main.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/main.tf`](terraform/main.tf)
+
+```tf
+# Lab 04 with Terraform: creates the resource group rg-<environment_name>, a gateway with lab 01's module, then the
+# learn MCP server that federates the public Microsoft Learn MCP server, and the runtime API key app-first-call
+# (tool-server.tf). The runtime API key is never an output.
+data "azapi_client_config" "current" {}
+
+locals {
+  suffix = substr(sha1("${data.azapi_client_config.current.subscription_id}/${var.environment_name}/${var.location}"), 0, 6)
+  tags   = { "environment-name" = var.environment_name }
+}
+
+resource "azurerm_resource_group" "rg" {
+  name     = "rg-${var.environment_name}"
+  location = var.location
+  tags     = local.tags
+}
+
+# Lab 01's module: the gateway, with no model.
+module "gateway" {
+  source = "../../01-provision-gateway/terraform/gateway"
+
+  gateway_name      = "aigw-${local.suffix}"
+  resource_group_id = azurerm_resource_group.rg.id
+  location          = var.location
+  tags              = local.tags
+}
+```
+<!-- gh:end -->
+
+`terraform/tool-server.tf` registers the `learn` MCP server and creates the `app-first-call` key with the `azapi`
+provider, which sends the AI Gateway API version, `2026-11-01`, as is. The `second_namespace` and
+`supported_versions` variables in `terraform/variables.tf`, which the next sections set, are empty by default: one
+backend, and the legacy MCP versions.
+
+<!-- include: terraform/tool-server.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/tool-server.tf`](terraform/tool-server.tf)
+
+<details><summary>Show all 62 lines</summary>
+
+```tf
+# Registers the public Microsoft Learn MCP server as the federated MCP server learn. Clients call one governed
+# endpoint, <gateway-url>/default/toolservers/learn/mcp, and the gateway publishes each backend's tools with a
+# namespace prefix (<namespace>_<tool>). A required backend has mode failClosed: tool discovery fails if it fails.
+# An optional one, such as the second_namespace backend, has mode failOpen: the gateway skips it.
+locals {
+  learn_url = "https://learn.microsoft.com/api/mcp"
+
+  primary_endpoint = {
+    namespace = "learn"
+    kind      = "mcp"
+    mode      = "failClosed"
+    mcp = {
+      endpoint  = { url = local.learn_url }
+      transport = "streamableHttp"
+    }
+  }
+
+  second_endpoint = {
+    namespace = var.second_namespace
+    kind      = "mcp"
+    mode      = "failOpen"
+    mcp = {
+      endpoint  = { url = local.learn_url }
+      transport = "streamableHttp"
+    }
+  }
+
+  # An empty list keeps the server's current versions, or the legacy defaults on a new server.
+  versions = length(var.supported_versions) == 0 ? {} : { versions = var.supported_versions }
+}
+
+resource "azapi_resource" "tool_server" {
+  type      = "Microsoft.ApiManagement/aigateways/workspaces/toolServers@2026-11-01"
+  name      = "learn"
+  parent_id = "${module.gateway.gateway_id}/workspaces/default"
+
+  body = {
+    properties = merge({
+      displayName    = "Microsoft Learn"
+      description    = "Search and fetch official Microsoft documentation and code samples."
+      toolServerType = "mcp"
+      endpoints      = var.second_namespace == "" ? [local.primary_endpoint] : [local.primary_endpoint, local.second_endpoint]
+    }, local.versions)
+  }
+
+  schema_validation_enabled = false
+}
+
+# A runtime API key for the MCP clients. Read its value with az aigateway api-key list-secrets.
+resource "azapi_resource" "api_key" {
+  type      = "Microsoft.ApiManagement/aigateways/apiKeys@2026-11-01"
+  name      = "app-first-call"
+  parent_id = module.gateway.gateway_id
+
+  body = {
+    properties = {
+      displayName = "app-first-call"
+    }
+  }
+
+  schema_validation_enabled = false
+}
+```
+
+</details>
+<!-- gh:end -->
+
+> [!WARNING]
+> `terraform apply` sends a `PUT`, which replaces the whole MCP server, including backends and tool rules that you
+> added in the portal. Keep the configuration as the only source of truth for this server, and change it with
+> `terraform apply`.
+
+### Deploy with terraform apply
+
+Move into the lab's Terraform folder, select your current subscription, then plan and apply the configuration. It
+takes about two minutes, most of it while the new gateway activates.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Move into the lab's Terraform folder
+cd ~/aigateway/labs/04-federate-mcp-tools/terraform &&
+  echo "📂 Terraform folder: $(pwd)"
+
+# Deploy to the Azure CLI's current subscription
+export ARM_SUBSCRIPTION_ID="$(az account show --query id --output tsv)" &&
+  echo "📍 Subscription: $ARM_SUBSCRIPTION_ID"
+
+# Download the providers, then plan and apply the gateway, the learn MCP server, and the app-first-call key
+terraform init &&
+  terraform plan -out tfplan &&
+  terraform apply tfplan &&
+  echo "🚀 Gateway $(terraform output -raw ai_gateway_name) is deployed"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Move into the lab's Terraform folder
+Set-Location ~/aigateway/labs/04-federate-mcp-tools/terraform
+if ($?) { Write-Host "📂 Terraform folder: $(Get-Location)" }
+
+# Deploy to the Azure CLI's current subscription
+$env:ARM_SUBSCRIPTION_ID = az account show --query id --output tsv
+if ($?) { Write-Host "📍 Subscription: $env:ARM_SUBSCRIPTION_ID" }
+
+# Download the providers, then plan and apply the gateway, the learn MCP server, and the app-first-call key
+terraform init
+if ($?) { terraform plan -out tfplan }
+if ($?) { terraform apply tfplan }
+if ($?) { Write-Host "🚀 Gateway $(terraform output -raw ai_gateway_name) is deployed" }
+```
+</details> <!-- gh -->
+
+The configuration deploys to `eastus2`. For another region, use its name from [Find the available
+regions](../SETUP.md#find-the-available-regions): run `export TF_VAR_location=<region>` (PowerShell:
+`$env:TF_VAR_location = "<region>"`) before `terraform plan`.
+
+### Read the outputs and the key
+
+Set the variables that the next sections and **Verify** use from the Terraform outputs. The outputs never contain
+the key value, so read it from the gateway straight into a variable, where it never shows on screen or lands in the
+Terraform state.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Read the outputs: the resource group, the gateway, its runtime URL, and its resource ID
+export RG="$(terraform output -raw azure_resource_group)"
+export GATEWAY="$(terraform output -raw ai_gateway_name)"
+export AI_GATEWAY_URL="$(terraform output -raw ai_gateway_url)"
+export GATEWAY_ID="$(terraform output -raw ai_gateway_id)"
+echo "📝 Gateway $GATEWAY in $RG"
+echo "🌐 Runtime URL: $AI_GATEWAY_URL"
+
+# Read the gateway's runtime key from the gateway, so that it never lands in a file or the Terraform state
+export AI_GATEWAY_API_KEY="$(az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/app-first-call" \
+  --query primaryKey --output tsv)"
+echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
+
+# Print the endpoint of the learn MCP server, which MCP clients call
+echo "🌐 MCP endpoint: $(terraform output -raw mcp_endpoint)"
+
+# Move back to the lab's folder, which holds the scripts and samples
+cd .. && echo "📂 Lab folder: $(pwd)"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Read the outputs: the resource group, the gateway, its runtime URL, and its resource ID
+$RG                     = terraform output -raw azure_resource_group
+$GATEWAY                = terraform output -raw ai_gateway_name
+$env:AI_GATEWAY_URL     = terraform output -raw ai_gateway_url
+$GATEWAY_ID             = terraform output -raw ai_gateway_id
+Write-Host "📝 Gateway $GATEWAY in $RG"
+Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
+
+# Read the gateway's runtime key from the gateway, so that it never lands in a file or the Terraform state
+$env:AI_GATEWAY_API_KEY = az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/app-first-call" `
+  --query primaryKey --output tsv
+Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) characters, not shown)"
+
+# Print the endpoint of the learn MCP server, which MCP clients call
+Write-Host "🌐 MCP endpoint: $(terraform output -raw mcp_endpoint)"
+
+# Move back to the lab's folder, which holds the scripts and samples
+Set-Location ..
+if ($?) { Write-Host "📂 Lab folder: $(Get-Location)" }
+```
+</details> <!-- gh -->
+
+> **Checkpoint**
+> `terraform apply` ended with `Apply complete! Resources: 4 added, 0 changed, 0 destroyed.`, and the last line is
+> `🌐 MCP endpoint:` with a URL that ends in `/default/toolservers/learn/mcp`. In the portal, select the new gateway
+> in the gateway switcher: **MCP servers** lists `learn` with one backend, `learn`.
+
+The next sections run from the lab's folder, with `-chdir=terraform` for the `terraform` commands.
 
 </details> <!-- gh -->
 <!-- /tracks -->
@@ -674,6 +913,44 @@ if ($?) { Write-Host "🔌 MCP server learn now has the optional docs backend" }
 </details> <!-- gh -->
 
 </details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+### Add the second namespace
+
+When `second_namespace` isn't empty, the configuration adds a second endpoint with `mode = "failOpen"`, the
+optional backend. Pass it to `terraform plan` and apply the plan. Only the MCP server changes.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Plan the second namespace, docs
+terraform -chdir=terraform plan -var second_namespace=docs -out tfplan &&
+  echo "📝 The plan updates only the learn MCP server"
+
+# Apply the plan: it adds the optional docs backend to the learn MCP server
+terraform -chdir=terraform apply tfplan &&
+  echo "🔌 MCP server learn now has the optional docs backend"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Plan the second namespace, docs
+terraform -chdir=terraform plan -var second_namespace=docs -out tfplan
+if ($?) { Write-Host "📝 The plan updates only the learn MCP server" }
+
+# Apply the plan: it adds the optional docs backend to the learn MCP server
+terraform -chdir=terraform apply tfplan
+if ($?) { Write-Host "🔌 MCP server learn now has the optional docs backend" }
+```
+</details> <!-- gh -->
+
+The plan ends with `Plan: 0 to add, 1 to change, 0 to destroy.`, for `azapi_resource.tool_server`. Keep passing
+`-var second_namespace=docs` to every later `terraform plan`: without it, the plan removes the `docs` backend.
+
+</details> <!-- gh -->
 <!-- /tracks -->
 
 > [!TIP]
@@ -692,7 +969,7 @@ that version must work with **every backend** behind it.
 
 | Supported MCP versions | What clients get |
 |---|---|
-| Not configured | The legacy defaults: `2025-06-18`, `2025-03-26`, and `2024-11-05`. The details page lists them, and **Edit** shows **Not configured**. Servers that you create with the CLI or Bicep without a list get them. |
+| Not configured | The legacy defaults: `2025-06-18`, `2025-03-26`, and `2024-11-05`. The details page lists them, and **Edit** shows **Not configured**. Servers that you create with the CLI, Bicep, or Terraform without a list get them. |
 | A list that you choose | Version restrictions. Clients negotiate only a version in the list, and a request whose `MCP-Protocol-Version` header names any other version is rejected with `400`. |
 
 You can choose `2026-07-28`, `2025-11-25`, `2025-06-18`, `2025-03-26`, and `2024-11-05`. Version
@@ -803,6 +1080,51 @@ az aigateway mcp show -g $RG --gateway-name $GATEWAY -n learn --query properties
 
 The last command prints a list that holds only `2025-06-18`. An empty value doesn't clear a list that the server already has, so
 to change the versions later, set another list.
+
+</details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+### Pin the versions
+
+The `supported_versions` variable takes a list, such as `["2025-06-18"]` or `["2026-07-28", "2025-06-18"]`. Pass it
+to `terraform plan` together with `second_namespace`, so that both backends stay, and apply the plan.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Plan MCP version 2025-06-18 for learn, and keep the docs backend
+terraform -chdir=terraform plan -var second_namespace=docs -var 'supported_versions=["2025-06-18"]' -out tfplan &&
+  echo "📝 The plan updates only the learn MCP server"
+
+# Apply the plan: it sets the supported versions of the learn MCP server
+terraform -chdir=terraform apply tfplan &&
+  echo "🚀 MCP server learn is deployed with MCP version 2025-06-18"
+
+# Show the versions that learn supports now
+echo "📝 Supported MCP versions of learn:"
+az aigateway mcp show -g "$RG" --gateway-name "$GATEWAY" -n learn --query properties.versions
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Plan MCP version 2025-06-18 for learn, and keep the docs backend
+terraform -chdir=terraform plan -var second_namespace=docs -var 'supported_versions=["2025-06-18"]' -out tfplan
+if ($?) { Write-Host "📝 The plan updates only the learn MCP server" }
+
+# Apply the plan: it sets the supported versions of the learn MCP server
+terraform -chdir=terraform apply tfplan
+if ($?) { Write-Host "🚀 MCP server learn is deployed with MCP version 2025-06-18" }
+
+# Show the versions that learn supports now
+Write-Host "📝 Supported MCP versions of learn:"
+az aigateway mcp show -g $RG --gateway-name $GATEWAY -n learn --query properties.versions
+```
+</details> <!-- gh -->
+
+The last command prints a list that holds only `2025-06-18`. To change the versions later, pass another list.
 
 </details> <!-- gh -->
 <!-- /tracks -->
@@ -1096,17 +1418,19 @@ MCP endpoint: <gateway-url>/default/toolservers/learn/mcp
 Server: <server-name-reported-by-the-gateway>  protocol: <negotiated-version>
 
 Tool                                          Description
-learn_microsoft_docs_search                   Search official Microsoft/Azure documentation to find the most relevan
-learn_microsoft_code_sample_search            Search for code snippets and examples in official Microsoft Learn docu
-learn_microsoft_docs_fetch                    Fetch and convert a Microsoft Learn documentation webpage to markdown
-docs_microsoft_docs_search                    Search official Microsoft/Azure documentation to find the most relevan
 docs_microsoft_code_sample_search             Search for code snippets and examples in official Microsoft Learn docu
 docs_microsoft_docs_fetch                     Fetch and convert a Microsoft Learn documentation webpage to markdown
+docs_microsoft_docs_search                    Search official Microsoft/Azure documentation to find the most relevan
+learn_microsoft_code_sample_search            Search for code snippets and examples in official Microsoft Learn docu
+learn_microsoft_docs_fetch                    Fetch and convert a Microsoft Learn documentation webpage to markdown
+learn_microsoft_docs_search                   Search official Microsoft/Azure documentation to find the most relevan
 
 6 tools published
 ```
 
-Each tool carries its backend's namespace. Use the exact names that your output shows in the next steps.
+Each tool carries its backend's namespace. With MCP version `2025-06-18` pinned, the gateway sorts the tools by
+name. With the legacy defaults, it lists them backend by backend, `learn` first. Use the exact names that your output
+shows in the next steps.
 
 ### Call a tool through the gateway
 
@@ -1246,7 +1570,7 @@ refuses to remove the last one with "Cannot remove the last source." Delete the 
 
 In the `aigateway/labs/04-federate-mcp-tools` folder, delete the resource group with the gateway, the `learn` MCP
 server, and the key. [`--purge`](../SETUP.md#delete-what-azd-created) also purges soft-deleted resources. It takes
-about ten minutes.
+about three minutes.
 
 ```bash
 # Delete the resource group with everything that azd up created, and purge soft-deleted resources
@@ -1256,6 +1580,24 @@ azd down --purge --force &&
 
 To keep this gateway instead, skip `azd down`. To go back to one backend, run
 `azd env set MCP_SECOND_NAMESPACE ""`, then `azd provision`.
+
+</details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+### Delete everything Terraform created
+
+In the `aigateway/labs/04-federate-mcp-tools` folder, delete the resource group with the gateway, the `learn` MCP
+server, and the key. It takes about a minute.
+
+```bash
+# Delete the resource group with everything that terraform apply created
+terraform -chdir=terraform destroy -auto-approve &&
+  echo "🚮 Everything that terraform apply created is deleted"
+```
+
+To keep this gateway instead, skip `terraform destroy`. To go back to one backend, run
+`terraform -chdir=terraform apply` without `-var second_namespace=docs`.
 
 </details> <!-- gh -->
 <!-- track: code | Code -->
@@ -1268,8 +1610,8 @@ Delete the `ai-gateway-learn` entry from `.vscode/mcp.json` and the `.venv` fold
 </details> <!-- gh -->
 <!-- /tracks -->
 
-Keep your gateway from lab 01: the next labs reuse it. `azd down` doesn't touch it, because the Bicep + azd track
-created its own gateway.
+Keep your gateway from lab 01: the next labs reuse it. `azd down` and `terraform destroy` don't touch it, because the
+Bicep + azd and Terraform tracks created their own gateway.
 
 ## Next steps
 
