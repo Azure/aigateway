@@ -464,7 +464,7 @@ class TestTheRegistryDescribesThePlanner:
 class TestTheKnownPolicyVocabularyIsAnswered:
     """The terminal rule is a net, and a net makes a poor mapping.
 
-    Eleven elements matched no rule at all and were dropped where they were
+    Ten elements matched no rule at all and were dropped where they were
     classified, three of them carrying backend credentials. A terminal rule
     stops the dropping, but it would just as happily answer for an element
     somebody never got round to -- so what it may answer for is held down here.

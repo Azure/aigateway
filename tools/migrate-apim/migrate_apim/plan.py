@@ -2262,11 +2262,6 @@ def _objects_or_none(capability_id: str | None, objects: list[dict[str, Any]]) -
     return {"capability": capability_id, "objects": objects} if objects else {}
 
 
-def _api_of(asset_id: str) -> str:
-    """The source API name in a model asset id, workspace prefix removed."""
-    return (asset_id.split(":", 1)[-1]).rsplit("/", 1)[-1]
-
-
 # How strict one policy is against another of the same type, lowest first. Only
 # used to choose which of several source policies becomes the one gateway-wide
 # baseline, where the conservative choice is the one no source exceeded.

@@ -480,7 +480,7 @@ def check_policy_vocabulary(rules: dict[str, Any], out: Compilation) -> None:
     terminal rule answers for anything outside it, which is what keeps an
     unrecognised policy out of silence -- but it would equally answer for an
     element somebody simply never wrote a rule for, and then the safety net
-    becomes the mapping. Eleven elements lived there, three of them carrying
+    becomes the mapping. Ten elements lived there, three of them carrying
     backend credentials.
 
     So the net is held to its purpose: a known element reaching it is an error,

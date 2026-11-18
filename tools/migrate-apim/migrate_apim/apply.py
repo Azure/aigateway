@@ -269,9 +269,12 @@ def preflight(plan: dict[str, Any], inventory: dict[str, Any], *, runner: Runner
             f"{len(incomplete)} object(s) the plan marked as not fully configurable: "
             + "; ".join(_incomplete_note(step, obj) for step, obj in incomplete[:3])
             + ("..." if len(incomplete) > 3 else ""),
-            "Re-plan from a current inventory, or exclude the items named above to leave their "
-            "objects out of the run. Applied as it stands, each one fails its step and stops the "
-            "rest of its phase.",
+            "Correct the source and collect again, or exclude the items named above to leave "
+            "their objects out of the run. Re-planning the same inventory reproduces these, "
+            "because each one is what the plan could make of what it was given. Applied as it "
+            "stands, an object missing what its command requires fails its step and stops the "
+            "rest of its phase; one the builder can part-write -- an `ip-filter` whose "
+            "convertible ranges go through -- succeeds while carrying less than the source did.",
         )
 
     unbuildable: dict[str, list[str]] = {}

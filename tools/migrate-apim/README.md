@@ -323,7 +323,9 @@ Deliberately, **no mapping verdict is computed here.** Classification against AI
 `assess` and its versioned capability map, so that a new AI Gateway release changes a data file
 rather than the collector. What `collect` does guarantee:
 
-- `include-fragment` dependencies are resolved and the fragments are captured as their own documents.
+- `include-fragment` dependencies are resolved and the fragments are captured as their own
+  documents, scoped to the workspace they belong to. Two workspaces may hold a fragment of the same
+  name, and they are two fragments.
 - Every `@(…)`/`@{…}` expression gets a stable `expr:<hash>` id, its `context.*` references, and its
   source — the single strongest predictor of a non-portable policy.
 - Elements the tool has never heard of get `family: "other"` rather than being dropped.
@@ -404,7 +406,8 @@ inventory is decomposed the way it is.
 | MCP federation router | One `toolServers` with several endpoints | Direct |
 | A2A agent API | — | No building block yet; inventoried and parked. See below |
 | Products and subscription keys | `apiKeys` (gateway-wide) plus Entra RBAC | **Weak.** See gaps |
-| Named values, policy fragments | — | No equivalent; values are inlined into target configuration |
+| Named values | — | No equivalent; values are inlined into target configuration |
+| Policy fragments | — | **No equivalent.** The gateway has no policy composition at all: no fragments, no includes, no inheritance. A fragment is dissolved into every scope that includes it, and an item per fragment says whether the dissolution kept what it meant — see [Policy resolution](#policy-resolution) |
 | Loggers and diagnostics | `telemetryExporters` | Partial |
 
 Caveats worth catching before they bite, all from the shipped AI Gateway surface: an alias holds
@@ -446,7 +449,7 @@ model, or a tool server. APIM has well over a hundred. Most of the migration's r
 **Nothing is dropped for want of a rule.** Rule selection ends in a terminal rule that matches
 anything the four passes above it did not, so an element this catalog has never heard of reaches the
 plan as a blocking decision instead of being discarded where it was classified. That hole was real:
-eleven elements matched no rule at all, three of them carrying backend credentials, and because an
+ten elements matched no rule at all, three of them carrying backend credentials, and because an
 element containing an expression at least fell into the pass above, the policies that vanished most
 completely were the simplest ones.
 
@@ -455,6 +458,38 @@ the vocabulary the collector classifies against — to a rule of its own or a ru
 fails naming any that are left to the terminal rule. What legitimately reaches it is counted on the
 plan under `policyCoverage`, which accounts for every element walked under exactly one disposition
 and sums them, so a reader can check the planner against the inventory rather than trust it.
+
+### Policy resolution
+
+Which policy governs which API is one question with one answer, in
+`policy.PolicyGraph`. `collect` asks it to decide what authenticates a backend; `plan` asks it to
+decide what a policy item covers. Asking it two ways is how two answers drift, and they had: the
+collector resolved fragments and folded in the product and global policy but never the workspace,
+and the planner turned a scope level back into the APIs under it and could not answer for a fragment
+or an operation at all.
+
+Nothing is re-derived to answer it. `include-fragment` and `base` are already elements in the
+inventory, each with its section and its path, so inclusion and inheritance are read rather than
+inferred:
+
+- **A fragment** is spliced in at the site that included it, transitively and guarding against the
+  cycle APIM will store but never run. Its elements have no section of their own — a fragment has no
+  `inbound` wrapper — so they take the include site's, and a fragment pulled in under a `choose` is
+  conditional however unconditionally its body reads.
+- **`<base />`** decides inheritance. A parent scope's section runs only where the child asks for it,
+  so an API that overrides its `inbound` does not inherit the global policy however globally that
+  policy is written. A scope with no policy of its own inherits, because APIM's default template is
+  `<base />` in all four sections. An omission is recorded, not merely acted on.
+- **Workspace, product and operation** are the rest of the chain. Every scope comparison is keyed on
+  the workspace-qualified name, so `finance/shared` and `hr/shared` are two APIs.
+- **A `fragment-id`** is matched without regard to case, because APIM resource names do not
+  distinguish it and the attribute is typed by hand. One naming no collected fragment is reported as
+  a blocking gap that cannot be accepted as a loss: nobody has read it, so nobody can say what
+  accepting it costs.
+
+A policy item's members therefore carry both where the element is written and what it governs. The
+second is what makes a fragment work at all — it is the first and never the second — and what makes
+a settled decision notice an API joining the fragment it was settled against.
 
 ### Known structural gaps
 
@@ -776,9 +811,18 @@ checked, so a journal carrying a stale or wrong phase status repairs itself on t
 There is no transaction across steps, so the cost of finding a problem halfway is a half-built
 gateway. `--preflight` refuses while any of these stands: the plan names no target; an item still
 needs a decision; a settled decision has been orphaned; a referenced credential is missing or not
-mechanically retrievable; or a `Microsoft.ApiManagement/service` shares the target's name, which
-matters because several CLI commands dispatch by name without `--ids`. Manual prerequisites are
-raised as notes and acknowledged with `--acknowledge <id>`.
+mechanically retrievable; the plan describes work it cannot itself produce; a step names a provider
+nothing in the plan registers; an object the planner marked as not fully configurable would become a
+step; or a `Microsoft.ApiManagement/service` shares the target's name, which matters because several
+CLI commands dispatch by name without `--ids`. Manual prerequisites are raised as notes and
+acknowledged with `--acknowledge <id>`.
+
+That last one is the plan's own judgement, read back. `plan` records why it could not finish shaping
+an object, and until `apply` consulted it the condition surfaced part-way through a phase — under a
+cause the builder guessed at, with every step queued behind it skipped. It is asked of the steps a
+run would perform rather than of every object in the plan, because an object no phase executes
+cannot fail one, and blocking on it would stop a migration over work the operator was going to apply
+by hand anyway.
 
 ### Phases
 
