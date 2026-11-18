@@ -2221,3 +2221,37 @@ class TestOneApiIncludingOneFragmentTwice:
                            previous=settled)
         item = limit_item(after, "policy:fragment/shared-limits")
         assert item["status"] == "stale" or item.get("newMembers"), item["status"]
+
+
+class TestADecisionRestsOnFactsThatAreStillThere:
+    def test_one_whose_members_were_all_replaced_is_stale(self, inventory, capabilities):
+        """`changed` compares the members the two plans have in common. With
+        none in common it finds nothing, and the decision carried forward
+        untouched -- including across a change to how members are identified,
+        which is what a plan settled by an older build looks like."""
+        document = copy.deepcopy(inventory)
+        token_limit_fragment(document, "shared-limits",
+                             counter_key="@(context.Subscription.Id)")
+        includes(document, "policy:api/aoai-api",
+                 {"level": "api", "name": "aoai-api", "workspace": "default"}, "shared-limits")
+        settled = settle(build_plan(document, capabilities))
+        item = limit_item(settled, "policy:fragment/shared-limits")
+        # A plan written before members carried the route they arrive by.
+        item["memberDigests"] = {"policy:fragment/shared-limits#fragment/llm-token-limit[1]":
+                                 next(iter(item["memberDigests"].values()))}
+
+        after = limit_item(build_plan(document, capabilities, previous=settled),
+                           "policy:fragment/shared-limits")
+        assert after["status"] == "stale"
+        assert "still here" in after["staleReason"]
+
+    def test_an_unchanged_plan_keeps_its_decision(self, inventory, capabilities):
+        document = copy.deepcopy(inventory)
+        token_limit_fragment(document, "shared-limits",
+                             counter_key="@(context.Subscription.Id)")
+        includes(document, "policy:api/aoai-api",
+                 {"level": "api", "name": "aoai-api", "workspace": "default"}, "shared-limits")
+        settled = settle(build_plan(document, capabilities))
+        after = limit_item(build_plan(document, capabilities, previous=settled),
+                           "policy:fragment/shared-limits")
+        assert after["status"] == "adapted", "nothing moved, so nothing is re-asked"

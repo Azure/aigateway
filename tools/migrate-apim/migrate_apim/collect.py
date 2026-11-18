@@ -2022,7 +2022,13 @@ def _backend_auth(
     auth["basis"] = {
         "backendCredentials": bool(credentials),
         "policyScopesExamined": list(effective.scopes_examined) if effective else [],
-        "unresolvedFragments": list(effective.unresolved_fragments) if effective else [],
+        # Both kinds of "could not be read", because for this question they
+        # cost the same: a fragment naming nothing and one whose body would not
+        # load are each a place the credential could have been set.
+        "unresolvedFragments": sorted(
+            {*(effective.unresolved_fragments if effective else ()),
+             *(effective.unreadable_fragments if effective else ())}
+        ),
     }
     if auth["mode"] == "none":
         if auth["basis"]["unresolvedFragments"]:
@@ -2257,16 +2263,19 @@ def _fragments_reaching(
     """Every fragment an API's policy reaches, resolved or not.
 
     A reference naming no collected fragment is listed too, under the id it
-    would have had. Dropping it would make a fragment whose body nobody could
-    read indistinguishable from one that was never referenced, which is the
-    reading this tool exists to prevent -- and `auth.basis.unresolvedFragments`
-    says which of these resolved to nothing.
+    would have had, and so is one whose body would not load -- that one
+    contributes no elements, so it is in no occurrence's route, and dropping it
+    would cut the asset's only link to the document explaining the failure.
+    `auth.basis.unresolvedFragments` says which of these could not be read.
     """
     seen: list[str] = []
     for occurrence in (effective.occurrences if effective else ()):
         for policy_id in occurrence.via:
             if policy_id not in seen:
                 seen.append(policy_id)
+    for policy_id in (effective.unreadable_fragments if effective else ()):
+        if policy_id not in seen:
+            seen.append(policy_id)
     for name in (effective.unresolved_fragments if effective else ()):
         missing = ids.policy("fragment", ids.scoped(workspace, name))
         if missing not in seen:

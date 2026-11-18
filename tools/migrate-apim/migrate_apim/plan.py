@@ -2025,6 +2025,16 @@ class PlanBuilder:
                 if key in item["memberDigests"] and item["memberDigests"][key] != value
             ]
             shape_changed = before.get("shapeDigest") != item["shapeDigest"]
+            # A settled decision that shares no member with the item it was
+            # settled against rested on facts none of which are still here, so
+            # `changed` finds nothing to compare and the decision would carry
+            # forward untouched. It is also what a change to how members are
+            # identified looks like -- this one gained the route an element
+            # arrives by, and a plan settled before that has keys none of these
+            # match -- and in both cases the honest answer is to ask again.
+            replaced = bool(before.get("memberDigests")) and not (
+                set(before["memberDigests"]) & set(item["memberDigests"])
+            )
             item["decision"] = before.get("decision")
             item["decidedAt"] = before.get("decidedAt")
             # Recorded by the generator, not by whoever adapts the item: adapting
@@ -2033,11 +2043,13 @@ class PlanBuilder:
                 "shape": before.get("shapeDigest"),
                 "members": before.get("memberDigests") or {},
             }
-            if changed or shape_changed:
+            if changed or shape_changed or replaced:
                 item["status"] = STALE
                 item["staleReason"] = (
                     "The options for this item changed." if shape_changed
-                    else f"Source facts changed for: {', '.join(sorted(changed))}."
+                    else f"Source facts changed for: {', '.join(sorted(changed))}." if changed
+                    else "Nothing this decision was settled against is still here: every source "
+                         "it covered has been replaced, or is now identified differently."
                 )
             else:
                 item["status"] = ADAPTED

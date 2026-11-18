@@ -965,3 +965,51 @@ class TestBackendAuthReadsAnOrderAndNotAUnion:
         assert auth["mode"] == "managedIdentity"
         assert {c["audience"] for c in auth["identityCandidates"]} == {"https://a", "https://b"}
         assert "depending on which product" in auth["identityNote"]
+
+
+class TestAnUnreadableFragmentCannotBeCalledUnauthenticated:
+    """`mode: none` is a claim the backend is called without credentials. A
+    fragment whose body would not load is a place one could have been set."""
+
+    def _resolved(self):
+        from migrate_apim import policy as policy_mod
+
+        def doc(policy_id, scope, xml):
+            return policy_mod.parse(xml, policy_id=policy_id, scope=scope, scope_url="/x")
+
+        broken = doc("policy:fragment/creds",
+                     {"level": "fragment", "name": "creds", "workspace": "default"},
+                     "<fragment />")
+        broken["parseError"] = "the body could not be read"
+        graph = policy_mod.PolicyGraph([
+            doc("policy:api/aoai", {"level": "api", "name": "aoai", "workspace": "default"},
+                "<policies><inbound><include-fragment fragment-id='creds' /></inbound>"
+                "<backend><base /></backend><outbound><base /></outbound>"
+                "<on-error><base /></on-error></policies>"),
+            broken,
+        ])
+        return graph.governing(api="aoai")
+
+    def _auth(self):
+        from migrate_apim import collect as collect_mod
+        from migrate_apim import secrets as secrets_mod
+
+        return collect_mod._backend_auth(
+            None, self._resolved(),
+            secrets_mod.SecretRegistry(service_id=SERVICE, api_version="2025-09-01-preview"),
+        )
+
+    def test_it_is_undetermined_rather_than_none(self):
+        assert self._auth()["mode"] == "undetermined"
+
+    def test_the_basis_names_the_fragment_nobody_could_read(self):
+        assert "policy:fragment/creds" in self._auth()["basis"]["unresolvedFragments"]
+
+    def test_the_asset_keeps_its_link_to_the_document_that_failed(self):
+        """It contributes no elements, so it is on no route -- and dropping it
+        cut the only pointer to the document explaining the failure."""
+        from migrate_apim import collect as collect_mod
+
+        assert collect_mod._fragments_reaching(self._resolved(), None) == [
+            "policy:fragment/creds"
+        ]
