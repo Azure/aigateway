@@ -451,6 +451,14 @@ class Resolution:
     """What governs one scope, and what could not be established about it."""
 
     occurrences: tuple[Occurrence, ...] = ()
+    """Everything that governs the scope, once each.
+
+    A set, in document order per chain, and **not an execution sequence**. The
+    chains are alternatives -- one per product plus the one with no product --
+    so an element that runs last in every chain can appear before one that runs
+    last in none. Read `chains` for anything where one element overrides
+    another; read this for what covers the scope at all.
+    """
     scopes_examined: tuple[str, ...] = ()
     unresolved_fragments: tuple[str, ...] = ()
     inheritance_breaks: tuple[dict[str, Any], ...] = ()

@@ -1013,3 +1013,39 @@ class TestAnUnreadableFragmentCannotBeCalledUnauthenticated:
         assert collect_mod._fragments_reaching(self._resolved(), None) == [
             "policy:fragment/creds"
         ]
+
+    def test_an_identity_inherited_through_a_products_fragment_still_loses_to_the_api(self):
+        """The reported shape: `<base />` then identity A on the API, and a
+        product that *includes a fragment* setting B. A overrides B in both
+        request contexts, and the flattened union says otherwise."""
+        from migrate_apim import collect as collect_mod
+        from migrate_apim import policy as policy_mod
+        from migrate_apim import secrets as secrets_mod
+
+        def doc(policy_id, scope, xml):
+            return policy_mod.parse(xml, policy_id=policy_id, scope=scope, scope_url="/x")
+
+        def wrap(inner):
+            return (f"<policies><inbound>{inner}</inbound><backend><base /></backend>"
+                    "<outbound><base /></outbound><on-error><base /></on-error></policies>")
+
+        graph = policy_mod.PolicyGraph(
+            [
+                doc("policy:product/ai", {"level": "product", "name": "ai",
+                                          "workspace": "default"},
+                    wrap("<include-fragment fragment-id='creds' />")),
+                doc("policy:api/aoai", {"level": "api", "name": "aoai", "workspace": "default"},
+                    wrap("<base /><authentication-managed-identity resource='https://a' />")),
+                doc("policy:fragment/creds", {"level": "fragment", "name": "creds",
+                                              "workspace": "default"},
+                    "<fragment><authentication-managed-identity resource='https://b' />"
+                    "</fragment>"),
+            ],
+            products=[{"policyId": "policy:product/ai", "apiIds": ["api:aoai"]}],
+        )
+        auth = collect_mod._backend_auth(
+            None, graph.governing(api="aoai"),
+            secrets_mod.SecretRegistry(service_id=SERVICE, api_version="2025-09-01-preview"),
+        )
+        assert auth["identity"]["audience"] == "https://a"
+        assert "identityCandidates" not in auth, "both chains end on A, so there is one answer"

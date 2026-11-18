@@ -708,3 +708,30 @@ class TestEachRequestContextKeepsItsOrder:
 
     def test_one_chain_per_alternative_request_context(self):
         assert len(self._api_over_product().governing(api="aoai").chains) == 2
+
+    def _product_includes_a_fragment(self):
+        return policy.PolicyGraph(
+            [
+                document("policy:product/ai", {"level": "product", "name": "ai",
+                                               "workspace": "default"},
+                         inbound("<include-fragment fragment-id='creds' />")),
+                api_policy("aoai", inbound(
+                    "<base />",
+                    "<authentication-managed-identity resource='https://a' />")),
+                fragment("creds", "<authentication-managed-identity resource='https://b' />"),
+            ],
+            products=[{"policyId": "policy:product/ai", "apiIds": ["api:aoai"]}],
+        )
+
+    def test_the_union_is_not_an_order_and_the_chains_are(self):
+        """The union emits the API's identity first, because the chain with no
+        product in it is resolved first. That is why nothing may read it as a
+        sequence -- and why the chains exist."""
+        resolution = self._product_includes_a_fragment().governing(api="aoai")
+        union = [o.element["attributes"].get("resource") for o in resolution.occurrences
+                 if o.name == "authentication-managed-identity"]
+        assert union == ["https://a", "https://b"], "the union looks like b wins"
+        for chain in resolution.chains:
+            last = [o.element["attributes"].get("resource") for o in chain
+                    if o.name == "authentication-managed-identity"][-1]
+            assert last == "https://a", "and in every chain it does not"
