@@ -1163,12 +1163,18 @@ class TestPolicyTargetsAreApplied:
         assert {"1000", "2000"} <= counts, counts
 
     def test_a_scope_with_no_models_says_so_instead_of_vanishing(self, inventory, capabilities):
+        """A token limit on an API that registers no model has nowhere to go.
+
+        The scope is the MCP API's own, which is a real one that carries no
+        model registration -- a scope is now identified by its document rather
+        than by a name the test can rewrite, so orphaning one means finding one
+        that genuinely is.
+        """
         import copy
 
         orphaned = copy.deepcopy(inventory)
         document = next(d for d in orphaned["policies"]
-                        if (d.get("scope") or {}).get("level") == "api")
-        document["scope"] = {"level": "api", "name": "an-api-that-registers-no-model"}
+                        if d["id"] == "policy:api/support-mcp")
         document["elements"].append({
             "section": "inbound", "path": "inbound/azure-openai-token-limit[9]",
             "name": "azure-openai-token-limit", "family": "tokenLimit", "depth": 1,

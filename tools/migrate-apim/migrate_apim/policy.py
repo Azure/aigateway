@@ -758,10 +758,13 @@ def _unique(occurrences: Iterable[Occurrence]) -> list[Occurrence]:
     Two products carrying the same API each inherit the same global policy, and
     the global elements would otherwise be reported twice.
     """
-    seen: set[tuple[str, str, tuple[str, ...]]] = set()
+    seen: set[tuple[int, tuple[str, ...]]] = set()
     out: list[Occurrence] = []
     for occurrence in occurrences:
-        key = (occurrence.policy_id, occurrence.path, occurrence.via)
+        # The element itself, not where it is written: a document can hold two
+        # elements at one path -- nothing stops it -- and collapsing those would
+        # drop a policy rather than a duplicate route.
+        key = (id(occurrence.element), occurrence.via)
         if key not in seen:
             seen.add(key)
             out.append(occurrence)
