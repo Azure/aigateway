@@ -844,8 +844,6 @@ class TestFragmentsAreCollectedAsAssetsOfTheirOwn:
         """Every other policy read forces `format=rawxml` so expression text is
         kept as written. The fragment list did not, so the same expression
         hashed to a different `expr:` id than it did at API scope."""
-        import fake_arm
-
         seen = {}
 
         class Recording(FakeArmClient):
