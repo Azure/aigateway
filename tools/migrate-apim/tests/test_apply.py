@@ -1748,3 +1748,64 @@ class TestAByteOrderMarkIsNotACorruptPlan:
         cli.main(["apply", "--plan", str(plan_path), "--inventory", str(inventory_path),
                   "--journal", str(journal_path), "--preflight"])
         assert not journal_path.read_bytes().startswith(b"\xef\xbb\xbf")
+
+
+class TestAnOrdinaryPolicyDoesNotStopPreflight:
+    """`incompleteObject` turns every hole in the planner into a hard stop,
+    which is the point -- and makes a hole on a common policy cost a whole
+    migration rather than one phase."""
+
+    def _with(self, inventory, element):
+        document = copy.deepcopy(inventory)
+        aoai = next(d for d in document["policies"] if d["id"] == "policy:api/aoai-api")
+        aoai["elements"].append(element)
+        plan = build_plan(document, CapabilityMap.load(), target=TARGET)
+        for item in plan["items"]:
+            if item["status"] == "needs-decision":
+                item["status"] = "adapted"
+                item["decision"] = item["proposal"] or "accept"
+        return plan, document
+
+    def test_validate_jwt_is_a_decision_and_not_an_object(self, inventory):
+        """It becomes Entra auth and data-plane RBAC, which is not something
+        `api-key create` writes. Shaped as a gateway baseline anyway, it
+        produced an object with no settings on it -- so every plan carrying a
+        `validate-jwt` had one the plan could not finish configuring."""
+        plan, document = self._with(inventory, {
+            "section": "inbound", "path": "inbound/validate-jwt[1]", "name": "validate-jwt",
+            "family": "authentication", "depth": 1,
+            "attributes": {"header-name": "Authorization"},
+            "text": None, "expressionIds": [], "namedValueRefs": [], "childNames": [],
+        })
+        item = next(i for i in plan["items"]
+                    if (i.get("evidence") or {}).get("element") == "validate-jwt")
+        assert item["target"] == {}, "there is no object to write"
+        assert item["rationale"], "and the item still says what happens instead"
+        codes = {f["code"] for f in preflight(plan, document) if f["blocking"]}
+        assert "incompleteObject" not in codes
+
+    def test_a_policy_in_a_fragment_nothing_includes_does_not_either(self, inventory):
+        # It governs no traffic, which is a fact about the fragment and not an
+        # object the plan failed to build. Reported on its own item instead.
+        document = copy.deepcopy(inventory)
+        document["policies"].append({
+            "id": "policy:fragment/unused",
+            "scope": {"level": "fragment", "name": "unused", "workspace": "default"},
+            "stats": {"sections": ["fragment"]}, "fragmentRefs": [],
+            "elements": [{
+                "section": "fragment", "path": "fragment/llm-token-limit[1]",
+                "name": "llm-token-limit", "family": "tokenLimit", "depth": 1,
+                "attributes": {"tokens-per-minute": "7000", "counter-key": "shared"},
+                "text": None, "expressionIds": [], "namedValueRefs": [], "childNames": [],
+            }],
+        })
+        plan = build_plan(document, CapabilityMap.load(), target=TARGET)
+        for item in plan["items"]:
+            if item["status"] == "needs-decision":
+                item["status"] = "adapted"
+                item["decision"] = item["proposal"] or "accept"
+        codes = {f["code"] for f in preflight(plan, document) if f["blocking"]}
+        assert "incompleteObject" not in codes
+        assert next(i for i in plan["items"]
+                    if i["source"]["assetKind"] == "policyFragment"
+                    and i["source"]["aspect"] == "unused")

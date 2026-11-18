@@ -1608,3 +1608,260 @@ class TestAPlanWithNowhereToGoSaysSo:
               "--target", "/subscriptions/s/resourceGroups/rg/providers"
                           "/Microsoft.ApiManagement/aigateways/gw"])
         assert "says nothing about where it deploys" not in capsys.readouterr().err
+
+
+# ------------------------------------------------------- policy resolution
+
+
+def element(name, path, *, section="inbound", family="other", attributes=None,
+            expressions=(), fragment_id=None):
+    record = {
+        "section": section, "path": path, "name": name, "family": family,
+        "depth": path.count("/") + 1, "attributes": dict(attributes or {}),
+        "text": None, "expressionIds": list(expressions), "namedValueRefs": [],
+        "childNames": [],
+    }
+    if fragment_id:
+        record["fragmentId"] = fragment_id
+    return record
+
+
+def policy_document(document, policy_id, scope):
+    """The inventory's document for one scope, created if the fixture has none."""
+    found = next((d for d in document["policies"] if d["id"] == policy_id), None)
+    if found is None:
+        found = {"id": policy_id, "scope": scope, "elements": [], "fragmentRefs": [],
+                 "stats": {"sections": ["inbound"]}}
+        document["policies"].append(found)
+    return found
+
+
+def includes(document, policy_id, scope, fragment_name, *, conditional=False, section="inbound"):
+    """Make one scope's policy include a fragment, the way APIM records it."""
+    found = policy_document(document, policy_id, scope)
+    path = (f"{section}/choose[1]/when[1]/include-fragment[1]" if conditional
+            else f"{section}/include-fragment[1]")
+    found["elements"].append(
+        element("include-fragment", path, section=section, family="composition",
+                fragment_id=fragment_name)
+    )
+    found["fragmentRefs"] = [*(found.get("fragmentRefs") or []), fragment_name]
+    sections = found.setdefault("stats", {}).setdefault("sections", [])
+    if section not in sections:
+        sections.append(section)
+    return found
+
+
+def token_limit_fragment(document, name, *, workspace="default", counter_key="shared", tpm="7000"):
+    """A fragment carrying one `llm-token-limit`, the way an operator shares one."""
+    scoped = name if workspace == "default" else f"{workspace}/{name}"
+    found = policy_document(
+        document, f"policy:fragment/{scoped}",
+        {"level": "fragment", "name": name, "workspace": workspace},
+    )
+    found["stats"] = {"sections": ["fragment"]}
+    found["elements"].append(element(
+        "llm-token-limit", "fragment/llm-token-limit[1]", section="fragment",
+        family="tokenLimit",
+        attributes={"tokens-per-minute": tpm, "counter-key": counter_key},
+    ))
+    return found
+
+
+def fragment_item(plan, name):
+    return next(item for item in plan["items"]
+                if item["source"]["assetKind"] == "policyFragment"
+                and item["source"]["aspect"] == name)
+
+
+def limit_item(plan, policy_id):
+    return next(item for item in plan["items"]
+                if item.get("capabilityId") == "model.policy"
+                and any(m["policyId"] == policy_id for m in item["evidence"]["members"]))
+
+
+def settle(plan):
+    for item in plan["items"]:
+        if item["status"] == "needs-decision":
+            item["status"] = "adapted"
+            item["decision"] = item.get("proposal") or "accept"
+    return plan
+
+
+class TestAPolicyFactoredIntoAFragment:
+    """A fragment is how APIM shares one policy across several APIs.
+
+    Read as a scope of its own it covered no API, so the policy an operator
+    had factored out of several reached none of them: the item said ready,
+    carried an object with no model on it, and stopped the policies phase for
+    every policy queued behind it.
+    """
+
+    def _shared(self, inventory, *, conditional=False, second_api=True, counter_key="shared"):
+        document = copy.deepcopy(inventory)
+        token_limit_fragment(document, "shared-limits", counter_key=counter_key)
+        includes(document, "policy:api/aoai-api",
+                 {"level": "api", "name": "aoai-api", "workspace": "default"},
+                 "shared-limits", conditional=conditional)
+        if second_api:
+            includes(document, "policy:api/meta-ai",
+                     {"level": "api", "name": "meta-ai", "workspace": "default"},
+                     "shared-limits")
+        return document
+
+    def test_its_limit_lands_on_the_models_of_every_including_api(
+        self, inventory, capabilities
+    ):
+        document = self._shared(inventory)
+        item = limit_item(build_plan(document, capabilities), "policy:fragment/shared-limits")
+        assert item["status"] == "ready", "a literal counter key maps natively"
+        objects = item["target"]["objects"]
+        assert objects, "the fragment's limit has to land somewhere"
+        assert all(obj["configurationComplete"] for obj in objects), objects
+        assert all(obj["modelName"] for obj in objects), objects
+
+    def test_it_asks_once_however_many_apis_include_it(self, inventory, capabilities):
+        document = self._shared(inventory)
+        plan = build_plan(document, capabilities)
+        matching = [i for i in plan["items"]
+                    if i.get("capabilityId") == "model.policy"
+                    and any(m["policyId"] == "policy:fragment/shared-limits"
+                            for m in i["evidence"]["members"])]
+        assert len(matching) == 1, "one policy, one decision"
+        assert {m["assetId"] for m in matching[0]["evidence"]["members"]} == {
+            "model:aoai-api", "model:meta-ai"}
+
+    def test_a_conditional_include_is_not_a_clean_mapping(self, inventory, capabilities):
+        # Nothing in the fragment's own body says it is conditional: the branch
+        # is at the site that pulled it in, which is why reading the element's
+        # own path could never have seen it.
+        document = self._shared(inventory, conditional=True, second_api=False)
+        plan = build_plan(document, capabilities)
+        item = fragment_item(plan, "shared-limits")
+        assert item["verdict"] == "partial"
+        assert item["status"] == "needs-decision"
+        assert item["evidence"]["disposition"] == "conditional"
+
+    def test_a_fragment_nothing_includes_is_reported_and_strands_nothing(
+        self, inventory, capabilities
+    ):
+        """Unreferenced it governs no traffic, which is a fact about the
+        fragment rather than a policy object the plan cannot build."""
+        document = copy.deepcopy(inventory)
+        token_limit_fragment(document, "shared-limits")
+        plan = build_plan(document, capabilities)
+        item = fragment_item(plan, "shared-limits")
+        assert item["verdict"] == "notApplicable"
+        assert item["evidence"]["includedBy"] == []
+        # Whether anyone looked at operation scope changes what this is worth.
+        assert item["evidence"]["operationPoliciesCollected"] is False
+        incomplete = [obj for i in plan["items"]
+                      for obj in (i.get("target") or {}).get("objects") or []
+                      if obj.get("configurationComplete") is False]
+        assert incomplete == [], "nothing to block preflight over"
+
+    def test_an_include_naming_no_collected_fragment_blocks(self, inventory, capabilities):
+        document = copy.deepcopy(inventory)
+        includes(document, "policy:api/aoai-api",
+                 {"level": "api", "name": "aoai-api", "workspace": "default"}, "not-collected")
+        item = fragment_item(build_plan(document, capabilities), "not-collected")
+        assert item["verdict"] == "gap"
+        assert item["blocking"] is True
+        assert item["cannotAccept"] is True, "nobody read it, so nobody can price accepting it"
+
+    def test_adding_an_api_unsettles_the_decision_it_widens(self, inventory, capabilities):
+        """The members are what a settled decision was settled against.
+
+        An expression counter key, so the limit is a decision at all: APIM
+        partitions by arbitrary C# and the gateway by identity or address, and
+        choosing between those is the question this item asks.
+        """
+        key = "@(context.Subscription.Id)"
+        before = build_plan(
+            self._shared(inventory, second_api=False, counter_key=key), capabilities
+        )
+        settled = settle(copy.deepcopy(before))
+        after = build_plan(
+            self._shared(inventory, counter_key=key), capabilities, previous=settled
+        )
+        item = limit_item(after, "policy:fragment/shared-limits")
+        # Joining a settled batch inherits its decision; the widening is
+        # flagged, not re-opened. Keyed on where the element is written, the
+        # fragment was one member however many APIs included it, so adding one
+        # left the decision reading as though nothing had changed.
+        assert item["status"] == "adapted"
+        assert any("model:meta-ai" in name for name in item["newMembers"]), item["newMembers"]
+
+    def test_the_plan_still_validates(self, inventory, capabilities):
+        assert validate_document(build_plan(self._shared(inventory), capabilities)) == []
+
+
+class TestInheritanceDecidesWhatAGlobalPolicyReaches:
+    def _global_limit(self, inventory, *, api_inherits):
+        document = copy.deepcopy(inventory)
+        token_limit_fragment(document, "shared-limits")
+        includes(document, "policy:global", {"level": "global", "name": None,
+                                             "workspace": "default"}, "shared-limits")
+        aoai = next(d for d in document["policies"] if d["id"] == "policy:api/aoai-api")
+        if not api_inherits:
+            aoai["elements"] = [e for e in aoai["elements"]
+                                if not (e["name"] == "base" and e["section"] == "inbound")]
+        return document
+
+    def test_an_api_that_asks_for_base_gets_it(self, inventory, capabilities):
+        document = self._global_limit(inventory, api_inherits=True)
+        item = limit_item(build_plan(document, capabilities), "policy:fragment/shared-limits")
+        assert "model:aoai-api" in {m["assetId"] for m in item["evidence"]["members"]}
+
+    def test_an_api_that_overrides_its_section_does_not(self, inventory, capabilities):
+        # APIM runs a parent's section only where the child carries `<base />`.
+        # Treating a global policy as covering everything applied a limit to
+        # traffic it never governed.
+        document = self._global_limit(inventory, api_inherits=False)
+        item = limit_item(build_plan(document, capabilities), "policy:fragment/shared-limits")
+        assert "model:aoai-api" not in {m["assetId"] for m in item["evidence"]["members"]}
+
+
+class TestWhatGovernsNothingIsCountedRatherThanAbsent:
+    def test_the_dispositions_sum_to_the_elements_the_inventory_holds(
+        self, inventory, capabilities
+    ):
+        coverage = build_plan(copy.deepcopy(inventory), capabilities)["policyCoverage"]
+        walked = sum(len(d.get("elements") or []) for d in inventory["policies"])
+        assert coverage["walked"] == walked
+        assert sum(coverage["dispositions"].values()) == walked
+
+    def test_a_policy_on_an_excluded_api_raises_nothing_and_is_still_counted(
+        self, inventory, capabilities
+    ):
+        """Policies are captured before an API is classified, so an API nobody
+        is migrating still has its policy in the inventory."""
+        document = copy.deepcopy(inventory)
+        excluded = policy_document(
+            document, "policy:api/legacy-soap",
+            {"level": "api", "name": "legacy-soap", "workspace": "default"},
+        )
+        excluded["elements"].append(element(
+            "check-header", "inbound/check-header[1]", family="authentication",
+            attributes={"name": "x-shared-secret"},
+        ))
+        plan = build_plan(document, capabilities)
+        assert not [i for i in plan["items"]
+                    if (i.get("evidence") or {}).get("element") == "check-header"]
+        assert plan["policyCoverage"]["dispositions"].get("governsNothing")
+
+    def test_a_statement_inside_retry_reaches_rule_selection(self, inventory, capabilities):
+        # `retry` holds real policies. Its children failed the statement test,
+        # never reached a rule, and would now have been counted as a statement
+        # being configured -- which is the one thing the tally must not say.
+        document = copy.deepcopy(inventory)
+        aoai = next(d for d in document["policies"] if d["id"] == "policy:api/aoai-api")
+        aoai["elements"].append(element(
+            "set-header", "inbound/retry[1]/choose[1]/when[1]/set-header[1]",
+            family="transform", attributes={"name": "x-retry"},
+        ))
+        plan = build_plan(document, capabilities)
+        members = [m for i in plan["items"]
+                   for m in (i.get("evidence") or {}).get("members") or []
+                   if m.get("path", "").startswith("inbound/retry[1]")]
+        assert members, "a policy inside a retry is a policy"

@@ -772,3 +772,86 @@ class TestAServiceThatCouldNotBeRead:
             Collector(client, SERVICE, options()).run()
         assert "not found" in str(excinfo.value)
         assert "--subscription" in str(excinfo.value)
+
+
+class TestFragmentsAreCollectedAsAssetsOfTheirOwn:
+    """A fragment is a shared asset, and was the one that was not scoped like
+    one: two workspaces holding a same-named fragment collapsed onto one id,
+    and the collector keeps whichever document it saw first."""
+
+    def _with_workspace_fragment(self, body="<fragment><set-variable name='w' value='1' /></fragment>"):
+        import fake_arm
+
+        key = f"{SERVICE}/workspaces/finance/policyFragments"
+        original = fake_arm.ROUTES[key]
+        fake_arm.ROUTES[key] = [{
+            "id": f"{SERVICE}/workspaces/finance/policyFragments/killswitch",
+            "name": "killswitch",
+            "properties": {"description": "finance kill switch", "value": body},
+        }]
+        try:
+            return Collector(FakeArmClient(), SERVICE, options()).run()
+        finally:
+            fake_arm.ROUTES[key] = original
+
+    def test_a_same_named_fragment_in_a_workspace_is_a_second_fragment(self):
+        document = self._with_workspace_fragment()
+        ids = {d["id"] for d in document["policies"]
+               if (d.get("scope") or {}).get("level") == "fragment"}
+        assert ids == {"policy:fragment/killswitch", "policy:fragment/finance/killswitch"}
+
+    def test_each_one_keeps_its_own_contents(self):
+        document = self._with_workspace_fragment()
+        bodies = {
+            d["id"]: [e["name"] for e in d["elements"]]
+            for d in document["policies"] if (d.get("scope") or {}).get("level") == "fragment"
+        }
+        assert bodies["policy:fragment/killswitch"] == ["set-variable"]
+        assert bodies["policy:fragment/finance/killswitch"] == ["set-variable"]
+        service = next(d for d in document["policies"] if d["id"] == "policy:fragment/killswitch")
+        finance = next(d for d in document["policies"]
+                       if d["id"] == "policy:fragment/finance/killswitch")
+        assert service["elements"][0]["attributes"] != finance["elements"][0]["attributes"]
+
+    def test_the_asset_record_says_which_workspace_it_is_in(self):
+        document = self._with_workspace_fragment()
+        by_id = {f["id"]: f for f in document["shared"]["policyFragments"]}
+        assert by_id["policyFragment:killswitch"]["workspace"] == "default"
+        assert by_id["policyFragment:finance/killswitch"]["workspace"] == "finance"
+
+    def test_a_fragment_whose_body_could_not_be_read_is_not_an_empty_fragment(self):
+        """Parsed as the empty string it registered as a fragment that resolves
+        and contains nothing, so whatever it carried migrated as if absent."""
+        import fake_arm
+
+        key = f"{SERVICE}/policyFragments"
+        original = fake_arm.ROUTES[key]
+        fake_arm.ROUTES[key] = [{
+            "id": f"{SERVICE}/policyFragments/killswitch", "name": "killswitch",
+            "properties": {"description": "kill switch"},  # no value, and the GET 404s
+        }]
+        try:
+            document = Collector(FakeArmClient(), SERVICE, options()).run()
+        finally:
+            fake_arm.ROUTES[key] = original
+        fragment = next(d for d in document["policies"] if d["id"] == "policy:fragment/killswitch")
+        assert fragment["parseError"], "unknown is not empty"
+        assert "not evidence" in fragment["parseError"]
+        asset = next(f for f in document["shared"]["policyFragments"] if f["name"] == "killswitch")
+        assert asset["parseError"]
+
+    def test_the_fragment_list_is_read_as_authored(self):
+        """Every other policy read forces `format=rawxml` so expression text is
+        kept as written. The fragment list did not, so the same expression
+        hashed to a different `expr:` id than it did at API scope."""
+        import fake_arm
+
+        seen = {}
+
+        class Recording(FakeArmClient):
+            def list(self, url, api_version, **params):
+                seen[url] = params
+                return super().list(url, api_version, **params)
+
+        Collector(Recording(), SERVICE, options()).run()
+        assert seen[f"{SERVICE}/policyFragments"] == {"format": "rawxml"}
