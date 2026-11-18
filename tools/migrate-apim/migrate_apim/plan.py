@@ -142,6 +142,7 @@ class PlanBuilder:
         # `fragment-id`s the selected assets reach and nothing resolves, and
         # what did resolve, by the route it arrived on.
         self._unresolved_fragments: list[str] = []
+        self._unreadable_fragments: list[str] = []
         self._fragment_arrivals: dict[str, list[dict[str, Any]]] = {}
         # A model API names the backend it routes to; the provider asset built
         # from that backend is what knows the protocol it speaks.
@@ -966,10 +967,8 @@ class PlanBuilder:
         # inside a `choose` by another is two different claims about the same
         # element, and the conditional one is not `handled`.
         governed: dict[tuple[int, bool], list[tuple[dict[str, Any], policy_mod.Occurrence]]] = {}
-        unresolved_fragments: list[str] = []
         for asset, api, workspace in self._policy_assets():
-            reached = self._governing(graph, asset=asset, api=api, workspace=workspace,
-                                      unresolved=unresolved_fragments)
+            reached = self._governing(graph, asset=asset, api=api, workspace=workspace)
             self._record_arrivals(asset["id"], reached)
             for occurrence in reached:
                 # Keyed on the element itself, not on where it is written: the
@@ -1025,6 +1024,12 @@ class PlanBuilder:
                     # extracting a policy into a fragment change the answer.
                     "governedAt": occurrence.site_level,
                     "governedBy": occurrence.site_policy_id,
+                    # The includes traversed. Part of the member's identity,
+                    # because one API can include one fragment twice and those
+                    # are two members with everything else in common -- keyed
+                    # without it, one overwrote the other's digest and adding a
+                    # third include left the decision reading as unchanged.
+                    "arrival": list(occurrence.arrival),
                     "path": occurrence.path,
                     "assetId": asset["id"],
                     "section": occurrence.section,
@@ -1035,7 +1040,6 @@ class PlanBuilder:
                 })
 
         self._count_policy_coverage(dispositions, {key for key, _ in governed})
-        self._unresolved_fragments = unresolved_fragments
 
         for signature, batch in sorted(batches.items()):
             rule = batch["rule"]
@@ -1084,12 +1088,12 @@ class PlanBuilder:
         # arrives nowhere and would read as one nothing includes. What says
         # otherwise is the forward walk, which records the name it could not
         # resolve where it tried to resolve it.
-        unreadable = {_fold_name(name) for name in self._unresolved_fragments}
+        unreadable = set(self._unreadable_fragments)
         for document in graph.fragments():
             name = (document.get("scope") or {}).get("name") or ""
             sites = _unique_arrivals(self._fragment_arrivals.get(document["id"]) or [])
             sections = {site["section"] for site in sites}
-            if document.get("parseError") and _fold_name(name) in unreadable:
+            if document["id"] in unreadable:
                 # Collected, included, and unreadable. It has no elements to
                 # dissolve and nobody can say what it carried, so it is the
                 # same unknown as a `fragment-id` naming nothing -- and a
@@ -1135,16 +1139,13 @@ class PlanBuilder:
         # include reference in the inventory. An unreferenced fragment naming a
         # missing one governs nothing, and blocking a migration on it would be
         # a decision about a workload nobody is moving.
-        # Only the names no collected fragment answers to. One that names a
-        # fragment this inventory holds but could not read is reported on that
-        # fragment's own item, above, where the parse error is.
-        collected = {
-            _fold_name((document.get("scope") or {}).get("name") or "")
-            for document in graph.fragments()
-        }
+        # Every reference that resolved to no document at all. A fragment this
+        # inventory holds but could not read is reported on its own item,
+        # above, and is tracked by document rather than by name so that an `hr`
+        # API naming `limits` when only `finance/limits` exists is still
+        # reported here -- the two are not the same fragment, and matching them
+        # by name left the unknown policy unmentioned.
         for missing in sorted(set(self._unresolved_fragments)):
-            if _fold_name(missing) in collected:
-                continue
             rule = STRUCTURAL_POLICY_FRAGMENTS.first(
                 structural, kind="policyFragments", disposition="unresolved"
             ) or {}
@@ -1199,7 +1200,7 @@ class PlanBuilder:
                     "underConditional": occurrence.under_conditional,
                 })
 
-    def _governing(self, graph, *, asset, api, workspace, unresolved: list[str]):
+    def _governing(self, graph, *, asset, api, workspace):
         """Everything that runs for one API, its own operations included.
 
         An operation is a scope of its own, and the chain only reaches it when
@@ -1226,17 +1227,19 @@ class PlanBuilder:
         covered = bool(declared) and set(declared) <= set(with_policy)
 
         occurrences: list[policy_mod.Occurrence] = []
-        if not covered:
-            resolution = graph.governing(api=api, workspace=workspace)
+
+        def take(resolution: policy_mod.Resolution) -> None:
             occurrences.extend(resolution.occurrences)
-            unresolved.extend(resolution.unresolved_fragments)
+            self._unresolved_fragments.extend(resolution.unresolved_fragments)
+            self._unreadable_fragments.extend(resolution.unreadable_fragments)
+
+        if not covered:
+            take(graph.governing(api=api, workspace=workspace))
         for operation in with_policy:
-            nested = graph.governing(
+            take(graph.governing(
                 api=api, workspace=workspace, operation=operation,
                 levels=policy_mod.SCOPE_CHAIN if covered else ("operation",),
-            )
-            occurrences.extend(nested.occurrences)
-            unresolved.extend(nested.unresolved_fragments)
+            ))
         # Several operations inherit the same scopes above them, and each
         # resolution returns that inheritance in full. Without this the API's
         # own elements would be one member per operation, and the policy would
@@ -2265,11 +2268,6 @@ def _note(dispositions: dict[int, str], key: int, disposition: str) -> None:
         dispositions[key] = disposition
 
 
-def _fold_name(name: str) -> str:
-    """A fragment name as APIM compares it, which is without regard to case."""
-    return (name or "").strip().casefold()
-
-
 def _unique_arrivals(arrivals: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """One entry per asset, scope and route, so a fragment reads once per way in."""
     seen: set[tuple[Any, ...]] = set()
@@ -2470,7 +2468,15 @@ def _member_key(member: dict[str, Any]) -> str:
     one digest -- so adding a fifth API would leave a settled decision reading
     as unchanged.
     """
-    for keys in (("assetId", "policyId", "path"), ("policyId", "path"), ("modelName",), ("name",), ("id",)):
+    if member.get("assetId") and member.get("policyId"):
+        # The route as well as the destination. One API can include one
+        # fragment twice, and those two members agree on everything else.
+        route = "+".join(member.get("arrival") or []) or "direct"
+        return "#".join([
+            str(member["assetId"]), str(member["policyId"]), str(member.get("path") or ""),
+            str(member.get("section") or ""), route,
+        ])
+    for keys in (("policyId", "path"), ("modelName",), ("name",), ("id",)):
         values = [member.get(key) for key in keys]
         if all(value is not None for value in values):
             return "#".join(str(value) for value in values)

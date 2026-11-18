@@ -454,6 +454,20 @@ class Resolution:
     scopes_examined: tuple[str, ...] = ()
     unresolved_fragments: tuple[str, ...] = ()
     inheritance_breaks: tuple[dict[str, Any], ...] = ()
+    chains: tuple[tuple[Occurrence, ...], ...] = ()
+    """Each alternative request context in order, before they were unioned.
+
+    `occurrences` is the union, which is the right shape for asking what a
+    policy covers and the wrong one for asking what runs last: a product is an
+    alternative, so a flattened union of several is not an execution sequence.
+    Anything that reads one element as overriding another has to read a chain.
+    """
+    unreadable_fragments: tuple[str, ...] = ()
+    """Fragment documents reached and not readable, by id.
+
+    Apart from `unresolved_fragments`, which names what resolved to no document
+    at all. The two look alike and are not: one has an item of its own to carry
+    the parse error, the other has nothing anywhere."""
 
     @property
     def elements(self) -> list[dict[str, Any]]:
@@ -544,6 +558,7 @@ class PolicyGraph:
         """
         state = _Walk(self)
         occurrences: list[Occurrence] = []
+        chains: list[tuple[Occurrence, ...]] = []
         examined: list[str] = []
         # One chain per product, not one chain through all of them. A product is
         # an alternative context -- which one applies depends on the
@@ -555,8 +570,14 @@ class PolicyGraph:
         for chain in self._chains(
             api=api, workspace=workspace, operation=operation, levels=levels
         ):
+            resolved: list[Occurrence] = []
             for section in SECTIONS:
-                occurrences.extend(state.expand_scope(chain, len(chain) - 1, section))
+                resolved.extend(state.expand_scope(chain, len(chain) - 1, section))
+            # Deduplicated within the chain, where a repeated include is a
+            # repeated execution and survives, but never across chains: that is
+            # what makes this an order you can read.
+            chains.append(tuple(unique_occurrences(resolved)))
+            occurrences.extend(resolved)
             for _, document in chain:
                 if document is not None and document["id"] not in examined:
                     examined.append(document["id"])
@@ -564,7 +585,9 @@ class PolicyGraph:
             occurrences=tuple(unique_occurrences(occurrences)),
             scopes_examined=tuple(examined),
             unresolved_fragments=tuple(state.unresolved),
+            unreadable_fragments=tuple(state.unreadable),
             inheritance_breaks=tuple(_unique_breaks(state.breaks)),
+            chains=tuple(chains),
         )
 
     def unresolved(self) -> list[str]:
@@ -677,6 +700,7 @@ class _Walk:
 
     graph: PolicyGraph
     unresolved: list[str] = field(default_factory=list)
+    unreadable: list[str] = field(default_factory=list)
     breaks: list[dict[str, Any]] = field(default_factory=list)
 
     def expand_scope(
@@ -757,13 +781,21 @@ class _Walk:
     ) -> list[Occurrence]:
         """A fragment's elements, as they run at the site that included them."""
         document = self.graph.fragment_document(name, workspace)
-        if document is None or document.get("parseError"):
-            # A fragment whose body could not be read, or would not parse, is
-            # as unknown as one that was never collected. Splicing its empty
-            # element list would say the include contributed nothing, which is
-            # the one thing nobody can know about it.
+        if document is None:
+            # Nothing of this name anywhere the include could see it.
             if name not in self.unresolved:
                 self.unresolved.append(name)
+            return []
+        if document.get("parseError"):
+            # Found and not readable, which is as unknown as never collected --
+            # splicing its empty element list would say the include contributed
+            # nothing, the one thing nobody can know about it. Recorded by
+            # document rather than by name, because the document has an item of
+            # its own to carry the parse error, and a name is not an identity:
+            # an `hr` API naming `limits` when only `finance/limits` exists
+            # resolves to nothing, and matching those two by name hid it.
+            if document["id"] not in self.unreadable:
+                self.unreadable.append(document["id"])
             return []
         key = document["id"]
         if key in seen:

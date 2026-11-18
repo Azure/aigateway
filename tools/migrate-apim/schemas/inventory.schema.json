@@ -281,12 +281,29 @@
       "required": ["mode", "secretRefs"],
       "properties": {
         "mode": {
-          "enum": ["none", "apiKey", "authorizationHeader", "clientCertificate", "managedIdentity", "credentialManager"]
+          "description": "undetermined is not a mode the backend has; it says the question could not be answered -- a fragment that would not resolve, or no policy read at all. It is listed because the collector emits it, and a value the code produces and the schema rejects is a contract that only holds while nobody hits the case.",
+          "enum": ["none", "apiKey", "authorizationHeader", "clientCertificate", "managedIdentity", "credentialManager", "undetermined"]
         },
         "secretRefs": {"type": "array", "items": {"type": "string"}},
         "evidence": {"type": "array", "items": {"type": "string"}},
+        "modes": {"type": "array", "items": {"type": "string"}},
         "parameters": {"type": "object"},
-        "scheme": {"type": ["string", "null"]}
+        "scheme": {"type": ["string", "null"]},
+        "note": {"type": "string"},
+        "identity": {"type": ["object", "null"]},
+        "identityCandidates": {
+          "description": "Set when alternative request contexts authenticate differently -- two products each setting their own managed identity, say. One provider cannot authenticate two ways, so the first is proposed and the rest are recorded rather than silently discarded.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "clientId": {"type": ["string", "null"]},
+              "audience": {"type": ["string", "null"]}
+            }
+          }
+        },
+        "identityNote": {"type": "string"},
+        "basis": {"type": "object"}
       }
     },
 

@@ -502,14 +502,35 @@ class TestAnIncludeIsResolvedWhereItIsWritten:
 
 
 class TestAnUnreadableFragmentIsNotAnEmptyOne:
-    def test_its_include_resolves_to_nothing_rather_than_to_no_elements(self):
+    def _graph(self):
         unreadable = fragment("broken", "")
         unreadable["parseError"] = "the body could not be read"
-        graph = policy.PolicyGraph([
+        return policy.PolicyGraph([
             api_policy("aoai", inbound("<include-fragment fragment-id='broken' />")),
             unreadable,
         ])
-        assert graph.governing(api="aoai").unresolved_fragments == ("broken",)
+
+    def test_its_include_contributes_nothing_and_says_so(self):
+        resolution = self._graph().governing(api="aoai")
+        assert resolution.unreadable_fragments == ("policy:fragment/broken",)
+
+    def test_it_is_reported_by_document_and_not_by_name(self):
+        """A name is not an identity. Reported by name, an `hr` API naming
+        `limits` when only `finance/limits` exists looked like a reference to
+        the finance fragment, and the unknown policy went unmentioned."""
+        resolution = self._graph().governing(api="aoai")
+        assert resolution.unresolved_fragments == (), "it resolved -- it just could not be read"
+
+    def test_a_name_nothing_answers_to_is_unresolved_rather_than_unreadable(self):
+        graph = policy.PolicyGraph([
+            api_policy("one", inbound("<include-fragment fragment-id='limits' />"),
+                       workspace="hr"),
+            fragment("limits", "<llm-token-limit tokens-per-minute='7000' />",
+                     workspace="finance"),
+        ])
+        resolution = graph.governing(api="one", workspace="hr")
+        assert resolution.unresolved_fragments == ("limits",)
+        assert resolution.unreadable_fragments == ()
 
 
 class TestOperationsAreScopesOfTheirOwn:
@@ -652,3 +673,38 @@ class TestAChainWithNoProductIsAlwaysOneOfThem:
             products=[{"policyId": None, "apiIds": ["api:aoai"]}],
         )
         assert "llm-token-limit" in names(graph.governing(api="aoai"))
+
+
+class TestEachRequestContextKeepsItsOrder:
+    """A union of alternatives is not an execution sequence. Anything reading
+    one element as overriding another has to read a chain."""
+
+    def _api_over_product(self):
+        return policy.PolicyGraph(
+            [
+                document("policy:product/ai", {"level": "product", "name": "ai",
+                                               "workspace": "default"},
+                         inbound("<include-fragment fragment-id='creds' />")),
+                api_policy("aoai", inbound(
+                    "<base />",
+                    "<authentication-managed-identity resource='https://a' />")),
+                fragment("creds", "<authentication-managed-identity resource='https://b' />"),
+            ],
+            products=[{"policyId": "policy:product/ai", "apiIds": ["api:aoai"]}],
+        )
+
+    def test_the_api_identity_is_last_in_every_chain(self):
+        # Flattened first-seen, the API's identity was emitted once from the
+        # no-product chain and then dropped from the product chain as a
+        # duplicate, leaving the product's reading as the later of the two.
+        for chain in self._api_over_product().governing(api="aoai").chains:
+            resources = [o.element["attributes"].get("resource") for o in chain
+                         if o.name == "authentication-managed-identity"]
+            assert resources[-1] == "https://a", resources
+
+    def test_the_union_still_holds_everything_both_chains_run(self):
+        resolved = names(self._api_over_product().governing(api="aoai"))
+        assert resolved.count("authentication-managed-identity") >= 2
+
+    def test_one_chain_per_alternative_request_context(self):
+        assert len(self._api_over_product().governing(api="aoai").chains) == 2

@@ -2161,3 +2161,63 @@ class TestAFragmentIsJudgedByWhereItArrives:
         item = fragment_item(build_plan(document, capabilities), "shared-limits")
         assert item["evidence"]["disposition"] == "conditional"
         assert item["status"] == "needs-decision"
+
+
+class TestANameIsNotAnIdentity:
+    def test_an_include_naming_another_workspaces_fragment_is_still_unresolved(
+        self, inventory, capabilities
+    ):
+        """Only `finance/limits` exists, and an `hr` API names `limits`.
+        Matched by name, the reference looked answered and the unknown policy
+        went unmentioned while the finance fragment reported as unused."""
+        document = copy.deepcopy(inventory)
+        token_limit_fragment(document, "limits", workspace="finance")
+        asset = next(a for a in document["assets"]["models"] if a["id"] == "model:aoai-api")
+        asset["workspace"] = "hr"
+        asset["source"]["name"] = "hr-api"
+        includes(document, "policy:api/hr/hr-api",
+                 {"level": "api", "name": "hr-api", "workspace": "hr"}, "limits")
+        plan = build_plan(document, capabilities)
+        missing = [i for i in plan["items"] if i["source"]["aspect"] == "limits"
+                   and i["source"]["assetId"] is None]
+        assert missing, "the hr include resolves to nothing and has to say so"
+        assert missing[0]["blocking"] is True
+
+
+class TestOneApiIncludingOneFragmentTwice:
+    """Two includes are two members with everything else in common."""
+
+    def _twice(self, inventory, *, second_section="inbound"):
+        document = copy.deepcopy(inventory)
+        token_limit_fragment(document, "shared-limits",
+                             counter_key="@(context.Subscription.Id)")
+        aoai = policy_document(document, "policy:api/aoai-api",
+                               {"level": "api", "name": "aoai-api", "workspace": "default"})
+        for index, section in enumerate(("inbound", second_section), start=1):
+            aoai["elements"].append(element(
+                "include-fragment", f"{section}/include-fragment[{index}]",
+                section=section, family="composition", fragment_id="shared-limits",
+            ))
+            sections = aoai.setdefault("stats", {}).setdefault("sections", [])
+            if section not in sections:
+                sections.append(section)
+        return document
+
+    def test_each_include_is_its_own_member(self, inventory, capabilities):
+        item = limit_item(build_plan(self._twice(inventory), capabilities),
+                          "policy:fragment/shared-limits")
+        members = [m for m in item["evidence"]["members"]
+                   if m["policyId"] == "policy:fragment/shared-limits"]
+        assert len(members) == 2, members
+        assert len({tuple(m["arrival"]) for m in members}) == 2, "two routes, two identities"
+
+    def test_moving_one_of_them_unsettles_the_decision(self, inventory, capabilities):
+        """Keyed on the destination, the two members shared one digest and one
+        overwrote the other -- so moving the earlier include left a settled
+        decision reading as unchanged."""
+        before = build_plan(self._twice(inventory), capabilities)
+        settled = settle(copy.deepcopy(before))
+        after = build_plan(self._twice(inventory, second_section="outbound"), capabilities,
+                           previous=settled)
+        item = limit_item(after, "policy:fragment/shared-limits")
+        assert item["status"] == "stale" or item.get("newMembers"), item["status"]

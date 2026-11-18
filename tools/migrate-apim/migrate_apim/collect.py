@@ -1974,16 +1974,42 @@ def _backend_auth(
         add_secret(ref)
 
     for element in (effective.elements if effective else []):
-        if element["name"] == "authentication-managed-identity":
-            add_identity(
-                element["attributes"].get("client-id"),
-                element["attributes"].get("resource"),
-                "policy:authentication-managed-identity",
-            )
-        elif element["name"] == "authentication-certificate":
+        if element["name"] == "authentication-certificate":
             note("clientCertificate", "policy:authentication-certificate")
         elif element["name"] == "get-authorization-context":
             note("credentialManager", "policy:get-authorization-context")
+
+    # Per request context, because the last `authentication-managed-identity`
+    # to run is the one that applies and a union of alternatives is not an
+    # order. A product is one alternative and no product is another: flattened
+    # together, an identity set on the API after `<base />` could be dropped as
+    # a duplicate and a product's identity read as the later of the two, when
+    # the API's overrides it in both contexts.
+    candidates: list[tuple[str | None, str | None]] = []
+    for chain in (effective.chains if effective else ()):
+        last = None
+        for occurrence in chain:
+            if occurrence.name == "authentication-managed-identity":
+                last = occurrence.element
+        if last is not None:
+            attributes = last.get("attributes") or {}
+            candidate = (attributes.get("client-id"), attributes.get("resource"))
+            if candidate not in candidates:
+                candidates.append(candidate)
+    if candidates:
+        client_id, audience = candidates[0]
+        add_identity(client_id, audience, "policy:authentication-managed-identity")
+        if len(candidates) > 1:
+            # Which one applies depends on the product a call arrives through,
+            # and one provider cannot authenticate two ways. Named rather than
+            # resolved: picking silently would be a guess reported as a fact.
+            auth["identityCandidates"] = [
+                {"clientId": cid, "audience": aud} for cid, aud in candidates
+            ]
+            auth["identityNote"] = (
+                f"{len(candidates)} managed identities apply, depending on which product a call "
+                "arrives through. The first is proposed; the alternatives are recorded here."
+            )
 
     for mode in _AUTH_PRECEDENCE:
         if mode in auth["modes"]:

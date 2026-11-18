@@ -853,3 +853,115 @@ class TestFragmentsAreCollectedAsAssetsOfTheirOwn:
 
         Collector(Recording(), SERVICE, options()).run()
         assert seen[f"{SERVICE}/policyFragments"] == {"format": "rawxml"}
+
+
+def _find_auth(value):
+    """The first `auth` record anywhere in an asset, however it is nested."""
+    if isinstance(value, dict):
+        if "mode" in value and "evidence" in value:
+            return value
+        for nested in value.values():
+            found = _find_auth(nested)
+            if found:
+                return found
+    elif isinstance(value, list):
+        for nested in value:
+            found = _find_auth(nested)
+            if found:
+                return found
+    return None
+
+
+class TestBackendAuthReadsAnOrderAndNotAUnion:
+    """The last `authentication-managed-identity` to run is the one that
+    applies, and a union of alternative request contexts has no last."""
+
+    def _collected(self, product_identity):
+        import fake_arm
+
+        api_policy = (
+            "<policies><inbound><base />"
+            "<authentication-managed-identity resource='https://api' />"
+            "</inbound><backend><base /></backend>"
+            "<outbound><base /></outbound><on-error><base /></on-error></policies>"
+        )
+        product_policy = (
+            "<policies><inbound>"
+            f"<authentication-managed-identity resource='{product_identity}' />"
+            "</inbound><backend><base /></backend>"
+            "<outbound><base /></outbound><on-error><base /></on-error></policies>"
+        )
+        originals = {
+            "policies": dict(fake_arm.POLICIES),
+            "product_apis": fake_arm.ROUTES[f"{SERVICE}/products/ai/apis"],
+        }
+        fake_arm.POLICIES[f"{SERVICE}/apis/aoai-api"] = api_policy
+        fake_arm.POLICIES[f"{SERVICE}/products/ai"] = product_policy
+        try:
+            return Collector(FakeArmClient(), SERVICE, options()).run()
+        finally:
+            fake_arm.POLICIES.clear()
+            fake_arm.POLICIES.update(originals["policies"])
+
+    def _auth(self, document):
+        """The authentication the policy decided, not one a backend declared."""
+        for group in document["assets"].values():
+            for asset in group:
+                auth = _find_auth(asset)
+                if auth and "policy:authentication-managed-identity" in (
+                    auth.get("evidence") or []
+                ):
+                    return auth
+        raise AssertionError("no asset took its identity from policy")
+
+    def test_the_apis_own_identity_wins_over_an_inherited_one(self):
+        auth = self._auth(self._collected("https://product"))
+        assert auth["identity"]["audience"] == "https://api"
+
+    def test_two_identities_that_cannot_both_apply_are_named_not_chosen(self):
+        auth = self._auth(self._collected("https://product"))
+        assert "identityCandidates" not in auth, (
+            "the API overrides the product in both contexts, so there is one answer")
+
+    def test_an_unambiguous_identity_carries_no_note(self):
+        auth = self._auth(self._collected("https://api"))
+        assert "identityNote" not in auth
+
+    def test_two_products_setting_different_identities_are_named_not_picked(self):
+        """Which one applies depends on the product a call arrives through,
+        and one provider cannot authenticate two ways."""
+        from migrate_apim import collect as collect_mod
+        from migrate_apim import policy as policy_mod
+        from migrate_apim import secrets as secrets_mod
+
+        def doc(policy_id, scope, xml):
+            return policy_mod.parse(xml, policy_id=policy_id, scope=scope, scope_url="/x")
+
+        def product(name, resource):
+            return doc(
+                f"policy:product/{name}",
+                {"level": "product", "name": name, "workspace": "default"},
+                "<policies><inbound>"
+                f"<authentication-managed-identity resource='{resource}' />"
+                "</inbound><backend><base /></backend><outbound><base /></outbound>"
+                "<on-error><base /></on-error></policies>",
+            )
+
+        graph = policy_mod.PolicyGraph(
+            [
+                product("a", "https://a"),
+                product("b", "https://b"),
+                doc("policy:api/aoai", {"level": "api", "name": "aoai", "workspace": "default"},
+                    "<policies><inbound><base /></inbound><backend><base /></backend>"
+                    "<outbound><base /></outbound><on-error><base /></on-error></policies>"),
+            ],
+            products=[{"policyId": "policy:product/a", "apiIds": ["api:aoai"]},
+                      {"policyId": "policy:product/b", "apiIds": ["api:aoai"]}],
+        )
+        auth = collect_mod._backend_auth(
+            None, graph.governing(api="aoai"),
+            secrets_mod.SecretRegistry(service_id=SERVICE, api_version="2025-09-01-preview"),
+        )
+        assert auth["mode"] == "managedIdentity"
+        assert {c["audience"] for c in auth["identityCandidates"]} == {"https://a", "https://b"}
+        assert "depending on which product" in auth["identityNote"]
