@@ -13,7 +13,8 @@ from __future__ import annotations
 import hashlib
 import re
 import xml.etree.ElementTree as ET
-from typing import Any, Callable
+from dataclasses import dataclass, field
+from typing import Any, Callable, Iterable, Sequence
 
 from . import ids, secrets
 
@@ -357,3 +358,420 @@ def _dedupe(values: list[str]) -> list[str]:
             seen.add(value)
             ordered.append(value)
     return ordered
+
+
+# --------------------------------------------------------------- resolution
+#
+# Which policy governs which API is one question, and until this it had two
+# answers in two modules -- a forward walk in the collector and a backward one
+# in the planner -- built from different inputs and already disagreeing about
+# workspace scope. A third, reading the de-duplicated `fragmentRefs` name list,
+# would have lost the include site's section and its conditional context.
+#
+# So it is answered once, here, beside the parser whose output it indexes.
+# `include-fragment` and `base` are already elements carrying a section and a
+# path, which means inclusion and inheritance are facts in the document rather
+# than something a caller re-derives: the graph reads them, and the forward and
+# backward views come from one index, which is what stops them drifting apart.
+
+# Control flow that decides whether the statement inside it runs at all. The
+# element itself records nothing about that; the path is the only place the
+# branch survives normalization.
+CONDITIONAL_WRAPPERS = frozenset({"choose", "when", "otherwise"})
+
+# The scopes APIM evaluates, outermost first. A fragment is deliberately not one
+# of them: it is not a scope anything runs at, it is content spliced into one.
+SCOPE_CHAIN = ("global", "workspace", "product", "api", "operation")
+
+
+def ancestors(element: dict[str, Any]) -> list[str]:
+    """The elements enclosing this one, outermost first, occurrence index removed."""
+    return [segment.split("[", 1)[0] for segment in (element.get("path") or "").split("/")[:-1]]
+
+
+def under_conditional(element: dict[str, Any]) -> bool:
+    """Whether a branch of the source policy decides if this element runs at all."""
+    return any(name in CONDITIONAL_WRAPPERS for name in ancestors(element))
+
+
+@dataclass(frozen=True)
+class Occurrence:
+    """One policy element, and the path by which it reaches a scope.
+
+    An element in a fragment has no section of its own -- a fragment has no
+    `inbound` wrapper -- so `section` is the include site's, not the one the
+    element was parsed under. `under_conditional` is likewise cumulative: a
+    fragment included inside a `choose` runs conditionally however
+    unconditionally its own body reads.
+    """
+
+    element: dict[str, Any]
+    policy_id: str
+    section: str
+    via: tuple[str, ...] = ()
+    under_conditional: bool = False
+
+    @property
+    def name(self) -> str:
+        return self.element.get("name") or ""
+
+    @property
+    def path(self) -> str:
+        return self.element.get("path") or ""
+
+    def tagged(self) -> dict[str, Any]:
+        """The element, carrying where it came from and how it got here."""
+        return {
+            **self.element,
+            "policyId": self.policy_id,
+            "section": self.section,
+            "via": list(self.via),
+            "underConditional": self.under_conditional,
+        }
+
+
+@dataclass(frozen=True)
+class Resolution:
+    """What governs one scope, and what could not be established about it."""
+
+    occurrences: tuple[Occurrence, ...] = ()
+    scopes_examined: tuple[str, ...] = ()
+    unresolved_fragments: tuple[str, ...] = ()
+    inheritance_breaks: tuple[dict[str, Any], ...] = ()
+
+    @property
+    def elements(self) -> list[dict[str, Any]]:
+        return [occurrence.tagged() for occurrence in self.occurrences]
+
+
+class PolicyGraph:
+    """Every policy document the inventory holds, and the relations between them.
+
+    Built from the inventory alone -- nothing here reads ARM, and nothing here
+    needs a field the collector does not already write. `products` carries the
+    product-to-API membership, which is the one relation that is not in a policy
+    document.
+    """
+
+    def __init__(
+        self,
+        documents: Iterable[dict[str, Any]],
+        *,
+        products: Iterable[dict[str, Any]] = (),
+    ) -> None:
+        self._documents: list[dict[str, Any]] = []
+        self._by_id: dict[str, dict[str, Any]] = {}
+        self._products: list[dict[str, Any]] = []
+        # Keyed by workspace and name, both folded: APIM resource names do not
+        # distinguish case and a `fragment-id` is authored by hand, so matching
+        # exactly would report a fragment that resolves fine in APIM as one
+        # naming nothing. Two workspaces may hold a same-named fragment, and
+        # they are two fragments.
+        self._fragments: dict[tuple[str, str], dict[str, Any]] = {}
+        self._includes: dict[str, list[tuple[dict[str, Any], dict[str, Any]]]] = {}
+        for document in documents:
+            self.add(document)
+        self.add_products(products)
+
+    def add(self, document: dict[str, Any]) -> None:
+        """Index one policy document.
+
+        Incremental so the collector can keep one graph for a whole run and
+        index each document as it captures it: the graph is then current when a
+        policy is read back, without rebuilding it per API.
+        """
+        if document["id"] in self._by_id:
+            return
+        self._documents.append(document)
+        self._by_id[document["id"]] = document
+        scope = document.get("scope") or {}
+        if scope.get("level") == "fragment":
+            key = (_fold(_workspace_of(scope)), _fold(scope.get("name") or ""))
+            self._fragments.setdefault(key, document)
+        for element in document.get("elements") or []:
+            if element.get("name") == "include-fragment" and element.get("fragmentId"):
+                self._includes.setdefault(_fold(element["fragmentId"]), []).append(
+                    (document, element)
+                )
+
+    def add_products(self, products: Iterable[dict[str, Any]]) -> None:
+        """Product-to-API membership: the one relation not in a policy document."""
+        known = {id(product) for product in self._products}
+        self._products.extend(product for product in products if id(product) not in known)
+
+    # -------------------------------------------------------------- forward
+
+    def governing(
+        self,
+        *,
+        api: str,
+        workspace: str | None = None,
+        operation: str | None = None,
+        levels: Sequence[str] = SCOPE_CHAIN,
+    ) -> Resolution:
+        """The elements that actually run for one API, in order.
+
+        Walks the scope chain and splices a parent's section in where the child
+        carries `<base />`, because that is the only thing that makes a parent
+        run: an API whose `inbound` omits it does not inherit the global policy,
+        however globally that policy is written. A scope with no document of its
+        own inherits, which is APIM's default template.
+        """
+        state = _Walk(self, workspace=workspace)
+        chain = self._chain(api=api, workspace=workspace, operation=operation, levels=levels)
+        occurrences: list[Occurrence] = []
+        for section in SECTIONS:
+            occurrences.extend(state.expand_scope(chain, len(chain) - 1, section))
+        return Resolution(
+            occurrences=tuple(_unique(occurrences)),
+            scopes_examined=tuple(
+                document["id"] for _, document in chain if document is not None
+            ),
+            unresolved_fragments=tuple(state.unresolved),
+            inheritance_breaks=tuple(state.breaks),
+        )
+
+    # ------------------------------------------------------------- backward
+
+    def includers(self, fragment: str) -> list[Occurrence]:
+        """The scopes whose policy runs a fragment, as the sites that include it.
+
+        The same index read the other way, so a fragment's includers and an
+        API's governing elements cannot disagree about what includes what. A
+        fragment reached through another fragment resolves to the runnable scope
+        at the end of the chain, since a fragment is never a scope itself, and
+        `via` names that chain from the include site inwards.
+        """
+        target = self._fragments_by_id().get(fragment)
+        if target is None:
+            return []
+        found: list[Occurrence] = []
+        seen: set[str] = set()
+        pending: list[tuple[dict[str, Any], tuple[str, ...]]] = [(target, ())]
+        while pending:
+            document, via = pending.pop(0)
+            if document["id"] in seen:
+                # APIM stores a cycle of includes even though it cannot run one.
+                continue
+            seen.add(document["id"])
+            name = _fold((document.get("scope") or {}).get("name") or "")
+            for site, element in self._includes.get(name, []):
+                site_scope = site.get("scope") or {}
+                if self._fragment_for(element["fragmentId"], _workspace_of(site_scope)) is not document:
+                    continue
+                chain = (document["id"], *via)
+                if site_scope.get("level") == "fragment":
+                    pending.append((site, chain))
+                    continue
+                found.append(Occurrence(
+                    element=element,
+                    policy_id=site["id"],
+                    section=element.get("section") or "",
+                    via=chain,
+                    under_conditional=under_conditional(element),
+                ))
+        return found
+
+    def unresolved(self) -> list[str]:
+        """`fragment-id`s naming no collected fragment: unknown, not absent."""
+        return sorted(
+            {
+                element["fragmentId"]
+                for sites in self._includes.values()
+                for site, element in sites
+                if self._fragment_for(
+                    element["fragmentId"], _workspace_of(site.get("scope") or {})
+                ) is None
+            }
+        )
+
+    def fragments(self) -> list[dict[str, Any]]:
+        """Every collected fragment document, in inventory order."""
+        return [
+            document
+            for document in self._documents
+            if (document.get("scope") or {}).get("level") == "fragment"
+        ]
+
+    # --------------------------------------------------------------- scopes
+
+    def _chain(
+        self, *, api: str, workspace: str | None, operation: str | None, levels: Sequence[str]
+    ) -> list[tuple[str, dict[str, Any] | None]]:
+        """The scopes governing one API, outermost first."""
+        scoped = ids.scoped(workspace, api)
+        chain: list[tuple[str, dict[str, Any] | None]] = []
+        if "global" in levels:
+            chain.append(("global", self._by_id.get(ids.policy("global"))))
+        if "workspace" in levels and workspace and workspace.lower() != "default":
+            chain.append(("workspace", self._by_id.get(ids.policy("workspace", workspace))))
+        if "product" in levels:
+            # Several products can carry the same API, and which one's policy
+            # runs depends on the subscription the call arrived on. They stack
+            # here rather than one being chosen, because reporting one product's
+            # limit and not another's would be a confident negative.
+            for product in self._products_of(api, workspace):
+                chain.append(("product", self._by_id.get(product)))
+        if "api" in levels:
+            chain.append(("api", self._by_id.get(ids.policy("api", scoped))))
+        if "operation" in levels and operation:
+            chain.append(
+                ("operation", self._by_id.get(ids.policy("operation", f"{scoped}/{operation}")))
+            )
+        return chain
+
+    def _products_of(self, api: str, workspace: str | None) -> list[str]:
+        api_id = ids.api(api, workspace)
+        return [
+            product["policyId"]
+            for product in self._products
+            if product.get("policyId") and api_id in (product.get("apiIds") or [])
+        ]
+
+    def _fragments_by_id(self) -> dict[str, dict[str, Any]]:
+        return {document["id"]: document for document in self.fragments()}
+
+    def _fragment_for(self, name: str, workspace: str | None) -> dict[str, Any] | None:
+        """The fragment a `fragment-id` names, as seen from one workspace.
+
+        A workspace's own fragment wins. The fall back to the service-wide one
+        is the lenient reading: resolving to nothing makes the include a
+        blocking gap, and reporting that over a fragment APIM resolves happily
+        would be a confident negative in the direction that costs most.
+        """
+        key = _fold(name)
+        folded = _fold(workspace or "default")
+        return self._fragments.get((folded, key)) or self._fragments.get(("default", key))
+
+    def fragment_document(
+        self, name: str, workspace: str | None = None
+    ) -> dict[str, Any] | None:
+        return self._fragment_for(name, workspace)
+
+
+@dataclass
+class _Walk:
+    """One `governing` call: the splices it made and what it could not splice."""
+
+    graph: PolicyGraph
+    workspace: str | None = None
+    unresolved: list[str] = field(default_factory=list)
+    breaks: list[dict[str, Any]] = field(default_factory=list)
+
+    def expand_scope(
+        self,
+        chain: list[tuple[str, dict[str, Any] | None]],
+        index: int,
+        section: str,
+    ) -> list[Occurrence]:
+        """What runs at `section` for chain[index], parents spliced at `<base />`."""
+        if index < 0:
+            return []
+        _, document = chain[index]
+        if document is None or not _declares(document, section):
+            # No policy of its own at this section is APIM's default template,
+            # which is `<base />`: the parent runs.
+            return self.expand_scope(chain, index - 1, section)
+        out: list[Occurrence] = []
+        inherited = False
+        for element in document.get("elements") or []:
+            if (element.get("section") or "") != section:
+                continue
+            conditional = under_conditional(element)
+            out.append(Occurrence(
+                element=element,
+                policy_id=document["id"],
+                section=section,
+                under_conditional=conditional,
+            ))
+            if element.get("name") == "base":
+                inherited = True
+                out.extend(self.expand_scope(chain, index - 1, section))
+            elif element.get("name") == "include-fragment" and element.get("fragmentId"):
+                out.extend(self.expand_fragment(
+                    element["fragmentId"], section=section, via=(),
+                    under_branch=conditional, seen=frozenset(),
+                ))
+        if not inherited and index > 0:
+            parent_level, parent = chain[index - 1]
+            if parent is not None and _declares(parent, section):
+                self.breaks.append({
+                    "policyId": document["id"], "section": section,
+                    "parentLevel": parent_level, "parentPolicyId": parent["id"],
+                })
+        return out
+
+    def expand_fragment(
+        self,
+        name: str,
+        *,
+        section: str,
+        via: tuple[str, ...],
+        under_branch: bool,
+        seen: frozenset[str],
+    ) -> list[Occurrence]:
+        """A fragment's elements, as they run at the site that included them."""
+        document = self.graph.fragment_document(name, self.workspace)
+        if document is None:
+            if name not in self.unresolved:
+                self.unresolved.append(name)
+            return []
+        key = document["id"]
+        if key in seen:
+            # APIM accepts a fragment including one that includes it back, and
+            # stores it, even though it could never execute it.
+            return []
+        chain = (*via, key)
+        out: list[Occurrence] = []
+        for element in document.get("elements") or []:
+            conditional = under_branch or under_conditional(element)
+            out.append(Occurrence(
+                element=element,
+                policy_id=document["id"],
+                section=section,
+                via=chain,
+                under_conditional=conditional,
+            ))
+            if element.get("name") == "include-fragment" and element.get("fragmentId"):
+                out.extend(self.expand_fragment(
+                    element["fragmentId"], section=section, via=chain,
+                    under_branch=conditional, seen=seen | {key},
+                ))
+        return out
+
+
+def _declares(document: dict[str, Any], section: str) -> bool:
+    """Whether a document says anything about one section.
+
+    Silence is inheritance, so this has to tell an empty `<inbound />` -- which
+    stops the parent -- from a document that never mentions inbound at all.
+    """
+    sections = ((document.get("stats") or {}).get("sections")) or []
+    if sections:
+        return section in sections
+    return any((element.get("section") or "") == section for element in document.get("elements") or [])
+
+
+def _unique(occurrences: Iterable[Occurrence]) -> list[Occurrence]:
+    """One occurrence per element per route, keeping the first.
+
+    Two products carrying the same API each inherit the same global policy, and
+    the global elements would otherwise be reported twice.
+    """
+    seen: set[tuple[str, str, tuple[str, ...]]] = set()
+    out: list[Occurrence] = []
+    for occurrence in occurrences:
+        key = (occurrence.policy_id, occurrence.path, occurrence.via)
+        if key not in seen:
+            seen.add(key)
+            out.append(occurrence)
+    return out
+
+
+def _fold(name: str) -> str:
+    return (name or "").strip().casefold()
+
+
+def _workspace_of(scope: dict[str, Any]) -> str:
+    """The workspace a policy document belongs to, default when it says none."""
+    return scope.get("workspace") or "default"

@@ -508,6 +508,10 @@
             "level": {"enum": ["global", "workspace", "product", "api", "operation", "fragment"]},
             "name": {"type": ["string", "null"]},
             "apiName": {"type": "string"},
+            "workspace": {
+              "description": "The workspace this scope belongs to, `default` for the implicit one. Declared because a name alone does not identify a scope: two workspaces can hold a fragment, a product or an API of the same name, and resolving an `include-fragment` against the wrong one applies a policy to traffic it never governed.",
+              "type": "string"
+            },
             "resourceId": {"type": ["string", "null"]}
           }
         },
