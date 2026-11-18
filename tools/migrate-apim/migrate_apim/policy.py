@@ -410,6 +410,20 @@ class Occurrence:
     section: str
     via: tuple[str, ...] = ()
     under_conditional: bool = False
+    site_policy_id: str = ""
+    """The runnable document whose chain pulled this in. Its own, unless it
+    came from a fragment: a fragment is never a scope, so the question "is this
+    the asset's own policy or something wider" has to be asked of the include
+    site. Asked of `policy_id`, extracting a policy into a fragment changed the
+    answer."""
+    site_level: str = ""
+    """That document's scope level: global, workspace, product, api, operation."""
+    arrival: tuple[str, ...] = ()
+    """The include sites traversed, outermost first, as `<policyId>#<path>`.
+
+    Identifies the route rather than its destination. Two includes of one
+    fragment in one document are two executions and both run; the same include
+    reached down two product chains is one execution seen twice."""
 
     @property
     def name(self) -> str:
@@ -427,6 +441,8 @@ class Occurrence:
             "section": self.section,
             "via": list(self.via),
             "underConditional": self.under_conditional,
+            "sitePolicyId": self.site_policy_id,
+            "siteLevel": self.site_level,
         }
 
 
@@ -451,6 +467,15 @@ class PolicyGraph:
     needs a field the collector does not already write. `products` carries the
     product-to-API membership, which is the one relation that is not in a policy
     document.
+
+    One direction only, deliberately: everything is asked of what a scope
+    resolves to. A reverse query -- which scopes include this fragment -- was
+    the obvious companion and had to go, because it answered from the
+    references written in the documents rather than from the routes requests
+    actually take. It called a fragment included by an API nobody is migrating
+    "included", and it missed a branch partway down a chain that the forward
+    walk saw. Two views of one index still disagreed, which is the thing this
+    module exists to stop.
     """
 
     def __init__(
@@ -536,58 +561,11 @@ class PolicyGraph:
                 if document is not None and document["id"] not in examined:
                     examined.append(document["id"])
         return Resolution(
-            occurrences=tuple(_unique(occurrences)),
+            occurrences=tuple(unique_occurrences(occurrences)),
             scopes_examined=tuple(examined),
             unresolved_fragments=tuple(state.unresolved),
             inheritance_breaks=tuple(_unique_breaks(state.breaks)),
         )
-
-    # ------------------------------------------------------------- backward
-
-    def includers(self, fragment: str) -> list[Occurrence]:
-        """The scopes whose policy runs a fragment, as the sites that include it.
-
-        The same index read the other way, so a fragment's includers and an
-        API's governing elements cannot disagree about what includes what. A
-        fragment reached through another fragment resolves to the runnable scope
-        at the end of the chain, since a fragment is never a scope itself, and
-        `via` names that chain from the include site inwards.
-
-        A branch anywhere on that chain makes the arrival conditional, exactly
-        as it does walking forwards. Reading only the outermost include site
-        reported a fragment pulled in under a `choose` two hops down as plainly
-        dissolved, so the condition it loses went unmentioned.
-        """
-        target = self._fragments_by_id().get(fragment)
-        if target is None:
-            return []
-        found: list[Occurrence] = []
-        seen: set[str] = set()
-        pending: list[tuple[dict[str, Any], tuple[str, ...], bool]] = [(target, (), False)]
-        while pending:
-            document, via, conditional = pending.pop(0)
-            if document["id"] in seen:
-                # APIM stores a cycle of includes even though it cannot run one.
-                continue
-            seen.add(document["id"])
-            name = _fold((document.get("scope") or {}).get("name") or "")
-            for site, element in self._includes.get(name, []):
-                site_scope = site.get("scope") or {}
-                if self._fragment_for(element["fragmentId"], _workspace_of(site_scope)) is not document:
-                    continue
-                chain = (document["id"], *via)
-                branched = conditional or under_conditional(element)
-                if site_scope.get("level") == "fragment":
-                    pending.append((site, chain, branched))
-                    continue
-                found.append(Occurrence(
-                    element=element,
-                    policy_id=site["id"],
-                    section=element.get("section") or "",
-                    via=chain,
-                    under_conditional=branched,
-                ))
-        return found
 
     def unresolved(self) -> list[str]:
         """`fragment-id`s naming no collected fragment: unknown, not absent."""
@@ -653,13 +631,19 @@ class PolicyGraph:
             tail.append(
                 ("operation", self._by_id.get(ids.policy("operation", f"{scoped}/{operation}")))
             )
-        products = self._products_of(api, workspace) if "product" in levels else []
-        if not products:
-            return [head + tail]
-        return [
-            head + [("product", self._by_id.get(product))] + tail
-            for product in products
-        ]
+        # The chain with no product in it is always one of them. A
+        # subscription scoped to the API, or service-wide, carries no product,
+        # so dropping it let a product that omits `<base />` cut the global
+        # policy out of request contexts that never passed through a product at
+        # all -- and a linked product with no policy document of its own, which
+        # inherits transparently, is not in `_products_of` to put it back.
+        chains = [head + tail]
+        if "product" in levels:
+            chains.extend(
+                head + [("product", self._by_id.get(product))] + tail
+                for product in self._products_of(api, workspace)
+            )
+        return chains
 
     def _products_of(self, api: str, workspace: str | None) -> list[str]:
         api_id = ids.api(api, workspace)
@@ -668,9 +652,6 @@ class PolicyGraph:
             for product in self._products
             if product.get("policyId") and api_id in (product.get("apiIds") or [])
         ]
-
-    def _fragments_by_id(self) -> dict[str, dict[str, Any]]:
-        return {document["id"]: document for document in self.fragments()}
 
     def _fragment_for(self, name: str, workspace: str | None) -> dict[str, Any] | None:
         """The fragment a `fragment-id` names, as seen from one workspace.
@@ -714,6 +695,7 @@ class _Walk:
             return self.expand_scope(chain, index - 1, section)
         out: list[Occurrence] = []
         inherited = False
+        level = chain[index][0]
         for element in document.get("elements") or []:
             if (element.get("section") or "") != section:
                 continue
@@ -723,6 +705,8 @@ class _Walk:
                 policy_id=document["id"],
                 section=section,
                 under_conditional=conditional,
+                site_policy_id=document["id"],
+                site_level=level,
             ))
             if element.get("name") == "base":
                 inherited = True
@@ -731,6 +715,8 @@ class _Walk:
                 out.extend(self.expand_fragment(
                     element["fragmentId"], section=section, via=(),
                     under_branch=conditional, seen=frozenset(),
+                    site_policy_id=document["id"], site_level=level,
+                    arrival=(_site(document, element),),
                     # The workspace of the document that authored the include,
                     # not of the API consuming it. An `include-fragment` in the
                     # global policy names a service fragment wherever it is
@@ -765,6 +751,9 @@ class _Walk:
         under_branch: bool,
         seen: frozenset[str],
         workspace: str | None,
+        site_policy_id: str,
+        site_level: str,
+        arrival: tuple[str, ...],
     ) -> list[Occurrence]:
         """A fragment's elements, as they run at the site that included them."""
         document = self.graph.fragment_document(name, workspace)
@@ -791,11 +780,16 @@ class _Walk:
                 section=section,
                 via=chain,
                 under_conditional=conditional,
+                site_policy_id=site_policy_id,
+                site_level=site_level,
+                arrival=arrival,
             ))
             if element.get("name") == "include-fragment" and element.get("fragmentId"):
                 out.extend(self.expand_fragment(
                     element["fragmentId"], section=section, via=chain,
                     under_branch=conditional, seen=seen | {key},
+                    site_policy_id=site_policy_id, site_level=site_level,
+                    arrival=(*arrival, _site(document, element)),
                     # A nested include is authored in the fragment, so the
                     # fragment's own workspace is what resolves it.
                     workspace=_workspace_of(document.get("scope") or {}),
@@ -815,7 +809,7 @@ def _declares(document: dict[str, Any], section: str) -> bool:
     return any((element.get("section") or "") == section for element in document.get("elements") or [])
 
 
-def _unique(occurrences: Iterable[Occurrence]) -> list[Occurrence]:
+def unique_occurrences(occurrences: Iterable[Occurrence]) -> list[Occurrence]:
     """One occurrence per element per route, keeping the first.
 
     Two products carrying the same API each inherit the same global policy, and
@@ -828,17 +822,24 @@ def _unique(occurrences: Iterable[Occurrence]) -> list[Occurrence]:
         # elements at one path -- nothing stops it -- and collapsing those would
         # drop a policy rather than a duplicate route.
         #
-        # Section and branch are part of the route. The same fragment included
-        # plainly and again under a `choose` reaches the same elements by the
-        # same `via`, and keying on that alone kept whichever came first --
-        # losing the conditional occurrence, which is the one that needs
-        # deciding.
-        key = (id(occurrence.element), occurrence.via,
+        # Keyed on the route and not on its destination. A document that
+        # includes one fragment twice runs it twice, and whether that matters
+        # is not this function's to decide: `_backend_auth` reads the last
+        # managed identity in the list, so dropping the second arrival changed
+        # which credential an API was recorded as using. What is genuinely one
+        # execution seen twice is the same include reached down two product
+        # chains, and that collapses because the route is identical.
+        key = (id(occurrence.element), occurrence.arrival,
                occurrence.section, occurrence.under_conditional)
         if key not in seen:
             seen.add(key)
             out.append(occurrence)
     return out
+
+
+def _site(document: dict[str, Any], element: dict[str, Any]) -> str:
+    """One include, identified by where it is written rather than what it names."""
+    return f"{document['id']}#{element.get('path') or ''}"
 
 
 def _unique_breaks(breaks: list[dict[str, Any]]) -> list[dict[str, Any]]:

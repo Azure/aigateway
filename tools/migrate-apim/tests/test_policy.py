@@ -260,36 +260,6 @@ class TestAFragmentReachesTheScopesThatIncludeIt:
             assert occurrence.element["attributes"]["tokens-per-minute"] == ceiling
 
 
-class TestIncludersReadTheSameIndexBackwards:
-    """A fragment's includers and an API's governing elements come off one
-    index, so they cannot disagree about what includes what."""
-
-    def test_every_scope_that_includes_it_is_named(self):
-        graph = policy.PolicyGraph([
-            api_policy("one", inbound("<include-fragment fragment-id='limits' />")),
-            api_policy("two", inbound("<include-fragment fragment-id='limits' />")),
-            fragment("limits", "<llm-token-limit tokens-per-minute='7000' />"),
-        ])
-        sites = graph.includers("policy:fragment/limits")
-        assert {site.policy_id for site in sites} == {"policy:api/one", "policy:api/two"}
-
-    def test_a_fragment_nothing_includes_has_none(self):
-        graph = policy.PolicyGraph([fragment("orphan", "<set-variable name='x' value='1' />")])
-        assert graph.includers("policy:fragment/orphan") == []
-
-    def test_an_include_through_a_fragment_resolves_to_the_scope_that_runs(self):
-        # A fragment is never a scope itself, so the chain has to be followed
-        # to whatever does run.
-        graph = policy.PolicyGraph([
-            api_policy("aoai", inbound("<include-fragment fragment-id='outer' />")),
-            fragment("outer", "<include-fragment fragment-id='inner' />"),
-            fragment("inner", "<llm-token-limit tokens-per-minute='1' />"),
-        ])
-        [site] = graph.includers("policy:fragment/inner")
-        assert site.policy_id == "policy:api/aoai"
-        assert site.via == ("policy:fragment/outer", "policy:fragment/inner")
-
-
 class TestInheritanceIsWhatTheChildAsksFor:
     """APIM runs a parent's section only where the child carries `<base />`."""
 
@@ -465,8 +435,6 @@ class TestARouteIsMoreThanTheFragmentAtTheEndOfIt:
         [forward] = [o for o in graph.governing(api="aoai").occurrences
                      if o.name == "set-backend-service"]
         assert forward.under_conditional is True
-        [backward] = graph.includers("policy:fragment/inner")
-        assert backward.under_conditional is True, "the two directions have to agree"
 
 
 class TestAProductIsAnAlternativeAndNotALink:
@@ -573,3 +541,114 @@ class TestOperationsAreScopesOfTheirOwn:
         ])
         assert graph.operations_of(api="model-api", workspace="finance") == ["chat"]
         assert graph.operations_of(api="model-api") == []
+
+
+class TestEveryWayInIsItsOwnArrival:
+    """One fragment reached twice is two executions; the same fragment reached
+    down two product chains is one seen twice. The route tells them apart."""
+
+    def test_a_fragment_included_twice_in_one_document_runs_twice(self):
+        # `_backend_auth` reads the last managed identity in the list, so
+        # collapsing the second arrival changed which credential an API was
+        # recorded as using.
+        graph = policy.PolicyGraph([
+            api_policy("aoai", inbound(
+                "<include-fragment fragment-id='creds' />",
+                "<authentication-managed-identity resource='https://b' />",
+                "<include-fragment fragment-id='creds' />")),
+            fragment("creds", "<authentication-managed-identity resource='https://c' />"),
+        ])
+        resources = [o.element["attributes"].get("resource")
+                     for o in graph.governing(api="aoai").occurrences
+                     if o.name == "authentication-managed-identity"]
+        assert resources == ["https://c", "https://b", "https://c"]
+
+    def test_the_same_include_reached_by_two_products_is_one_arrival(self):
+        graph = policy.PolicyGraph(
+            [
+                document("policy:global", {"level": "global", "name": None,
+                                           "workspace": "default"},
+                         inbound("<include-fragment fragment-id='limits' />")),
+                document("policy:product/a", {"level": "product", "name": "a",
+                                              "workspace": "default"}, inbound("<base />")),
+                document("policy:product/b", {"level": "product", "name": "b",
+                                              "workspace": "default"}, inbound("<base />")),
+                api_policy("aoai", inbound("<base />")),
+                fragment("limits", "<llm-token-limit tokens-per-minute='7000' />"),
+            ],
+            products=[{"policyId": "policy:product/a", "apiIds": ["api:aoai"]},
+                      {"policyId": "policy:product/b", "apiIds": ["api:aoai"]}],
+        )
+        assert names(graph.governing(api="aoai")).count("llm-token-limit") == 1
+
+    def test_two_routes_into_one_intermediate_fragment_both_survive(self):
+        """`outer` includes `inner` plainly and again under a `choose`."""
+        graph = policy.PolicyGraph([
+            api_policy("aoai", inbound("<include-fragment fragment-id='outer' />")),
+            fragment("outer", "<include-fragment fragment-id='inner' />"
+                              "<choose><when condition='@(true)'>"
+                              "<include-fragment fragment-id='inner' />"
+                              "</when></choose>"),
+            fragment("inner", "<set-backend-service backend-id='east' />"),
+        ])
+        arrivals = [o for o in graph.governing(api="aoai").occurrences
+                    if o.name == "set-backend-service"]
+        assert {o.under_conditional for o in arrivals} == {True, False}
+
+
+class TestAnElementKnowsWhichScopePulledItIn:
+    def test_a_fragment_the_api_includes_is_governed_at_the_api(self):
+        graph = policy.PolicyGraph([
+            api_policy("aoai", inbound("<include-fragment fragment-id='limits' />")),
+            fragment("limits", "<llm-token-limit tokens-per-minute='7000' />"),
+        ])
+        [occurrence] = [o for o in graph.governing(api="aoai").occurrences
+                        if o.name == "llm-token-limit"]
+        assert occurrence.policy_id == "policy:fragment/limits", "written in the fragment"
+        assert occurrence.site_level == "api", "but the API is what asked for it"
+        assert occurrence.site_policy_id == "policy:api/aoai"
+
+    def test_a_fragment_the_global_policy_includes_is_governed_globally(self):
+        graph = policy.PolicyGraph([
+            document("policy:global", {"level": "global", "name": None, "workspace": "default"},
+                     inbound("<include-fragment fragment-id='limits' />")),
+            api_policy("aoai", inbound("<base />")),
+            fragment("limits", "<llm-token-limit tokens-per-minute='7000' />"),
+        ])
+        [occurrence] = [o for o in graph.governing(api="aoai").occurrences
+                        if o.name == "llm-token-limit"]
+        assert occurrence.site_level == "global"
+
+
+class TestAChainWithNoProductIsAlwaysOneOfThem:
+    """A subscription scoped to the API, or service-wide, passes through no
+    product at all."""
+
+    def test_a_product_that_omits_base_does_not_cut_off_the_global_policy(self):
+        graph = policy.PolicyGraph(
+            [
+                document("policy:global", {"level": "global", "name": None,
+                                           "workspace": "default"},
+                         inbound("<llm-token-limit tokens-per-minute='7000' />")),
+                document("policy:product/a", {"level": "product", "name": "a",
+                                              "workspace": "default"},
+                         inbound("<ip-filter action='allow' />")),
+                api_policy("aoai", inbound("<base />")),
+            ],
+            products=[{"policyId": "policy:product/a", "apiIds": ["api:aoai"]}],
+        )
+        assert "llm-token-limit" in names(graph.governing(api="aoai"))
+
+    def test_a_linked_product_with_no_policy_of_its_own_inherits_transparently(self):
+        # It is filtered out of the product chains for having no document, and
+        # without the plain chain its requests lost the global policy with it.
+        graph = policy.PolicyGraph(
+            [
+                document("policy:global", {"level": "global", "name": None,
+                                           "workspace": "default"},
+                         inbound("<llm-token-limit tokens-per-minute='7000' />")),
+                api_policy("aoai", inbound("<base />")),
+            ],
+            products=[{"policyId": None, "apiIds": ["api:aoai"]}],
+        )
+        assert "llm-token-limit" in names(graph.governing(api="aoai"))

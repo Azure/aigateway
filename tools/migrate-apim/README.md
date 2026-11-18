@@ -487,9 +487,24 @@ inferred:
   a blocking gap that cannot be accepted as a loss: nobody has read it, so nobody can say what
   accepting it costs.
 
-A policy item's members therefore carry both where the element is written and what it governs. The
-second is what makes a fragment work at all — it is the first and never the second — and what makes
-a settled decision notice an API joining the fragment it was settled against.
+- **A product** is an alternative context, not a link in the chain: which one applies depends on the
+  subscription a call arrived on. Each is resolved independently and the results unioned, alongside
+  the chain with no product in it, so one product's section without `<base />` cannot suppress a
+  sibling's policy or the global policy behind it.
+- **An operation** is a scope of its own. Where every operation of an API carries a policy, each is
+  resolved through the whole chain and the API's own resolution is not added — an operation that
+  omits `<base />` overrides it, and no request arrives anywhere else.
+
+Everything is asked in that one direction. The reverse question — *which scopes include this
+fragment* — is deliberately not answered, because it can only be answered from the references
+written in the documents, and a reference is not an arrival: one on an API nobody is migrating, or
+in a policy every migrated API overrides, names a fragment that governs nothing here.
+
+A policy item's members therefore carry three things: where the element is written, which scope
+pulled it in, and what it governs. The second is what makes extracting a policy into a fragment
+change nothing — a fragment is never a scope, so "is this the API's own policy" has to be asked of
+the include site. The third is what makes a settled decision notice an API joining the fragment it
+was settled against.
 
 ### Known structural gaps
 

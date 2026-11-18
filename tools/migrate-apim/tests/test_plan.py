@@ -1716,9 +1716,47 @@ class TestAPolicyFactoredIntoAFragment:
         item = limit_item(build_plan(document, capabilities), "policy:fragment/shared-limits")
         assert item["status"] == "ready", "a literal counter key maps natively"
         objects = item["target"]["objects"]
-        assert objects, "the fragment's limit has to land somewhere"
-        assert all(obj["configurationComplete"] for obj in objects), objects
-        assert all(obj["modelName"] for obj in objects), objects
+        carried = [obj for obj in objects if obj.get("modelName")]
+        assert carried, "the fragment's limit has to land somewhere"
+        assert all(obj["configurationComplete"] for obj in carried), carried
+        assert {obj["modelName"] for obj in carried} >= {"gpt-5", "text-embedding-3-large"}
+
+    def test_an_including_api_that_registers_nothing_is_reported_not_dropped(
+        self, inventory, capabilities
+    ):
+        """`meta-ai` includes the fragment and resolves no model catalogue, so
+        the limit it asked for has nowhere to land. Said, because the API asked
+        for it itself -- see the inline comparison below."""
+        document = self._shared(inventory)
+        item = limit_item(build_plan(document, capabilities), "policy:fragment/shared-limits")
+        stranded = [obj for obj in item["target"]["objects"] if not obj.get("modelName")]
+        assert stranded, "a policy an API asked for and cannot carry is a loss"
+        assert "nothing to carry" in stranded[0]["incompleteReason"]
+
+    def test_extracting_a_policy_into_a_fragment_does_not_hide_the_loss(
+        self, inventory, capabilities
+    ):
+        """The question "is this the asset's own policy" has to be asked of the
+        include site. Asked of the document the element is written in, a
+        fragment was never an API's own -- so moving a policy into one turned a
+        reported loss into a silent drop."""
+        inline = copy.deepcopy(inventory)
+        meta = policy_document(inline, "policy:api/meta-ai",
+                               {"level": "api", "name": "meta-ai", "workspace": "default"})
+        meta["elements"].append(element(
+            "llm-token-limit", "inbound/llm-token-limit[1]", family="tokenLimit",
+            attributes={"tokens-per-minute": "7000", "counter-key": "shared"},
+        ))
+        inline_item = limit_item(build_plan(inline, capabilities), "policy:api/meta-ai")
+        extracted = limit_item(
+            build_plan(self._shared(inventory), capabilities), "policy:fragment/shared-limits"
+        )
+
+        def stranded(item):
+            return [o for o in item["target"]["objects"] if not o.get("modelName")]
+
+        assert stranded(inline_item), "writing it inline reports the loss"
+        assert stranded(extracted), "and so must factoring it into a fragment"
 
     def test_it_asks_once_however_many_apis_include_it(self, inventory, capabilities):
         document = self._shared(inventory)
@@ -1972,3 +2010,154 @@ class TestBlockingIsScopedToWhatIsBeingMigrated:
                  {"level": "api", "name": "aoai-api", "workspace": "default"}, "gone")
         item = fragment_item(build_plan(document, capabilities), "gone")
         assert item["blocking"] is True
+
+
+class TestOperationsThatSpeakForAllOfAnApi:
+    """An operation that omits `<base />` overrides what is above it. When
+    every operation carries a policy, the API's own resolution governs no
+    traffic -- and taking it anyway could block a migration on a fragment no
+    request reaches."""
+
+    def _api_with_operations(self, inventory, *, inherits, operations=("chat",)):
+        document = copy.deepcopy(inventory)
+        asset = next(a for a in document["assets"]["models"] if a["id"] == "model:aoai-api")
+        asset["endpoints"]["operations"] = [{"name": name} for name in operations]
+        for name in operations:
+            operation = policy_document(
+                document, f"policy:operation/aoai-api/{name}",
+                {"level": "operation", "name": name, "apiName": "aoai-api",
+                 "workspace": "default"},
+            )
+            if inherits:
+                operation["elements"].append(
+                    element("base", "inbound/base[1]", family="composition")
+                )
+            operation["elements"].append(element(
+                "llm-token-limit", "inbound/llm-token-limit[1]", family="tokenLimit",
+                attributes={"tokens-per-minute": "500", "counter-key": "op"},
+            ))
+        return document
+
+    def _reaches(self, plan, policy_id):
+        return any(m.get("policyId") == policy_id
+                   for i in plan["items"]
+                   for m in (i.get("evidence") or {}).get("members") or [])
+
+    def test_the_operations_own_policy_always_reaches_the_plan(self, inventory, capabilities):
+        for inherits in (True, False):
+            plan = build_plan(self._api_with_operations(inventory, inherits=inherits),
+                              capabilities)
+            assert self._reaches(plan, "policy:operation/aoai-api/chat"), inherits
+
+    def test_an_overriding_operation_drops_what_it_overrides(self, inventory, capabilities):
+        plan = build_plan(self._api_with_operations(inventory, inherits=False), capabilities)
+        assert not self._reaches(plan, "policy:api/aoai-api"), (
+            "the only operation overrides inbound, so the API's own policy runs for nothing")
+
+    def test_an_inheriting_operation_keeps_it(self, inventory, capabilities):
+        plan = build_plan(self._api_with_operations(inventory, inherits=True), capabilities)
+        assert self._reaches(plan, "policy:api/aoai-api")
+
+    def test_an_operation_without_a_policy_leaves_the_api_governing(
+        self, inventory, capabilities
+    ):
+        # Only one of the two operations speaks for itself; the other inherits,
+        # so the API's policy still governs the traffic arriving there.
+        document = self._api_with_operations(inventory, inherits=False,
+                                             operations=("chat",))
+        asset = next(a for a in document["assets"]["models"] if a["id"] == "model:aoai-api")
+        asset["endpoints"]["operations"] = [{"name": "chat"}, {"name": "embeddings"}]
+        plan = build_plan(document, capabilities)
+        assert self._reaches(plan, "policy:api/aoai-api")
+
+    def test_an_inherited_element_is_not_counted_once_per_operation(
+        self, inventory, capabilities
+    ):
+        document = self._api_with_operations(inventory, inherits=True,
+                                             operations=("chat", "embeddings"))
+        plan = build_plan(document, capabilities)
+        members = [m for i in plan["items"]
+                   for m in (i.get("evidence") or {}).get("members") or []
+                   if m.get("policyId") == "policy:api/aoai-api"
+                   and m.get("element") == "azure-openai-token-limit"]
+        assert len(members) == 1, members
+
+
+class TestAFragmentIsJudgedByWhereItArrives:
+    """A reference is not an arrival. One written in a policy every migrated
+    API overrides, or on an API this migration excludes, names a fragment that
+    governs nothing here."""
+
+    def test_a_fragment_only_an_excluded_api_includes_governs_nothing(
+        self, inventory, capabilities
+    ):
+        document = copy.deepcopy(inventory)
+        token_limit_fragment(document, "shared-limits")
+        includes(document, "policy:api/legacy-soap",
+                 {"level": "api", "name": "legacy-soap", "workspace": "default"},
+                 "shared-limits", conditional=True)
+        item = fragment_item(build_plan(document, capabilities), "shared-limits")
+        assert item["verdict"] == "notApplicable", "nothing being migrated includes it"
+        assert item["status"] == "excluded"
+
+    def test_a_conditional_include_on_a_path_nothing_reaches_raises_no_decision(
+        self, inventory, capabilities
+    ):
+        document = copy.deepcopy(inventory)
+        token_limit_fragment(document, "shared-limits")
+        includes(document, "policy:api/legacy-soap",
+                 {"level": "api", "name": "legacy-soap", "workspace": "default"},
+                 "shared-limits", conditional=True)
+        plan = build_plan(document, capabilities)
+        assert fragment_item(plan, "shared-limits")["status"] != "needs-decision"
+
+    def test_a_global_include_every_migrated_api_overrides_governs_nothing(
+        self, inventory, capabilities
+    ):
+        """It is written, and no request reaches it."""
+        document = copy.deepcopy(inventory)
+        token_limit_fragment(document, "shared-limits")
+        includes(document, "policy:global",
+                 {"level": "global", "name": None, "workspace": "default"}, "shared-limits")
+        # Every API gets a document, and none of them asks for `<base />`. An
+        # API with no document of its own inherits, which is APIM's default
+        # template, so leaving one out would leave the fragment arriving there.
+        for kind in ("models", "mcpServers", "agents"):
+            for asset in document["assets"][kind]:
+                name = asset["source"]["name"]
+                workspace = asset["workspace"]
+                scoped = name if workspace == "default" else f"{workspace}/{name}"
+                api = policy_document(
+                    document, f"policy:api/{scoped}",
+                    {"level": "api", "name": name, "workspace": workspace},
+                )
+                api["elements"] = [e for e in api["elements"]
+                                   if not (e["name"] == "base" and e["section"] == "inbound")]
+                api["stats"] = {"sections": ["inbound"]}
+        item = fragment_item(build_plan(document, capabilities), "shared-limits")
+        assert item["verdict"] == "notApplicable"
+
+    def test_and_does_when_one_of_them_inherits(self, inventory, capabilities):
+        document = copy.deepcopy(inventory)
+        token_limit_fragment(document, "shared-limits")
+        includes(document, "policy:global",
+                 {"level": "global", "name": None, "workspace": "default"}, "shared-limits")
+        item = fragment_item(build_plan(document, capabilities), "shared-limits")
+        assert item["verdict"] == "handled"
+        assert {site["scopeLevel"] for site in item["evidence"]["includedBy"]} == {"global"}
+
+    def test_two_routes_into_one_fragment_report_the_weaker_of_them(
+        self, inventory, capabilities
+    ):
+        # Included plainly by one API and under a `choose` by another: the
+        # condition is lost either way, so the decision has to be raised.
+        document = copy.deepcopy(inventory)
+        token_limit_fragment(document, "shared-limits")
+        includes(document, "policy:api/aoai-api",
+                 {"level": "api", "name": "aoai-api", "workspace": "default"}, "shared-limits")
+        includes(document, "policy:api/meta-ai",
+                 {"level": "api", "name": "meta-ai", "workspace": "default"},
+                 "shared-limits", conditional=True)
+        item = fragment_item(build_plan(document, capabilities), "shared-limits")
+        assert item["evidence"]["disposition"] == "conditional"
+        assert item["status"] == "needs-decision"

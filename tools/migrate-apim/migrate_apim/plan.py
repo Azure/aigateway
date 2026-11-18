@@ -139,8 +139,10 @@ class PlanBuilder:
         self.unrecognised_policies: list[dict[str, Any]] = []
         self._graph: policy_mod.PolicyGraph | None = None
         self._policy_index: dict[str, dict[str, Any]] = {}
-        # `fragment-id`s the selected assets reach and nothing resolves.
+        # `fragment-id`s the selected assets reach and nothing resolves, and
+        # what did resolve, by the route it arrived on.
         self._unresolved_fragments: list[str] = []
+        self._fragment_arrivals: dict[str, list[dict[str, Any]]] = {}
         # A model API names the backend it routes to; the provider asset built
         # from that backend is what knows the protocol it speaks.
         self._provider_by_backend: dict[str, dict[str, Any]] = {
@@ -966,8 +968,10 @@ class PlanBuilder:
         governed: dict[tuple[int, bool], list[tuple[dict[str, Any], policy_mod.Occurrence]]] = {}
         unresolved_fragments: list[str] = []
         for asset, api, workspace in self._policy_assets():
-            for occurrence in self._governing(graph, api=api, workspace=workspace,
-                                              unresolved=unresolved_fragments):
+            reached = self._governing(graph, asset=asset, api=api, workspace=workspace,
+                                      unresolved=unresolved_fragments)
+            self._record_arrivals(asset["id"], reached)
+            for occurrence in reached:
                 # Keyed on the element itself, not on where it is written: the
                 # graph hands back the record the inventory holds, so identity
                 # is exact where a document-and-path pair only almost is.
@@ -1015,6 +1019,12 @@ class PlanBuilder:
                     "policyId": occurrence.policy_id,
                     "scope": _level_of(self._policy_document(occurrence.policy_id)),
                     "scopeName": _name_of(self._policy_document(occurrence.policy_id)),
+                    # The scope whose chain pulled this in, which is the asset's
+                    # own or something wider. A fragment is never either, so
+                    # asking the document the element is written in made
+                    # extracting a policy into a fragment change the answer.
+                    "governedAt": occurrence.site_level,
+                    "governedBy": occurrence.site_policy_id,
                     "path": occurrence.path,
                     "assetId": asset["id"],
                     "section": occurrence.section,
@@ -1070,20 +1080,25 @@ class PlanBuilder:
         backwards.
         """
         graph = self.graph()
+        # A fragment that could not be read contributes no elements, so it
+        # arrives nowhere and would read as one nothing includes. What says
+        # otherwise is the forward walk, which records the name it could not
+        # resolve where it tried to resolve it.
+        unreadable = {_fold_name(name) for name in self._unresolved_fragments}
         for document in graph.fragments():
             name = (document.get("scope") or {}).get("name") or ""
-            sites = graph.includers(document["id"])
-            sections = {site.section for site in sites}
-            if not sites:
-                disposition = "unreferenced"
-            elif document.get("parseError"):
+            sites = _unique_arrivals(self._fragment_arrivals.get(document["id"]) or [])
+            sections = {site["section"] for site in sites}
+            if document.get("parseError") and _fold_name(name) in unreadable:
                 # Collected, included, and unreadable. It has no elements to
                 # dissolve and nobody can say what it carried, so it is the
                 # same unknown as a `fragment-id` naming nothing -- and a
                 # dissolution reported as clean would be the stronger claim of
                 # the two that is false.
                 disposition = "unresolved"
-            elif any(site.under_conditional for site in sites):
+            elif not sites:
+                disposition = "unreferenced"
+            elif any(site["underConditional"] for site in sites):
                 disposition = "conditional"
             elif len(sections) > 1:
                 disposition = "splitSection"
@@ -1110,12 +1125,7 @@ class PlanBuilder:
                     # "nothing includes it" is worth: an operation can include a
                     # fragment, and those documents are read only when asked for.
                     "operationPoliciesCollected": self._operation_policies_collected(),
-                    "includedBy": [
-                        {"policyId": site.policy_id, "section": site.section,
-                         "path": site.path, "via": list(site.via),
-                         "underConditional": site.under_conditional}
-                        for site in sites
-                    ],
+                    "includedBy": sites,
                 },
                 blocking=rule.get("blocking", False),
                 cannot_accept=rule.get("cannotAccept", False),
@@ -1125,7 +1135,16 @@ class PlanBuilder:
         # include reference in the inventory. An unreferenced fragment naming a
         # missing one governs nothing, and blocking a migration on it would be
         # a decision about a workload nobody is moving.
+        # Only the names no collected fragment answers to. One that names a
+        # fragment this inventory holds but could not read is reported on that
+        # fragment's own item, above, where the parse error is.
+        collected = {
+            _fold_name((document.get("scope") or {}).get("name") or "")
+            for document in graph.fragments()
+        }
         for missing in sorted(set(self._unresolved_fragments)):
+            if _fold_name(missing) in collected:
+                continue
             rule = STRUCTURAL_POLICY_FRAGMENTS.first(
                 structural, kind="policyFragments", disposition="unresolved"
             ) or {}
@@ -1159,25 +1178,70 @@ class PlanBuilder:
             )
         return self._graph
 
-    def _governing(self, graph, *, api, workspace, unresolved: list[str]):
+    def _record_arrivals(self, asset_id: str, occurrences) -> None:
+        """What reached one asset through a fragment, and how.
+
+        Taken from the resolution rather than from the include references in
+        the documents, because a reference is not an arrival: one written in a
+        policy every migrated API overrides, or on an API this migration
+        excludes, names a fragment that governs nothing here. Reading them
+        syntactically raised decisions -- and blocking ones -- about workloads
+        nobody is moving.
+        """
+        for occurrence in occurrences:
+            for fragment_id in occurrence.via:
+                self._fragment_arrivals.setdefault(fragment_id, []).append({
+                    "assetId": asset_id,
+                    "policyId": occurrence.site_policy_id,
+                    "scopeLevel": occurrence.site_level,
+                    "section": occurrence.section,
+                    "via": list(occurrence.via),
+                    "underConditional": occurrence.under_conditional,
+                })
+
+    def _governing(self, graph, *, asset, api, workspace, unresolved: list[str]):
         """Everything that runs for one API, its own operations included.
 
         An operation is a scope of its own, and the chain only reaches it when
         asked. Left out, an operation-scoped token limit raised no item at all
         and was counted as governing nothing -- a quieter version of the
-        stranding this change exists to end. Its own elements only, because the
-        scopes above it are already in the API's resolution.
+        stranding this change exists to end.
+
+        Which resolution answers depends on whether the operations speak for
+        all of the API's traffic. When every operation carries a policy of its
+        own, each is resolved through the whole chain and the API's own
+        resolution is not added: an operation that omits `<base />` overrides
+        what is above it, and taking the API's resolution anyway would report a
+        limit on traffic nothing applies it to -- and could block a migration
+        on a fragment no request reaches. Otherwise some traffic arrives at an
+        operation with no policy, which inherits, so the API's resolution is
+        what governs it and the operations add only their own elements.
         """
-        resolution = graph.governing(api=api, workspace=workspace)
-        occurrences = list(resolution.occurrences)
-        unresolved.extend(resolution.unresolved_fragments)
-        for operation in graph.operations_of(api=api, workspace=workspace):
+        declared = [
+            operation.get("name")
+            for operation in ((asset.get("endpoints") or {}).get("operations") or [])
+            if operation.get("name")
+        ]
+        with_policy = graph.operations_of(api=api, workspace=workspace)
+        covered = bool(declared) and set(declared) <= set(with_policy)
+
+        occurrences: list[policy_mod.Occurrence] = []
+        if not covered:
+            resolution = graph.governing(api=api, workspace=workspace)
+            occurrences.extend(resolution.occurrences)
+            unresolved.extend(resolution.unresolved_fragments)
+        for operation in with_policy:
             nested = graph.governing(
-                api=api, workspace=workspace, operation=operation, levels=("operation",)
+                api=api, workspace=workspace, operation=operation,
+                levels=policy_mod.SCOPE_CHAIN if covered else ("operation",),
             )
             occurrences.extend(nested.occurrences)
             unresolved.extend(nested.unresolved_fragments)
-        return occurrences
+        # Several operations inherit the same scopes above them, and each
+        # resolution returns that inheritance in full. Without this the API's
+        # own elements would be one member per operation, and the policy would
+        # be applied -- and counted -- once for each.
+        return policy_mod.unique_occurrences(occurrences)
 
     def _policy_assets(self):
         """The assets a policy can govern, with the source API each came from."""
@@ -1599,16 +1663,20 @@ class PlanBuilder:
             registrations = self._registrations_of(member.get("assetId"))
             scope = {"level": member.get("scope"), "name": member.get("scopeName")}
             if not registrations:
-                if carried and member.get("scope") not in {"api", "operation"}:
+                if carried and member.get("governedAt") not in {"api", "operation"}:
                     # Inherited from a wider scope that another member does
                     # carry. A gateway-wide token limit governs the MCP APIs
                     # too, and a tool server registers no model: reporting that
                     # as a policy with nowhere to go would block a migration
                     # over a scope the limit was never going to land on.
                     #
-                    # A policy written on the asset's own API is not that. It
-                    # was authored for this one thing, and this one thing cannot
-                    # carry it -- which is a loss, and is said below.
+                    # A policy the asset's own API asked for is not that. It
+                    # was authored for this one thing, and this one thing
+                    # cannot carry it -- a loss, and said below. Asked of where
+                    # the element is written, a fragment the API includes
+                    # itself read as something wider and the loss went
+                    # unreported, so extracting a policy into a fragment hid
+                    # what writing it inline would have surfaced.
                     continue
                 # Nothing anywhere to attach it to. Recorded as an object that
                 # cannot be applied rather than dropped, so the item still says
@@ -2195,6 +2263,24 @@ def _note(dispositions: dict[int, str], key: int, disposition: str) -> None:
     current = dispositions.get(key)
     if current is None or _DISPOSITION_RANK[disposition] > _DISPOSITION_RANK[current]:
         dispositions[key] = disposition
+
+
+def _fold_name(name: str) -> str:
+    """A fragment name as APIM compares it, which is without regard to case."""
+    return (name or "").strip().casefold()
+
+
+def _unique_arrivals(arrivals: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One entry per asset, scope and route, so a fragment reads once per way in."""
+    seen: set[tuple[Any, ...]] = set()
+    out: list[dict[str, Any]] = []
+    for arrival in arrivals:
+        key = (arrival["assetId"], arrival["policyId"], arrival["section"],
+               arrival["underConditional"], tuple(arrival["via"]))
+        if key not in seen:
+            seen.add(key)
+            out.append(arrival)
+    return out
 
 
 def _level_of(document: dict[str, Any]) -> str | None:
