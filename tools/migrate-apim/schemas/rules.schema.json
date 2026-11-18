@@ -122,17 +122,30 @@
         "note": {"type": "string"}
       }
     },
+    "decidedNeedsItemKind": {
+      "if": {"properties": {"verdict": {"enum": ["partial", "gap"]}}, "required": ["verdict"]},
+      "then": {"required": ["itemKind"]}
+    },
     "structuralRule": {
       "type": "object",
-      "required": ["match", "itemKind", "verdict"],
+      "required": ["match", "verdict"],
       "additionalProperties": false,
-      "allOf": [{"$ref": "#/$defs/partialNeedsOptions"}],
+      "allOf": [
+        {"$ref": "#/$defs/partialNeedsOptions"},
+        {"$ref": "#/$defs/decidedNeedsItemKind"}
+      ],
       "properties": {
         "match": {
           "type": "object",
           "required": ["kind"],
           "additionalProperties": false,
-          "properties": {"kind": {"type": "string"}}
+          "properties": {
+            "kind": {"type": "string"},
+            "disposition": {
+              "type": "string",
+              "description": "Which case of `kind` this rule answers for, when one asset family resolves to several. A fragment the target must dissolve is not a fragment nothing includes, and neither is an `include-fragment` naming one this inventory does not hold."
+            }
+          }
         },
         "verdict": {"$ref": "#/$defs/verdict"},
         "itemKind": {"$ref": "#/$defs/itemKind"},

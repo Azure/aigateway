@@ -310,16 +310,23 @@ class TestEveryRuleFieldHasAReader:
         self, compile_with, shipped
     ):
         """Nothing can select it, so every field is unread by construction.
-        Saying so once per field buries the reachability error underneath."""
+        Saying so once per field buries the reachability error underneath.
+
+        `policyFragments` used to be the example here, which is the whole of
+        what was wrong with it: the tool collected fragments and the one rule
+        describing them was the suite's stock illustration of a rule nothing
+        asks for. It is selectable now, so the illustration needs a kind that
+        genuinely is not.
+        """
         rules = copy.deepcopy(shipped[1])
         rules["structural"].append({
-            "match": {"kind": "policyFragments"}, "verdict": "handled",
+            "match": {"kind": "loggers"}, "verdict": "handled",
             "itemKind": "accept-loss", "rationale": "x", "proposal": "accept",
         })
         result = compile_with(rules=rules)
         assert "match-value-known" in codes(result)
         assert not [d for d in result.warnings
-                    if d.check == "rule-field-unread" and "policyFragments" in str(d)]
+                    if d.check == "rule-field-unread" and "loggers" in str(d)]
 
     def test_the_shipped_rules_leave_nothing_unread(self, compile_with):
         """--strict has to be a mode that can actually pass on this repo's data."""
@@ -507,7 +514,7 @@ class TestACleanRunSaysWhatItChecked:
     def test_every_check_reports_what_it_covered(self, compile_with, shipped):
         documented = shipped[0]["cliEvidence"]["documentedVersion"]
         covered = compile_with(newest_release=f"cli-v{documented}").covered
-        assert len(covered) == 6, covered
+        assert len(covered) == 7, covered
 
     def test_the_counts_are_the_real_ones(self, compile_with, shipped):
         catalog, rules, surface = shipped

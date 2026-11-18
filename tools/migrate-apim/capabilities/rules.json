@@ -468,6 +468,91 @@
     },
     {
       "match": {
+        "kind": "policyFragments",
+        "disposition": "dissolved"
+      },
+      "verdict": "handled",
+      "rationale": "AI Gateway has no policy composition: no fragments, no includes, no inheritance. A fragment is therefore dissolved into every scope that includes it, and what it carries is assessed as the elements of that scope. Listed so a reader can see the fragment reached the plan rather than having to infer it from the policies it contributed."
+    },
+    {
+      "match": {
+        "kind": "policyFragments",
+        "disposition": "conditional"
+      },
+      "verdict": "partial",
+      "itemKind": "accept-loss",
+      "options": [
+        {
+          "value": "accept",
+          "consequence": "Everything the fragment carries applies to every call, including the ones the branch excluded."
+        },
+        {
+          "value": "compensate",
+          "consequence": "Narrow what the fragment carries until it is true unconditionally, as far as it can be said that way."
+        },
+        {
+          "value": "retain-in-apim",
+          "consequence": "Keep this workload on APIM, where the branch still runs."
+        }
+      ],
+      "proposal": "compensate",
+      "rationale": "A `choose` branch at the include site decides whether this fragment runs at all, and dissolving it into the including scope keeps what it carries and not the condition on it. The target has nowhere to put the branch: its policy surface is six declarative types with no predicate."
+    },
+    {
+      "match": {
+        "kind": "policyFragments",
+        "disposition": "splitSection"
+      },
+      "verdict": "partial",
+      "itemKind": "accept-loss",
+      "options": [
+        {
+          "value": "accept",
+          "consequence": "One dissolution for every include, taking whichever section's reading the target can express."
+        },
+        {
+          "value": "compensate",
+          "consequence": "Split the fragment per section in the source first, so each include dissolves to one thing."
+        },
+        {
+          "value": "retain-in-apim",
+          "consequence": "Keep this workload on APIM, where one fragment can mean two things."
+        }
+      ],
+      "proposal": "compensate",
+      "rationale": "The same fragment is included into more than one section, so what it does depends on where it was pulled in -- a check on the way in is not the same check on the way out. One dissolution cannot be both."
+    },
+    {
+      "match": {
+        "kind": "policyFragments",
+        "disposition": "unreferenced"
+      },
+      "verdict": "notApplicable",
+      "rationale": "Nothing includes this fragment, so it governs no traffic and there is nothing to dissolve it into. Reported rather than dropped: a fragment that governs nothing and a fragment nobody looked for are the same silence, and operation policies are not collected unless asked for."
+    },
+    {
+      "match": {
+        "kind": "policyFragments",
+        "disposition": "unresolved"
+      },
+      "verdict": "gap",
+      "itemKind": "enumerate",
+      "blocking": true,
+      "cannotAccept": true,
+      "options": [
+        {
+          "value": "re-collect",
+          "consequence": "Collect again with access to the fragment, and re-plan from what it actually contains."
+        },
+        {
+          "value": "supply-facts",
+          "consequence": "State what the fragment carries, and plan against that."
+        }
+      ],
+      "rationale": "A policy includes a fragment this inventory does not hold, so what runs at that point is unknown rather than absent. It cannot be accepted as a loss: nobody has read it, so nobody can say what accepting it costs."
+    },
+    {
+      "match": {
         "kind": "coverageGap"
       },
       "verdict": "gap",

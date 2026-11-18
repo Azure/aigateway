@@ -78,6 +78,17 @@ STRUCTURAL_COVERAGE_GAP = _structural_selector(
     "coverageGap",
     reads=("verdict", "itemKind", "rationale", "options", "blocking", "cannotAccept"),
 )
+# One kind, five cases, so this site dispatches on a second key. The gateway has
+# no policy composition at all -- no fragments, no includes, no inheritance -- so
+# every fragment has the same fate, dissolved into whatever includes it, and
+# what varies is only whether the dissolution can keep what the fragment meant.
+FRAGMENT_DISPOSITIONS = ("dissolved", "conditional", "splitSection", "unreferenced", "unresolved")
+STRUCTURAL_POLICY_FRAGMENTS = selector(
+    "structural", keys=("kind", "disposition"),
+    values={"kind": ("policyFragments",), "disposition": FRAGMENT_DISPOSITIONS},
+    site="plan._policy_fragments",
+    reads=(*_DECIDED, "blocking", "cannotAccept"),
+)
 
 READY = "ready"
 NEEDS_DECISION = "needs-decision"
@@ -1043,6 +1054,80 @@ class PlanBuilder:
                 blocking=rule["verdict"] == "gap",
             )
 
+    def _policy_fragments(self, structural: list[dict[str, Any]]) -> None:
+        """What became of each policy fragment, said once per fragment.
+
+        AI Gateway has no policy composition: not fragments, not includes, not
+        inheritance. So a fragment has one fate -- dissolved into every scope
+        that includes it -- and the only question is whether the dissolution
+        keeps what the fragment meant. An item per fragment is what makes that
+        answerable without reading the policies it contributed and working
+        backwards.
+        """
+        graph = self.graph()
+        for document in graph.fragments():
+            name = (document.get("scope") or {}).get("name") or ""
+            sites = graph.includers(document["id"])
+            sections = {site.section for site in sites}
+            if not sites:
+                disposition = "unreferenced"
+            elif any(site.under_conditional for site in sites):
+                disposition = "conditional"
+            elif len(sections) > 1:
+                disposition = "splitSection"
+            else:
+                disposition = "dissolved"
+            rule = STRUCTURAL_POLICY_FRAGMENTS.first(
+                structural, kind="policyFragments", disposition=disposition
+            ) or {}
+            self._add(
+                item_id=ids.item("fragment", document["id"]),
+                source={"assetId": document["id"], "assetKind": "policyFragment", "aspect": name},
+                kind=rule.get("itemKind"),
+                verdict=rule.get("verdict", "handled"),
+                proposal=rule.get("proposal"),
+                rationale=rule.get("rationale", ""),
+                options=_options_of(rule),
+                evidence={
+                    "fragment": name,
+                    "disposition": disposition,
+                    "elementCount": len(document.get("elements") or []),
+                    "sections": sorted(sections),
+                    # Whether operation policies were collected decides what
+                    # "nothing includes it" is worth: an operation can include a
+                    # fragment, and those documents are read only when asked for.
+                    "operationPoliciesCollected": self._operation_policies_collected(),
+                    "includedBy": [
+                        {"policyId": site.policy_id, "section": site.section,
+                         "path": site.path, "via": list(site.via),
+                         "underConditional": site.under_conditional}
+                        for site in sites
+                    ],
+                },
+                blocking=rule.get("blocking", False),
+                cannot_accept=rule.get("cannotAccept", False),
+            )
+
+        for missing in graph.unresolved():
+            rule = STRUCTURAL_POLICY_FRAGMENTS.first(
+                structural, kind="policyFragments", disposition="unresolved"
+            ) or {}
+            self._add(
+                item_id=ids.item("fragment", f"unresolved/{missing}"),
+                source={"assetId": None, "assetKind": "policyFragment", "aspect": missing},
+                kind=rule.get("itemKind", "enumerate"),
+                verdict=rule.get("verdict", "gap"),
+                rationale=rule.get("rationale", ""),
+                options=_options_of(rule),
+                evidence={"fragment": missing, "disposition": "unresolved"},
+                blocking=rule.get("blocking", True),
+                cannot_accept=rule.get("cannotAccept", True),
+            )
+
+    def _operation_policies_collected(self) -> bool:
+        options = (self.inventory.get("collection") or {}).get("options") or {}
+        return bool(options.get("operationPolicies"))
+
     def graph(self) -> policy_mod.PolicyGraph:
         """Which policy governs which API, asked the same way `collect` asks it.
 
@@ -1121,6 +1206,7 @@ class PlanBuilder:
     def _structural(self) -> None:
         shared = self.inventory.get("shared") or {}
         structural = self.caps.structural_rules()
+        self._policy_fragments(structural)
 
         for workspace in self.inventory.get("workspaces") or []:
             if workspace.get("name") == "default" or not workspace.get("collected"):

@@ -43,7 +43,7 @@ from .policy import FAMILIES, family_of
 
 # Importing these registers every selection site in dispatch.REGISTRY. The
 # import is the point: the contract checked below is the one the planner runs.
-from . import plan as _plan  # noqa: F401  (imported for its selector declarations)
+from . import plan as _plan  # imported for its selector declarations, and for the vocabularies below
 
 ERROR = "error"
 WARNING = "warning"
@@ -433,6 +433,45 @@ def _explain_unreachable(rule: dict[str, Any], section: str, label: str, out: Co
     )
 
 
+def check_fragment_dispositions(rules: dict[str, Any], out: Compilation) -> None:
+    """Every case the planner can classify a fragment into must have a rule.
+
+    `plan.FRAGMENT_DISPOSITIONS` is the vocabulary, declared where the
+    classifying happens, so this is one list checked rather than two kept in
+    step. The gap it closes is specific to a site that dispatches on a second
+    match key: a `policyFragments` rule naming no disposition passes
+    `Selector.governs` -- pinning fewer keys is allowed, and usually right --
+    and is then never equal to any disposition the planner asks for. Reachable
+    and unselectable at once, which is the shape of a rule nobody notices.
+    """
+    structural = rules.get("structural") or []
+    out.cover(
+        f"{len(_plan.FRAGMENT_DISPOSITIONS)} fragment dispositions the planner can classify: "
+        f"each answered by a rule naming it"
+    )
+    seen: set[str] = set()
+    for rule in structural:
+        match = rule.get("match") or {}
+        if match.get("kind") != "policyFragments":
+            continue
+        disposition = match.get("disposition")
+        if disposition is None:
+            out.error(
+                "fragment-disposition",
+                "a policyFragments rule names no disposition, so no selection site is ever equal "
+                f"to it. Name one of: {', '.join(_plan.FRAGMENT_DISPOSITIONS)}.",
+            )
+            continue
+        seen.add(disposition)
+    missing = [name for name in _plan.FRAGMENT_DISPOSITIONS if name not in seen]
+    if missing:
+        out.error(
+            "fragment-disposition",
+            f"no rule answers for {', '.join(missing)}, which `plan._policy_fragments` can "
+            "classify a fragment into. The item would carry no verdict and no rationale.",
+        )
+
+
 def check_policy_vocabulary(rules: dict[str, Any], out: Compilation) -> None:
     """Every policy element the collector can name must be answered deliberately.
 
@@ -632,6 +671,7 @@ def compile_contract(
     check_pins(catalog, catalog_path, rules, surface, out)
     check_rules(catalog, rules, out)
     check_policy_vocabulary(rules, out)
+    check_fragment_dispositions(rules, out)
     if newest_release:
         check_release_pin(catalog, newest_release, out)
     return out
