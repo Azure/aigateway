@@ -1865,3 +1865,110 @@ class TestWhatGovernsNothingIsCountedRatherThanAbsent:
                    for m in (i.get("evidence") or {}).get("members") or []
                    if m.get("path", "").startswith("inbound/retry[1]")]
         assert members, "a policy inside a retry is a policy"
+
+
+class TestAnOperationIsAScopeOfItsOwn:
+    """`--operation-policies` is off by default, so an operation policy is rare
+    and easy to leave out of a walk. Left out it raised no item at all, which
+    is a quieter version of the stranding this resolution exists to end."""
+
+    def _with_operation(self, inventory, **attributes):
+        document = copy.deepcopy(inventory)
+        operation = policy_document(
+            document, "policy:operation/aoai-api/chat",
+            {"level": "operation", "name": "chat", "apiName": "aoai-api",
+             "workspace": "default"},
+        )
+        operation["elements"].append(element(
+            "llm-token-limit", "inbound/llm-token-limit[1]", family="tokenLimit",
+            attributes={"tokens-per-minute": "500", "counter-key": "op", **attributes},
+        ))
+        return document
+
+    def test_its_policy_reaches_the_models_of_its_api(self, inventory, capabilities):
+        document = self._with_operation(inventory)
+        item = limit_item(build_plan(document, capabilities), "policy:operation/aoai-api/chat")
+        assert {m["assetId"] for m in item["evidence"]["members"]} == {"model:aoai-api"}
+        assert all(obj["modelName"] for obj in item["target"]["objects"])
+
+    def test_it_is_not_counted_as_governing_nothing(self, inventory, capabilities):
+        document = self._with_operation(inventory)
+        coverage = build_plan(document, capabilities)["policyCoverage"]
+        assert coverage["dispositions"].get("classified")
+        # The operation's own element is the only one added, so the count of
+        # what governs nothing must not have moved.
+        before = build_plan(copy.deepcopy(inventory), capabilities)["policyCoverage"]
+        assert (coverage["dispositions"].get("governsNothing", 0)
+                == before["dispositions"].get("governsNothing", 0))
+
+    def test_the_apis_own_policy_is_not_counted_twice_because_of_it(
+        self, inventory, capabilities
+    ):
+        document = self._with_operation(inventory)
+        coverage = build_plan(document, capabilities)["policyCoverage"]
+        walked = sum(len(d.get("elements") or []) for d in document["policies"])
+        assert coverage["walked"] == walked
+        assert sum(coverage["dispositions"].values()) == walked
+
+
+class TestAFragmentNobodyCouldReadIsNotADissolvedOne:
+    def _unreadable(self, inventory, *, included):
+        document = copy.deepcopy(inventory)
+        broken = policy_document(
+            document, "policy:fragment/broken",
+            {"level": "fragment", "name": "broken", "workspace": "default"},
+        )
+        broken["stats"] = {"sections": []}
+        broken["parseError"] = (
+            "The body could not be read, so what this fragment contains is unknown."
+        )
+        if included:
+            includes(document, "policy:api/aoai-api",
+                     {"level": "api", "name": "aoai-api", "workspace": "default"}, "broken")
+        return document
+
+    def test_an_included_one_blocks_rather_than_reading_as_handled(
+        self, inventory, capabilities
+    ):
+        # It has no elements to dissolve and nobody can say what it carried, so
+        # a clean dissolution is the stronger of the two claims and the false one.
+        item = fragment_item(build_plan(self._unreadable(inventory, included=True),
+                                        capabilities), "broken")
+        assert item["verdict"] == "gap"
+        assert item["blocking"] is True
+        assert item["evidence"]["parseError"]
+
+    def test_the_include_resolves_to_nothing_rather_than_to_no_elements(
+        self, inventory, capabilities
+    ):
+        plan = build_plan(self._unreadable(inventory, included=True), capabilities)
+        assert [i for i in plan["items"] if i["source"]["aspect"] == "broken"
+                and i["blocking"]]
+
+
+class TestBlockingIsScopedToWhatIsBeingMigrated:
+    def test_an_unused_fragment_naming_a_missing_one_does_not_block(
+        self, inventory, capabilities
+    ):
+        """It governs no traffic, so a decision about it is a decision about a
+        workload nobody is moving."""
+        document = copy.deepcopy(inventory)
+        orphan = policy_document(
+            document, "policy:fragment/orphan",
+            {"level": "fragment", "name": "orphan", "workspace": "default"},
+        )
+        orphan["stats"] = {"sections": ["fragment"]}
+        orphan["elements"].append(element(
+            "include-fragment", "fragment/include-fragment[1]", section="fragment",
+            family="composition", fragment_id="gone",
+        ))
+        plan = build_plan(document, capabilities)
+        assert not [i for i in plan["items"] if i["source"]["aspect"] == "gone"]
+        assert fragment_item(plan, "orphan")["verdict"] == "notApplicable"
+
+    def test_one_a_migrated_api_reaches_still_does(self, inventory, capabilities):
+        document = copy.deepcopy(inventory)
+        includes(document, "policy:api/aoai-api",
+                 {"level": "api", "name": "aoai-api", "workspace": "default"}, "gone")
+        item = fragment_item(build_plan(document, capabilities), "gone")
+        assert item["blocking"] is True

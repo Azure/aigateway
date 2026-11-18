@@ -517,18 +517,29 @@ class PolicyGraph:
         however globally that policy is written. A scope with no document of its
         own inherits, which is APIM's default template.
         """
-        state = _Walk(self, workspace=workspace)
-        chain = self._chain(api=api, workspace=workspace, operation=operation, levels=levels)
+        state = _Walk(self)
         occurrences: list[Occurrence] = []
-        for section in SECTIONS:
-            occurrences.extend(state.expand_scope(chain, len(chain) - 1, section))
+        examined: list[str] = []
+        # One chain per product, not one chain through all of them. A product is
+        # an alternative context -- which one applies depends on the
+        # subscription the call arrived on -- so stacking them made the order
+        # they were collected in decide the answer, and let one product's
+        # section without `<base />` suppress another product's policy and the
+        # global policy with it. Resolved apart and unioned, every product's
+        # policy reaches the plan and none of them cuts off a sibling.
+        for chain in self._chains(
+            api=api, workspace=workspace, operation=operation, levels=levels
+        ):
+            for section in SECTIONS:
+                occurrences.extend(state.expand_scope(chain, len(chain) - 1, section))
+            for _, document in chain:
+                if document is not None and document["id"] not in examined:
+                    examined.append(document["id"])
         return Resolution(
             occurrences=tuple(_unique(occurrences)),
-            scopes_examined=tuple(
-                document["id"] for _, document in chain if document is not None
-            ),
+            scopes_examined=tuple(examined),
             unresolved_fragments=tuple(state.unresolved),
-            inheritance_breaks=tuple(state.breaks),
+            inheritance_breaks=tuple(_unique_breaks(state.breaks)),
         )
 
     # ------------------------------------------------------------- backward
@@ -541,15 +552,20 @@ class PolicyGraph:
         fragment reached through another fragment resolves to the runnable scope
         at the end of the chain, since a fragment is never a scope itself, and
         `via` names that chain from the include site inwards.
+
+        A branch anywhere on that chain makes the arrival conditional, exactly
+        as it does walking forwards. Reading only the outermost include site
+        reported a fragment pulled in under a `choose` two hops down as plainly
+        dissolved, so the condition it loses went unmentioned.
         """
         target = self._fragments_by_id().get(fragment)
         if target is None:
             return []
         found: list[Occurrence] = []
         seen: set[str] = set()
-        pending: list[tuple[dict[str, Any], tuple[str, ...]]] = [(target, ())]
+        pending: list[tuple[dict[str, Any], tuple[str, ...], bool]] = [(target, (), False)]
         while pending:
-            document, via = pending.pop(0)
+            document, via, conditional = pending.pop(0)
             if document["id"] in seen:
                 # APIM stores a cycle of includes even though it cannot run one.
                 continue
@@ -560,15 +576,16 @@ class PolicyGraph:
                 if self._fragment_for(element["fragmentId"], _workspace_of(site_scope)) is not document:
                     continue
                 chain = (document["id"], *via)
+                branched = conditional or under_conditional(element)
                 if site_scope.get("level") == "fragment":
-                    pending.append((site, chain))
+                    pending.append((site, chain, branched))
                     continue
                 found.append(Occurrence(
                     element=element,
                     policy_id=site["id"],
                     section=element.get("section") or "",
                     via=chain,
-                    under_conditional=under_conditional(element),
+                    under_conditional=branched,
                 ))
         return found
 
@@ -585,6 +602,24 @@ class PolicyGraph:
             }
         )
 
+    def operations_of(self, *, api: str, workspace: str | None = None) -> list[str]:
+        """The operations of one API that have a policy document of their own.
+
+        Operation policies are collected only when asked for, so this is empty
+        on an ordinary run -- and an operation-scoped policy that nothing
+        resolved would otherwise raise no item at all.
+        """
+        scoped = _fold(ids.scoped(workspace, api))
+        names: list[str] = []
+        for document in self._documents:
+            scope = document.get("scope") or {}
+            if scope.get("level") != "operation":
+                continue
+            parent = _fold(ids.scoped(_workspace_of(scope), scope.get("apiName") or ""))
+            if parent == scoped and scope.get("name"):
+                names.append(scope["name"])
+        return names
+
     def fragments(self) -> list[dict[str, Any]]:
         """Every collected fragment document, in inventory order."""
         return [
@@ -595,30 +630,36 @@ class PolicyGraph:
 
     # --------------------------------------------------------------- scopes
 
-    def _chain(
+    def _chains(
         self, *, api: str, workspace: str | None, operation: str | None, levels: Sequence[str]
-    ) -> list[tuple[str, dict[str, Any] | None]]:
-        """The scopes governing one API, outermost first."""
+    ) -> list[list[tuple[str, dict[str, Any] | None]]]:
+        """The scopes governing one API, outermost first -- one chain per product.
+
+        Several products can carry the same API, and which one's policy runs
+        depends on the subscription the call arrived on. Each is therefore its
+        own chain rather than a link in one: reporting a product's limit only
+        when it happens to be collected last would be a confident negative.
+        """
         scoped = ids.scoped(workspace, api)
-        chain: list[tuple[str, dict[str, Any] | None]] = []
+        head: list[tuple[str, dict[str, Any] | None]] = []
         if "global" in levels:
-            chain.append(("global", self._by_id.get(ids.policy("global"))))
+            head.append(("global", self._by_id.get(ids.policy("global"))))
         if "workspace" in levels and workspace and workspace.lower() != "default":
-            chain.append(("workspace", self._by_id.get(ids.policy("workspace", workspace))))
-        if "product" in levels:
-            # Several products can carry the same API, and which one's policy
-            # runs depends on the subscription the call arrived on. They stack
-            # here rather than one being chosen, because reporting one product's
-            # limit and not another's would be a confident negative.
-            for product in self._products_of(api, workspace):
-                chain.append(("product", self._by_id.get(product)))
+            head.append(("workspace", self._by_id.get(ids.policy("workspace", workspace))))
+        tail: list[tuple[str, dict[str, Any] | None]] = []
         if "api" in levels:
-            chain.append(("api", self._by_id.get(ids.policy("api", scoped))))
+            tail.append(("api", self._by_id.get(ids.policy("api", scoped))))
         if "operation" in levels and operation:
-            chain.append(
+            tail.append(
                 ("operation", self._by_id.get(ids.policy("operation", f"{scoped}/{operation}")))
             )
-        return chain
+        products = self._products_of(api, workspace) if "product" in levels else []
+        if not products:
+            return [head + tail]
+        return [
+            head + [("product", self._by_id.get(product))] + tail
+            for product in products
+        ]
 
     def _products_of(self, api: str, workspace: str | None) -> list[str]:
         api_id = ids.api(api, workspace)
@@ -654,7 +695,6 @@ class _Walk:
     """One `governing` call: the splices it made and what it could not splice."""
 
     graph: PolicyGraph
-    workspace: str | None = None
     unresolved: list[str] = field(default_factory=list)
     breaks: list[dict[str, Any]] = field(default_factory=list)
 
@@ -691,6 +731,14 @@ class _Walk:
                 out.extend(self.expand_fragment(
                     element["fragmentId"], section=section, via=(),
                     under_branch=conditional, seen=frozenset(),
+                    # The workspace of the document that authored the include,
+                    # not of the API consuming it. An `include-fragment` in the
+                    # global policy names a service fragment wherever it is
+                    # inherited, and resolving it against the reader's
+                    # workspace handed a finance API the finance fragment --
+                    # a different policy, and one the reverse lookup disagreed
+                    # with.
+                    workspace=_workspace_of(document.get("scope") or {}),
                 ))
         if not inherited:
             # The nearest ancestor that says anything, not the immediate one:
@@ -716,10 +764,15 @@ class _Walk:
         via: tuple[str, ...],
         under_branch: bool,
         seen: frozenset[str],
+        workspace: str | None,
     ) -> list[Occurrence]:
         """A fragment's elements, as they run at the site that included them."""
-        document = self.graph.fragment_document(name, self.workspace)
-        if document is None:
+        document = self.graph.fragment_document(name, workspace)
+        if document is None or document.get("parseError"):
+            # A fragment whose body could not be read, or would not parse, is
+            # as unknown as one that was never collected. Splicing its empty
+            # element list would say the include contributed nothing, which is
+            # the one thing nobody can know about it.
             if name not in self.unresolved:
                 self.unresolved.append(name)
             return []
@@ -743,6 +796,9 @@ class _Walk:
                 out.extend(self.expand_fragment(
                     element["fragmentId"], section=section, via=chain,
                     under_branch=conditional, seen=seen | {key},
+                    # A nested include is authored in the fragment, so the
+                    # fragment's own workspace is what resolves it.
+                    workspace=_workspace_of(document.get("scope") or {}),
                 ))
         return out
 
@@ -765,16 +821,35 @@ def _unique(occurrences: Iterable[Occurrence]) -> list[Occurrence]:
     Two products carrying the same API each inherit the same global policy, and
     the global elements would otherwise be reported twice.
     """
-    seen: set[tuple[int, tuple[str, ...]]] = set()
+    seen: set[tuple[int, tuple[str, ...], str, bool]] = set()
     out: list[Occurrence] = []
     for occurrence in occurrences:
         # The element itself, not where it is written: a document can hold two
         # elements at one path -- nothing stops it -- and collapsing those would
         # drop a policy rather than a duplicate route.
-        key = (id(occurrence.element), occurrence.via)
+        #
+        # Section and branch are part of the route. The same fragment included
+        # plainly and again under a `choose` reaches the same elements by the
+        # same `via`, and keying on that alone kept whichever came first --
+        # losing the conditional occurrence, which is the one that needs
+        # deciding.
+        key = (id(occurrence.element), occurrence.via,
+               occurrence.section, occurrence.under_conditional)
         if key not in seen:
             seen.add(key)
             out.append(occurrence)
+    return out
+
+
+def _unique_breaks(breaks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One break per scope and section, however many product chains found it."""
+    seen: set[tuple[str, str]] = set()
+    out: list[dict[str, Any]] = []
+    for entry in breaks:
+        key = (entry["policyId"], entry["section"])
+        if key not in seen:
+            seen.add(key)
+            out.append(entry)
     return out
 
 

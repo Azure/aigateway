@@ -139,6 +139,8 @@ class PlanBuilder:
         self.unrecognised_policies: list[dict[str, Any]] = []
         self._graph: policy_mod.PolicyGraph | None = None
         self._policy_index: dict[str, dict[str, Any]] = {}
+        # `fragment-id`s the selected assets reach and nothing resolves.
+        self._unresolved_fragments: list[str] = []
         # A model API names the backend it routes to; the provider asset built
         # from that backend is what knows the protocol it speaks.
         self._provider_by_backend: dict[str, dict[str, Any]] = {
@@ -962,8 +964,10 @@ class PlanBuilder:
         # inside a `choose` by another is two different claims about the same
         # element, and the conditional one is not `handled`.
         governed: dict[tuple[int, bool], list[tuple[dict[str, Any], policy_mod.Occurrence]]] = {}
+        unresolved_fragments: list[str] = []
         for asset, api, workspace in self._policy_assets():
-            for occurrence in graph.governing(api=api, workspace=workspace).occurrences:
+            for occurrence in self._governing(graph, api=api, workspace=workspace,
+                                              unresolved=unresolved_fragments):
                 # Keyed on the element itself, not on where it is written: the
                 # graph hands back the record the inventory holds, so identity
                 # is exact where a document-and-path pair only almost is.
@@ -1021,6 +1025,7 @@ class PlanBuilder:
                 })
 
         self._count_policy_coverage(dispositions, {key for key, _ in governed})
+        self._unresolved_fragments = unresolved_fragments
 
         for signature, batch in sorted(batches.items()):
             rule = batch["rule"]
@@ -1071,6 +1076,13 @@ class PlanBuilder:
             sections = {site.section for site in sites}
             if not sites:
                 disposition = "unreferenced"
+            elif document.get("parseError"):
+                # Collected, included, and unreadable. It has no elements to
+                # dissolve and nobody can say what it carried, so it is the
+                # same unknown as a `fragment-id` naming nothing -- and a
+                # dissolution reported as clean would be the stronger claim of
+                # the two that is false.
+                disposition = "unresolved"
             elif any(site.under_conditional for site in sites):
                 disposition = "conditional"
             elif len(sections) > 1:
@@ -1092,6 +1104,7 @@ class PlanBuilder:
                     "fragment": name,
                     "disposition": disposition,
                     "elementCount": len(document.get("elements") or []),
+                    "parseError": document.get("parseError"),
                     "sections": sorted(sections),
                     # Whether operation policies were collected decides what
                     # "nothing includes it" is worth: an operation can include a
@@ -1108,7 +1121,11 @@ class PlanBuilder:
                 cannot_accept=rule.get("cannotAccept", False),
             )
 
-        for missing in graph.unresolved():
+        # From what the selected assets actually resolve to, not from every
+        # include reference in the inventory. An unreferenced fragment naming a
+        # missing one governs nothing, and blocking a migration on it would be
+        # a decision about a workload nobody is moving.
+        for missing in sorted(set(self._unresolved_fragments)):
             rule = STRUCTURAL_POLICY_FRAGMENTS.first(
                 structural, kind="policyFragments", disposition="unresolved"
             ) or {}
@@ -1141,6 +1158,26 @@ class PlanBuilder:
                 products=(self.inventory.get("shared") or {}).get("products") or [],
             )
         return self._graph
+
+    def _governing(self, graph, *, api, workspace, unresolved: list[str]):
+        """Everything that runs for one API, its own operations included.
+
+        An operation is a scope of its own, and the chain only reaches it when
+        asked. Left out, an operation-scoped token limit raised no item at all
+        and was counted as governing nothing -- a quieter version of the
+        stranding this change exists to end. Its own elements only, because the
+        scopes above it are already in the API's resolution.
+        """
+        resolution = graph.governing(api=api, workspace=workspace)
+        occurrences = list(resolution.occurrences)
+        unresolved.extend(resolution.unresolved_fragments)
+        for operation in graph.operations_of(api=api, workspace=workspace):
+            nested = graph.governing(
+                api=api, workspace=workspace, operation=operation, levels=("operation",)
+            )
+            occurrences.extend(nested.occurrences)
+            unresolved.extend(nested.unresolved_fragments)
+        return occurrences
 
     def _policy_assets(self):
         """The assets a policy can govern, with the source API each came from."""

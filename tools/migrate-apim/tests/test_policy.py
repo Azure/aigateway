@@ -421,3 +421,155 @@ class TestScopesOutsideTheApi:
         resolution = graph.governing(api="aoai", levels=("api",))
         assert "ip-filter" in names(resolution)
         assert "llm-token-limit" not in names(resolution)
+
+
+class TestARouteIsMoreThanTheFragmentAtTheEndOfIt:
+    """Two includes of one fragment are two arrivals, and the weaker of them
+    must not be the one that survives."""
+
+    def test_a_plain_include_and_a_conditional_one_both_reach_rule_selection(self):
+        graph = policy.PolicyGraph([
+            api_policy("aoai", inbound(
+                "<include-fragment fragment-id='routing' />",
+                "<choose><when condition='@(true)'>"
+                "<include-fragment fragment-id='routing' />"
+                "</when></choose>")),
+            fragment("routing", "<set-backend-service backend-id='east' />"),
+        ])
+        arrivals = [o for o in graph.governing(api="aoai").occurrences
+                    if o.name == "set-backend-service"]
+        assert {o.under_conditional for o in arrivals} == {True, False}
+
+    def test_the_same_fragment_in_two_sections_arrives_in_both(self):
+        graph = policy.PolicyGraph([
+            api_policy("aoai", "<policies>"
+                               "<inbound><include-fragment fragment-id='shared' /></inbound>"
+                               "<backend><base /></backend>"
+                               "<outbound><include-fragment fragment-id='shared' /></outbound>"
+                               "<on-error><base /></on-error></policies>"),
+            fragment("shared", "<set-header name='x' exists-action='override' />"),
+        ])
+        arrivals = [o for o in graph.governing(api="aoai").occurrences if o.name == "set-header"]
+        assert {o.section for o in arrivals} == {"inbound", "outbound"}
+
+    def test_a_branch_anywhere_on_the_chain_makes_the_arrival_conditional(self):
+        """Reading only the outermost include site reported a fragment pulled
+        in under a `choose` two hops down as plainly dissolved."""
+        graph = policy.PolicyGraph([
+            api_policy("aoai", inbound("<include-fragment fragment-id='outer' />")),
+            fragment("outer", "<choose><when condition='@(true)'>"
+                              "<include-fragment fragment-id='inner' />"
+                              "</when></choose>"),
+            fragment("inner", "<set-backend-service backend-id='east' />"),
+        ])
+        [forward] = [o for o in graph.governing(api="aoai").occurrences
+                     if o.name == "set-backend-service"]
+        assert forward.under_conditional is True
+        [backward] = graph.includers("policy:fragment/inner")
+        assert backward.under_conditional is True, "the two directions have to agree"
+
+
+class TestAProductIsAnAlternativeAndNotALink:
+    """Which product's policy runs depends on the subscription a call arrived
+    on. Chained, the order they were collected in decided the answer."""
+
+    def _two_products(self, second_inherits):
+        return policy.PolicyGraph(
+            [
+                document("policy:global", {"level": "global", "name": None,
+                                           "workspace": "default"},
+                         inbound("<llm-token-limit tokens-per-minute='7000' />")),
+                document("policy:product/a", {"level": "product", "name": "a",
+                                              "workspace": "default"},
+                         inbound("<base />", "<ip-filter action='allow' />")),
+                document("policy:product/b", {"level": "product", "name": "b",
+                                              "workspace": "default"},
+                         inbound(*(["<base />"] if second_inherits else []),
+                                 "<rate-limit calls='10' renewal-period='60' />")),
+                api_policy("aoai", inbound("<base />")),
+            ],
+            products=[{"policyId": "policy:product/a", "apiIds": ["api:aoai"]},
+                      {"policyId": "policy:product/b", "apiIds": ["api:aoai"]}],
+        )
+
+    def test_both_products_policies_reach_the_api(self):
+        resolved = names(self._two_products(second_inherits=True).governing(api="aoai"))
+        assert "ip-filter" in resolved and "rate-limit" in resolved
+
+    def test_one_product_omitting_base_does_not_suppress_the_other(self):
+        # Chained, `b` without `<base />` cut off `a` and the global policy
+        # with it, so reordering the products changed what reached the plan.
+        resolved = names(self._two_products(second_inherits=False).governing(api="aoai"))
+        assert "ip-filter" in resolved, "product a still carries its own filter"
+        assert "llm-token-limit" in resolved, "and still inherits the global limit"
+        assert "rate-limit" in resolved
+
+
+class TestAnIncludeIsResolvedWhereItIsWritten:
+    def test_a_global_include_names_the_service_fragment_not_the_readers(self):
+        """Resolved against the consuming API's workspace, a finance API got
+        the finance fragment out of the service's own global policy."""
+        graph = policy.PolicyGraph([
+            document("policy:global", {"level": "global", "name": None, "workspace": "default"},
+                     inbound("<include-fragment fragment-id='shared' />")),
+            api_policy("model-api", inbound("<base />"), workspace="finance"),
+            fragment("shared", "<llm-token-limit tokens-per-minute='100' />"),
+            fragment("shared", "<llm-token-limit tokens-per-minute='999' />", workspace="finance"),
+        ])
+        [occurrence] = [o for o in graph.governing(api="model-api", workspace="finance").occurrences
+                        if o.name == "llm-token-limit"]
+        assert occurrence.policy_id == "policy:fragment/shared"
+        assert occurrence.element["attributes"]["tokens-per-minute"] == "100"
+
+    def test_a_workspace_include_still_names_the_workspace_fragment(self):
+        graph = policy.PolicyGraph([
+            api_policy("model-api", inbound("<include-fragment fragment-id='shared' />"),
+                       workspace="finance"),
+            fragment("shared", "<llm-token-limit tokens-per-minute='100' />"),
+            fragment("shared", "<llm-token-limit tokens-per-minute='999' />", workspace="finance"),
+        ])
+        [occurrence] = [o for o in graph.governing(api="model-api", workspace="finance").occurrences
+                        if o.name == "llm-token-limit"]
+        assert occurrence.policy_id == "policy:fragment/finance/shared"
+
+
+class TestAnUnreadableFragmentIsNotAnEmptyOne:
+    def test_its_include_resolves_to_nothing_rather_than_to_no_elements(self):
+        unreadable = fragment("broken", "")
+        unreadable["parseError"] = "the body could not be read"
+        graph = policy.PolicyGraph([
+            api_policy("aoai", inbound("<include-fragment fragment-id='broken' />")),
+            unreadable,
+        ])
+        assert graph.governing(api="aoai").unresolved_fragments == ("broken",)
+
+
+class TestOperationsAreScopesOfTheirOwn:
+    def test_the_api_names_the_operations_that_carry_a_policy(self):
+        graph = policy.PolicyGraph([
+            api_policy("aoai", inbound("<base />")),
+            document("policy:operation/aoai/chat",
+                     {"level": "operation", "name": "chat", "apiName": "aoai",
+                      "workspace": "default"},
+                     inbound("<llm-token-limit tokens-per-minute='500' />")),
+        ])
+        assert graph.operations_of(api="aoai") == ["chat"]
+
+    def test_an_operation_of_another_api_is_not_one_of_these(self):
+        graph = policy.PolicyGraph([
+            document("policy:operation/other/chat",
+                     {"level": "operation", "name": "chat", "apiName": "other",
+                      "workspace": "default"},
+                     inbound("<llm-token-limit tokens-per-minute='500' />")),
+        ])
+        assert graph.operations_of(api="aoai") == []
+
+    def test_an_operation_in_a_workspace_belongs_to_that_workspaces_api(self):
+        graph = policy.PolicyGraph([
+            document("policy:operation/finance/model-api/chat",
+                     {"level": "operation", "name": "chat", "apiName": "model-api",
+                      "workspace": "finance"},
+                     inbound("<llm-token-limit tokens-per-minute='500' />")),
+        ])
+        assert graph.operations_of(api="model-api", workspace="finance") == ["chat"]
+        assert graph.operations_of(api="model-api") == []
