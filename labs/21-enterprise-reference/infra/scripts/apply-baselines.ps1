@@ -6,9 +6,9 @@
 #     fields you set in the portal. Updating a costLimit this way keeps its accumulated spend.
 #   - A baseline whose type doesn't exist is appended. A new costLimit gets a fresh, stable id.
 #   - Policies of other types (for example ones you added in the portal) are left untouched.
-# Running it twice gives the same result. The az aigateway policy commands set one policy at a time from flags, so
-# to write the whole array from a file, the script calls the management API with az rest. Requires PowerShell 7 or
-# later and Azure CLI.
+# Running it twice gives the same result. The az aigateway policy commands take each setting as a flag, not a
+# policy array, so to write the array from a file, the script calls the management API with az rest. Requires
+# PowerShell 7 or later and Azure CLI.
 #
 # Usage:
 #   $env:RG = "<gateway-resource-group>"; $env:GATEWAY = "<gateway-name>"
@@ -22,7 +22,7 @@ if (-not $env:RG) { throw 'Set $env:RG to the gateway resource group' }
 if (-not $env:GATEWAY) { throw 'Set $env:GATEWAY to the gateway name' }
 
 $baselinePolicies = @(Get-Content -Raw -Path $Baselines | ConvertFrom-Json -AsHashtable)
-$apiVersion = '2025-09-01-preview'
+$apiVersion = '2026-11-01'
 $sub = az account show --query id -o tsv
 $url = "https://management.azure.com/subscriptions/$sub/resourceGroups/$($env:RG)/providers/Microsoft.ApiManagement/aigateways/$($env:GATEWAY)/workspaces/default?api-version=$apiVersion"
 

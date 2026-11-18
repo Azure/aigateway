@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+# Lab 32: "azd up" creates the quick start's gateway and model, then the app team's Foundry project with its
+# connection to the gateway and the roles that make it work.
+# The lab clones the repo's main branch from GitHub and runs azd up in this folder.
+name: aigw-lab32
+metadata:
+  template: aigw-lab32@1.0.0
+infra:
+  provider: bicep
+  path: infra

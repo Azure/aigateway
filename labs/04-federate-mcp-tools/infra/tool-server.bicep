@@ -3,6 +3,8 @@
 // Clients call one governed endpoint, <gateway-url>/default/toolservers/<serverName>/mcp,
 // and the gateway publishes each backend's tools with a namespace prefix (<namespace>_<tool>).
 // Set secondNamespace to add the same public server as a second, optional backend and see namespacing at work.
+// A required backend has mode failClosed: tool discovery fails if it fails. An optional one has mode failOpen: the
+// gateway skips it. displayName must be unique among the MCP servers of the gateway.
 // Set supportedVersions to pin the MCP protocol versions that clients can negotiate.
 // Set apiKeyName to also create a runtime API key for your clients. Its value is never an output.
 
@@ -41,51 +43,57 @@ var versions = empty(supportedVersions) ? {} : { versions: split(replace(support
 var primaryEndpoint = {
   namespace: namespace
   kind: 'mcp'
+  mode: 'failClosed'
   mcp: {
-    url: mcpUrl
+    endpoint: {
+      url: mcpUrl
+    }
     transport: 'streamableHttp'
   }
-  required: true
 }
 
 var secondEndpoint = {
   namespace: secondNamespace
   kind: 'mcp'
+  mode: 'failOpen'
   mcp: {
-    url: secondMcpUrl
+    endpoint: {
+      url: secondMcpUrl
+    }
     transport: 'streamableHttp'
   }
-  required: false
 }
 
 #disable-next-line BCP081
-resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
+resource gateway 'Microsoft.ApiManagement/aigateways@2026-11-01' existing = {
   name: gatewayName
 }
 
 #disable-next-line BCP081
-resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' existing = {
+resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2026-11-01' existing = {
   parent: gateway
   name: 'default'
 }
 
 #disable-next-line BCP081
-resource toolServer 'Microsoft.ApiManagement/aigateways/workspaces/toolServers@2025-09-01-preview' = {
+resource toolServer 'Microsoft.ApiManagement/aigateways/workspaces/toolServers@2026-11-01' = {
   parent: workspace
   name: serverName
   properties: union({
     displayName: displayName
     description: serverDescription
-    type: 'mcp'
+    toolServerType: 'mcp'
     endpoints: empty(secondNamespace) ? [ primaryEndpoint ] : [ primaryEndpoint, secondEndpoint ]
   }, versions)
 }
 
 #disable-next-line BCP081
-resource apiKey 'Microsoft.ApiManagement/aigateways/apiKeys@2025-09-01-preview' = if (!empty(apiKeyName)) {
+resource apiKey 'Microsoft.ApiManagement/aigateways/apiKeys@2026-11-01' = if (!empty(apiKeyName)) {
   parent: gateway
   name: apiKeyName
-  properties: {}
+  properties: {
+    displayName: apiKeyName
+  }
 }
 
 output toolServerId string = toolServer.id

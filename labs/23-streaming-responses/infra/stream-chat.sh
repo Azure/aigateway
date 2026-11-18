@@ -27,7 +27,7 @@ done
 PROMPT="${1:-Explain in three short sentences why streaming makes chat apps feel faster.}"
 : "${AI_GATEWAY_URL:?Set AI_GATEWAY_URL to the gateway runtime URL, for example https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com}"
 : "${AI_GATEWAY_MODEL:?Set AI_GATEWAY_MODEL to the callable model alias}"
-: "${AI_GATEWAY_API_KEY:?Set AI_GATEWAY_API_KEY to a runtime key from Access > Keys}"
+: "${AI_GATEWAY_API_KEY:?Set AI_GATEWAY_API_KEY to a runtime key from Access > API keys}"
 
 # reasoning_effort none spends the budget on the reply instead of hidden reasoning, so the first token arrives sooner.
 BODY=$(jq -n --arg m "$AI_GATEWAY_MODEL" --arg p "$PROMPT" --argjson usage "$USAGE" '

@@ -8,13 +8,14 @@
   },
   {
     "type": "requestRateLimit",
-    "callsPerPeriod": 600,
-    "periodSeconds": 60,
+    "count": 600,
+    "period": "minute",
     "counterKey": ["identity"],
     "scope": "workspace"
   },
   {
     "type": "contentSafety",
+    "scope": "resource",
     "hateSeverity": "Medium",
     "violenceSeverity": "Medium",
     "sexualSeverity": "Medium",
@@ -22,6 +23,7 @@
   },
   {
     "type": "ipFilter",
+    "scope": "resource",
     "action": "Allow",
     "cidrRanges": ["203.0.113.10/32"]
   }

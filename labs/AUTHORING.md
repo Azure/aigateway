@@ -35,7 +35,7 @@ summary: One or two sentences shown on catalog cards and in search.
 category: governance            # foundations | models | tools | governance | security | observability | agents | production
 level: Beginner                 # Beginner | Intermediate | Advanced
 duration: 25                    # minutes, realistic for a first-timer
-tracks: [portal, cli, rest, iac] # portal | cli | iac | code | rest – only tracks the lab really offers
+tracks: [portal, cli, rest, iac, terraform] # portal | cli | iac | terraform | code | rest – only tracks the lab really offers
 order: 6                        # catalog order (matches folder number; the quick start uses -1)
 status: new                     # optional: new | preview | emerging
 illustration: diagrams/token-limits.svg   # optional, relative to labs/assets/
@@ -59,6 +59,15 @@ card, and the later labs reuse that setup. The Bicep + azd track moves into `qui
 its `azure.yaml` and `infra/` (see [azd templates](#azd-templates)). It uses lab 02's names (`foundry-models`, `gpt-5-mini`, `app-first-call`), so
 labs 03 onward work on its gateway. Each track ends with the first call and then its own **Clean up** step, so the lab
 has no separate call, verify, or clean up section. Teach the details in labs 00 to 02 instead.
+
+### The home page's architecture map
+
+The hero on the home page is a map of the gateway: its workloads, capabilities, backends, and the Azure services
+around it. Clicking a
+part opens a preview of its first lab and lists the rest under **Related labs**. `HX` in
+[`site/templates.mjs`](site/templates.mjs) maps each part to its labs, most relevant first. When you add a lab, add it
+to every part it teaches; the provider logos belong to **Model providers** (`be-models`), so a lab about one provider
+goes there. Keep each list to about seven labs. `npm run check` warns about a lab that isn't on the map.
 
 ### The Setup guide
 
@@ -197,6 +206,53 @@ lab. Follow [lab 06](06-token-limits/) and the quick start:
 - The track's label is **Bicep + azd**. The site shows the label of the lab's first `iac` marker instead when a lab
   uses another one, such as **Policy as code** in lab 09 or **Bicep** in lab 21.
 
+Every lab that deploys Azure resources also gets a **Terraform** track (`<!-- track: terraform | Terraform -->`, with
+`terraform` in the `tracks` metadata), a root module in the lab's `terraform/` folder that mirrors its Bicep:
+
+```text
+06-token-limits/terraform/
+├── providers.tf        # azapi 2.10.0 and azurerm 5.12.0, pinned exactly, and the azurerm features block
+├── main.tf             # rg-<environment_name>, the base module, then the lab's resources
+├── variables.tf        # environment_name (default aigw-labNN-tf), location (default eastus2), and the lab's knobs
+├── outputs.tf          # the Bicep outputs in snake_case: azure_resource_group, ai_gateway_url, …
+└── limited-alias.tf    # the lab's own resources, named after what they declare
+```
+
+- Declare every `Microsoft.ApiManagement/aigateways` resource with `azapi_resource` at `@2026-11-01` and
+  `schema_validation_enabled = false`, since the provider has no schema for it yet. Use `azurerm` for the resource
+  group, Foundry accounts and deployments, and role assignments: `azurerm_cognitive_account` purges the Foundry
+  account on `terraform destroy` with the `purge_soft_delete_on_destroy` feature, and the
+  `log_analytics_workspace` feature deletes workspaces permanently, like `azd down --purge`.
+- Reuse a base module rather than copying resources:
+  [`quickstart/terraform/resources`](quickstart/terraform/resources) (the counterpart of `resources.bicep`) or
+  [lab 01's `terraform/gateway`](01-provision-gateway/terraform/gateway) (the counterpart of `gateway.bicep`).
+- Name resources with `substr(sha1("<subscription>/<environment_name>/<location>"), 0, 6)` and tag them with
+  `environment-name`. The default `environment_name` ends in `-tf`, so the resource group doesn't collide with the
+  lab's azd environment.
+- Never output a secret. The track reads the runtime key with `az aigateway api-key list-secrets --ids
+  "$(terraform output -raw ai_gateway_id)/apiKeys/<key>"`, so it stays out of the state file. To send a secret,
+  such as a model provider's key, use a write-only argument (`sensitive_body`) and an `ephemeral` variable, which
+  need Terraform 1.11 or later: set `required_version` in the file that uses them, as lab 31 does.
+- `azapi_resource` compares only the keys in `body`, so dropping a key (for example with `merge()`) never shows a
+  change. Set the key to `null` to remove it, as lab 12's `model-provider.tf` does, or list the variable in
+  `replace_triggers_external_values` when the service needs a new resource, as lab 32's connection does.
+- To read a value that the service sets after creation, use `azapi_resource_action` with `method = "GET"` and
+  `replace_triggered_by`, not a data source: a data source reads again on every plan and shows drift.
+- Don't commit `.terraform.lock.hcl`, the state, or plans: `labs/.gitignore` excludes them, and `providers.tf`
+  pins the versions.
+- The track's sections are **Review the configuration** (with `<!-- include: terraform/main.tf -->`), **Deploy
+  with terraform apply** (`cd ~/aigateway/labs/<lab>/terraform`, set `ARM_SUBSCRIPTION_ID`, then `terraform init`,
+  `terraform plan -out tfplan`, and `terraform apply tfplan`), and **Read the outputs and the key**. To change a
+  setting, the reader passes `-var name=value` to `terraform plan` and applies again. Its **Clean up** section runs
+  `terraform destroy -auto-approve`.
+- When **Verify** or a later step runs a script or sample from the lab's folder (`./infra/…`, `python infra/…`),
+  end **Read the outputs and the key** with `cd ..` (PowerShell: `Set-Location ..`), and run every later
+  `terraform` command with `-chdir=terraform`, as labs 02 and 06 do. When a step moves elsewhere, such as a
+  sample app's folder, the next `terraform` command starts with `cd ~/aigateway/labs/<lab>/terraform`. The build warns when a lab has a `terraform/` folder but no Terraform track,
+  or the reverse, or when the track never moves into the folder or never runs `terraform destroy`.
+- Verify each track live: `terraform apply`, then `terraform plan -detailed-exitcode` must exit with 0 (no drift),
+  then the lab's **Verify** steps, then `terraform destroy`.
+
 ## GitHub view
 
 `npm run sync` (also run by `npm run build`) reads the metadata and `catalog.json` and adds GitHub-only chrome to
@@ -316,6 +372,9 @@ short status line with an emoji, so that readers see at a glance what happened. 
   `echo "<emoji> …"` with no variables on the next line. `&&` works in Bash and in PowerShell 7, which the labs
   need.
 - **Pitfalls:** no `!` in Bash echo strings, and write `"${VAR}:"` instead of `"$VAR:"` in PowerShell strings.
+- **Secret prompts:** read a secret with `printf "AI Gateway API key: " && read -rs AI_GATEWAY_API_KEY && echo` in Bash,
+  never `read -rsp` or `read -p`, which zsh rejects with `-p: no coprocess`. In PowerShell, use
+  `Read-Host -AsSecureString` and convert the value only where a command needs it.
 - **Paste-safe Bash:** readers paste blocks into macOS zsh, often with oh-my-zsh. When a paste arrives line by line,
   its `url-quote-magic` backslash-escapes `}`, `]`, `)`, `*`, `?`, and the other glob characters that follow a URL
   on a line that continues an open quote or heredoc, so a JSON value or a jq filter breaks. Keep such a value on one
@@ -362,21 +421,37 @@ Kinds: `NOTE`, `TIP`, `IMPORTANT`, `WARNING`, `CAUTION`. A blockquote starting w
 ### Images and diagrams
 
 - Paths are relative to the README: `![Alt text](../assets/screens/monitoring-overview.png "Caption")`.
-- SVG diagrams in `../assets/diagrams/` are inlined on the site (theme-aware, animated).
+- SVG diagrams in `../assets/diagrams/` are inlined on the site (theme-aware, animated). Their flow lines stop after
+  about 4 seconds and run again on hover. Keep any animation that starts by itself to 5 seconds or less (WCAG 2.2.2).
 - Screens available in `assets/screens/`: `monitoring-overview.png`, `monitoring-trace.png`,
-  `policy-cost-limit-details.png`, `monitoring-token-claim-attributes.png`, `models-aliases.png`,
-  `mcp-tool-controls.png`, `policy-add-wizard.png`, `policy-gateway-scope.png`,
-  `policy-cost-limit-entra-overrides.png`, `policy-tool-threat-protection.jpeg`,
-  `access-entra-role-assignments.webp`, `managed-identities.png`, `models-alias-routing.png`. The
-  `quickstart-01…15-*.webp` set walks the whole portal flow: the gateway switcher, Create AI gateway, provisioning,
-  Home, the Foundry import, aliases, Access › API keys, the Create API key dialogs, Catalog, the playground,
-  Continue in code, and deleting the gateway from All gateways.
+  `policy-cost-limit-details.png`, `monitoring-token-claim-attributes.png`,
+  `gateway-baselines-01-scope.webp` (**Add policy** › **Scope** › **Gateway**), `policy-cost-limit-entra-overrides.png`,
+  `tool-threat-protection-01…04-*.webp` (**Add policy** › **Type**, **Scope**, and **Details** for Agent 365 tool
+  threat protection, then the **Policies** list),
+  `access-entra-role-assignments.webp`, `managed-identities.png`,
+  `mcp-tool-controls-05-tools.webp` (an MCP server's **Tools** with name patterns and blocked tools),
+  `token-limits-01-policy-type.webp` and `streaming-responses-01-policy-type.webp` (the **Add policy** › **Type**
+  step), `content-safety-01-edit-policy.webp`, `model-routing-01-priorities-weights.webp` (**Create alias** ›
+  **Priorities and weights**), `monitoring-13-failed-tool-call.webp`, `networking-inbound-public-access.webp`,
+  `networking-inbound-private-endpoint.webp` (an approved private endpoint on **Networking** › **Inbound**),
+  `networking-outbound-vnet.webp`, and `access-control-plane-01…03-*.webp` (**Add role assignment** › **Manage
+  gateway assets**, Review, and the Access list). The `quickstart-01…15-*.webp` set walks the whole portal flow:
+  the gateway switcher, Create AI gateway, provisioning, Home, the Foundry import, aliases, Access › API keys, the
+  Create API key dialogs, Catalog, the playground, Continue in code, and deleting the gateway from All gateways.
+  Each new lab has its own set: `embeddings-01…08-*.webp` (lab 26), `routing-conditions-01…05-*.webp` (lab 27),
+  `auto-selection-01…10-*.webp` (lab 28), `failover-01…07-*.webp` (lab 29), `agent-hooks-01…06-*.webp` (lab 30),
+  `jev-01…15-*.webp` (lab 31), `foundry-conn-01…14-*.webp` (lab 32, in the Microsoft Foundry portal),
+  `agent-365-01…07-*.webp` (lab 20, in the Microsoft 365 admin center and the AI Gateway portal), and
+  `copilot-obo-01…12-*.webp` (lab 33, in the AI Gateway portal, the Teams Developer Portal, the Microsoft 365 admin
+  center, and Copilot Cowork).
 - New screenshots: crop to the relevant area, replace real names, emails, and IDs with Contoso placeholders, mask
   every key, highlight the controls to select with magenta (`#e3008c`) boxes, and save as WebP, 1600 px wide at most.
 - Diagrams in `assets/diagrams/`: `architecture.svg`, `request-lifecycle.svg`, `aliases.svg`,
   `mcp-federation.svg`, `policy-scopes.svg`, `identity-boundaries.svg`, `observability.svg`,
   `private-networking.svg`, `hosted-agent.svg`, `agent-365.svg`, `threat-protection.svg`, `token-limits.svg`,
-  `alias-routing.svg`, `streaming-usage.svg`, `quickstart.svg`, `github-copilot-byok.svg`, `claude-code.svg`.
+  `alias-routing.svg`, `streaming-usage.svg`, `quickstart.svg`, `github-copilot-byok.svg`, `claude-code.svg`,
+  `embeddings.svg`, `conditional-routing.svg`, `auto-model-selection.svg`, `model-failover.svg`, `agent-hooks.svg`,
+  `jev-decisions.svg`, `foundry-connection.svg`, `copilot-obo.svg`.
 - Provider logos in `assets/providers/`: `microsoft-foundry.png`, `azure-openai.png`, `openai.png`,
   `anthropic.png`, `aws-bedrock.png`, `google-vertex.png`, `custom-models.png`.
 
@@ -438,7 +513,14 @@ Keep the video optional: every step it shows must also be written in the lab.
   `az bicep build --file infra/<file>.bicep --stdout > /dev/null`. Bicep has no types yet for
   `Microsoft.ApiManagement/aigateways`, so put `#disable-next-line BCP081` on the line before each of its `resource`
   declarations, including `existing` ones.
-- Use API version `2025-09-01-preview` for `Microsoft.ApiManagement/*` resources.
+- Use API version `2026-11-01` for `Microsoft.ApiManagement/aigateways` resources, with its field names:
+  `modelProviderType`, `{ url: … }` endpoints, a top-level `authentication`, models without `apiFormat`, tool
+  servers with `toolServerType`, `blockList`, and an endpoint `mode`, and `requestRateLimit` with `count` and
+  `period`. Model providers and models need a `displayName`, or the deployment fails with `400` "The displayName
+  property is required."; give API keys one too, because a key created without it, through Bicep or REST, gets
+  the display name *All APIs subscription (1)*. Notebooks create keys with `lab.api_key`, which sets it. The service
+  silently drops some preview names, such as a tool server's `blocked` or an endpoint's
+  `required`, so check each resource after a deployment rather than trusting a green deployment.
 - Gateways are the dedicated `Microsoft.ApiManagement/aigateways` type, never `Microsoft.ApiManagement/service`.
   Follow the product's [reference sample](https://github.com/Azure-Samples/simple-foundry-hosted-agent-python-aigateway/blob/main/infra/ai-gateway/main.bicep), as
   [lab 01's template](01-provision-gateway/infra/gateway.bicep) does: omit `sku`, so the service default, `Standard`, applies,
@@ -450,24 +532,37 @@ Keep the video optional: every step it shows must also be written in the lab.
   `https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com` for `aigw-labs-001`. Always read it from the
   gateway, never build it from the name, and write it as `<gateway-url>` in commands and code.
 - Policy `counterKey` values are arrays: `counterKey: [ 'identity' ]` or `[ 'ipAddress' ]`.
-- CLI tracks use the `az aigateway` extension (1.0.0b22 or later, see
-  [Install the aigateway extension](SETUP.md#install-the-aigateway-extension)) for gateways (including
-  `network update`), providers, models, aliases, model policies (`model policy set-token-limit`,
-  `set-content-safety`, `set-cost-limit`, `remove`), Gateway scope policies (`az aigateway policy`), telemetry
-  exporters, API keys (including `api-key update --state` and `api-key regenerate --key-type secondary`), and MCP
-  servers (including `mcp update --versions`). Don't pass `--sku` to `az aigateway create`: the service default,
-  `Standard`, is the only SKU it accepts. `api-key create` doesn't need `--display-name`. Create models with
-  `--deployment-config "{resourceId:…,modelName:…}"`, because `model create --foundry-resource-id --deployment`
-  crashes in 1.0.0b22, or import every deployment with `model-provider import --foundry-resource-id`. Call ARM with
-  `az rest` only for what the extension can't do yet: MCP tool rules (`allowList`, `blocked`, `accessState`) and
-  writing a whole policy array from a file. A tool server has no top-level `failureMode`: the service drops it, and
-  only an endpoint's `required` setting persists. Say why in one sentence. Set
-  `GATEWAY_ID` with `az aigateway show`, plus `WS` (`https://management.azure.com$GATEWAY_ID/workspaces/default`)
-  and `API` (`api-version=2025-09-01-preview`), only in tracks that still call `az rest`. Publish aliases with
-  `model-alias set`, which creates the alias or updates it, so a step can run again. `--token-counter-key` takes one
-  or more values (`Identity IPAddress`). `model-provider update --foundry` and `--custom` merge a partial JSON value
-  into the provider's settings. `PATCH` and `--policies` replace whole arrays such as `properties.policies`, so
-  read, edit, then write.
+- CLI tracks use the `az aigateway` extension (1.0.0b34 or later, see
+  [Install the aigateway extension](SETUP.md#install-the-aigateway-extension)). It calls API version `2026-11-01`
+  and prints the same names as REST, Bicep, and Terraform (`modelProviderType`, a top-level `authentication`,
+  `foundry.endpoint.url`, `telemetryExporterType`, `blockList`, `mode`, `count`, `period`), so every checkpoint
+  quotes those names. `model-provider create` and `update` still take the preview input shape in `--foundry` and
+  `--custom` (a string `endpoint`). Use the extension for gateways (including `network update`), providers,
+  models, aliases (`model-alias update --policies` for an alias's policies), model policies
+  (`model policy set-token-limit`, `set-cost-limit`, `remove`), Gateway scope policies (`az aigateway policy`, with
+  `--gateway-name`), telemetry exporters, API keys (including `api-key update --state` and
+  `api-key regenerate --key-type secondary`), and MCP servers (including `mcp update --versions`, `--allow-list`,
+  `--block-list`, and `--policies` for agent hooks). The `policy set-*` and `policy remove` commands keep the
+  other Gateway scope policies. 1.0.0b34 removed the content safety options: at model scope, read the policies,
+  merge, and write them back with `model update --policies`; at Gateway scope, use `az rest`. Don't pass
+  `--failure-mode` to `mcp create`: it never sends `failureMode`, and an endpoint's `mode` (`failClosed` or
+  `failOpen`) decides. Don't pass `--sku` to `az aigateway create`: the service default, `Standard`, is the only
+  SKU it accepts. `api-key create` sets the display name to the key name when you omit `--display-name`. Create a
+  model with `model create --foundry-resource-id --deployment` or with
+  `--deployment-config "{resourceId:…,modelName:…}"`, or import every deployment with
+  `model-provider import --foundry-resource-id`.
+  `--api-format` can't express embeddings or decision models: pass `--supported-endpoints /openai/v1/embeddings`
+  or `typesafe/v1/systemone` instead. Call ARM with `az rest` only for what the extension can't do yet: MCP server
+  access (`accessState`), backend conditions, session affinity, failover, auto model selection, content safety at
+  Gateway scope, a gateway's private link resources, and writing a whole policy array from a file. Read any alias
+  with `model-alias show`, but change aliases with conditions, failover rules, or auto model selection only with
+  `az rest`: `model-alias set` and `update --backend-model` drop `when` and `selectorModelName`. Say why in one
+  sentence. Set `GATEWAY_ID` with `az aigateway show`, plus `WS`
+  (`https://management.azure.com$GATEWAY_ID/workspaces/default`) and `API` (`api-version=2026-11-01`), only in
+  tracks that still call `az rest`. Publish aliases with `model-alias set`, which creates the alias or updates it,
+  so a step can run again. `--token-counter-key` takes one or more values (`Identity IPAddress`).
+  `model-provider update --foundry` and `--custom` merge a partial JSON value into the provider's settings.
+  `PATCH` and `--policies` replace whole arrays such as `properties.policies`, so read, edit, then write.
 - Parameterize names and locations; default `location` to `resourceGroup().location` in resource-group-scoped
   modules.
 - Mirror the structure of the existing labs: lab 06 for a Bicep + azd track (see [azd templates](#azd-templates)),
@@ -481,10 +576,13 @@ Keep the video optional: every step it shows must also be written in the lab.
 
 - Send a runtime key as `Authorization: Bearer <key>`, as the product docs and the portal's snippets do, to the
   model endpoint (`<gateway URL>/default/models/openai/v1`) and to the MCP endpoint
-  (`<gateway URL>/default/toolservers/<name>/mcp`) alike. With an OpenAI SDK, pass the key as the client's API key.
+  (`<gateway URL>/default/toolservers/<name>/mcp`) alike. The gateway also accepts the key alone in an `api-key`
+  header, but the labs use the bearer form. With an OpenAI SDK, pass the key as the client's API key.
   With an Anthropic SDK, pass it as the auth token (`auth_token` or `authToken`): as the API key, the SDK sends it
-  in `x-api-key`, which answers `401`. Never add an `api-key` header as well: a request with both headers fails
+  in `x-api-key`, which answers `401`. Never send both headers: such a request fails
   with `400` "Specify either an API key or an Authorization header, not both".
+- A new API key or alias can answer `401` or `404` for about 15 seconds after it's created. Say so in the
+  checkpoint, or retry in scripts and notebooks.
 - Microsoft Entra tokens use the delegated scope `https://ai.gateway.azure.com/Data.All`
   (`az account get-access-token --scope https://ai.gateway.azure.com/Data.All`), or
   `https://ai.gateway.azure.com/.default` from an SDK credential. The token's `aud` is the AI Gateway app ID
@@ -552,7 +650,9 @@ Follow the structure of the existing notebooks:
    deploys or reuses resources, waits for the gateway to apply them, and checks the result with `assert`.
 5. **Clean up** (delete only what the notebook created), **Troubleshooting**, and **Next steps**. The
    Troubleshooting cell lists the errors that are specific to the notebook, then links to the lab's section on the
-   [Troubleshooting page](#the-troubleshooting-page).
+   [Troubleshooting page](#the-troubleshooting-page). Readers rerun cells, so record what the notebook created in a
+   way that a rerun keeps: `created_x = globals().get("created_x", False) or new_x`, where `new_x` is what this run
+   found missing, or guard a group of checks with `if "created_x" not in globals():`.
 
 When a lab's code runs in another tool rather than in Python, the notebook drives that tool and shows its output
 as cards:
@@ -584,7 +684,7 @@ at `/release-notes/` on the site, links it from the top navigation and the foote
 as a pill on the home page. On GitHub it renders as is.
 
 - Add one `## <Month D, YYYY>` section per product release, newest first, with an `### <product title>` heading
-  that matches the product's changelog title and a link to `https://ai.gateway.azure.com/docs/releases/<YYYY-MM-DD>`.
+  that matches the product's changelog title and a link to `https://ai.gateway.azure.com/docs/releases#release-<YYYY-MM-DD>`.
   Then add the date to the `**Releases:**` jump line at the top (it ends with `<!-- gh -->`, so the site, which has
   its own release list, hides it).
 - Under it, a table maps each product change to the lab that practices it: `| In the product | Practice it in

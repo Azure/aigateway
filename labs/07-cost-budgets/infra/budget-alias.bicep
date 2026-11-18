@@ -39,31 +39,31 @@ param entraObjectId string = ''
 param entraAmount string = '20'
 
 #disable-next-line BCP081
-resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
+resource gateway 'Microsoft.ApiManagement/aigateways@2026-11-01' existing = {
   name: gatewayName
 }
 
 #disable-next-line BCP081
-resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' existing = {
+resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2026-11-01' existing = {
   parent: gateway
   name: 'default'
 }
 
 #disable-next-line BCP081
-resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2025-09-01-preview' existing = {
+resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2026-11-01' existing = {
   parent: workspace
   name: providerName
 }
 
 #disable-next-line BCP081
-resource model 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2025-09-01-preview' existing = {
+resource model 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2026-11-01' existing = {
   parent: provider
   name: modelName
 }
 
 // Each key is a separate caller identity, so each one gets its own budget counter.
 #disable-next-line BCP081
-resource defaultKey 'Microsoft.ApiManagement/aigateways/apiKeys@2025-09-01-preview' = {
+resource defaultKey 'Microsoft.ApiManagement/aigateways/apiKeys@2026-11-01' = {
   parent: gateway
   name: defaultKeyName
   properties: {
@@ -72,7 +72,7 @@ resource defaultKey 'Microsoft.ApiManagement/aigateways/apiKeys@2025-09-01-previ
 }
 
 #disable-next-line BCP081
-resource overrideKey 'Microsoft.ApiManagement/aigateways/apiKeys@2025-09-01-preview' = {
+resource overrideKey 'Microsoft.ApiManagement/aigateways/apiKeys@2026-11-01' = {
   parent: gateway
   name: overrideKeyName
   properties: {
@@ -81,7 +81,8 @@ resource overrideKey 'Microsoft.ApiManagement/aigateways/apiKeys@2025-09-01-prev
 }
 
 // Overrides are evaluated in order, and the first match wins. An API key override matches the key's resource ID.
-// An Entra override matches validated token claims: here the tenant ID and the object ID of one identity.
+// An Entra override matches validated token claims, as name and value pairs that must all match: here the tenant ID
+// and the object ID of one identity.
 var keyOverrides = [
   {
     apiKeyResourceId: overrideKey.id
@@ -90,16 +91,16 @@ var keyOverrides = [
 ]
 var entraOverrides = empty(entraObjectId) ? [] : [
   {
-    claims: {
-      tid: tenant().tenantId
-      oid: entraObjectId
-    }
+    claims: [
+      { name: 'tid', value: tenant().tenantId }
+      { name: 'oid', value: entraObjectId }
+    ]
     amount: json(entraAmount)
   }
 ]
 
 #disable-next-line BCP081
-resource budgetAlias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2025-09-01-preview' = {
+resource budgetAlias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01' = {
   parent: workspace
   name: aliasName
   dependsOn: [ defaultKey ]

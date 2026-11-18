@@ -4,15 +4,15 @@ summary: Add a content safety policy that screens prompts, tool inputs, and resp
 category: governance
 level: Beginner
 duration: 20
-tracks: [portal, cli, rest, iac]
+tracks: [portal, cli, rest, iac, terraform]
 order: 8
 illustration: diagrams/request-lifecycle.svg
-tags: [contentSafety, Azure AI Content Safety, responsible AI, severity threshold, "400", content filter]
+tags: [contentSafety, Azure AI Content Safety, responsible AI, severity threshold, "400", content filter, Terraform]
 objectives:
   - Explain how content safety severity thresholds decide what the gateway blocks
   - Add a content safety policy to a model in the portal, with the Azure CLI, or with the REST API
   - Override the threshold for one category without changing the others
-  - Publish a screened alias with Bicep and azd, without touching existing clients
+  - Publish a screened alias with Bicep and azd or with Terraform, without touching existing clients
   - Test the policy with benign prompts and tell a gateway block from a Foundry content filter result
 prereqs:
   - 02-first-model-call
@@ -28,14 +28,14 @@ prereqs:
 
 | ⏱️ Time | 📶 Level | 🧭 Tracks | ✅ Before you start |
 | :-- | :-- | :-- | :-- |
-| 20 min | Beginner | Portal · Azure CLI · REST API · Bicep + azd | [02 · First model call](../02-first-model-call/README.md) |
+| 20 min | Beginner | Portal · Azure CLI · REST API · Bicep + azd · Terraform | [02 · First model call](../02-first-model-call/README.md) |
 
 **You'll learn to**
 
 - Explain how content safety severity thresholds decide what the gateway blocks
 - Add a content safety policy to a model in the portal, with the Azure CLI, or with the REST API
 - Override the threshold for one category without changing the others
-- Publish a screened alias with Bicep and azd, without touching existing clients
+- Publish a screened alias with Bicep and azd or with Terraform, without touching existing clients
 - Test the policy with benign prompts and tell a gateway block from a Foundry content filter result
 
 **Follow along:** 🌐 [Interactive version](https://azure.github.io/aigateway/labs/08-content-safety/) with your own values filled in · 📁 [Lab files](infra/)
@@ -67,8 +67,8 @@ gateway, tune it per category, and see what a blocked call looks like to a clien
 <!-- gh:end -->
 
 > [!TIP]
-> On the **Bicep + azd** track, `azd up` creates its own gateway, model, and key, so you can skip this section. You
-> need only the one-time setup above.
+> On the **Bicep + azd** and **Terraform** tracks, `azd up` or `terraform apply` creates its own gateway, model, and
+> key, so you can skip this section. You need only the one-time setup above.
 
 - Complete [Publish a Foundry model and make your first call](../02-first-model-call/README.md). You need a
   gateway, an imported model, a callable alias, and a runtime API key from **Access** › **API keys**.
@@ -96,7 +96,7 @@ export AI_GATEWAY_MODEL="$(az aigateway model show -g "$RG" --gateway-name "$GAT
 echo "🔖 Model alias: $AI_GATEWAY_MODEL"
 
 # Paste the runtime key you created in Access › API keys, without showing it: don't commit it or write it to a file
-read -rsp "AI Gateway API key: " AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
+printf "AI Gateway API key: " && read -rs AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 ```
 </details> <!-- gh -->
@@ -141,9 +141,10 @@ The threshold is the lowest severity that gets blocked, so a **lower** threshold
 | **Lenient** | `High` | Only the most concerning, high-severity content |
 | **Off** | `None` | Nothing in this category |
 
-You can attach content safety to **models** and **MCP servers**. On an MCP server, it screens the tool inputs
-that agents send and the results that tools return. Every applicable policy is evaluated, and any one of them
-can block the call.
+You can attach content safety to **models**, **aliases**, and **MCP servers**, or set it gateway-wide so that it
+covers every compatible asset, including ones added later. On an MCP server, it screens the tool inputs that
+agents send and the results that tools return. Every applicable policy is evaluated, and any one of them can
+block the call.
 
 > [!NOTE]
 > Foundry deployments have their own **Content filter**, shown on the model's details page in **Models**. That
@@ -154,30 +155,64 @@ can block the call.
 ## Add content safety to the model
 
 Pick one track. Each track produces the same policy: **Balanced** (`Medium`) for Hate, Self-harm, and Sexual,
-and **Strict** (`Low`) for Violence. The portal, CLI, and REST tracks put it on your model. The Bicep + azd track
-creates a new gateway and puts it on a new alias of the model. The stricter Violence threshold makes the test in
+and **Strict** (`Low`) for Violence. The portal, CLI, and REST tracks put it on your model. The Bicep + azd and
+Terraform tracks create a new gateway and put it on a new alias of the model. The stricter Violence threshold makes the test in
 **Verify** more likely to show a block, using only a mild, non-graphic prompt.
 
 <!-- track: portal | Portal -->
 <details open><summary><b>🖥️ Portal</b></summary> <!-- gh -->
 
-### Start the policy wizard
+### Create the policy
 
-Open the [AI Gateway portal](https://ai.gateway.azure.com) and select your gateway from the gateway switcher.
-Select **Policies** › **Add policy**. On the **Type** step, under **Security**, select **Content safety**, then
-**Next**.
+The **Add policy** wizard doesn't list **Content safety** for AI Gateway resources, so create the policy with
+the Azure CLI, for example in [Azure Cloud Shell](https://shell.azure.com), with the variables from
+**Before you begin**. Then set the thresholds in the portal. The commands read the model's policies, add
+**Balanced** (`Medium`) content safety on all four categories, and write the array back, so every other policy on
+the model stays:
 
-![The Add policy wizard on the Type step](../assets/screens/policy-add-wizard.png "Policies › Add policy opens a three-step wizard: Type, Scope, Details.")
+<details open><summary>Bash</summary> <!-- gh -->
 
-### Choose the model
+```bash title="Bash"
+# Read the model's policies, drop any content safety policy, and add one at Medium (Balanced) in all four categories
+POLICIES="$(az aigateway model policy list -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL" -o json |
+  jq -c '[.[] | select(.type != "contentSafety")]
+    + [{"type":"contentSafety","hateSeverity":"Medium","violenceSeverity":"Medium","sexualSeverity":"Medium","selfHarmSeverity":"Medium"}]')"
 
-On the **Scope** step, select **Individual assets** ("Apply only to selected models, aliases, or MCP servers").
-Select your model, then **Next**.
+# Write the merged array back: --policies replaces the whole array
+az aigateway model update -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL" \
+  --policies "$POLICIES" --output none &&
+  echo "🔐 Content safety on $MODEL is Balanced (Medium) for all four categories"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Read the model's policies, drop any content safety policy, and add one at Medium (Balanced) in all four categories
+$current  = az aigateway model policy list -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER -n $MODEL `
+  -o json | ConvertFrom-Json
+$policies = @($current | Where-Object { $_ -and $_.type -ne 'contentSafety' })
+$policies += [pscustomobject]@{
+  type = 'contentSafety'; hateSeverity = 'Medium'; violenceSeverity = 'Medium'; sexualSeverity = 'Medium'; selfHarmSeverity = 'Medium'
+}
+
+# Write the merged array back from a file, which keeps the JSON quotes intact: --policies replaces the whole array
+ConvertTo-Json -InputObject $policies -Depth 10 -Compress | Set-Content -Path policies.json
+az aigateway model update -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER -n $MODEL `
+  --policies '@policies.json' --output none
+if ($?) { Write-Host "🔐 Content safety on $MODEL is Balanced (Medium) for all four categories" }
+Remove-Item policies.json
+```
+</details> <!-- gh -->
 
 ### Set the thresholds
 
-On the **Details** step (**Configure** in some portal versions), under **Parameters**, choose how strictly
-each category is filtered:
+Open the [AI Gateway portal](https://ai.gateway.azure.com) and select your gateway from the gateway switcher.
+Select **Policies**. The list shows a **Content safety** policy with your model under **Scope** and
+**Balanced filtering** under **Configuration**. Select **Balanced filtering** to open the policy, then select
+**Edit**.
+
+In the **Edit policy** panel, choose how strictly each category is filtered:
 
 | Field | Value |
 |---|---|
@@ -186,10 +221,15 @@ each category is filtered:
 | **Self-harm** | **Balanced** |
 | **Sexual** | **Balanced** |
 
-Select **Create**. The policy appears in the **Policies** list with your model as its scope.
+![The Edit policy panel of a Content safety policy, with Violence set to Strict](../assets/screens/content-safety-01-edit-policy.webp "Edit policy sets a level for each category: Strict, Balanced, Lenient, or Off.")
+
+Select **Save**. The portal confirms **Policy updated**.
 
 > **Checkpoint**
-> **Policies** lists a **Content safety** policy for your model.
+> Under **Configuration**, the policy shows **Hate Filtering**: **Balanced**, **Violence Filtering**: **Strict**,
+> **Sexual Filtering**: **Balanced**, and **Self Harm Filtering**: **Balanced**, with your model under
+> **Applies to**. In **Policies**, its configuration now reads **Strict filtering**, the strictest level among
+> the categories.
 
 </details> <!-- gh -->
 <!-- track: cli | Azure CLI -->
@@ -197,16 +237,22 @@ Select **Create**. The policy appears in the **Policies** list with your model a
 
 ### Set the policy
 
-Policies live in the model's `properties.policies` array. `az aigateway model policy set-content-safety` adds the
-content safety policy, or replaces the one that's there, and keeps every other policy on the model.
-`--content-safety` sets the threshold for all four categories, and `--violence-severity` overrides **Violence**.
+Policies live in the model's `properties.policies` array. The `aigateway` extension 1.0.0b34 removed its content
+safety commands until they match API version `2026-11-01`, so set the policy with `az aigateway model update
+--policies`. It **replaces the whole array**, so read the array first, swap in the new content safety policy, and
+write the result back. That keeps every other policy on the model.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# Screen the model at Medium (Balanced) in all four categories, with Low (Strict) for Violence
-az aigateway model policy set-content-safety -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL" \
-  --content-safety Medium --violence-severity Low --output none &&
+# Read the model's policies, drop any content safety policy, and add one: Medium, with Low for Violence
+POLICIES="$(az aigateway model policy list -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL" -o json |
+  jq -c '[.[] | select(.type != "contentSafety")]
+    + [{"type":"contentSafety","hateSeverity":"Medium","violenceSeverity":"Low","sexualSeverity":"Medium","selfHarmSeverity":"Medium"}]')"
+
+# Write the merged array back: --policies replaces the whole array
+az aigateway model update -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL" \
+  --policies "$POLICIES" --output none &&
   echo "🔐 Content safety on $MODEL is Balanced (Medium), with Strict (Low) for Violence"
 ```
 </details> <!-- gh -->
@@ -214,16 +260,26 @@ az aigateway model policy set-content-safety -g "$RG" --gateway-name "$GATEWAY" 
 <details><summary>PowerShell</summary> <!-- gh -->
 
 ```powershell title="PowerShell"
-# Screen the model at Medium (Balanced) in all four categories, with Low (Strict) for Violence
-az aigateway model policy set-content-safety -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER -n $MODEL `
-  --content-safety Medium --violence-severity Low --output none
+# Read the model's policies, drop any content safety policy, and add one: Medium, with Low for Violence
+$current  = az aigateway model policy list -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER -n $MODEL `
+  -o json | ConvertFrom-Json
+$policies = @($current | Where-Object { $_ -and $_.type -ne 'contentSafety' })
+$policies += [pscustomobject]@{
+  type = 'contentSafety'; hateSeverity = 'Medium'; violenceSeverity = 'Low'; sexualSeverity = 'Medium'; selfHarmSeverity = 'Medium'
+}
+
+# Write the merged array back from a file, which keeps the JSON quotes intact: --policies replaces the whole array
+ConvertTo-Json -InputObject $policies -Depth 10 -Compress | Set-Content -Path policies.json
+az aigateway model update -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER -n $MODEL `
+  --policies '@policies.json' --output none
 if ($?) { Write-Host "🔐 Content safety on $MODEL is Balanced (Medium), with Strict (Low) for Violence" }
+Remove-Item policies.json
 ```
 </details> <!-- gh -->
 
 The command prints `🔐 Content safety on <model-name> is Balanced (Medium), with Strict (Low) for Violence`. Each
-threshold accepts `None`, `Low`, `Medium`, or `High`. To override another category, add `--hate-severity`,
-`--self-harm-severity`, or `--sexual-severity`.
+threshold accepts `None`, `Low`, `Medium`, or `High`. To change another category, change its value in the
+`contentSafety` object: `hateSeverity`, `selfHarmSeverity`, or `sexualSeverity`.
 
 ### Confirm the policy
 
@@ -246,8 +302,8 @@ az aigateway model policy list -g $RG --gateway-name $GATEWAY --provider-name $P
 </details> <!-- gh -->
 
 > **Checkpoint**
-> The output contains `"type": "contentSafety"` with `"violenceSeverity": "Low"`, `"Medium"` for the other
-> three categories, and `"scope": "resource"`, which the service adds to every model policy.
+> The output lists your other policies unchanged, plus `"type": "contentSafety"` with `"violenceSeverity": "Low"`,
+> `"Medium"` for the other three categories, and `"scope": "resource"`, which the service adds to every model policy.
 
 </details> <!-- gh -->
 <!-- track: rest | REST API -->
@@ -261,7 +317,7 @@ always read it first and keep the policies you didn't mean to change.
 ```bash
 # Read your subscription ID, and build the management URL of your model, which holds its policies
 SUB="$(az account show --query id -o tsv)"
-URL="https://management.azure.com/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.ApiManagement/aigateways/$GATEWAY/workspaces/default/modelProviders/$PROVIDER/models/$MODEL?api-version=2025-09-01-preview"
+URL="https://management.azure.com/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.ApiManagement/aigateways/$GATEWAY/workspaces/default/modelProviders/$PROVIDER/models/$MODEL?api-version=2026-11-01"
 echo "🆔 Subscription: $SUB"
 
 # Read the model's current policies, so that you know what the merge must keep
@@ -290,7 +346,7 @@ az rest --method patch --url "$URL" --body "{\"properties\":{\"policies\":$POLIC
 ```powershell title="PowerShell"
 # Read your subscription ID, and build the management URL of your model, which holds its policies
 $SUB = az account show --query id -o tsv
-$URL = "https://management.azure.com/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.ApiManagement/aigateways/$GATEWAY/workspaces/default/modelProviders/$PROVIDER/models/$MODEL`?api-version=2025-09-01-preview"
+$URL = "https://management.azure.com/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.ApiManagement/aigateways/$GATEWAY/workspaces/default/modelProviders/$PROVIDER/models/$MODEL`?api-version=2026-11-01"
 Write-Host "🆔 Subscription: $SUB"
 
 # Read the policies, drop any content safety policy, and add the new one: Medium, with Low for Violence
@@ -467,30 +523,30 @@ param sexualSeverity string = 'Medium'
 param violenceSeverity string = 'Low'
 
 #disable-next-line BCP081
-resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
+resource gateway 'Microsoft.ApiManagement/aigateways@2026-11-01' existing = {
   name: gatewayName
 }
 
 #disable-next-line BCP081
-resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' existing = {
+resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2026-11-01' existing = {
   parent: gateway
   name: 'default'
 }
 
 #disable-next-line BCP081
-resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2025-09-01-preview' existing = {
+resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2026-11-01' existing = {
   parent: workspace
   name: providerName
 }
 
 #disable-next-line BCP081
-resource model 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2025-09-01-preview' existing = {
+resource model 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2026-11-01' existing = {
   parent: provider
   name: modelName
 }
 
 #disable-next-line BCP081
-resource safeAlias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2025-09-01-preview' = {
+resource safeAlias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01' = {
   parent: workspace
   name: aliasName
   properties: {
@@ -520,7 +576,7 @@ output chatCompletionsUrl string = 'https://${gateway.properties.frontend.defaul
 ### Deploy with azd up
 
 Move into the lab's folder, create an azd environment named `aigw-lab08` in your current subscription, then provision
-everything. It takes about three minutes.
+everything. It takes about two minutes.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -622,6 +678,216 @@ The parameters come from azd environment values, with the defaults in `infra/mai
 with `azd env set` and run `azd provision`: only the alias changes. **Verify** relaxes Violence this way.
 
 </details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+**What you need:** only the one-time setup from **Before you begin**, plus Terraform 1.9 or later, as in
+[Deploy a lab with Terraform](../SETUP.md#deploy-a-lab-with-terraform). This track doesn't use your gateway from
+lab 02: `terraform apply` creates a new one, so it works on its own.
+
+### Review the configuration
+
+Like the Bicep template, the configuration **adds a new alias**, `<model-name>-safe`, that targets the same backend
+model and carries the content safety policy, rather than redeclaring a model that you imported in the portal.
+
+`terraform/main.tf` creates the resource group `rg-<environment_name>` and calls the quick start's
+[resources module](../quickstart/terraform/resources) for the gateway, the Foundry model, its default alias, and the
+`app-first-call` key:
+
+<!-- include: terraform/main.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/main.tf`](terraform/main.tf)
+
+```tf
+# Lab 08 with Terraform: creates the resource group rg-<environment_name>, the quick start's gateway, Foundry model,
+# default alias, and runtime API key, then a second alias for the same model with a content safety policy
+# (safe-alias.tf). The runtime API key is never an output.
+data "azapi_client_config" "current" {}
+
+locals {
+  suffix = substr(sha1("${data.azapi_client_config.current.subscription_id}/${var.environment_name}/${var.location}"), 0, 6)
+  tags   = { "environment-name" = var.environment_name }
+}
+
+resource "azurerm_resource_group" "rg" {
+  name     = "rg-${var.environment_name}"
+  location = var.location
+  tags     = local.tags
+}
+
+# The quick start's module: a gateway, a Foundry model behind the default alias, and the app-first-call key.
+module "base" {
+  source = "../../quickstart/terraform/resources"
+
+  subscription_id     = data.azapi_client_config.current.subscription_id
+  resource_group_name = azurerm_resource_group.rg.name
+  resource_group_id   = azurerm_resource_group.rg.id
+  location            = var.location
+  tags                = local.tags
+  gateway_name        = "aigw-${local.suffix}"
+  foundry_name        = "aigw${local.suffix}"
+}
+```
+<!-- gh:end -->
+
+`terraform/safe-alias.tf` adds the alias with the `azapi` provider, which sends the AI Gateway API version,
+`2026-11-01`, as is. `terraform/variables.tf` declares the four thresholds with the same defaults as the Bicep
+template, and accepts only `Low`, `Medium`, `High`, or `None`:
+
+<!-- include: terraform/safe-alias.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/safe-alias.tf`](terraform/safe-alias.tf)
+
+```tf
+# Publishes an alias with a content safety policy for the quick start's model. The alias points at the same backend
+# model as the default alias, but screens every prompt and response it serves, so you can test thresholds without
+# changing what other callers get.
+resource "azapi_resource" "safe_alias" {
+  type      = "Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01"
+  name      = "${module.base.model_name}-safe"
+  parent_id = module.base.workspace_id
+
+  body = {
+    properties = {
+      aliasName = "${module.base.model_name}-safe"
+      backendModels = [
+        { resourceId = module.base.model_id }
+      ]
+      policies = [
+        {
+          type             = "contentSafety"
+          hateSeverity     = var.hate_severity
+          selfHarmSeverity = var.self_harm_severity
+          sexualSeverity   = var.sexual_severity
+          violenceSeverity = var.violence_severity
+        }
+      ]
+    }
+  }
+
+  schema_validation_enabled = false
+}
+```
+<!-- gh:end -->
+
+### Deploy with terraform apply
+
+Move into the lab's Terraform folder, select your current subscription, then plan and apply the configuration. It
+takes about three minutes.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Move into the lab's Terraform folder
+cd ~/aigateway/labs/08-content-safety/terraform &&
+  echo "📂 Terraform folder: $(pwd)"
+
+# Deploy to the Azure CLI's current subscription
+export ARM_SUBSCRIPTION_ID="$(az account show --query id --output tsv)" &&
+  echo "📍 Subscription: $ARM_SUBSCRIPTION_ID"
+
+# Download the providers, then plan and apply the gateway, the Foundry model, the key, and the screened alias
+terraform init &&
+  terraform plan -out tfplan &&
+  terraform apply tfplan &&
+  echo "🚀 Gateway deployed: $(terraform output -raw ai_gateway_url)"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Move into the lab's Terraform folder
+Set-Location ~/aigateway/labs/08-content-safety/terraform
+if ($?) { Write-Host "📂 Terraform folder: $(Get-Location)" }
+
+# Deploy to the Azure CLI's current subscription
+$env:ARM_SUBSCRIPTION_ID = az account show --query id --output tsv
+if ($?) { Write-Host "📍 Subscription: $env:ARM_SUBSCRIPTION_ID" }
+
+# Download the providers, then plan and apply the gateway, the Foundry model, the key, and the screened alias
+terraform init
+if ($?) { terraform plan -out tfplan }
+if ($?) { terraform apply tfplan }
+if ($?) { Write-Host "🚀 Gateway deployed: $(terraform output -raw ai_gateway_url)" }
+```
+</details> <!-- gh -->
+
+The configuration deploys to `eastus2`. For another region where AI Gateway and the `gpt-5-mini` model are
+available, as in [Find the available regions](../SETUP.md#find-the-available-regions), run
+`export TF_VAR_location=<region>` (PowerShell: `$env:TF_VAR_location = "<region>"`) before `terraform plan`.
+
+### Read the outputs and the key
+
+Set the variables that **Verify** uses from the Terraform outputs, and read the key from the gateway, so that it
+never shows on screen or lands in the Terraform state.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Read the configuration's outputs: the resource group, the gateway, its model provider, and the backend model
+export RG="$(terraform output -raw azure_resource_group)"
+export GATEWAY="$(terraform output -raw ai_gateway_name)"
+export PROVIDER="$(terraform output -raw ai_gateway_provider)"
+export MODEL="$(terraform output -raw ai_gateway_backend_model)"
+
+# Read the gateway's runtime URL and the screened alias
+export AI_GATEWAY_URL="$(terraform output -raw ai_gateway_url)"
+export AI_GATEWAY_MODEL="$(terraform output -raw ai_gateway_model)"
+
+# Read the key from the gateway, so that it never lands in a file or the Terraform state
+export AI_GATEWAY_API_KEY="$(az aigateway api-key list-secrets --ids "$(terraform output -raw ai_gateway_id)/apiKeys/app-first-call" \
+  --query primaryKey --output tsv)"
+echo "🌐 Runtime URL: $AI_GATEWAY_URL"
+echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
+echo "🔖 Model alias: $AI_GATEWAY_MODEL"
+# Move back to the lab's folder, which holds the scripts
+cd .. && echo "📂 Lab folder: $(pwd)"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Read the configuration's outputs: the resource group, the gateway, its model provider, and the backend model
+$RG                     = terraform output -raw azure_resource_group
+$GATEWAY                = terraform output -raw ai_gateway_name
+$PROVIDER               = terraform output -raw ai_gateway_provider
+$MODEL                  = terraform output -raw ai_gateway_backend_model
+
+# Read the gateway's runtime URL, the screened alias, and the gateway's resource ID
+$env:AI_GATEWAY_URL     = terraform output -raw ai_gateway_url
+$env:AI_GATEWAY_MODEL   = terraform output -raw ai_gateway_model
+$GATEWAY_ID             = terraform output -raw ai_gateway_id
+
+# Read the key from the gateway, so that it never lands in a file or the Terraform state
+$env:AI_GATEWAY_API_KEY = az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/app-first-call" `
+  --query primaryKey --output tsv
+Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
+Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) characters, not shown)"
+Write-Host "🔖 Model alias: $env:AI_GATEWAY_MODEL"
+# Move back to the lab's folder, which holds the scripts
+Set-Location ..
+if ($?) { Write-Host "📂 Lab folder: $(Get-Location)" }
+```
+</details> <!-- gh -->
+
+> **Checkpoint**
+> `terraform apply` ended with `Apply complete! Resources: 10 added, 0 changed, 0 destroyed.`, and the output
+> shows `🔖 Model alias: gpt-5-mini-safe`.
+> `az aigateway model-alias show -g "$RG" --gateway-name "$GATEWAY" -n "$AI_GATEWAY_MODEL" --query properties.policies`
+> returns one `contentSafety` entry with `"violenceSeverity": "Low"`, `"Medium"` for the other three categories,
+> and `"scope": "resource"`.
+
+### Change the thresholds
+
+The next sections run from the lab's folder, with `-chdir=terraform` for the `terraform` commands.
+
+The thresholds are Terraform variables, with the defaults in `terraform/variables.tf`: `hate_severity`,
+`self_harm_severity`, `sexual_severity`, and `violence_severity`. Pass one to `terraform plan` with `-var` and apply
+the plan: only the alias changes. **Verify** relaxes Violence this way.
+
+</details> <!-- gh -->
 <!-- /tracks -->
 
 ## Verify
@@ -663,14 +929,23 @@ Example output:
 ```text
 🚦 Expect 200 for the neutral prompt, and 200 or 400 for the fiction prompt:
 Prompt    Status  Finish reason   Response or error
-neutral   200     stop            Teams put an API gateway in front of AI models to centralize access con
-fiction   400     -               <the gateway's content safety error message>
+neutral   200     stop            Teams put an API gateway in front of AI models to centralize access co
+fiction   200     stop            The two armies massed on either side of the muddy approach, banners sn
 ```
 
 The neutral prompt returns `200`. The fiction prompt can go either way, and your results will vary: Content
 Safety rates both the prompt and the model's response, and a mild battle scene sits close to the **Strict**
 Violence threshold. If it returns `400`, the gateway blocked it and the error message says why. If it returns
 `200`, the content was rated below the threshold.
+
+> [!NOTE]
+> The Foundry deployment's own filter can act too. A `400` that starts with "The response was filtered due to the
+> prompt triggering Azure OpenAI's content management policy", or a `200` with the finish reason
+> `content_filter`, comes from Foundry, not from the gateway. At the time of writing, AI Gateway resources save
+> the content safety policy but don't block calls with it yet, so only Foundry results show up, even at
+> **Strict**. Until the gateway enforces the policy, rely on the deployment's content filter, as described in
+> [Check the Foundry content filter](#check-the-foundry-content-filter), and see
+> [Troubleshooting](../TROUBLESHOOTING.md#lab-08-content-safety).
 
 > [!IMPORTANT]
 > If the fiction prompt passes, don't make it more graphic to force a block. The point of this test is to
@@ -681,14 +956,19 @@ Violence threshold. If it returns `400`, the gateway blocked it and the error me
 
 Set **Violence** back to **Balanced** (`Medium`) with the track you used, then run the script again. For
 example, from the command line, set all four categories to `Medium`. The other three already are, so only
-**Violence** changes, and the command keeps every other policy on the model:
+**Violence** changes, and the merge keeps every other policy on the model:
 
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
 # Set all four categories to Medium (Balanced): only Violence changes, and the other policies stay
-az aigateway model policy set-content-safety -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL" \
-  --content-safety Medium --output none &&
+POLICIES="$(az aigateway model policy list -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL" -o json |
+  jq -c '[.[] | select(.type != "contentSafety")]
+    + [{"type":"contentSafety","hateSeverity":"Medium","violenceSeverity":"Medium","sexualSeverity":"Medium","selfHarmSeverity":"Medium"}]')"
+
+# Write the merged array back: --policies replaces the whole array
+az aigateway model update -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL" \
+  --policies "$POLICIES" --output none &&
   echo "🔐 Content safety on $MODEL is Balanced (Medium) for all four categories"
 ```
 </details> <!-- gh -->
@@ -697,9 +977,19 @@ az aigateway model policy set-content-safety -g "$RG" --gateway-name "$GATEWAY" 
 
 ```powershell title="PowerShell"
 # Set all four categories to Medium (Balanced): only Violence changes, and the other policies stay
-az aigateway model policy set-content-safety -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER -n $MODEL `
-  --content-safety Medium --output none
+$current  = az aigateway model policy list -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER -n $MODEL `
+  -o json | ConvertFrom-Json
+$policies = @($current | Where-Object { $_ -and $_.type -ne 'contentSafety' })
+$policies += [pscustomobject]@{
+  type = 'contentSafety'; hateSeverity = 'Medium'; violenceSeverity = 'Medium'; sexualSeverity = 'Medium'; selfHarmSeverity = 'Medium'
+}
+
+# Write the merged array back from a file, which keeps the JSON quotes intact: --policies replaces the whole array
+ConvertTo-Json -InputObject $policies -Depth 10 -Compress | Set-Content -Path policies.json
+az aigateway model update -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER -n $MODEL `
+  --policies '@policies.json' --output none
 if ($?) { Write-Host "🔐 Content safety on $MODEL is Balanced (Medium) for all four categories" }
+Remove-Item policies.json
 ```
 </details> <!-- gh -->
 
@@ -731,13 +1021,19 @@ if ($?) { Write-Host "🔐 Content safety on $env:AI_GATEWAY_MODEL is Balanced (
 ```
 </details> <!-- gh -->
 
+On the Terraform track, in the lab folder, run
+`terraform -chdir=terraform plan -var violence_severity=Medium -out tfplan`, then
+`terraform -chdir=terraform apply tfplan`. The plan ends with `Plan: 0 to add, 1 to change, 0 to destroy.`, for
+`azapi_resource.safe_alias`.
+
 A prompt that **Strict** blocked is more likely to pass at **Balanced**. Prompts that passed before still pass.
 
 ### Check the Foundry content filter
 
-Open **Models**, select your model, and find **Content filter** on its details page. That is the Foundry
-deployment's own filter, separate from the gateway policy. When Foundry's filter acts instead of the gateway,
-the error or the `finish_reason` comes from the backend, and it can mention `content_filter`.
+Open **Models** › **Backend models** and select your model. On its **Overview** tab, **Content filter** under
+**Model deployment** names the Foundry deployment's own filter, for example `Microsoft.DefaultV2`. It's separate
+from the gateway policy. When Foundry's filter acts instead of the gateway, the error or the `finish_reason` comes
+from the backend, and it can mention `content_filter`.
 
 ### Find blocked calls in Monitoring
 
@@ -753,9 +1049,8 @@ If you configured Application Insights in [Monitor usage, cost, and traces](../1
 ## Go further
 
 - **Screen tool traffic.** Add a **Content safety** policy to the `learn` MCP server from
-  [Federate MCP tools behind one endpoint](../04-federate-mcp-tools/README.md). In the wizard, pick the MCP
-  server on the **Scope** step. With REST, use the same `contentSafety` object on
-  `.../workspaces/default/toolServers/learn`.
+  [Federate MCP tools behind one endpoint](../04-federate-mcp-tools/README.md). With REST, use the same
+  `contentSafety` object on `.../workspaces/default/toolServers/learn`.
 - **Make it the default.** Apply **Balanced** content safety to every model and MCP server, including future
   ones, in [Set gateway-wide policy baselines](../09-gateway-baselines/README.md).
 - **Tune per category.** Start every category at **Balanced**, tighten the ones that matter most for your
@@ -771,7 +1066,8 @@ lab sets a gateway-wide baseline instead.
 
 ### Remove the policy
 
-Select **Policies**, open the **Content safety** policy that's scoped to your model, and delete it.
+Select **Policies**. On the **Content safety** policy's row, select **More actions** (⋮) › **Delete**, then
+**Delete** again in **Delete this policy?**. The other policies on the model stay.
 
 </details> <!-- gh -->
 <!-- track: cli | Azure CLI -->
@@ -782,9 +1078,13 @@ Select **Policies**, open the **Content safety** policy that's scoped to your mo
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# Remove only the content safety policy from the model, and keep its other policies
-az aigateway model policy remove -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL" \
-  --remove-content-safety true --output none &&
+# Read the model's policies and drop the content safety policy, so that the others stay
+POLICIES="$(az aigateway model policy list -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL" -o json |
+  jq -c '[.[] | select(.type != "contentSafety")]')"
+
+# Write the remaining policies back: --policies replaces the whole array
+az aigateway model update -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" -n "$MODEL" \
+  --policies "$POLICIES" --output none &&
   echo "🚮 Content safety is removed from $MODEL"
 ```
 </details> <!-- gh -->
@@ -792,10 +1092,17 @@ az aigateway model policy remove -g "$RG" --gateway-name "$GATEWAY" --provider-n
 <details><summary>PowerShell</summary> <!-- gh -->
 
 ```powershell title="PowerShell"
-# Remove only the content safety policy from the model, and keep its other policies
-az aigateway model policy remove -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER -n $MODEL `
-  --remove-content-safety true --output none
+# Read the model's policies and drop the content safety policy, so that the others stay
+$current  = az aigateway model policy list -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER -n $MODEL `
+  -o json | ConvertFrom-Json
+$policies = @($current | Where-Object { $_ -and $_.type -ne 'contentSafety' })
+
+# Write the remaining policies back from a file: --policies replaces the whole array
+ConvertTo-Json -InputObject $policies -Depth 10 -Compress | Set-Content -Path policies.json
+az aigateway model update -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER -n $MODEL `
+  --policies '@policies.json' --output none
 if ($?) { Write-Host "🚮 Content safety is removed from $MODEL" }
+Remove-Item policies.json
 ```
 </details> <!-- gh -->
 
@@ -807,7 +1114,9 @@ This removes only the content safety policy and keeps every other policy on the 
 
 ### Remove the policy
 
-```bash
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
 # Read the policies and drop the content safety policy, so that the others stay
 POLICIES="$(az rest --method get --url "$URL" | jq -c '[(.properties.policies // [])[] | select(.type != "contentSafety")]')"
 
@@ -815,6 +1124,22 @@ POLICIES="$(az rest --method get --url "$URL" | jq -c '[(.properties.policies //
 az rest --method patch --url "$URL" --body "{\"properties\":{\"policies\":$POLICIES}}" --output none &&
   echo "🚮 Content safety is removed from $MODEL"
 ```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Read the policies and drop the content safety policy, so that the others stay
+$current  = az rest --method get --url $URL | ConvertFrom-Json
+$policies = @($current.properties.policies | Where-Object { $_ -and $_.type -ne 'contentSafety' })
+
+# Send the remaining policies back from a file: a PATCH replaces the whole policies array
+ConvertTo-Json -InputObject @{ properties = @{ policies = $policies } } -Depth 10 -Compress | Set-Content -Path patch.json
+az rest --method patch --url $URL --body '@patch.json' --output none
+if ($?) { Write-Host "🚮 Content safety is removed from $MODEL" }
+Remove-Item patch.json
+```
+</details> <!-- gh -->
 
 </details> <!-- gh -->
 <!-- track: iac | Bicep + azd -->
@@ -824,7 +1149,7 @@ az rest --method patch --url "$URL" --body "{\"properties\":{\"policies\":$POLIC
 
 In the `aigateway/labs/08-content-safety` folder, delete the resource group with the gateway, the Foundry account,
 and the screened alias. [`--purge`](../SETUP.md#delete-what-azd-created) also purges the soft-deleted Foundry account.
-It takes about ten minutes.
+It takes a few minutes.
 
 ```bash
 # Delete the resource group and purge the soft-deleted Foundry account, without prompts
@@ -833,10 +1158,26 @@ azd down --purge --force &&
 ```
 
 </details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+### Delete everything Terraform created
+
+In the `aigateway/labs/08-content-safety` folder, delete the resource group with the gateway, the Foundry
+account, and the screened alias. The [`azurerm` provider](../SETUP.md#delete-what-terraform-created) also purges the
+soft-deleted Foundry account. It takes a few minutes.
+
+```bash
+# Delete everything that terraform apply created, and purge the soft-deleted Foundry account
+terraform -chdir=terraform destroy -auto-approve &&
+  echo "🚮 Everything that terraform apply created is deleted"
+```
+
+</details> <!-- gh -->
 <!-- /tracks -->
 
-Keep the gateway, model, and key from lab 02: the next labs reuse them. `azd down` doesn't touch them, because
-the Bicep + azd track created its own gateway.
+Keep the gateway, model, and key from lab 02: the next labs reuse them. `azd down` and `terraform destroy` don't
+touch them, because the Bicep + azd and Terraform tracks created their own gateways.
 
 ## Next steps
 
@@ -856,5 +1197,5 @@ the Bicep + azd track created its own gateway.
 | :-- | :-: | --: |
 | [07 · Cost budgets](../07-cost-budgets/README.md) | [All labs](../README.md) | [09 · Gateway-wide baselines](../09-gateway-baselines/README.md) |
 
-<sub>Learning paths: [Security & compliance](../README.md#learning-paths) (3 of 7)</sub>
+<sub>Learning paths: [Security & compliance](../README.md#learning-paths) (3 of 9)</sub>
 <!-- gh:end -->

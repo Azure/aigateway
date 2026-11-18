@@ -20,7 +20,7 @@
       "id": "models",
       "title": "Models & routing",
       "color": "azure",
-      "description": "Publish Foundry and third-party models behind stable aliases."
+      "description": "Publish models behind stable aliases, then route, fail over, and auto-select across them."
     },
     {
       "id": "tools",
@@ -54,7 +54,7 @@
     },
     {
       "id": "production",
-      "title": "Production & emerging",
+      "title": "Enterprise readiness",
       "color": "slate",
       "description": "Private networking, Agent 365, threat protection, and reference architectures."
     }
@@ -84,6 +84,8 @@
         "02-first-model-call",
         "03-multi-provider-aliases",
         "22-model-routing",
+        "27-conditional-routing",
+        "29-model-failover",
         "04-federate-mcp-tools",
         "09-gateway-baselines",
         "12-backend-identity",
@@ -100,11 +102,16 @@
       "labs": [
         "02-first-model-call",
         "03-multi-provider-aliases",
+        "26-embeddings",
         "22-model-routing",
+        "28-auto-model-selection",
         "23-streaming-responses",
+        "31-jev-decisions",
         "04-federate-mcp-tools",
         "15-agent-frameworks",
         "16-foundry-hosted-agent",
+        "32-foundry-gateway-connection",
+        "33-copilot-obo-mcp",
         "17-coding-agent-plugin",
         "24-github-copilot-byok",
         "25-claude-code"
@@ -123,6 +130,8 @@
         "05-mcp-tool-controls",
         "09-gateway-baselines",
         "19-tool-threat-protection",
+        "30-agent-hooks",
+        "33-copilot-obo-mcp",
         "20-agent-365-governance"
       ]
     },
@@ -136,6 +145,7 @@
         "06-token-limits",
         "23-streaming-responses",
         "07-cost-budgets",
+        "28-auto-model-selection",
         "13-monitoring",
         "14-otel-chargeback"
       ]
@@ -150,10 +160,28 @@
         "text": "Foundry, Azure OpenAI, OpenAI, Anthropic, Bedrock, and Vertex AI behind stable aliases."
       },
       {
+        "title": "Embeddings for search & RAG",
+        "lab": "26-embeddings",
+        "icon": "layers",
+        "text": "Publish embedding models behind aliases, build RAG on one URL and key, and cap ingestion with token limits."
+      },
+      {
         "title": "Priority & weighted routing",
         "lab": "22-model-routing",
         "icon": "route",
         "text": "Canary a new model, run A/B tests, or prefer purchased capacity behind one alias."
+      },
+      {
+        "title": "Conditions & session affinity",
+        "lab": "27-conditional-routing",
+        "icon": "compass",
+        "text": "Send matching requests to a different model with CEL conditions, and keep each conversation on one backend."
+      },
+      {
+        "title": "Failover & retry",
+        "lab": "29-model-failover",
+        "icon": "lifebuoy",
+        "text": "Retry or switch a request to a backup model on 429 or 5xx, and keep a failing backend out for a while."
       },
       {
         "title": "Token limits & quotas",
@@ -194,10 +222,28 @@
     ],
     "emerging": [
       {
+        "title": "Auto model selection",
+        "lab": "28-auto-model-selection",
+        "icon": "sliders",
+        "text": "Let the gateway send each prompt to a lower-cost or a higher-quality model behind one alias."
+      },
+      {
+        "title": "Typed decisions with Jev",
+        "lab": "31-jev-decisions",
+        "icon": "check",
+        "text": "Get yes/no probabilities, choices, and rubric scores from decision models behind a governed alias."
+      },
+      {
         "title": "Agent frameworks & hosted agents",
         "lab": "16-foundry-hosted-agent",
         "icon": "agent",
         "text": "Route every model and tool call an agent makes through one control point."
+      },
+      {
+        "title": "Gateway models in Foundry projects",
+        "lab": "32-foundry-gateway-connection",
+        "icon": "layers",
+        "text": "Give Foundry projects the platform team's models through one gateway connection, with no deployments or keys."
       },
       {
         "title": "Tool allow and block lists",
@@ -218,6 +264,18 @@
         "text": "Defender and Purview evaluate tool calls for injection and data risk."
       },
       {
+        "title": "Agent hooks",
+        "lab": "30-agent-hooks",
+        "icon": "plug",
+        "text": "Run your own allow-or-deny rules on every MCP tool call and result, in an Azure function."
+      },
+      {
+        "title": "Copilot tools as the signed-in user",
+        "lab": "33-copilot-obo-mcp",
+        "icon": "key",
+        "text": "Let Microsoft 365 Copilot call MCP tools as each signed-in user, with Microsoft Entra on-behalf-of at the gateway."
+      },
+      {
         "title": "Agent 365 governance",
         "lab": "20-agent-365-governance",
         "icon": "building",
@@ -227,7 +285,7 @@
         "title": "Coding-agent plugin",
         "lab": "17-coding-agent-plugin",
         "icon": "sparkle",
-        "text": "Let Copilot, Claude Code, Cursor, or Gemini build on your gateway."
+        "text": "Let Copilot, Claude Code, Cursor, or Gemini build on your gateway, and migrate AI assets from API Management."
       },
       {
         "title": "GitHub Copilot on your models and tools",
@@ -276,6 +334,14 @@
     "22-model-routing": "Priority & weighted routing",
     "23-streaming-responses": "Streaming responses",
     "24-github-copilot-byok": "GitHub Copilot BYOK",
-    "25-claude-code": "Claude Code"
+    "25-claude-code": "Claude Code",
+    "26-embeddings": "Embeddings",
+    "27-conditional-routing": "Conditions & session affinity",
+    "28-auto-model-selection": "Auto model selection",
+    "29-model-failover": "Model failover",
+    "30-agent-hooks": "Agent hooks",
+    "31-jev-decisions": "Jev decisions",
+    "32-foundry-gateway-connection": "Foundry gateway connection",
+    "33-copilot-obo-mcp": "Copilot on-behalf-of"
   }
 }

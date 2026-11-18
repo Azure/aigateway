@@ -4,10 +4,10 @@ summary: Publish a Microsoft Foundry model deployment through your gateway with 
 category: foundations
 level: Beginner
 duration: 25
-tracks: [portal, cli, iac, code]
+tracks: [portal, cli, iac, terraform, code]
 order: 2
 illustration: diagrams/request-lifecycle.svg
-tags: [Microsoft Foundry, model provider, alias, API key, Chat Completions, Responses API, OpenAI SDK, managed identity]
+tags: [Microsoft Foundry, model provider, alias, API key, Chat Completions, Responses API, OpenAI SDK, managed identity, Terraform]
 objectives:
   - Publish a Foundry model deployment through the gateway, authenticated with the gateway's managed identity
   - Create a runtime API key and keep its value out of code
@@ -27,7 +27,7 @@ prereqs:
 
 | ⏱️ Time | 📶 Level | 🧭 Tracks | ✅ Before you start |
 | :-- | :-- | :-- | :-- |
-| 25 min | Beginner | Portal · Azure CLI · Bicep + azd · Code · Notebook | [01 · Provision a gateway](../01-provision-gateway/README.md) |
+| 25 min | Beginner | Portal · Azure CLI · Bicep + azd · Terraform · Code · Notebook | [01 · Provision a gateway](../01-provision-gateway/README.md) |
 
 **You'll learn to**
 
@@ -61,8 +61,9 @@ Foundry credential.
 <!-- gh:end -->
 
 > [!TIP]
-> On the **Bicep + azd** track, `azd up` creates its own gateway, Foundry account, model, and key, so you can skip
-> this section. You need only the one-time setup above, plus the language runtime for the code track if you follow it.
+> On the **Bicep + azd** and **Terraform** tracks, `azd up` or `terraform apply` creates its own gateway, Foundry
+> account, model, and key, so you can skip this section. You need only the one-time setup above, plus the language
+> runtime for the code track if you follow it.
 
 - Complete [Provision your AI Gateway](../01-provision-gateway/README.md). You need the gateway, its resource
   group, and its runtime URL.
@@ -151,7 +152,7 @@ unchanged to Foundry. The response comes back as is, and the gateway records tok
 
 | Step | What happens | Where you set it |
 |---|---|---|
-| Inbound authentication | An active runtime key as `Authorization: Bearer <key>`, which is what the OpenAI SDKs send, or the call fails with `401` | **Access** › **API keys** |
+| Inbound authentication | An active runtime key as `Authorization: Bearer <key>`, which is what the OpenAI SDKs send, or in an `api-key` header. Without a valid key the call fails with `401`, and with both headers it fails with `400` | **Access** › **API keys** |
 | Routing | `/default/models/openai/v1/chat/completions` or `/responses`, and `model` must equal an alias | Model details and its **Aliases** tab |
 | Policies | Token limits, cost limits, and content safety run before the backend call | **Policies** (labs 06–09) |
 | Backend authentication | The gateway's managed identity, with the **Foundry User** role on the account | Model provider |
@@ -165,7 +166,8 @@ unchanged to Foundry. The response comes back as is, and the gateway records tok
 ## Publish the model and create a key
 
 Pick one track. Each track publishes the deployment, gives you a callable alias, and creates a runtime API key.
-The Bicep + azd track also creates its own gateway and Foundry deployment, so it doesn't need lab 01's gateway.
+The Bicep + azd and Terraform tracks also create their own gateway and Foundry deployment, so they don't need lab
+01's gateway.
 
 <!-- track: portal | Portal -->
 <details open><summary><b>🖥️ Portal</b></summary> <!-- gh -->
@@ -175,10 +177,12 @@ The Bicep + azd track also creates its own gateway and Foundry deployment, so it
 1. Open the [AI Gateway portal](https://ai.gateway.azure.com) and select your gateway in the top bar.
 2. Select **Models** › **Add** › **Models from Microsoft Foundry**. (On **Home**, **Add from Microsoft Foundry** in
    the **Set up your gateway** guide starts the same import.)
-3. Select the subscription and resource group of your Foundry account. The wizard discovers the deployments
-   automatically. Deployments that are already in this gateway can't be selected again.
+3. In **Subscriptions** and **Resource groups**, select the subscription and resource group of your Foundry account.
+   The page discovers the deployments automatically. Deployments that are already in this gateway can't be selected
+   again.
 4. Select the `gpt-5-mini` deployment and keep **Managed identity** as the **Authentication method**.
-5. Under **Aliases**, keep **Create an alias for each model** selected, then select **Add models**.
+5. Under **Aliases**, keep **Create an alias for each model** selected, then select **Add models**. When the banner
+   **Models and aliases imported** shows, select **Close**.
 
 > [!NOTE]
 > The gateway calls Foundry with its system-assigned managed identity, which needs the **Foundry User** role on
@@ -199,10 +203,10 @@ The Bicep + azd track also creates its own gateway and Foundry deployment, so it
 
 ### Copy the callable alias
 
-Open the imported model on **Models**. The model details show its base URL and supported interfaces, such as
-**OpenAI Chat Completions** and **OpenAI Responses**. Open the **Aliases** tab and copy the alias exactly as
-shown, then save it in your shell. Portal imports usually name it after the provider and the deployment, for
-example `<foundry-account-name>/gpt-5-mini`.
+On **Models**, the **Backend models** tab lists `gpt-5-mini` with its alias. Select the model: its **Overview**
+lists the **Endpoints** that it supports, such as **Chat completions** and **Responses**, and its **Aliases** tab
+lists the aliases that route to it. Copy the alias exactly as shown, then save it in your shell. Portal imports name
+it after the provider and the deployment, for example `<foundry-account-name>/gpt-5-mini`.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -224,19 +228,18 @@ Write-Host "🔖 Model alias: $env:AI_GATEWAY_MODEL"
 
 ### Create a runtime API key
 
-1. Select **Access** › **API keys** › **Create API key**. Some portal versions show **Keys** in the left
-   navigation, or a **Keys** tab instead of **API keys**.
+1. Select **Access**, then the **API keys** tab, then **Create API key**.
 2. In **Key name**, enter a name for the app that will use it, for example `app-first-call`, and select
    **Create**.
-3. Copy the value from **API key created successfully**, for example with **Copy & done**. Copy it now: treat
-   the value as shown only once.
+3. In **API key created**, select **Copy & done** to copy the key. You can view, rotate, or delete it later in
+   **Access** › **API keys**.
 4. Paste it into your shell without echoing it or writing it to a file:
 
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
 # Paste the key without showing it, and export it for the calls and samples that follow
-read -rsp "AI Gateway API key: " AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
+printf "AI Gateway API key: " && read -rs AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 ```
 </details> <!-- gh -->
@@ -331,7 +334,7 @@ The provider tells the gateway where the account is and to authenticate with its
 az aigateway model-provider create -g "$RG" --gateway-name "$GATEWAY" -n "$PROVIDER" \
   --kind Foundry --display-name "Foundry models" \
   --foundry "{endpoint:'$FOUNDRY_ENDPOINT',resourceIds:[$FOUNDRY_ID],authentication:{kind:ManagedIdentity,managedIdentity:{resource:'https://cognitiveservices.azure.com/'}}}" \
-  --query "{name:name, kind:properties.kind, endpoint:properties.foundry.endpoint}" &&
+  --query "{name:name, kind:properties.modelProviderType, endpoint:properties.foundry.endpoint.url}" &&
   echo "🔌 Model provider $PROVIDER points at $FOUNDRY_ACCOUNT"
 ```
 </details> <!-- gh -->
@@ -343,7 +346,7 @@ az aigateway model-provider create -g "$RG" --gateway-name "$GATEWAY" -n "$PROVI
 az aigateway model-provider create -g $RG --gateway-name $GATEWAY -n $PROVIDER `
   --kind Foundry --display-name "Foundry models" `
   --foundry "{endpoint:'$FOUNDRY_ENDPOINT',resourceIds:[$FOUNDRY_ID],authentication:{kind:ManagedIdentity,managedIdentity:{resource:'https://cognitiveservices.azure.com/'}}}" `
-  --query "{name:name, kind:properties.kind, endpoint:properties.foundry.endpoint}"
+  --query "{name:name, kind:properties.modelProviderType, endpoint:properties.foundry.endpoint.url}"
 if ($?) { Write-Host "🔌 Model provider $PROVIDER points at $FOUNDRY_ACCOUNT" }
 ```
 </details> <!-- gh -->
@@ -426,9 +429,7 @@ if ($?) { Write-Host "🔖 Alias $env:AI_GATEWAY_MODEL is ready" }
 ```
 </details> <!-- gh -->
 
-`az aigateway model-alias set` creates the alias, or updates it if it exists, so you can run the step again. When
-it creates the alias, it warns that the service doesn't enforce atomic alias creation. That's expected: it only
-matters when two people create the same alias at the same time.
+`az aigateway model-alias set` creates the alias, or updates it if it exists, so you can run the step again.
 
 ### Create a runtime API key
 
@@ -720,12 +721,12 @@ var foundryResourceGroup = split(foundryAccountId, '/')[4]
 var deploymentId = '${foundryAccountId}/deployments/${deploymentName}'
 
 #disable-next-line BCP081
-resource aiGateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
+resource aiGateway 'Microsoft.ApiManagement/aigateways@2026-11-01' existing = {
   name: gatewayName
 }
 
 #disable-next-line BCP081
-resource defaultWorkspace 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' existing = {
+resource defaultWorkspace 'Microsoft.ApiManagement/aigateways/workspaces@2026-11-01' existing = {
   parent: aiGateway
   name: 'default'
 }
@@ -749,39 +750,39 @@ module foundryUserRole './foundry-user-role.bicep' = {
 }
 
 #disable-next-line BCP081
-resource foundryProvider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2025-09-01-preview' = {
+resource foundryProvider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2026-11-01' = {
   parent: defaultWorkspace
   name: providerName
   dependsOn: [
     foundryUserRole
   ]
   properties: {
-    kind: 'Foundry'
+    modelProviderType: 'Foundry'
     displayName: 'Foundry models'
     description: 'Managed-identity Foundry provider created by the first-model-call lab.'
     foundry: {
-      endpoint: normalizedFoundryEndpoint
+      endpoint: {
+        url: normalizedFoundryEndpoint
+      }
       resourceIds: [
         foundryAccountId
       ]
-      authentication: {
-        kind: 'ManagedIdentity'
-        managedIdentity: {
-          resource: 'https://cognitiveservices.azure.com/'
-        }
+    }
+    authentication: {
+      managedIdentity: {
+        resource: 'https://cognitiveservices.azure.com/'
       }
     }
   }
 }
 
 #disable-next-line BCP081
-resource model 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2025-09-01-preview' = {
+resource model 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2026-11-01' = {
   parent: foundryProvider
   name: deploymentName
   properties: {
     displayName: deploymentName
     description: 'Foundry deployment ${deploymentName} published through AI Gateway.'
-    apiFormat: 'OpenAIChatCompletions'
     supportedEndpoints: [
       '/openai/v1/chat/completions'
       '/openai/v1/responses'
@@ -805,7 +806,7 @@ resource model 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/mod
 }
 
 #disable-next-line BCP081
-resource alias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2025-09-01-preview' = {
+resource alias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01' = {
   parent: defaultWorkspace
   name: aliasName
   properties: {
@@ -816,7 +817,7 @@ resource alias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2025-09-01
 }
 
 #disable-next-line BCP081
-resource runtimeApiKey 'Microsoft.ApiManagement/aigateways/apiKeys@2025-09-01-preview' = {
+resource runtimeApiKey 'Microsoft.ApiManagement/aigateways/apiKeys@2026-11-01' = {
   parent: aiGateway
   name: apiKeyName
   properties: {
@@ -835,6 +836,15 @@ output foundryUserRoleAssignmentName string = foundryUserRole.outputs.roleAssign
 
 </details>
 <!-- gh:end -->
+
+The templates use the `2026-11-01` management API. The provider sets `modelProviderType: 'Foundry'`, the account's
+endpoint in `foundry.endpoint.url`, and the managed identity in a top-level `authentication` object. The model lists
+the API paths it serves in `supportedEndpoints`, and points to the deployment with `deployment.resourceId`,
+`deployment.modelName`, and an optional `deployment.modelVersion`. The provider and the model both need a
+`displayName`. The CLI track's `az aigateway` commands call the same API version, so their output shows the same
+names, such as `modelProviderType` and `foundry.endpoint.url`. Only the `--foundry` input of
+`az aigateway model-provider create` keeps a shorter shape: the endpoint as a string, and the authentication with a
+`kind`.
 
 ### Deploy with azd up
 
@@ -973,6 +983,402 @@ if ($?) { Write-Host "🔐 Token limit of 20,000 tokens per minute per caller is
 </details> <!-- gh -->
 
 </details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+**What you need:** the one-time setup from **Before you begin**, plus Terraform 1.9 or later, as in
+[Deploy a lab with Terraform](../SETUP.md#deploy-a-lab-with-terraform). The configuration assigns a role, so you need
+**Owner** on the subscription, or **Contributor** and **Role Based Access Control Administrator**. This track doesn't
+use your gateway from lab 01: `terraform apply` creates a new one, so it works on its own.
+
+### Review the configuration
+
+The configuration mirrors the Bicep templates, one file each. `terraform/main.tf` creates the resource group
+`rg-<environment_name>` and calls lab 01's [gateway module](../01-provision-gateway/terraform/gateway) for the
+gateway:
+
+<!-- include: terraform/main.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/main.tf`](terraform/main.tf)
+
+```tf
+# Lab 02 with Terraform: creates the resource group rg-<environment_name> with lab 01's gateway and this lab's
+# Foundry account and gpt-5-mini deployment (foundry.tf), then publishes the deployment through the gateway: the
+# Foundry User role (foundry-user-role.tf), the model provider, the backend model, the alias, and the
+# app-first-call key (publish-model.tf). The runtime API key is never an output.
+data "azapi_client_config" "current" {}
+
+locals {
+  suffix = substr(sha1("${data.azapi_client_config.current.subscription_id}/${var.environment_name}/${var.location}"), 0, 6)
+  tags   = { "environment-name" = var.environment_name }
+}
+
+resource "azurerm_resource_group" "rg" {
+  name     = "rg-${var.environment_name}"
+  location = var.location
+  tags     = local.tags
+}
+
+# Lab 01's module: the gateway with a system-assigned identity.
+module "gateway" {
+  source = "../../01-provision-gateway/terraform/gateway"
+
+  gateway_name      = "aigw-${local.suffix}"
+  resource_group_id = azurerm_resource_group.rg.id
+  location          = var.location
+  tags              = local.tags
+}
+```
+<!-- gh:end -->
+
+`terraform/foundry.tf` creates the Foundry account, with local key authentication disabled, and its `gpt-5-mini`
+`GlobalStandard` deployment, with the `azurerm` provider:
+
+<!-- include: terraform/foundry.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/foundry.tf`](terraform/foundry.tf)
+
+<details><summary>Show all 38 lines</summary>
+
+```tf
+# The backend: a Microsoft Foundry (Azure AI Services) account with one gpt-5-mini deployment. Local auth is off,
+# so only Entra identities, such as the gateway's managed identity, can call it. Model inference is billed.
+locals {
+  model_name    = "gpt-5-mini"
+  model_version = "2025-08-07"
+}
+
+resource "azurerm_cognitive_account" "foundry" {
+  name                          = "aigw${local.suffix}"
+  resource_group_name           = azurerm_resource_group.rg.name
+  location                      = var.location
+  tags                          = local.tags
+  kind                          = "AIServices"
+  sku_name                      = "S0"
+  custom_subdomain_name         = "aigw${local.suffix}"
+  local_auth_enabled            = false
+  public_network_access_enabled = true
+
+  identity {
+    type = "SystemAssigned"
+  }
+}
+
+resource "azurerm_cognitive_deployment" "model" {
+  name                 = local.model_name
+  cognitive_account_id = azurerm_cognitive_account.foundry.id
+
+  sku {
+    name     = "GlobalStandard"
+    capacity = 10
+  }
+
+  model {
+    format  = "OpenAI"
+    name    = local.model_name
+    version = local.model_version
+  }
+}
+```
+
+</details>
+<!-- gh:end -->
+
+`terraform/foundry-user-role.tf` grants the gateway's identity the **Foundry User** role on the account:
+
+<!-- include: terraform/foundry-user-role.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/foundry-user-role.tf`](terraform/foundry-user-role.tf)
+
+```tf
+# Grants the gateway's system-assigned managed identity the Foundry User role on the Foundry account, so the
+# gateway can call the account's model deployments without keys.
+locals {
+  foundry_user_role_id = "53ca6127-db72-4b80-b1b0-d745d6d5456d"
+}
+
+resource "azurerm_role_assignment" "foundry_user" {
+  name                             = uuidv5("url", "${azurerm_cognitive_account.foundry.id}/${module.gateway.gateway_id}/${local.foundry_user_role_id}")
+  scope                            = azurerm_cognitive_account.foundry.id
+  role_definition_id               = "/subscriptions/${data.azapi_client_config.current.subscription_id}/providers/Microsoft.Authorization/roleDefinitions/${local.foundry_user_role_id}"
+  principal_id                     = module.gateway.principal_id
+  principal_type                   = "ServicePrincipal"
+  skip_service_principal_aad_check = true
+}
+```
+<!-- gh:end -->
+
+`terraform/publish-model.tf` publishes the deployment with the `azapi` provider, which sends the AI Gateway API
+version, `2026-11-01`, as is. It creates the Foundry model provider only after the role assignment, then the backend
+model with its per-caller token limit, the alias, and the key. `terraform/variables.tf` declares the token limit,
+`tokens_per_minute`, with the same default as the Bicep template:
+
+<!-- include: terraform/publish-model.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/publish-model.tf`](terraform/publish-model.tf)
+
+<details><summary>Show all 95 lines</summary>
+
+```tf
+# Publishes the Foundry deployment through the gateway: a Foundry model provider that signs in with the gateway's
+# managed identity, the deployment as a backend model with a per-caller token limit, an alias that apps send in
+# the "model" field, and a runtime API key for the first app. Read the key with az aigateway api-key list-secrets.
+locals {
+  workspace_id = "${module.gateway.gateway_id}/workspaces/default"
+}
+
+resource "azapi_resource" "provider" {
+  type      = "Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2026-11-01"
+  name      = "foundry-models"
+  parent_id = local.workspace_id
+
+  body = {
+    properties = {
+      modelProviderType = "Foundry"
+      displayName       = "Foundry models"
+      description       = "Managed-identity Foundry provider created by the first-model-call lab."
+      foundry = {
+        endpoint = {
+          url = "${trimsuffix(azurerm_cognitive_account.foundry.endpoint, "/")}/"
+        }
+        resourceIds = [azurerm_cognitive_account.foundry.id]
+      }
+      authentication = {
+        managedIdentity = {
+          resource = "https://cognitiveservices.azure.com/"
+        }
+      }
+    }
+  }
+
+  schema_validation_enabled = false
+  depends_on                = [azurerm_role_assignment.foundry_user]
+}
+
+resource "azapi_resource" "model" {
+  type      = "Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2026-11-01"
+  name      = azurerm_cognitive_deployment.model.name
+  parent_id = azapi_resource.provider.id
+
+  body = {
+    properties = {
+      displayName = azurerm_cognitive_deployment.model.name
+      description = "Foundry deployment ${azurerm_cognitive_deployment.model.name} published through AI Gateway."
+      supportedEndpoints = [
+        "/openai/v1/chat/completions",
+        "/openai/v1/responses",
+      ]
+      deployment = {
+        resourceId = azurerm_cognitive_deployment.model.id
+        modelName  = azurerm_cognitive_deployment.model.name
+      }
+      policies = [
+        {
+          type       = "tokenLimit"
+          period     = "minute"
+          count      = var.tokens_per_minute
+          counterKey = ["identity"]
+        }
+      ]
+    }
+  }
+
+  schema_validation_enabled = false
+}
+
+resource "azapi_resource" "alias" {
+  type      = "Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01"
+  name      = azapi_resource.model.name
+  parent_id = local.workspace_id
+
+  body = {
+    properties = {
+      backendModels = [
+        { resourceId = azapi_resource.model.id }
+      ]
+    }
+  }
+
+  schema_validation_enabled = false
+}
+
+resource "azapi_resource" "api_key" {
+  type      = "Microsoft.ApiManagement/aigateways/apiKeys@2026-11-01"
+  name      = "app-first-call"
+  parent_id = module.gateway.gateway_id
+
+  body = {
+    properties = {
+      displayName = "First call app key"
+    }
+  }
+
+  schema_validation_enabled = false
+}
+```
+
+</details>
+<!-- gh:end -->
+
+### Deploy with terraform apply
+
+Move into the lab's Terraform folder, select your current subscription, then plan and apply the configuration. It
+takes about three minutes, most of it while the new gateway activates.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Move into the lab's Terraform folder
+cd ~/aigateway/labs/02-first-model-call/terraform &&
+  echo "📂 Terraform folder: $(pwd)"
+
+# Deploy to the Azure CLI's current subscription
+export ARM_SUBSCRIPTION_ID="$(az account show --query id --output tsv)" &&
+  echo "📍 Subscription: $ARM_SUBSCRIPTION_ID"
+
+# Download the providers, then plan and apply the gateway, the Foundry deployment, the role, the provider, the
+# model, the alias, and the key
+terraform init &&
+  terraform plan -out tfplan &&
+  terraform apply tfplan &&
+  echo "🚀 Gateway $(terraform output -raw ai_gateway_name) is deployed"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Move into the lab's Terraform folder
+Set-Location ~/aigateway/labs/02-first-model-call/terraform
+if ($?) { Write-Host "📂 Terraform folder: $(Get-Location)" }
+
+# Deploy to the Azure CLI's current subscription
+$env:ARM_SUBSCRIPTION_ID = az account show --query id --output tsv
+if ($?) { Write-Host "📍 Subscription: $env:ARM_SUBSCRIPTION_ID" }
+
+# Download the providers, then plan and apply the gateway, the Foundry deployment, the role, the provider, the
+# model, the alias, and the key
+terraform init
+if ($?) { terraform plan -out tfplan }
+if ($?) { terraform apply tfplan }
+if ($?) { Write-Host "🚀 Gateway $(terraform output -raw ai_gateway_name) is deployed" }
+```
+</details> <!-- gh -->
+
+The configuration deploys to `eastus2`. For another region where AI Gateway and the `gpt-5-mini` model are
+available, as in [Find the available regions](../SETUP.md#find-the-available-regions), run
+`export TF_VAR_location=<region>` (PowerShell: `$env:TF_VAR_location = "<region>"`) before `terraform plan`.
+
+### Read the outputs and the key
+
+Set the variables from **Before you begin**, which the next sections and **Verify** use, from the Terraform outputs.
+The outputs never contain the key value, so read it from the gateway straight into a variable, where it never shows
+on screen or lands in the Terraform state.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Read the names that the next sections and Verify use from the Terraform outputs
+export RG="$(terraform output -raw azure_resource_group)"
+export GATEWAY="$(terraform output -raw ai_gateway_name)"
+export GATEWAY_ID="$(terraform output -raw ai_gateway_id)"
+export FOUNDRY_RG="$RG"
+export FOUNDRY_ACCOUNT="$(terraform output -raw foundry_account_name)"
+export DEPLOYMENT="$(terraform output -raw ai_gateway_backend_model)"
+export PROVIDER="$(terraform output -raw ai_gateway_provider)"
+echo "📝 Gateway $GATEWAY and Foundry account $FOUNDRY_ACCOUNT, in $RG"
+
+# Read the gateway's runtime URL and the alias
+export AI_GATEWAY_URL="$(terraform output -raw ai_gateway_url)"
+export AI_GATEWAY_MODEL="$(terraform output -raw ai_gateway_model)"
+
+# Read the key from the gateway, so that it never lands in a file or the Terraform state
+export AI_GATEWAY_API_KEY="$(az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/app-first-call" \
+  --query primaryKey --output tsv)"
+echo "🌐 Runtime URL: $AI_GATEWAY_URL"
+echo "🔖 Model alias: $AI_GATEWAY_MODEL"
+echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
+
+# Move back to the lab's folder, which holds the scripts and samples
+cd .. && echo "📂 Lab folder: $(pwd)"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Read the names that the next sections and Verify use from the Terraform outputs
+$RG                     = terraform output -raw azure_resource_group
+$GATEWAY                = terraform output -raw ai_gateway_name
+$GATEWAY_ID             = terraform output -raw ai_gateway_id
+$FOUNDRY_RG             = $RG
+$FOUNDRY_ACCOUNT        = terraform output -raw foundry_account_name
+$DEPLOYMENT             = terraform output -raw ai_gateway_backend_model
+$PROVIDER               = terraform output -raw ai_gateway_provider
+Write-Host "📝 Gateway $GATEWAY and Foundry account $FOUNDRY_ACCOUNT, in $RG"
+
+# Read the gateway's runtime URL and the alias
+$env:AI_GATEWAY_URL     = terraform output -raw ai_gateway_url
+$env:AI_GATEWAY_MODEL   = terraform output -raw ai_gateway_model
+
+# Read the key from the gateway, so that it never lands in a file or the Terraform state
+$env:AI_GATEWAY_API_KEY = az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/app-first-call" `
+  --query primaryKey --output tsv
+Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
+Write-Host "🔖 Model alias: $env:AI_GATEWAY_MODEL"
+Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) characters, not shown)"
+
+# Move back to the lab's folder, which holds the scripts and samples
+Set-Location ..
+if ($?) { Write-Host "📂 Lab folder: $(Get-Location)" }
+```
+</details> <!-- gh -->
+
+> **Checkpoint**
+> `terraform apply` ended with `Apply complete! Resources: 9 added, 0 changed, 0 destroyed.`, and the output
+> shows `🔖 Model alias: gpt-5-mini`. In the portal, select the new gateway in the gateway switcher: **Models**
+> lists `gpt-5-mini`.
+
+The next sections run from the lab's folder, with `-chdir=terraform` for the `terraform` commands.
+
+### Change the token limit
+
+The configuration gives each caller 10,000 tokens per minute on the model. The value is the `tokens_per_minute`
+variable, with the default in `terraform/variables.tf`. To change it, pass it to `terraform plan` and apply the
+plan. Only the model changes.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Plan the new token limit: 20,000 tokens per minute for each caller
+terraform -chdir=terraform plan -var tokens_per_minute=20000 -out tfplan &&
+  echo "📝 The plan updates only the model"
+
+# Apply the plan
+terraform -chdir=terraform apply tfplan &&
+  echo "🔐 Token limit of 20,000 tokens per minute per caller is on $DEPLOYMENT"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Plan the new token limit: 20,000 tokens per minute for each caller
+terraform -chdir=terraform plan -var tokens_per_minute=20000 -out tfplan
+if ($?) { Write-Host "📝 The plan updates only the model" }
+
+# Apply the plan
+terraform -chdir=terraform apply tfplan
+if ($?) { Write-Host "🔐 Token limit of 20,000 tokens per minute per caller is on $DEPLOYMENT" }
+```
+</details> <!-- gh -->
+
+> **Checkpoint**
+> The plan ended with `Plan: 0 to add, 1 to change, 0 to destroy.`, for `azapi_resource.model`.
+
+A later `terraform plan` or `terraform apply` without `-var` goes back to the default, 10,000.
+
+</details> <!-- gh -->
 <!-- /tracks -->
 
 > [!IMPORTANT]
@@ -990,8 +1396,11 @@ Use the same alias and key everywhere. The gateway exposes the OpenAI-compatible
 ### Try the model in Catalog
 
 1. Select **Catalog** and pick your model.
-2. Send a prompt in the built-in playground, for example `Write a one-sentence status update.`
-3. Copy the endpoint and the code samples (cURL, PowerShell 7+, Python, TypeScript, and .NET) for your app.
+2. Under **Authentication**, check that **Method** is **API key**, and choose your key as the **API key**, for
+   example `app-first-call`.
+3. Send a prompt in the built-in playground, for example `Write a one-sentence status update.`
+4. Select **Continue in code** for the endpoint URL and snippets for your app: cURL, the OpenAI SDK, LangChain,
+   Vercel AI, the GitHub Copilot SDK, and Microsoft Agent Framework.
 
 > [!TIP]
 > If the playground asks you to **Sign in again**, your portal session expired. Sign in and resend the prompt.
@@ -1084,7 +1493,7 @@ set -euo pipefail
 PROMPT="${1:-Write a one-sentence status update.}"
 : "${AI_GATEWAY_URL:?Set AI_GATEWAY_URL to the gateway runtime URL, for example https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com}"
 : "${AI_GATEWAY_MODEL:?Set AI_GATEWAY_MODEL to the callable model alias}"
-: "${AI_GATEWAY_API_KEY:?Set AI_GATEWAY_API_KEY to a runtime key from Access > Keys}"
+: "${AI_GATEWAY_API_KEY:?Set AI_GATEWAY_API_KEY to a runtime key from Access > API keys}"
 
 BASE="${AI_GATEWAY_URL%/}/default/models/openai/v1"
 
@@ -1176,6 +1585,8 @@ echo "📦 The .NET sample is restored"
 
 The OpenAI SDKs send their API key as `Authorization: Bearer <key>`, which is where the gateway reads the runtime
 key, so the key goes straight into the SDK. The .NET sample uses `HttpClient`, so it sets the same header itself.
+The gateway also accepts the key in an `api-key` header, which Azure OpenAI clients send, but not both headers in
+one request: that returns `400` `Specify either an API key or an Authorization header, not both.`
 
 <details open><summary>Python</summary> <!-- gh -->
 
@@ -1399,7 +1810,7 @@ aren't callable unless an alias with that name exists.
 - **Add a per-caller token limit.** The Bicep + azd track already sets `tokensPerMinute`, and its **Change the
   token limit** step changes it. Learn how limits behave in
   [Throttle tokens per caller with token limits](../06-token-limits/README.md).
-- **Publish models from other providers.** Put OpenAI, Anthropic, AWS Bedrock, or Google Vertex AI models behind
+- **Publish models from other providers.** Put OpenAI, Anthropic, Amazon Bedrock, or Google Vertex AI models behind
   the same gateway in [Publish models from any provider behind stable aliases](../03-multi-provider-aliases/README.md).
 
 ## Clean up
@@ -1486,7 +1897,7 @@ it has what that lab needs, the `gpt-5-mini` alias and the `app-first-call` key,
 
 Otherwise, in the `aigateway/labs/02-first-model-call` folder, delete the resource group with the gateway and the
 Foundry account. [`--purge`](../SETUP.md#delete-what-azd-created) also purges the soft-deleted Foundry account. It
-takes up to fifteen minutes.
+takes about three minutes.
 
 ```bash
 # Delete everything that azd up created, purge the Foundry account, and don't ask you to confirm
@@ -1497,6 +1908,29 @@ azd down --purge --force &&
 `azd down` doesn't touch the gateway from lab 01, because this track created its own.
 
 </details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+### Delete everything Terraform created
+
+You don't need to keep this gateway for the Terraform tracks of later labs: each of them creates its own. If you
+continue with the portal or CLI track of [lab 03](../03-multi-provider-aliases/README.md), you can keep it instead:
+it has what that lab needs, the `gpt-5-mini` alias and the `app-first-call` key, in the resource group
+`rg-aigw-lab02-tf`.
+
+Otherwise, in the `aigateway/labs/02-first-model-call` folder, delete the resource group with the gateway and the
+Foundry account. The [`azurerm` provider](../SETUP.md#delete-what-terraform-created) also purges the soft-deleted
+Foundry account. It takes about two minutes.
+
+```bash
+# Delete everything that terraform apply created, and purge the soft-deleted Foundry account
+terraform -chdir=terraform destroy -auto-approve &&
+  echo "🚮 Everything that terraform apply created is deleted"
+```
+
+`terraform destroy` doesn't touch the gateway from lab 01, because this track created its own.
+
+</details> <!-- gh -->
 <!-- /tracks -->
 
 ## Next steps
@@ -1504,7 +1938,8 @@ azd down --purge --force &&
 - [Publish models from any provider behind stable aliases](../03-multi-provider-aliases/README.md): add other providers and retarget aliases.
 - [Issue and rotate runtime API keys](../10-api-keys/README.md): give each app its own key and rotate it safely.
 - [Throttle tokens per caller with token limits](../06-token-limits/README.md): protect the deployment from noisy neighbors.
-- Docs: [Access models through AI Gateway](https://ai.gateway.azure.com/docs/model-access) and
+- Docs: [Connect agents to AI Gateway](https://ai.gateway.azure.com/docs/agent-access),
+  [Authenticate with an API key](https://ai.gateway.azure.com/docs/security/authenticate-keys), and
   [Microsoft Foundry and AI Gateway](https://ai.gateway.azure.com/docs/foundry).
 
 <!-- gh:begin footer: generated by "npm run sync" from the metadata, do not edit -->
@@ -1517,5 +1952,5 @@ azd down --purge --force &&
 | :-- | :-: | --: |
 | [01 · Provision a gateway](../01-provision-gateway/README.md) | [All labs](../README.md) | [03 · Multi-provider aliases](../03-multi-provider-aliases/README.md) |
 
-<sub>Learning paths: [30-minute essentials](../README.md#learning-paths) (3 of 4) · [Platform engineer](../README.md#learning-paths) (2 of 9) · [App & agent developer](../README.md#learning-paths) (1 of 10)</sub>
+<sub>Learning paths: [30-minute essentials](../README.md#learning-paths) (3 of 4) · [Platform engineer](../README.md#learning-paths) (2 of 11) · [App & agent developer](../README.md#learning-paths) (1 of 15)</sub>
 <!-- gh:end -->

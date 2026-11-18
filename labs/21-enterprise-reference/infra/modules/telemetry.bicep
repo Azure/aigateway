@@ -37,12 +37,12 @@ param claimAttributes array = [
 ]
 
 #disable-next-line BCP081
-resource aiGateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
+resource aiGateway 'Microsoft.ApiManagement/aigateways@2026-11-01' existing = {
   name: gatewayName
 }
 
 #disable-next-line BCP081
-resource defaultWorkspace 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' existing = {
+resource defaultWorkspace 'Microsoft.ApiManagement/aigateways/workspaces@2026-11-01' existing = {
   parent: aiGateway
   name: 'default'
 }
@@ -55,24 +55,28 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' existing = {
 var otlp = any(appInsights.properties)
 
 #disable-next-line BCP081
-resource telemetryExporter 'Microsoft.ApiManagement/aigateways/workspaces/telemetryExporters@2025-09-01-preview' = {
+resource telemetryExporter 'Microsoft.ApiManagement/aigateways/workspaces/telemetryExporters@2026-11-01' = {
   parent: defaultWorkspace
   name: exporterName
   properties: {
-    kind: 'OpenTelemetry'
+    telemetryExporterType: 'OpenTelemetry'
     // Prompts and responses can be sensitive and add volume, so payloads stay out of the telemetry.
     payloadCapture: false
-    applicationInsights: {
-      resourceId: appInsights.id
-    }
+    // No applicationInsights link: the portal finds the component through the Data Collection Rule in the endpoints.
     openTelemetry: {
-      metricsEndpoint: otlp.OTLPMetricsEndpoint
-      logsEndpoint: otlp.OTLPLogsEndpoint
-      tracesEndpoint: otlp.OTLPTracesEndpoint
-      credentials: {
-        managedIdentity: {
-          resource: 'https://monitor.azure.com'
-        }
+      metricsEndpoint: {
+        url: otlp.OTLPMetricsEndpoint
+      }
+      logsEndpoint: {
+        url: otlp.OTLPLogsEndpoint
+      }
+      tracesEndpoint: {
+        url: otlp.OTLPTracesEndpoint
+      }
+    }
+    authentication: {
+      managedIdentity: {
+        resource: 'https://monitor.azure.com'
       }
     }
     telemetry: {

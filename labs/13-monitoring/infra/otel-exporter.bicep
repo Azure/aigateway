@@ -45,12 +45,12 @@ param claimAttributes array = [
 param payloadCapture bool = false
 
 #disable-next-line BCP081
-resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
+resource gateway 'Microsoft.ApiManagement/aigateways@2026-11-01' existing = {
   name: gatewayName
 }
 
 #disable-next-line BCP081
-resource defaultWorkspace 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' existing = {
+resource defaultWorkspace 'Microsoft.ApiManagement/aigateways/workspaces@2026-11-01' existing = {
   parent: gateway
   name: 'default'
 }
@@ -63,23 +63,29 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' existing = {
 var otlp = any(appInsights.properties)
 
 #disable-next-line BCP081
-resource telemetryExporter 'Microsoft.ApiManagement/aigateways/workspaces/telemetryExporters@2025-09-01-preview' = {
+resource telemetryExporter 'Microsoft.ApiManagement/aigateways/workspaces/telemetryExporters@2026-11-01' = {
   parent: defaultWorkspace
   name: exporterName
   properties: {
-    kind: 'OpenTelemetry'
+    telemetryExporterType: 'OpenTelemetry'
     payloadCapture: payloadCapture
-    applicationInsights: {
-      resourceId: appInsights.id
-    }
+    // No applicationInsights block: an OpenTelemetry exporter can't carry one. The portal finds the component from
+    // the Data Collection Rule in the endpoint URLs.
     openTelemetry: {
-      metricsEndpoint: otlp.OTLPMetricsEndpoint
-      logsEndpoint: otlp.OTLPLogsEndpoint
-      tracesEndpoint: otlp.OTLPTracesEndpoint
-      credentials: {
-        managedIdentity: {
-          resource: 'https://monitor.azure.com'
-        }
+      metricsEndpoint: {
+        url: otlp.OTLPMetricsEndpoint
+      }
+      logsEndpoint: {
+        url: otlp.OTLPLogsEndpoint
+      }
+      tracesEndpoint: {
+        url: otlp.OTLPTracesEndpoint
+      }
+    }
+    // The gateway's system-assigned identity gets a token for Azure Monitor ingestion.
+    authentication: {
+      managedIdentity: {
+        resource: 'https://monitor.azure.com'
       }
     }
     telemetry: {

@@ -6,7 +6,6 @@ export const I = {
   search: P('<circle cx="8.5" cy="8.5" r="5"/><path d="m12.5 12.5 4.5 4.5"/>'),
   sun: P('<circle cx="10" cy="10" r="3.5"/><path d="M10 2v1.5M10 16.5V18M2 10h1.5M16.5 10H18M4.3 4.3l1.1 1.1M14.6 14.6l1.1 1.1M4.3 15.7l1.1-1.1M14.6 5.4l1.1-1.1"/>'),
   moon: P('<path d="M16.5 12.2A6.8 6.8 0 0 1 7.8 3.5a6.8 6.8 0 1 0 8.7 8.7Z"/>'),
-  pause: P('<circle cx="10" cy="10" r="7.5"/><path d="M8.2 7.2v5.6M11.8 7.2v5.6"/>'),
   github: '<svg class="i i-fill" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.05-.49.05-.49.8.06 1.23.83 1.23.83.72 1.22 1.88.87 2.34.66.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 8 0Z"/></svg>',
   clock: P('<circle cx="10" cy="10" r="7.5"/><path d="M10 5.5V10l3 2"/>'),
   notebook: P('<rect x="4.5" y="2.5" width="12" height="15" rx="2"/><path d="M3 6h3M3 10h3M3 14h3M9 7h4.5M9 10.5h4.5"/>'),
@@ -51,6 +50,7 @@ export const I = {
   portal: TRACK_ICONS.portal.replace('<svg ', '<svg class="i" '),
   cli: TRACK_ICONS.cli.replace('<svg ', '<svg class="i" '),
   iac: TRACK_ICONS.iac.replace('<svg ', '<svg class="i" '),
+  terraform: TRACK_ICONS.terraform.replace('<svg ', '<svg class="i" '),
   rest: TRACK_ICONS.rest.replace('<svg ', '<svg class="i" '),
   checkpoint: P('<circle cx="10" cy="10" r="7.5"/><path d="m6.5 10.2 2.3 2.3 4.7-4.8"/>'),
   broom: P('<path d="m13 3-4.5 7.5M5 10.5h7l1.5 7h-10Z"/><path d="M7 13.5v4M10 13.5v4"/>'),
@@ -63,7 +63,7 @@ export const CATEGORY_ICONS = {
   security: 'shield', observability: 'chart', agents: 'agent', production: 'building',
 };
 const trackIcon = (t) => (t === 'notebook' ? I.notebook : (TRACK_ICONS[t] || TRACK_ICONS.code).replace('<svg ', '<svg class="i" '));
-const SHORT_TRACK = { portal: 'Portal', cli: 'CLI', iac: 'Bicep', code: 'Code', rest: 'REST', notebook: 'Notebook' };
+const SHORT_TRACK = { portal: 'Portal', cli: 'CLI', iac: 'Bicep', terraform: 'Terraform', code: 'Code', rest: 'REST', notebook: 'Notebook' };
 // A lab's tracks, plus a notebook chip when the lab has a Jupyter notebook.
 const labTracks = (lab) => [...lab.tracks, ...(lab.notebook ? ['notebook'] : [])];
 const fmtDuration = (m) => (m >= 60 ? `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}` : `${m} min`);
@@ -100,7 +100,7 @@ ${canonical ? `<link rel="canonical" href="${esc(canonical)}">` : ''}
 <meta name="theme-color" content="#1b1a1f" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="${rel}assets/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="${rel}assets/site.css">
-<script>(function(){var d=document.documentElement;try{var t=localStorage.getItem('aigw-theme');if(!t)t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';d.dataset.theme=t;}catch(e){}try{var m=JSON.parse(localStorage.getItem('aigw-motion'));if(m==null)m=matchMedia('(prefers-reduced-motion: reduce)').matches?'off':'on';d.dataset.motion=m;}catch(e){d.dataset.motion='on';}})();</script>
+<script>(function(){var d=document.documentElement;try{var t=localStorage.getItem('aigw-theme');if(!t)t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';d.dataset.theme=t;}catch(e){}})();</script>
 ${extraHead}
 </head>
 <body class="page-${kind}">
@@ -132,7 +132,6 @@ function topbar(rel, site, kind) {
     <div class="topbar-actions">
       <button class="search-trigger" type="button" data-search-open aria-keyshortcuts="Control+K Meta+K">${I.search}<span>Search labs</span><kbd data-kbd aria-hidden="true">Ctrl K</kbd></button>
       <a class="topbar-link hide-sm" href="${site.docs}" target="_blank" rel="noopener">Documentation</a>
-      <button class="icon-btn motion-toggle" type="button" data-motion-toggle aria-pressed="false" aria-label="Pause animations" title="Pause animations">${I.pause}</button>
       <button class="icon-btn" type="button" data-theme-toggle aria-pressed="false" aria-label="Dark mode" title="Dark mode"><span class="theme-sun">${I.sun}</span><span class="theme-moon">${I.moon}</span></button>
       <a class="icon-btn hide-sm" href="${site.repo}" target="_blank" rel="noopener" aria-label="GitHub repository">${I.github}</a>
       <a class="btn btn-primary btn-pill btn-sm hide-xs" href="${site.portal}" target="_blank" rel="noopener">Open portal</a>
@@ -197,56 +196,134 @@ export function labCard(lab, rel, cat, { compact = false } = {}) {
 </a>`;
 }
 
-// ---------- Hero illustration ----------
-function heroDiagram(rel) {
-  // Animated Apps / Agents → AI Gateway → Models / MCP flow, themed with CSS variables.
-  const left = [
-    { y: 70, label: 'Apps', icon: I.portal },
-    { y: 170, label: 'Agents', icon: I.agent },
-    { y: 270, label: 'Coding agents', icon: I.code },
-  ];
-  const right = [
-    { y: 50, label: 'Microsoft Foundry', logo: 'microsoft-foundry' },
-    { y: 120, label: 'OpenAI · Anthropic', logo: 'anthropic' },
-    { y: 190, label: 'Bedrock · Vertex AI', logo: 'aws-bedrock' },
-    { y: 270, label: 'MCP servers & APIs', icon: I.tools },
-  ];
-  const cx = 320; const cy = 170;
-  const curve = (x1, y1, x2, y2) => `M${x1} ${y1} C ${(x1 + x2) / 2} ${y1}, ${(x1 + x2) / 2} ${y2}, ${x2} ${y2}`;
-  const paths = [
-    ...left.map((n, i) => ({ id: `hl${i}`, d: curve(152, n.y + 20, cx - 56, cy), cls: 'in', dur: 2.6 + i * 0.4 })),
-    ...right.map((n, i) => ({ id: `hr${i}`, d: curve(cx + 56, cy, 466, n.y + 20), cls: i === 3 ? 'tool' : 'out', dur: 2.4 + i * 0.35 })),
-  ];
-  const chips = [
-    { label: 'Entra ID', a: -150 }, { label: 'Token limits', a: -95 }, { label: 'Budgets', a: -30 },
-    { label: 'Content safety', a: 30 }, { label: 'Tool controls', a: 95 }, { label: 'OpenTelemetry', a: 150 },
-  ];
-  return `<svg class="hero-diagram" viewBox="0 0 640 340" role="img" aria-label="Apps, agents, and coding agents call AI Gateway, which applies identity, limits, budgets, safety, tool controls, and telemetry before routing to models from any provider and to MCP servers.">
-  <defs>
-    <radialGradient id="hd-glow" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="var(--hd-glow)" stop-opacity=".55"/><stop offset="1" stop-color="var(--hd-glow)" stop-opacity="0"/></radialGradient>
-    <linearGradient id="hd-ring" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3BD5FF"/><stop offset=".5" stop-color="#7e5be8"/><stop offset="1" stop-color="#BB45EA"/></linearGradient>
-  </defs>
-  <circle cx="${cx}" cy="${cy}" r="120" fill="url(#hd-glow)"/>
-  <circle class="hd-orbit" cx="${cx}" cy="${cy}" r="96"/>
-  <circle class="hd-orbit hd-orbit-2" cx="${cx}" cy="${cy}" r="70"/>
-  ${paths.map((p) => `<path id="${p.id}" class="hd-link hd-${p.cls}" d="${p.d}"/>`).join('')}
-  ${paths.map((p, i) => `<circle class="hd-dot hd-dot-${p.cls}" r="3.2"><animateMotion dur="${p.dur}s" begin="-${(i * 0.37 + 0.2).toFixed(2)}s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="linear"><mpath href="#${p.id}"/></animateMotion></circle>`).join('')}
-  ${left.map((n) => `<g class="hd-node" transform="translate(16 ${n.y})"><rect width="136" height="40" rx="8"/><g transform="translate(12 10)" class="hd-ico">${n.icon.replace('class="i"', 'class="i" width="20" height="20"')}</g><text x="40" y="25">${esc(n.label)}</text></g>`).join('')}
-  ${right.map((n) => `<g class="hd-node" transform="translate(466 ${n.y})"><rect width="164" height="40" rx="8"/>${n.logo ? `<image href="${rel}labs/assets/providers/${n.logo}.png" x="11" y="10" width="20" height="20"/>` : `<g transform="translate(11 10)" class="hd-ico">${n.icon.replace('class="i"', 'class="i" width="20" height="20"')}</g>`}<text x="38" y="25">${esc(n.label)}</text></g>`).join('')}
-  <g class="hd-core">
-    <circle cx="${cx}" cy="${cy}" r="50" class="hd-pulse"/>
-    <circle cx="${cx}" cy="${cy}" r="50" class="hd-core-bg"/>
-    <circle cx="${cx}" cy="${cy}" r="50" fill="none" stroke="url(#hd-ring)" stroke-width="2"/>
-    <image href="${rel}assets/favicon.svg" x="${cx - 19}" y="${cy - 31}" width="38" height="38"/>
-    <text x="${cx}" y="${cy + 26}" text-anchor="middle" class="hd-core-label">AI Gateway</text>
-  </g>
-  ${chips.map((c) => {
-    const r = 112; const rad = (c.a - 90) * Math.PI / 180;
-    const x = cx + r * Math.cos(rad); const y = cy + r * Math.sin(rad) * 0.98;
-    const w = c.label.length * 6.1 + 18;
-    return `<g class="hd-chip" transform="translate(${(x - w / 2).toFixed(1)} ${(y - 11).toFixed(1)})"><rect class="hd-chip-base" width="${w.toFixed(1)}" height="22" rx="11"/><rect width="${w.toFixed(1)}" height="22" rx="11"/><text x="${(w / 2).toFixed(1)}" y="15" text-anchor="middle">${esc(c.label)}</text></g>`;
-  }).join('')}
-</svg>`;
+// ---------- Hero architecture map ----------
+// The product's architecture picture (ai.gateway.azure.com). Every part is a link to the lab that teaches it;
+// with JavaScript, selecting a part opens a preview of that lab and its related labs instead.
+// The product picture's own icons (Fluent UI System Icons, as ai.gateway.azure.com draws them).
+const F = (d) => `<svg class="hx-ico" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false">${d}</svg>`;
+const PX = {
+  apps: F('<path d="M4.5 17A1.5 1.5 0 0 1 3 15.65V4.5c0-.78.6-1.42 1.36-1.5H9c.78 0 1.42.6 1.5 1.36v.4l2.19-2.27a1.5 1.5 0 0 1 2-.14l.12.1 2.76 2.72c.55.55.6 1.42.11 2.02l-.1.11-2.31 2.2h.23c.78 0 1.42.6 1.5 1.36v4.64c0 .78-.6 1.42-1.36 1.5H4.5Zm5-6.5H4v5c0 .22.14.4.33.47l.08.02.09.01h5v-5.5Zm6 0h-5V16h5a.5.5 0 0 0 .5-.4V11a.5.5 0 0 0-.41-.5h-.09Zm-5-2.79V9.5h1.79L10.5 7.71ZM9 4.01H4.5a.5.5 0 0 0-.5.4v5.1h5.5v-5a.5.5 0 0 0-.33-.48l-.08-.02H9Zm5.12-.84a.5.5 0 0 0-.64-.05l-.07.06-2.62 2.71a.5.5 0 0 0-.05.63l.06.07 2.61 2.62c.17.17.43.2.62.07l.08-.06 2.76-2.63a.5.5 0 0 0 .05-.64l-.05-.06-2.75-2.72Z"/>'), // Apps20Regular
+  agents: F('<path d="M5.2 2.82C5.54 2.3 6.1 2 6.7 2H9.5a.5.5 0 0 1 0 1H6.69c-.26 0-.5.13-.63.35L2.1 9.6a.75.75 0 0 0 0 .8l3.87 6.13a1.02 1.02 0 0 0 1.84-.28l3.4-12.76a2.01 2.01 0 0 1 3.65-.54l3.92 6.3c.29.46.29 1.04 0 1.5l-4 6.43c-.32.5-.88.82-1.48.82H10.5a.5.5 0 0 1 0-1h2.8c.27 0 .5-.13.64-.35l4-6.42a.43.43 0 0 0 0-.46l-3.92-6.3a1.01 1.01 0 0 0-1.84.28L8.78 16.5a2.02 2.02 0 0 1-3.65.56l-3.86-6.13a1.75 1.75 0 0 1 0-1.86L5.2 2.82Z"/>'), // Agents20Regular
+  code: F('<path d="M12.97 3.68a.5.5 0 0 0-.94-.36l-5 13a.5.5 0 1 0 .94.36l5-13ZM5.83 6.12c.2.18.23.5.05.7L3.16 10l2.72 3.17a.5.5 0 0 1-.76.66l-3-3.5a.5.5 0 0 1 0-.66l3-3.5a.5.5 0 0 1 .7-.05Zm8.34 8.26a.5.5 0 0 1-.05-.7l2.72-3.18-2.72-3.17a.5.5 0 1 1 .76-.66l3 3.5a.5.5 0 0 1 0 .66l-3 3.5a.5.5 0 0 1-.7.05Z"/>'), // Code20Regular
+  keys: F('<path d="m10 2 .32.01a5.5 5.5 0 0 0-1.09 7.96l-.73.74v1.69a.6.6 0 0 1-.6.6H6v1.4a.6.6 0 0 1-.6.6H2.6a.6.6 0 0 1-.6-.6v-2.86a.6.6 0 0 1 .18-.42l3.98-3.99A4 4 0 0 1 10 2ZM9 6.5a4.5 4.5 0 1 1 7 3.74v2.05l.78.79a.6.6 0 0 1 0 .84L15.71 15l1.06 1.07a.6.6 0 0 1-.04.89l-2.36 1.88a.6.6 0 0 1-.74 0l-2.4-1.92a.6.6 0 0 1-.23-.47v-6.2A4.5 4.5 0 0 1 9 6.5Zm5.25-1a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Z"/>'), // KeyMultiple20Filled
+  money: F('<path d="M3.5 4C2.67 4 2 4.67 2 5.5v7c0 .83.67 1.5 1.5 1.5h11c.83 0 1.5-.67 1.5-1.5v-7c0-.83-.67-1.5-1.5-1.5h-11ZM6 5v1a2 2 0 0 1-2 2H3V7h1a1 1 0 0 0 1-1V5h1Zm3 5.75a1.75 1.75 0 1 1 0-3.5 1.75 1.75 0 0 1 0 3.5ZM3 11v-1h1a2 2 0 0 1 2 2v1H5v-1a1 1 0 0 0-1-1H3Zm11 0a1 1 0 0 0-1 1v1h-1v-1c0-1.1.9-2 2-2h1v1h-1Zm0-4h1v1h-1a2 2 0 0 1-2-2V5h1v1a1 1 0 0 0 1 1Zm3 5.5a2.5 2.5 0 0 1-2.5 2.5H4.09c.2.58.76 1 1.41 1h9a3.5 3.5 0 0 0 3.5-3.5v-5c0-.65-.42-1.2-1-1.41v6.41Z"/>'), // Money20Filled
+  flow: F('<path d="M12.04 7.5H12c-.83 0-1.5.67-1.5 1.5v2A2.5 2.5 0 0 1 8 13.5h-.04a3 3 0 1 1 0-1H8c.83 0 1.5-.67 1.5-1.5V9A2.5 2.5 0 0 1 12 6.5h.04a3 3 0 1 1 0 1Z"/>'), // Flow20Filled
+  codeFilled: F('<path d="M12.94 4.05a.75.75 0 0 0-1.38-.6l-5.5 12.5a.75.75 0 1 0 1.38.6l5.5-12.5Zm1.35 9.8a.75.75 0 0 1-.13-1.06L16.3 10l-2.14-2.8a.75.75 0 0 1 1.18-.9l2.5 3.24c.21.27.21.65 0 .92l-2.5 3.25a.75.75 0 0 1-1.05.13Zm-8.58-7.7c.33.26.39.73.13 1.06L3.7 10l2.14 2.8a.75.75 0 1 1-1.18.9l-2.5-3.24a.75.75 0 0 1 0-.92l2.5-3.25a.75.75 0 0 1 1.05-.13Z"/>'), // Code20Filled
+  plugFilled: F('<path d="M17.78 3.28a.75.75 0 0 0-1.06-1.06l-2.45 2.45a4.04 4.04 0 0 0-5.12.48l-.3.3a1.49 1.49 0 0 0 0 2.1l3.6 3.6c.58.59 1.52.59 2.1 0l.3-.3a4.04 4.04 0 0 0 .48-5.12l2.45-2.45ZM7.55 8.85a1.49 1.49 0 0 0-2.1 0l-.3.3a4.04 4.04 0 0 0-.48 5.12l-2.45 2.45a.75.75 0 1 0 1.06 1.06l2.45-2.45a4.04 4.04 0 0 0 5.12-.48l.3-.3c.59-.58.59-1.52 0-2.1l-3.6-3.6Z"/>'), // PlugConnected20Filled
+  shield: F('<path d="M9.72 2.08a.5.5 0 0 1 .56 0c1.94 1.3 4.03 2.1 6.3 2.43A.5.5 0 0 1 17 5v4.6a5.5 5.5 0 0 0-6.78 8.35l-.04.02a.5.5 0 0 1-.36 0C5.31 16.23 3 13.39 3 9.5V5a.5.5 0 0 1 .43-.5 15.05 15.05 0 0 0 6.3-2.42ZM19 14.5a4.5 4.5 0 1 0-9 0 4.5 4.5 0 0 0 9 0Zm-2.15-1.85c.2.2.2.5 0 .7l-3 3a.5.5 0 0 1-.7 0l-1-1a.5.5 0 0 1 .7-.7l.65.64 2.65-2.64c.2-.2.5-.2.7 0Z"/>'), // ShieldCheckmark20Filled
+  dataLine: F('<path d="M18 5.5a2.5 2.5 0 0 1-3.44 2.32l-1.29 1.92A2.5 2.5 0 0 1 11.5 14a2.5 2.5 0 0 1-2.05-1.08L6.95 14A2.51 2.51 0 0 1 4.5 17a2.5 2.5 0 1 1 2.05-3.92L9.05 12a2.51 2.51 0 0 1 3.4-2.83l1.28-1.92A2.5 2.5 0 0 1 15.5 3 2.5 2.5 0 0 1 18 5.5Z"/>'), // DataLine20Filled
+  lock: F('<path d="M10 1a4 4 0 0 1 4 4v2.05a2.5 2.5 0 0 1 2 2.45v6a2.5 2.5 0 0 1-2.5 2.5h-7A2.5 2.5 0 0 1 4 15.5v-6c0-1.2.86-2.22 2-2.45V5a4 4 0 0 1 4-4Zm0 10.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2ZM10 2a3 3 0 0 0-3 3v2h6V5a3 3 0 0 0-3-3Z"/>'), // LockClosed20Filled
+  mcp: F('<g transform="scale(1.25)"><path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M14.5565 7.87462C14.5385 7.89312 14.5205 7.91112 14.5025 7.92862L8.69849 13.6201C8.62599 13.6906 8.62449 13.8061 8.69499 13.8786C8.69599 13.8801 8.69749 13.8811 8.69849 13.8821L9.89049 15.0516C10.1075 15.2626 10.1125 15.6101 9.90149 15.8276C9.89799 15.8311 9.89449 15.8351 9.89049 15.8386C9.66699 16.0556 9.31199 16.0556 9.08849 15.8386L7.89649 14.6701C7.38949 14.1776 7.37799 13.3671 7.87049 12.8601C7.87899 12.8511 7.88749 12.8426 7.89649 12.8341L13.7005 7.14212C14.352 6.50762 14.3665 5.46512 13.732 4.81362C13.7215 4.80312 13.711 4.79262 13.7005 4.78212L13.667 4.74962C12.998 4.09862 11.9325 4.09762 11.2625 4.74762L6.48099 9.43712L6.47949 9.43862L6.41399 9.50312C6.19049 9.72062 5.83449 9.72062 5.61149 9.50312C5.39449 9.29162 5.38949 8.94462 5.60049 8.72712C5.60399 8.72362 5.60749 8.71962 5.61149 8.71612L10.46 3.96062C11.1105 3.32512 11.123 2.28262 10.4875 1.63212C10.478 1.62212 10.468 1.61262 10.458 1.60262C9.78799 0.950619 8.72099 0.950619 8.05149 1.60262L1.63499 7.89512C1.41149 8.11212 1.05649 8.11212 0.832987 7.89512C0.615987 7.68412 0.610987 7.33662 0.821987 7.11912C0.825487 7.11562 0.828987 7.11162 0.832987 7.10812L7.24999 0.815119C8.36599 -0.271381 10.1445 -0.271381 11.2605 0.815119C11.8905 1.42762 12.189 2.30512 12.063 3.17512C12.9435 3.05012 13.8325 3.34062 14.469 3.96162L14.5025 3.99512C15.5885 5.05162 15.613 6.78812 14.5565 7.87412V7.87462ZM12.8655 6.32212C13.083 6.11062 13.0875 5.76362 12.8765 5.54612C12.873 5.54262 12.8695 5.53862 12.8655 5.53512C12.642 5.31762 12.286 5.31762 12.063 5.53512L7.31699 10.1896C6.64699 10.8416 5.57999 10.8416 4.91049 10.1896C4.25899 9.55512 4.24449 8.51262 4.87899 7.86112C4.88949 7.85062 4.89999 7.84012 4.91049 7.82962L9.65699 3.17512C9.87399 2.96362 9.87899 2.61662 9.66799 2.39912C9.66449 2.39562 9.66099 2.39162 9.65699 2.38812C9.43349 2.17062 9.07749 2.17062 8.85449 2.38812L4.10849 7.04262C3.02249 8.09912 2.99799 9.83562 4.05449 10.9216C4.07249 10.9401 4.09049 10.9581 4.10849 10.9756C5.22499 12.0616 7.00299 12.0616 8.11899 10.9756L12.8655 6.32112V6.32212Z"/></g>'), // Mcp20Regular
+  braces: F('<path d="M6.5 3A2.5 2.5 0 0 0 4 5.5v2.88c0 .5-.28.95-.72 1.17a.5.5 0 0 0 0 .9c.44.22.72.68.72 1.17v2.88A2.5 2.5 0 0 0 6.5 17a.5.5 0 0 0 0-1A1.5 1.5 0 0 1 5 14.5v-2.88c0-.62-.24-1.2-.66-1.62.42-.42.66-1 .66-1.62V5.5C5 4.67 5.67 4 6.5 4a.5.5 0 0 0 0-1Zm7 0A2.5 2.5 0 0 1 16 5.5v2.88c0 .5.28.95.72 1.17a.5.5 0 0 1 0 .9 1.3 1.3 0 0 0-.72 1.17v2.88a2.5 2.5 0 0 1-2.5 2.5.5.5 0 0 1 0-1c.83 0 1.5-.67 1.5-1.5v-2.88c0-.62.24-1.2.66-1.62A2.3 2.3 0 0 1 15 8.38V5.5c0-.83-.67-1.5-1.5-1.5a.5.5 0 0 1 0-1Z"/>'), // BracesRegular
+  plug: F('<path d="M17.85 2.85a.5.5 0 0 0-.7-.7L14.48 4.8a4.04 4.04 0 0 0-5.33.34l-.3.3a1.49 1.49 0 0 0 0 2.1l3.6 3.6c.58.59 1.52.59 2.1 0l.3-.3a4.04 4.04 0 0 0 .34-5.33l2.66-2.67Zm-4 7.6c-.2.19-.5.19-.7 0l-3.6-3.6c-.19-.2-.19-.5 0-.7l.3-.3a3.04 3.04 0 0 1 4.3 4.3l-.3.3Zm-6.3-1.6a1.49 1.49 0 0 0-2.1 0l-.3.3a4.04 4.04 0 0 0-.34 5.33l-2.66 2.67a.5.5 0 0 0 .7.7l2.67-2.66a4.04 4.04 0 0 0 5.33-.34l.3-.3c.59-.58.59-1.52 0-2.1l-3.6-3.6Zm-1.4.7c.2-.19.5-.19.7 0l3.6 3.6c.19.2.19.5 0 .7l-.3.3a3.04 3.04 0 1 1-4.3-4.3l.3-.3Z"/>'), // PlugConnected20Regular
+};
+
+// Each part lists its icon (if any) and its labs: the first is the lab it previews, the rest are related labs, most related first.
+const HX = {
+  controls: [
+    ['ctl-entra', 'Microsoft Entra ID', ['11-entra-rbac', '10-api-keys', '12-backend-identity', '07-cost-budgets', '14-otel-chargeback', '16-foundry-hosted-agent', '32-foundry-gateway-connection', '33-copilot-obo-mcp']],
+    ['ctl-cs', 'Azure AI Content Safety', ['08-content-safety', '09-gateway-baselines', '19-tool-threat-protection', '05-mcp-tool-controls', '21-enterprise-reference']],
+    ['ctl-a365', 'Microsoft Agent 365', ['20-agent-365-governance', '19-tool-threat-protection', '05-mcp-tool-controls', '04-federate-mcp-tools', '21-enterprise-reference']],
+    ['ctl-mi', 'Managed identities', ['12-backend-identity', '11-entra-rbac', '16-foundry-hosted-agent', '32-foundry-gateway-connection', '33-copilot-obo-mcp', '30-agent-hooks', '18-private-networking', '21-enterprise-reference']],
+  ],
+  workloads: [
+    ['wl-apps', 'AI apps', ['02-first-model-call', 'quickstart', '03-multi-provider-aliases', '26-embeddings', '31-jev-decisions', '22-model-routing', '23-streaming-responses'], 'apps'],
+    ['wl-agents', 'AI agents', ['15-agent-frameworks', '16-foundry-hosted-agent', '32-foundry-gateway-connection', '33-copilot-obo-mcp', '04-federate-mcp-tools', '05-mcp-tool-controls', '30-agent-hooks', '20-agent-365-governance', '19-tool-threat-protection'], 'agents'],
+    ['wl-coding', 'Coding agents', ['24-github-copilot-byok', '25-claude-code', '17-coding-agent-plugin', '04-federate-mcp-tools', '06-token-limits', '07-cost-budgets'], 'code'],
+  ],
+  gateway: ['gw', 'Azure AI Gateway', ['00-how-ai-gateway-works', 'quickstart', '01-provision-gateway', '02-first-model-call', '03-multi-provider-aliases', '21-enterprise-reference']],
+  managed: ['gw-managed', 'Azure-managed', ['01-provision-gateway', 'quickstart', '00-how-ai-gateway-works', '18-private-networking', '21-enterprise-reference']],
+  caps: [
+    ['cap-id', 'Identity & access', ['10-api-keys', '11-entra-rbac', '12-backend-identity', '33-copilot-obo-mcp', '07-cost-budgets', '14-otel-chargeback'], 'keys'],
+    ['cap-budget', 'Budgets & quotas', ['06-token-limits', '07-cost-budgets', '28-auto-model-selection', '09-gateway-baselines', '14-otel-chargeback', '23-streaming-responses'], 'money'],
+    ['cap-route', 'Routing & failover', ['22-model-routing', '29-model-failover', '27-conditional-routing', '28-auto-model-selection', '03-multi-provider-aliases', '23-streaming-responses'], 'flow'],
+    ['cap-policy', 'Policies & baselines', ['09-gateway-baselines', '05-mcp-tool-controls', '30-agent-hooks', '06-token-limits', '07-cost-budgets', '08-content-safety', '21-enterprise-reference'], 'codeFilled'],
+    ['cap-mcp', 'MCP federation', ['04-federate-mcp-tools', '05-mcp-tool-controls', '33-copilot-obo-mcp', '30-agent-hooks', '15-agent-frameworks', '20-agent-365-governance', '19-tool-threat-protection', '24-github-copilot-byok'], 'plugFilled'],
+    ['cap-guard', 'Content guardrails', ['08-content-safety', '19-tool-threat-protection', '30-agent-hooks', '05-mcp-tool-controls', '09-gateway-baselines', '20-agent-365-governance'], 'shield'],
+    ['cap-usage', 'Usage & cost tracking', ['14-otel-chargeback', '13-monitoring', '07-cost-budgets', '06-token-limits', '23-streaming-responses'], 'dataLine'],
+    ['cap-net', 'Private networking', ['18-private-networking', '21-enterprise-reference', '12-backend-identity', '09-gateway-baselines'], 'lock'],
+  ],
+  models: ['be-models', 'Model providers', ['03-multi-provider-aliases', '31-jev-decisions', '26-embeddings', '22-model-routing', '29-model-failover', '12-backend-identity', '02-first-model-call']],
+  mcp: ['be-mcp', 'MCP servers & APIs', ['04-federate-mcp-tools', '05-mcp-tool-controls', '33-copilot-obo-mcp', '30-agent-hooks', '20-agent-365-governance', '19-tool-threat-protection', '15-agent-frameworks']],
+  providers: [['microsoft-foundry', 'Microsoft Foundry'], ['openai', 'OpenAI', 1], ['anthropic', 'Anthropic'], ['amazon-bedrock', 'Amazon Bedrock'], ['google-gemini', 'Google Gemini', 1], ['typesafe-ai', 'TypeSafe AI', 1]],
+  observability: [
+    ['obs-monitor', 'Azure Monitor', ['13-monitoring', '14-otel-chargeback', '07-cost-budgets', '21-enterprise-reference']],
+    ['obs-ai', 'Azure Application Insights', ['13-monitoring', '14-otel-chargeback', '21-enterprise-reference']],
+    ['obs-otlp', 'Any OTLP endpoint', ['14-otel-chargeback', '13-monitoring', '21-enterprise-reference']],
+  ],
+};
+
+// Every lab the map links to, so the build can flag a lab that has no place on it.
+export const heroLabs = () => new Set(Object.values(HX).flatMap((v) => (Array.isArray(v[0]) ? v : [v])).flatMap((n) => (Array.isArray(n[2]) ? n[2] : [])));
+
+// What the preview needs: each part's labs, and a compact record per lab. All text is escaped here.
+function heroPreviewData(rel, byId, cats) {
+  const parts = {};
+  const add = ([key, text, labs], where) => { parts[key] = { ctx: esc(`${text} · ${where}`), labs: labs.filter((s) => byId[s]) }; };
+  HX.controls.forEach((n) => add(n, 'Enterprise controls'));
+  HX.workloads.forEach((n) => add(n, 'AI workloads'));
+  add(HX.gateway, 'Gateway');
+  add(HX.managed, 'Gateway');
+  HX.caps.forEach((n) => add(n, 'Gateway capability'));
+  add(HX.models, 'Backends');
+  add(HX.mcp, 'Backends');
+  HX.observability.forEach((n) => add(n, 'Observability'));
+  const used = [...new Set(Object.values(parts).flatMap((p) => p.labs))];
+  const labs = Object.fromEntries(used.map((s) => {
+    const l = byId[s]; const cat = cats[l.category];
+    return [s, {
+      num: numHtml(l), label: esc(l.label), title: esc(l.title), short: esc(l.short || l.title), sum: esc(l.summary),
+      url: labUrl(rel, s), dur: fmtDuration(l.duration), level: `${levelDots(l.level)}${esc(l.level)}`,
+      cat: esc(cat?.title || l.category), color: cat?.color || 'violet', st: statusBadge(l.status),
+      tracks: trackChips(labTracks(l), { labels: false }),
+      art: l.illustration ? `${rel}labs/assets/${l.illustration}` : '',
+    }];
+  }));
+  return { parts, labs, icons: { clock: I.clock, arrow: I.arrowR, close: I.close, check: I.check } };
+}
+
+function heroArch(rel, byId, cats) {
+  const num = (l) => `<span class="hx-num" aria-hidden="true">${l.num}</span>`;
+  // Card labels keep their full width on one line, so their lab number sits on its own line underneath.
+  const lab = (l) => `<span class="hx-lab">Lab ${l.num}</span>`;
+  // One link per part: its product icon (if any), its name, and the number of the lab it previews.
+  const link = ([key, text, labs, icon], { cls = '', bare = false, stack = false, pre = '' } = {}) => {
+    const l = byId[labs[0]];
+    const ico = icon ? `<span class="hx-mark" aria-hidden="true">${PX[icon]}</span>` : pre;
+    const label = stack ? `<span class="hx-lbl"><span class="hx-text">${esc(text)}</span>${lab(l)}</span>` : `<span class="hx-text">${esc(text)}</span>${bare ? '' : num(l)}`;
+    return `<a class="hx-link ${cls}" href="${labUrl(rel, l.slug)}" title="${esc(l.label)}: ${esc(l.title)}" data-hx-part="${key}">${ico}${label}</a>`;
+  };
+  const group = ([key, text, labs], tiles) => {
+    const l = byId[labs[0]];
+    return `<a class="hx-group" href="${labUrl(rel, l.slug)}" title="${esc(l.label)}: ${esc(l.title)}" data-hx-part="${key}"><span class="hx-lbl"><span class="hx-title">${esc(text)}</span>${lab(l)}</span><span class="hx-tiles"${tiles.includes('<img') ? '' : ' aria-hidden="true"'}>${tiles}</span></a>`;
+  };
+  const wire = (side) => `<span class="hx-wire hx-wire-${side}" aria-hidden="true"></span>`;
+  const brand = (f, n, mono) => (mono ? ['light', 'dark'] : ['']).map((t) => `<img class="hx-brand${t ? ` hx-brand-${t}` : ''}" src="${rel}labs/assets/providers/${f}${t ? `-${t}` : ''}.svg" width="16" height="16" alt="${esc(n)}">`).join('');
+  const providers = HX.providers.map(([f, n, mono]) => `<span class="hx-tile" data-brand="${f}">${brand(f, n, mono)}</span>`).join('');
+  const tools = [PX.mcp, PX.braces, PX.plug].map((i) => `<span class="hx-tile">${i}</span>`).join('');
+  // The capability icons share the product's brand gradient.
+  const grad = '<svg class="hx-defs" width="0" height="0" aria-hidden="true" focusable="false"><linearGradient id="hx-grad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="25%" class="hx-g1"/><stop offset="60%" class="hx-g2"/></linearGradient></svg>';
+  const data = JSON.stringify(heroPreviewData(rel, byId, cats)).replace(/</g, '\\u003c');
+  return `<div class="hx" role="group" aria-label="Azure AI Gateway architecture: every part links to the lab that teaches it">
+  ${grad}
+  <div class="hx-grid">
+    <div class="hx-band hx-ctl"><span class="hx-title">Enterprise controls</span><div class="hx-band-items">${HX.controls.map((n) => link(n)).join('')}</div></div>
+    <div class="hx-card hx-wl"><span class="hx-title">AI workloads</span><div class="hx-wl-items">${HX.workloads.map((n) => link(n, { stack: true })).join('')}</div></div>
+    <div class="hx-card hx-gw">
+      ${wire('l')}${wire('r')}${wire('t')}${wire('b')}
+      <div class="hx-gw-head">${link(HX.gateway, { cls: 'hx-gw-title', bare: true, pre: `<img src="${rel}assets/favicon.svg" width="22" height="22" alt="">` })}${link(HX.managed, { cls: 'hx-pill' })}</div>
+      <div class="hx-caps">${HX.caps.map((n) => link(n, { cls: 'hx-cap', stack: true })).join('')}</div>
+    </div>
+    <div class="hx-card hx-be">
+      ${group(HX.models, providers)}
+      ${group(HX.mcp, tools)}
+      <div class="hx-group hx-group-soon"><span class="hx-title">Agents <span class="hx-soon">Coming soon</span></span><span class="hx-tiles" aria-hidden="true"><span class="hx-tile">${PX.agents}</span></span></div>
+    </div>
+    <div class="hx-band hx-obs"><span class="hx-title">Observability</span><div class="hx-band-items">${HX.observability.map((n) => link(n)).join('')}</div></div>
+  </div>
+  <p class="hx-hint" hidden>Select any part to preview the lab that teaches it.</p>
+  <script type="application/json" id="hx-data">${data}</script>
+</div>`;
 }
 
 // ---------- Home ----------
@@ -271,7 +348,7 @@ export function homePage({ rel, site, catalog, labs, totals, latest }) {
   const trackCards = [
     { id: 'portal', title: 'Portal', text: 'Click-by-click guides in the AI Gateway portal, with exact labels and screenshots.' },
     { id: 'cli', title: 'Azure CLI', text: 'Repeatable az aigateway and az deployment commands you can paste into Bash or PowerShell.' },
-    { id: 'iac', title: 'Bicep + azd', text: 'Self-contained azd templates: clone a lab, run azd up, and clean up with azd down.' },
+    { id: 'iac', title: 'Bicep & Terraform', text: 'Infrastructure as code: deploy a lab with azd up or terraform apply, and remove it with one command.' },
     { id: 'code', title: 'Code & REST', text: 'Python, TypeScript, and .NET clients, agent frameworks, and REST calls.' },
   ];
 
@@ -305,12 +382,12 @@ export function homePage({ rel, site, catalog, labs, totals, latest }) {
   const body = `<main id="main" class="home">
   <section class="hero">
     <div class="hero-bg" aria-hidden="true"></div>
-    <div class="hero-inner container">
+    <div class="hero-inner hx-hero container">
       <div class="hero-copy">
         ${latest ? `<a class="hero-news" href="${rel}release-notes/#${latest.id}"><span class="hero-news-tag">New</span><span class="hero-news-text">${esc(latest.title)}</span>${I.arrowR}</a>` : ''}
         <p class="eyebrow">Azure AI Gateway labs</p>
         <h1>Learn AI Gateway by <span class="grad-text">building with it</span></h1>
-        <p class="hero-lead">${esc(site.tagline)} Guided labs for customers and field teams: publish models from any provider, federate MCP tools, enforce limits and budgets, go keyless, observe every token, and govern agents.</p>
+        <p class="hero-lead">${esc(site.tagline)} Publish models from any provider, federate MCP tools, enforce limits and budgets, go keyless, observe every token, and govern agents.</p>
         <div class="hero-cta">
           <a class="btn btn-primary btn-lg" href="${startHref}">${I.bolt}Start the 5-minute quick start</a>
           <a class="btn btn-secondary btn-lg" href="${rel}labs/">Browse all ${totals.labs} labs</a>
@@ -322,7 +399,7 @@ export function homePage({ rel, site, catalog, labs, totals, latest }) {
           <div title="Portal, Azure CLI, Bicep and azd, Code and REST"><dt>Tracks per lab</dt><dd>4</dd></div>
         </dl>
       </div>
-      <div class="hero-visual">${heroDiagram(rel)}</div>
+      <div class="hero-visual">${heroArch(rel, byId, cats)}</div>
     </div>
   </section>
 ${quick ? `
@@ -333,9 +410,9 @@ ${quick ? `
         <h2 id="qs-band-title">Your first model call in five minutes</h2>
         <p>In the AI Gateway portal, with a few Azure CLI commands in Cloud Shell, or with one <code>azd up</code>, you create a gateway, publish a Microsoft Foundry model behind an alias, and create a runtime key. Then you make your first call through the gateway, the way an app does: with the alias and the key.</p>
         <ol class="qs-steps">
-          <li><span class="qs-step-num">1</span><span><strong>Understand</strong> the building blocks</span><span class="qs-step-time">1 min</span></li>
-          <li><span class="qs-step-num">2</span><span><strong>Create</strong> a gateway in the portal, Azure CLI, or azd</span><span class="qs-step-time">3 min</span></li>
-          <li><span class="qs-step-num">3</span><span><strong>Call</strong> the model through the gateway</span><span class="qs-step-time">1 min</span></li>
+          <li><span class="qs-step-num">1</span><span><strong>Understand</strong> the building blocks</span></li>
+          <li><span class="qs-step-num">2</span><span><strong>Create</strong> a gateway in the portal, Azure CLI, or azd</span></li>
+          <li><span class="qs-step-num">3</span><span><strong>Call</strong> the model through the gateway</span></li>
         </ol>
         <div class="qs-cta">
           <a class="btn btn-primary" href="${startHref}">Start the quick start ${I.arrowR}</a>
@@ -431,7 +508,7 @@ ${quick ? `
 export function catalogPage({ rel, catalog, labs }) {
   const cats = Object.fromEntries(catalog.categories.map((c) => [c.id, c]));
   const levels = ['Beginner', 'Intermediate', 'Advanced'];
-  const tracks = ['portal', 'cli', 'iac', 'rest', 'code', 'notebook'];
+  const tracks = ['portal', 'cli', 'iac', 'terraform', 'rest', 'code', 'notebook'];
   const chip = (group, value, label, extra = '') => `<button class="chip" type="button" data-filter="${group}" data-value="${value}" aria-pressed="false"${extra}>${label}</button>`;
   return `<main id="main" class="catalog">
   <section class="page-hero">
@@ -567,7 +644,7 @@ export function releaseNotesPage({ rel, site, html, releases }) {
     <div class="container">
       <nav class="breadcrumb" aria-label="Breadcrumb"><a href="${rel}index.html">Home</a><span>/</span><span aria-current="page">Release notes</span></nav>
       <h1>What's new in the labs</h1>
-      <p class="lead">Every Azure AI Gateway release, and where to practice it. The labs follow the <a href="${site.docs}/releases/${releases[0]?.product || ''}" target="_blank" rel="noopener">product release notes</a>: each entry lists the new product features and the lab that covers each one.</p>
+      <p class="lead">Every Azure AI Gateway release, and where to practice it. The labs follow the <a href="${site.docs}/releases${releases[0]?.product ? `#release-${releases[0].product}` : ''}" target="_blank" rel="noopener">product release notes</a>: each entry lists the new product features and the lab that covers each one.</p>
       <div class="hero-cta">
         ${releases[0] ? `<a class="btn btn-primary btn-sm rn-hero-latest" href="#${releases[0].id}" title="Latest: ${esc(releases[0].title)}">${I.sparkle}<span>Latest: ${esc(releases[0].title)}</span></a>` : ''}
         <a class="btn btn-ghost btn-sm" href="${site.repo}/blob/${site.branch}/labs/RELEASE-NOTES.md" target="_blank" rel="noopener">${I.github}View on GitHub</a>

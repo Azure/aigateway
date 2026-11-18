@@ -1,12 +1,15 @@
-// Private routing for a new AI Gateway (Microsoft.ApiManagement/aigateways).
-// Outbound virtual network integration can only be set when the gateway is created, so this template creates:
-//   - an NSG that allows outbound TCP 443 to the Storage and AzureKeyVault service tags
+// Outbound virtual network integration for an AI Gateway (Microsoft.ApiManagement/aigateways). This template creates:
+//   - an NSG for the integration subnet, with no custom rules: AI Gateway needs no outbound service-tag rules
 //   - a virtual network with an integration subnet (delegated to Microsoft.App/environments, dedicated to the
 //     gateway) and a private-endpoint subnet
 //   - the gateway, joined to the integration subnet, by reusing the lab 01 template as a module
 //   - optionally, a private endpoint to a Foundry resource (group ID "account") with its private DNS zones
-// Inbound private endpoints and disabling the gateway's public network access aren't available for the
-// aigateways resource type yet, so the template doesn't declare them.
+//   - optionally, an inbound private endpoint to the gateway (group ID "Gateway") with its private DNS zone, and a
+//     client subnet delegated to Microsoft.ContainerInstance/containerGroups for a test client in the network
+// The subnet isn't fixed at creation: redeploy with a different backendSubnetId to change it, or use the portal,
+// "az aigateway network update", or a REST PATCH to add, change, or remove it on an existing gateway.
+// The inbound private endpoint needs private endpoint access for the subscription, so it's off by default: set
+// gatewayPrivateEndpoint to true once the subscription has access.
 // The lab's main.bicep calls it with azd. You can also deploy it on its own to an existing resource group with
 // "az deployment group create".
 
@@ -48,7 +51,37 @@ param foundryAccountId string = ''
 @description('Name of the private endpoint to the Foundry account.')
 param foundryPrivateEndpointName string = 'pe-foundry-${gatewayName}'
 
+@description('Create an inbound private endpoint to the gateway in the private-endpoint subnet, with its private DNS zone, and a client subnet. Needs private endpoint access for the subscription.')
+param gatewayPrivateEndpoint bool = false
+
+@description('Name of the inbound private endpoint to the gateway.')
+param gatewayPrivateEndpointName string = 'pe-gateway-${gatewayName}'
+
+@description('Name of the subnet for test clients, delegated to Microsoft.ContainerInstance/containerGroups.')
+param clientSubnetName string = 'snet-clients'
+
+@description('Prefix of the client subnet.')
+param clientSubnetPrefix string = '10.20.2.0/24'
+
 var includeFoundryPrivateEndpoint = !empty(foundryAccountId)
+
+// The client subnet exists only with the gateway's private endpoint: a container there tests the private path.
+var clientSubnets = gatewayPrivateEndpoint ? [
+  {
+    name: clientSubnetName
+    properties: {
+      addressPrefix: clientSubnetPrefix
+      delegations: [
+        {
+          name: 'Microsoft.ContainerInstance.containerGroups'
+          properties: {
+            serviceName: 'Microsoft.ContainerInstance/containerGroups'
+          }
+        }
+      ]
+    }
+  }
+] : []
 
 // Standard private DNS zones for Foundry (AIServices) accounts.
 var foundryDnsZoneNames = [
@@ -57,39 +90,13 @@ var foundryDnsZoneNames = [
   'privatelink.services.ai.azure.com'
 ]
 
+// The default NSG rules are enough: the gateway reaches backends over TCP 443 inside the virtual network.
 resource nsg 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
   name: nsgName
   location: location
   tags: tags
   properties: {
-    securityRules: [
-      {
-        name: 'AllowStorageOutbound'
-        properties: {
-          priority: 100
-          direction: 'Outbound'
-          access: 'Allow'
-          protocol: 'Tcp'
-          sourceAddressPrefix: 'VirtualNetwork'
-          sourcePortRange: '*'
-          destinationAddressPrefix: 'Storage'
-          destinationPortRange: '443'
-        }
-      }
-      {
-        name: 'AllowKeyVaultOutbound'
-        properties: {
-          priority: 110
-          direction: 'Outbound'
-          access: 'Allow'
-          protocol: 'Tcp'
-          sourceAddressPrefix: 'VirtualNetwork'
-          sourcePortRange: '*'
-          destinationAddressPrefix: 'AzureKeyVault'
-          destinationPortRange: '443'
-        }
-      }
-    ]
+    securityRules: []
   }
 }
 
@@ -102,7 +109,7 @@ resource vnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
     addressSpace: {
       addressPrefixes: [ vnetAddressPrefix ]
     }
-    subnets: [
+    subnets: concat([
       {
         name: integrationSubnetName
         properties: {
@@ -127,7 +134,7 @@ resource vnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
           privateEndpointNetworkPolicies: 'Disabled'
         }
       }
-    ]
+    ], clientSubnets)
   }
 }
 
@@ -204,6 +211,20 @@ resource foundryPrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateD
   }
 }
 
+// Inbound: clients in the virtual network resolve the gateway's host name to a private IP and call it privately.
+module gatewayPrivateEndpointDeployment 'gateway-private-endpoint.bicep' = if (gatewayPrivateEndpoint) {
+  name: 'aigw-pe-${gatewayName}'
+  params: {
+    gatewayId: gateway.outputs.gatewayId
+    gatewayHostName: replace(gateway.outputs.gatewayUrl, 'https://', '')
+    subnetId: privateEndpointSubnet.id
+    vnetId: vnet.id
+    privateEndpointName: gatewayPrivateEndpointName
+    location: location
+    tags: tags
+  }
+}
+
 output vnetId string = vnet.id
 output integrationSubnetId string = integrationSubnet.id
 output privateEndpointSubnetId string = privateEndpointSubnet.id
@@ -212,3 +233,6 @@ output gatewayId string = gateway.outputs.gatewayId
 output gatewayUrl string = gateway.outputs.gatewayUrl
 output principalId string = gateway.outputs.principalId
 output foundryPrivateEndpointName string = includeFoundryPrivateEndpoint ? foundryPrivateEndpoint.name : ''
+output gatewayPrivateEndpointName string = gatewayPrivateEndpointDeployment.?outputs.privateEndpointName ?? ''
+output gatewayPrivateDnsZone string = gatewayPrivateEndpointDeployment.?outputs.dnsZoneName ?? ''
+output clientSubnetId string = gatewayPrivateEndpoint ? '${vnet.id}/subnets/${clientSubnetName}' : ''

@@ -6,7 +6,7 @@ Guidance for coding agents (GitHub Copilot, Claude Code, Codex, Cursor, and othe
 
 | Path | What it is | Edit? |
 |---|---|---|
-| `labs/` | The Azure AI Gateway hands-on labs: one folder per lab (`NN-slug/README.md`, `infra/`, optional notebook, plus the unnumbered `quickstart/`), the site engine (`site/`, `build.mjs`), tools, shared assets, and the `azure-ai-gateway-labs` agent skill | Yes. Read [`labs/AUTHORING.md`](labs/AUTHORING.md) first |
+| `labs/` | The Azure AI Gateway hands-on labs: one folder per lab (`NN-slug/README.md`, `infra/`, `terraform/`, optional notebook, plus the unnumbered `quickstart/`), the site engine (`site/`, `build.mjs`), tools, shared assets, and the `azure-ai-gateway-labs` agent skill | Yes. Read [`labs/AUTHORING.md`](labs/AUTHORING.md) first |
 | `labs/RELEASE-NOTES.md` | The labs release notes, one section per [product release](https://ai.gateway.azure.com/docs/) | Yes |
 | `docs/` | The generated labs site, ignored by git. On `main`, `.github/workflows/labs-pages.yml` builds it from `labs/` and publishes it to GitHub Pages | Never. `npm run build` writes it |
 | `skills/`, `commands/`, `.claude-plugin/`, `.cursor-plugin/`, `.github/plugin/`, `gemini-extension.json` | The coding-agent plugin: developer integration, gateway administration, migration from API Management, and local feedback packaging | Only when asked |
@@ -71,8 +71,8 @@ For each product change, search the labs (`grep -il "<feature>" labs/[0-9][0-9]-
 | Status | When | What to do |
 |---|---|---|
 | ✅ Covered | A lab already teaches it as released | Nothing, beyond checking that the labels still match |
-| ✏️ Update | It extends or changes a feature that a lab teaches: a new option, a new wizard step, a renamed label | Update every affected track (portal, CLI, REST, Bicep, code, notebook), the checkpoints, the lab's section in `labs/TROUBLESHOOTING.md`, next steps, and the metadata (`duration`, `tags`, `objectives`) |
-| 🆕 New lab | A new use case with its own outcome and at least 15 minutes of hands-on work | Use the next free number, follow the lab anatomy in `AUTHORING.md`, and add it to `catalog.json` (`paths`, `usecases`, `shortTitles`). Add a diagram in `labs/tools/diagrams/` and, when it helps, a widget |
+| ✏️ Update | It extends or changes a feature that a lab teaches: a new option, a new wizard step, a renamed label | Update every affected track (portal, CLI, REST, Bicep, Terraform, code, notebook), the checkpoints, the lab's section in `labs/TROUBLESHOOTING.md`, next steps, and the metadata (`duration`, `tags`, `objectives`) |
+| 🆕 New lab | A new use case with its own outcome and at least 15 minutes of hands-on work | Use the next free number, follow the lab anatomy in `AUTHORING.md`, and add it to `catalog.json` (`paths`, `usecases`, `shortTitles`) and to the home page's architecture map (`HX` in `labs/site/templates.mjs`). Add a diagram in `labs/tools/diagrams/` and, when it helps, a widget |
 | ➖ Not covered | It can't be practiced, or it's too minor for a lab | Say so in the release notes |
 
 Show the user the mapping as a table and confirm it before you write, unless they asked you to go ahead.
@@ -81,7 +81,8 @@ Show the user the mapping as a table and confirm it before you write, unless the
 
 Deploy a throwaway gateway with [lab 01's Bicep](labs/01-provision-gateway/infra/gateway.bicep), plus what the
 labs need (for example a Foundry account with the lab models), or run `azd up` in the lab's folder. Then run every new or changed step: CLI and REST
-calls, `az bicep build` and a real deployment of each changed template, scripts, code samples, and notebooks.
+calls, `az bicep build` and a real deployment of each changed template, `terraform apply` (then a no-changes
+`terraform plan -detailed-exitcode` and `terraform destroy`) of each changed Terraform configuration, scripts, code samples, and notebooks.
 Use the real outputs and error messages in the checkpoints and in the lab's section of
 [`labs/TROUBLESHOOTING.md`](labs/TROUBLESHOOTING.md). Check portal steps in the live portal at
 <https://ai.gateway.azure.com> and capture new screenshots into `labs/assets/screens/`.
@@ -92,7 +93,7 @@ Add a `## <Month D, YYYY>` section at the top of `labs/RELEASE-NOTES.md`, as des
 [Release notes](labs/AUTHORING.md#release-notes):
 
 - An `### <title>` heading that matches the product changelog title.
-- A one-sentence summary and a link to `https://ai.gateway.azure.com/docs/releases/<YYYY-MM-DD>`.
+- A one-sentence summary and a link to `https://ai.gateway.azure.com/docs/releases#release-<YYYY-MM-DD>`.
 - The mapping table, linking to the lab sections.
 - The date added to the `**Releases:**` jump line.
 
@@ -103,7 +104,7 @@ Add a `## <Month D, YYYY>` section at the top of `labs/RELEASE-NOTES.md`, as des
 - `labs/README.md`: hand-written text that mentions the labs.
 - The root `README.md`: the lab count and the use-case list.
 - `labs/quickstart/`: when provisioning, the portal flow, the default model, or the runtime URL changes, update its
-  portal, Azure CLI, and Bicep + azd tracks (keep them paste-ready for Cloud Shell once the **One-time setup** card
+  portal, Azure CLI, Bicep + azd, and Terraform tracks (keep them paste-ready for Cloud Shell once the **One-time setup** card
   is done), its azd template (`azure.yaml` and `infra/`, which the track runs from `labs/quickstart` in the clone of
   the repo; test it with `azd up` and `azd down --purge --force`), and the condensed output of a real CLI run that
   the home page shows (`homePage` in `labs/site/templates.mjs`).

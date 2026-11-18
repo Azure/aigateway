@@ -17,7 +17,7 @@ function boot() {
   run('catalog', initCatalog);
   run('troubleshooting', initTroubleshooting);
   run('tsPanel', initTsPanel);
-  run('hero', initHero);
+  run('hero-preview', initHeroPreview);
   run('diagrams', initDiagrams);
   run('widgets', () => renderWidgets(document));
   run('scrollRegions', () => watchScrollRegions(document));

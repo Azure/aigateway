@@ -46,7 +46,7 @@ from azure.identity import AzureCliCredential
 import brand
 
 ARM = "https://management.azure.com"
-AIGW_API = "2025-09-01-preview"         # Microsoft.ApiManagement/aigateways and its child resources
+AIGW_API = "2026-11-01"                 # Microsoft.ApiManagement/aigateways and its child resources
 COGNITIVE_API = "2025-04-01-preview"    # Microsoft.CognitiveServices (Foundry)
 RESOURCES_API = "2021-04-01"            # resource groups, resource providers, and deployments
 ROLES_API = "2022-04-01"                # Microsoft.Authorization/roleAssignments
@@ -336,7 +336,7 @@ class Lab:
         key_id = f"{self.gateway_id}/apiKeys/{name}"
         created = self.arm("GET", key_id) is None
         if created:
-            self.arm("PUT", key_id, {"properties": {}})
+            self.arm("PUT", key_id, {"properties": {"displayName": name}})
         return self.arm("POST", f"{key_id}/listSecrets")["primaryKey"], created
 
     def signed_in_identity(self):

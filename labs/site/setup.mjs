@@ -16,7 +16,7 @@ export const SETUP_TASKS = [
   { key: 'clone', id: 'clone-the-labs-repo' },
 ];
 // Sections that the Setup guide panel shows as reference, without a done state.
-export const SETUP_REFS = [{ key: 'azd', id: 'deploy-a-lab-with-azd' }];
+export const SETUP_REFS = [{ key: 'azd', id: 'deploy-a-lab-with-azd' }, { key: 'terraform', id: 'deploy-a-lab-with-terraform' }];
 
 export const SETUP_RE = /^<!--\s*setup:\s*([\w\s-]+?)\s*-->[ \t]*$/gm;
 export const SETUP_DONE_RE = /<!--\s*setup-done:\s*([\w\s-]+?)\s*-->/g;

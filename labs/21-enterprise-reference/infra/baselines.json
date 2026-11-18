@@ -1,8 +1,8 @@
 [
   {
     "type": "requestRateLimit",
-    "callsPerPeriod": 120,
-    "periodSeconds": 60,
+    "count": 120,
+    "period": "minute",
     "counterKey": ["identity"],
     "scope": "workspace"
   },

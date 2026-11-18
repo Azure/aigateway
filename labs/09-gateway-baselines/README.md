@@ -4,14 +4,14 @@ summary: Apply a baseline of token limit, request rate limit, content safety, an
 category: governance
 level: Intermediate
 duration: 25
-tracks: [portal, cli, iac]
+tracks: [portal, cli, iac, terraform]
 order: 9
 illustration: diagrams/policy-scopes.svg
-tags: [Gateway scope, baseline, tokenLimit, requestRateLimit, contentSafety, ipFilter, "403", policy as code]
+tags: [Gateway scope, baseline, tokenLimit, requestRateLimit, contentSafety, ipFilter, "403", policy as code, Terraform]
 objectives:
   - Explain how Gateway scope policies and asset policies layer, and why any applicable policy can block a call
   - Apply a token limit, request rate limit, content safety, and IP filter baseline at Gateway scope
-  - Keep the baseline in a reviewed policy file and apply it with a merge-safe script
+  - Keep the baseline in a reviewed policy file and apply it with a merge-safe script or with Terraform
   - Verify the baseline from your own IP address and see a stricter model policy take effect on top of it
 prereqs:
   - 06-token-limits
@@ -28,13 +28,13 @@ prereqs:
 
 | ⏱️ Time | 📶 Level | 🧭 Tracks | ✅ Before you start |
 | :-- | :-- | :-- | :-- |
-| 25 min | Intermediate | Portal · Azure CLI · Policy as code | [06 · Token limits](../06-token-limits/README.md)<br>[08 · Content safety](../08-content-safety/README.md) |
+| 25 min | Intermediate | Portal · Azure CLI · Policy as code · Terraform | [06 · Token limits](../06-token-limits/README.md)<br>[08 · Content safety](../08-content-safety/README.md) |
 
 **You'll learn to**
 
 - Explain how Gateway scope policies and asset policies layer, and why any applicable policy can block a call
 - Apply a token limit, request rate limit, content safety, and IP filter baseline at Gateway scope
-- Keep the baseline in a reviewed policy file and apply it with a merge-safe script
+- Keep the baseline in a reviewed policy file and apply it with a merge-safe script or with Terraform
 - Verify the baseline from your own IP address and see a stricter model policy take effect on top of it
 
 **Follow along:** 🌐 [Interactive version](https://azure.github.io/aigateway/labs/09-gateway-baselines/) with your own values filled in · 📁 [Lab files](infra/)
@@ -96,7 +96,7 @@ export AI_GATEWAY_MODEL="$(az aigateway model show -g "$RG" --gateway-name "$GAT
 echo "🔖 Model alias: $AI_GATEWAY_MODEL"
 
 # Paste the runtime key you created in Access › API keys, without showing it: don't commit it or write it to a file
-read -rsp "AI Gateway API key: " AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
+printf "AI Gateway API key: " && read -rs AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 
 # Read the public IP address that this machine uses on the internet
@@ -162,6 +162,12 @@ A Gateway scope **Cost limit** is one budget across all models; you can add it i
 [Enforce cost budgets with per-caller overrides](../07-cost-budgets/README.md). Agent 365 tool threat
 protection can't be set at Gateway scope; it applies to individual MCP servers.
 
+> [!NOTE]
+> At the time of writing, AI Gateway resources save the content safety policy but don't block calls with it yet,
+> as [Screen prompts and responses with content safety](../08-content-safety/README.md) explains. Keep it in the
+> baseline so it applies once the gateway enforces it, and rely on your Foundry deployments' content filters
+> until then.
+
 > [!WARNING]
 > The IP filter applies to **runtime** calls. You keep managing the gateway in the portal and with the Azure
 > CLI, so you can always fix the list. But every caller outside it gets `403`: teammates, CI pipelines, hosted
@@ -169,9 +175,10 @@ protection can't be set at Gateway scope; it applies to individual MCP servers.
 
 ## Apply the baseline
 
-Pick one track. Each track creates the same four policies at **Gateway** scope. The Azure CLI track sets them
-with one `az aigateway policy set` command. The Policy as code track keeps them in a reviewed file and applies
-the whole file with a script.
+Pick one track. Each track creates the same four policies at **Gateway** scope. The Azure CLI track sets three
+of them with one `az aigateway policy set` command and adds content safety with `az rest`. The Policy as code
+track keeps them in a reviewed file and applies the whole file with a script, and the Terraform track applies the
+same file with the `azapi` provider.
 
 <!-- track: portal | Portal -->
 <details open><summary><b>🖥️ Portal</b></summary> <!-- gh -->
@@ -184,15 +191,15 @@ Select **Policies** › **Add policy**. On the **Type** step, select **Token rat
 On the **Scope** step, select **Gateway** ("Apply to the entire gateway workspace, including applicable assets
 added later."), then **Next**.
 
-![The Add policy wizard on the Scope step with Gateway selected](../assets/screens/policy-gateway-scope.png "On the Scope step, Gateway applies the policy to every compatible asset, including assets added later.")
+![The Add policy wizard on the Scope step with Gateway selected](../assets/screens/gateway-baselines-01-scope.webp "On the Scope step, Gateway applies the policy to every compatible asset, including assets added later.")
 
-On the **Details** step (**Configure** in some portal versions), under **Parameters**, set:
+On the **Details** step, under **Parameters**, set:
 
 | Field | Value |
 |---|---|
 | **Time period** | **Per minute** |
 | **Allowed tokens** | `100000` |
-| **Counter dimensions** | **Caller identity** |
+| **Counter dimensions** | **Identity** |
 
 Select **Create**.
 
@@ -204,14 +211,61 @@ Select **Add policy** again. Select **Request rate limit**, then **Gateway** sco
 |---|---|
 | **Calls** | `600` |
 | **Renewal period** | **60 seconds** |
-| **Counter dimensions** | **Caller identity** |
+| **Counter dimensions** | **Identity** |
 
 Select **Create**.
 
 ### Add content safety
 
-Select **Add policy**. Under **Security**, select **Content safety**, then **Gateway** scope. Set **Hate**,
-**Violence**, **Self-harm**, and **Sexual** to **Balanced**, then select **Create**.
+The **Add policy** wizard doesn't list **Content safety** for AI Gateway resources, so create this policy with
+the Azure CLI, for example in [Azure Cloud Shell](https://shell.azure.com), with the variables from
+[Before you begin](#before-you-begin). Gateway scope policies live in the `properties.policies` array of the
+gateway's `default` workspace. The commands read that array, add **Balanced** (`Medium`) content safety on all
+four categories, and write the array back, so every other Gateway scope policy stays:
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Build the management URL of the gateway's default workspace, which holds the Gateway scope policies
+GATEWAY_ID="$(az aigateway show -g "$RG" -n "$GATEWAY" --query id -o tsv)"
+URL="https://management.azure.com$GATEWAY_ID/workspaces/default?api-version=2026-11-01"
+
+# Read the policies, drop any content safety policy, and add one at Medium (Balanced) in all four categories
+POLICIES="$(az rest --method get --url "$URL" | jq -c '
+  [(.properties.policies // [])[] | select(.type != "contentSafety")]
+  + [{"type":"contentSafety","scope":"resource","hateSeverity":"Medium","violenceSeverity":"Medium","sexualSeverity":"Medium","selfHarmSeverity":"Medium"}]')"
+
+# Send the merged array back: a PATCH replaces the whole policies array
+az rest --method patch --url "$URL" --body "{\"properties\":{\"policies\":$POLICIES}}" --output none &&
+  echo "🔐 Content safety on $GATEWAY is Balanced (Medium) for all four categories at Gateway scope"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Build the management URL of the gateway's default workspace, which holds the Gateway scope policies
+$GATEWAY_ID = az aigateway show -g $RG -n $GATEWAY --query id -o tsv
+$URL = "https://management.azure.com$GATEWAY_ID/workspaces/default?api-version=2026-11-01"
+
+# Read the policies, drop any content safety policy, and add one at Medium (Balanced) in all four categories
+$current  = az rest --method get --url $URL | ConvertFrom-Json
+$policies = @($current.properties.policies | Where-Object { $_ -and $_.type -ne 'contentSafety' })
+$policies += [pscustomobject]@{
+  type = 'contentSafety'; scope = 'resource'
+  hateSeverity = 'Medium'; violenceSeverity = 'Medium'; sexualSeverity = 'Medium'; selfHarmSeverity = 'Medium'
+}
+
+# Send the merged array back from a file, which keeps the JSON quotes intact: a PATCH replaces the whole array
+@{ properties = @{ policies = $policies } } | ConvertTo-Json -Depth 10 -Compress | Set-Content -Path patch.json
+az rest --method patch --url $URL --body '@patch.json' --output none
+if ($?) { Write-Host "🔐 Content safety on $GATEWAY is Balanced (Medium) for all four categories at Gateway scope" }
+Remove-Item patch.json
+```
+</details> <!-- gh -->
+
+Reload **Policies**. The policy shows as **Content safety** with **Gateway** scope. To change a category later,
+open its **More actions** menu and select **Edit**.
 
 ### Add the IP filter
 
@@ -235,9 +289,9 @@ before you select **Create**.
 
 ### Set the baseline
 
-`az aigateway policy set` creates or updates all four policies at **Gateway** scope in one call. It replaces a
-policy of the same type and keeps every other Gateway scope policy, such as a cost limit. `--allowed-ips` takes a
-list in brackets, so the command removes any spaces from your ranges.
+`az aigateway policy set` creates or updates the token limit, request rate limit, and IP filter at **Gateway**
+scope in one call. It replaces a policy of the same type and keeps every other Gateway scope policy, such as a
+cost limit. `--allowed-ips` takes a list in brackets, so the command removes any spaces from your ranges.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -245,13 +299,12 @@ list in brackets, so the command removes any spaces from your ranges.
 # Check the ranges that the IP filter will allow
 echo "🔐 IP filter allows: $ALLOWED_CIDRS"
 
-# Set the token limit, request rate limit, content safety, and IP filter at Gateway scope
+# Set the token limit, request rate limit, and IP filter at Gateway scope
 az aigateway policy set -g "$RG" --gateway-name "$GATEWAY" --output none \
   --token-limit 100000 --token-period minute --token-counter-key Identity \
   --rate-limit 600 --period-seconds 60 --rate-counter-key Identity \
-  --content-safety Medium \
   --action Allow --allowed-ips "[${ALLOWED_CIDRS// /}]" &&
-  echo "🔐 Baseline of four policies is on $GATEWAY at Gateway scope"
+  echo "🔐 Token limit, request rate limit, and IP filter are on $GATEWAY at Gateway scope"
 ```
 </details> <!-- gh -->
 
@@ -261,13 +314,61 @@ az aigateway policy set -g "$RG" --gateway-name "$GATEWAY" --output none \
 # Check the ranges that the IP filter will allow
 Write-Host "🔐 IP filter allows: $env:ALLOWED_CIDRS"
 
-# Set the token limit, request rate limit, content safety, and IP filter at Gateway scope
+# Set the token limit, request rate limit, and IP filter at Gateway scope
 az aigateway policy set -g $RG --gateway-name $GATEWAY --output none `
   --token-limit 100000 --token-period minute --token-counter-key Identity `
   --rate-limit 600 --period-seconds 60 --rate-counter-key Identity `
-  --content-safety Medium `
   --action Allow --allowed-ips "[$($env:ALLOWED_CIDRS -replace '\s')]"
+if ($?) { Write-Host "🔐 Token limit, request rate limit, and IP filter are on $GATEWAY at Gateway scope" }
+```
+</details> <!-- gh -->
+
+### Add content safety
+
+The `aigateway` extension 1.0.0b34 removed its content safety options until they match API version
+`2026-11-01`, so this step calls the management API with `az rest`. Gateway scope policies live in the
+`properties.policies` array of the gateway's `default` workspace, and a `PATCH` **replaces the whole array**, so
+the commands read it, swap in **Balanced** (`Medium`) content safety, and write the result back. That keeps the
+three policies you just set and every other Gateway scope policy.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Build the management URL of the gateway's default workspace, which holds the Gateway scope policies
+GATEWAY_ID="$(az aigateway show -g "$RG" -n "$GATEWAY" --query id -o tsv)"
+URL="https://management.azure.com$GATEWAY_ID/workspaces/default?api-version=2026-11-01"
+
+# Read the policies, drop any content safety policy, and add one at Medium (Balanced) in all four categories
+POLICIES="$(az rest --method get --url "$URL" | jq -c '
+  [(.properties.policies // [])[] | select(.type != "contentSafety")]
+  + [{"type":"contentSafety","scope":"resource","hateSeverity":"Medium","violenceSeverity":"Medium","sexualSeverity":"Medium","selfHarmSeverity":"Medium"}]')"
+
+# Send the merged array back: a PATCH replaces the whole policies array
+az rest --method patch --url "$URL" --body "{\"properties\":{\"policies\":$POLICIES}}" --output none &&
+  echo "🔐 Baseline of four policies is on $GATEWAY at Gateway scope"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Build the management URL of the gateway's default workspace, which holds the Gateway scope policies
+$GATEWAY_ID = az aigateway show -g $RG -n $GATEWAY --query id -o tsv
+$URL = "https://management.azure.com$GATEWAY_ID/workspaces/default?api-version=2026-11-01"
+
+# Read the policies, drop any content safety policy, and add one at Medium (Balanced) in all four categories
+$current  = az rest --method get --url $URL | ConvertFrom-Json
+$policies = @($current.properties.policies | Where-Object { $_ -and $_.type -ne 'contentSafety' })
+$policies += [pscustomobject]@{
+  type = 'contentSafety'; scope = 'resource'
+  hateSeverity = 'Medium'; violenceSeverity = 'Medium'; sexualSeverity = 'Medium'; selfHarmSeverity = 'Medium'
+}
+
+# Send the merged array back from a file, which keeps the JSON quotes intact: a PATCH replaces the whole array
+@{ properties = @{ policies = $policies } } | ConvertTo-Json -Depth 10 -Compress | Set-Content -Path patch.json
+az rest --method patch --url $URL --body '@patch.json' --output none
 if ($?) { Write-Host "🔐 Baseline of four policies is on $GATEWAY at Gateway scope" }
+Remove-Item patch.json
 ```
 </details> <!-- gh -->
 
@@ -291,28 +392,32 @@ az aigateway policy list -g $RG --gateway-name $GATEWAY --query "[].{Policy: typ
 ```
 </details> <!-- gh -->
 
-Expected output, plus a row for every other Gateway scope policy you already had:
+Expected output, in any order, plus a row for every other Gateway scope policy you already had:
 
 ```text
 🔐 Gateway scope policies on aigw-contoso:
 Policy            Scope
 ----------------  ---------
 tokenLimit        workspace
-contentSafety     resource
 requestRateLimit  workspace
 ipFilter          resource
+contentSafety     resource
 ```
 
 > [!NOTE]
 > Run `az aigateway policy list` without `--query` to see each policy's settings. The token and request rate
 > limits have `"counterKey": ["identity"]`, which gives each API key or Entra caller its own counter. The CLI
-> stores the IP filter action as `"allow"` in lowercase, and the portal shows it as **Allow listed IPs only**.
-> To change one policy later, use `az aigateway policy set-token-limit`, `set-rate-limit`,
-> `set-content-safety`, or `set-ip-filter`. Each keeps the other policies.
+> calls the management API version `2026-11-01`, like the Policy as code track, so it shows the request rate
+> limit as `"count": 600` and `"period": "minute"`: the service stores `--period-seconds 60` as `minute`. The
+> CLI stores the IP filter action as `"allow"` in lowercase, and the portal shows it as **Allow listed IPs only**.
+> To change one policy later, use `az aigateway policy set-token-limit`, `set-rate-limit`, or `set-ip-filter`.
+> Each keeps the other policies, including content safety. To change content safety, run **Add content safety**
+> again with new values.
 
 > **Checkpoint**
-> `az aigateway policy list` returns `tokenLimit`, `requestRateLimit`, `contentSafety`, and `ipFilter`, with
-> your ranges in `cidrRanges`, plus any other Gateway scope policies you had.
+> `az aigateway policy list` returns `tokenLimit`, `requestRateLimit`, `ipFilter`, and `contentSafety` with
+> `"Medium"` for all four categories, with your ranges in `cidrRanges`, plus any other Gateway scope policies you
+> had.
 
 </details> <!-- gh -->
 <!-- track: iac | Policy as code -->
@@ -321,17 +426,18 @@ ipFilter          resource
 ### Choose what to declare
 
 Gateway scope policies live on the gateway's `default` workspace. The sample Bicep templates only reference
-that workspace as `existing`. Declaring it in your own template would send a `PUT` that replaces the whole
-workspace resource, including settings that the template doesn't list. Instead, keep the baseline in a policy
-file that goes through code review, and apply it with a script. The `az aigateway policy` commands set policies
-from flags, so the script reads the workspace's `properties.policies` array with `az rest`, merges the file
-into it, and writes the array back.
+that workspace as `existing`: the workspace accepts `PATCH` but not `PUT`, so a template that declares it fails
+with `MethodNotAllowed`. Instead, keep the baseline in a policy file that goes through code review, and apply it
+with a script. The `az aigateway policy` commands set policies from flags, so the script reads the workspace's
+`properties.policies` array with `az rest`, merges the file into it, and writes the array back with a `PATCH`.
 
 ### Review the policy file
 
 <!-- include: infra/baseline-policies.json -->
 <!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
 📄 [`infra/baseline-policies.json`](infra/baseline-policies.json)
+
+<details><summary>Show all 30 lines</summary>
 
 ```json
 [
@@ -344,13 +450,14 @@ into it, and writes the array back.
   },
   {
     "type": "requestRateLimit",
-    "callsPerPeriod": 600,
-    "periodSeconds": 60,
+    "count": 600,
+    "period": "minute",
     "counterKey": ["identity"],
     "scope": "workspace"
   },
   {
     "type": "contentSafety",
+    "scope": "resource",
     "hateSeverity": "Medium",
     "violenceSeverity": "Medium",
     "sexualSeverity": "Medium",
@@ -358,14 +465,22 @@ into it, and writes the array back.
   },
   {
     "type": "ipFilter",
+    "scope": "resource",
     "action": "Allow",
     "cidrRanges": ["203.0.113.10/32"]
   }
 ]
 ```
+
+</details>
 <!-- gh:end -->
 
 On GitHub, open [infra/baseline-policies.json](infra/baseline-policies.json).
+
+The file uses the fields of the management API version `2026-11-01`, which the script calls. Both rate limits
+take a `count` and a `period`: `minute`, or for the request rate limit a duration from `PT1S` to `PT300S`, such as
+`PT30S`. Content safety and the IP filter take `"scope": "resource"` at Gateway scope; the API rejects
+`"workspace"` for them.
 
 The `ipFilter` entry holds a placeholder from the `203.0.113.0/24` documentation range. The script never applies
 it: it replaces `cidrRanges` with your `ALLOWED_CIDRS` value and stops if that value is missing or isn't in CIDR
@@ -474,7 +589,7 @@ fi
 # The az aigateway policy commands set policies from flags, so to apply the whole file the script calls the
 # management API with az rest.
 GATEWAY_ID="$(az aigateway show -g "$RG" -n "$GATEWAY" --query id -o tsv)"
-URL="https://management.azure.com$GATEWAY_ID/workspaces/default?api-version=2025-09-01-preview"
+URL="https://management.azure.com$GATEWAY_ID/workspaces/default?api-version=2026-11-01"
 
 # A PATCH replaces the whole properties.policies array, so always merge with the current array.
 CURRENT="$(az rest --method get --url "$URL")"
@@ -517,6 +632,173 @@ On GitHub, open [infra/apply-baseline.sh](infra/apply-baseline.sh) or
 > **Checkpoint**
 > The script prints four Gateway scope policies (`tokenLimit`, `requestRateLimit`, `contentSafety`, and
 > `ipFilter`) plus any other policies you already had.
+
+</details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+**What you need:** the variables from **Before you begin**, plus Terraform 1.9 or later, as in
+[Deploy a lab with Terraform](../SETUP.md#deploy-a-lab-with-terraform). Unlike the other labs' Terraform tracks,
+this one creates no Azure resources: it applies the baseline to your existing gateway.
+
+### Review the configuration
+
+The configuration applies the same policy file as the Policy as code track, `infra/baseline-policies.json`.
+`terraform/main.tf` reads your gateway and its `default` workspace, replaces the placeholder in the IP filter
+with your ranges, and keeps every current Gateway scope policy whose type isn't in the file:
+
+<!-- include: terraform/main.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/main.tf`](terraform/main.tf)
+
+<details><summary>Show all 35 lines</summary>
+
+```tf
+# Lab 09 with Terraform: applies the policy baseline in ../infra/baseline-policies.json at Gateway scope on an
+# existing gateway, the same file that the Policy as code scripts apply (baseline.tf). Terraform creates no
+# Azure resources: it reads the gateway and its default workspace, where Gateway scope policies live.
+data "azapi_client_config" "current" {}
+
+data "azapi_resource" "gateway" {
+  type      = "Microsoft.ApiManagement/aigateways@2026-11-01"
+  name      = var.gateway_name
+  parent_id = "/subscriptions/${data.azapi_client_config.current.subscription_id}/resourceGroups/${var.resource_group_name}"
+}
+
+# The current Gateway scope policies, so that removing the baseline keeps every other policy.
+data "azapi_resource" "workspace" {
+  type                   = "Microsoft.ApiManagement/aigateways/workspaces@2026-11-01"
+  name                   = "default"
+  parent_id              = data.azapi_resource.gateway.id
+  response_export_values = ["properties.policies"]
+}
+
+locals {
+  allowed_cidrs = [for c in split(",", var.allowed_cidrs) : trimspace(c) if trimspace(c) != ""]
+
+  # The file holds a placeholder address for the IP filter. Never apply it: replace it with allowed_cidrs.
+  baseline = [
+    for p in jsondecode(file(coalesce(var.baseline_file, "${path.module}/../infra/baseline-policies.json"))) :
+    merge(p, { for k in(p.type == "ipFilter" ? ["cidrRanges"] : []) : k => local.allowed_cidrs })
+  ]
+  baseline_types = [for p in local.baseline : p.type]
+
+  # The Gateway scope policies whose type isn't in the baseline. The service can omit properties.policies when the
+  # gateway has no Gateway scope policies, so try() returns an empty list then.
+  other_policies = try([
+    for p in data.azapi_resource.workspace.output.properties.policies : p if !contains(local.baseline_types, p.type)
+  ], [])
+}
+```
+
+</details>
+<!-- gh:end -->
+
+The workspace accepts `PATCH` but not `PUT`, so `terraform/baseline.tf` doesn't declare it as a resource. It
+sends the same `PATCH` as the script with an `azapi_resource_action`, and sends it again whenever the merged
+policy array changes:
+
+<!-- include: terraform/baseline.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/baseline.tf`](terraform/baseline.tf)
+
+```tf
+# The baseline at Gateway scope. The default workspace accepts PATCH but not PUT, so Terraform sends the same PATCH
+# as the Policy as code scripts: every current Gateway scope policy whose type isn't in the policy file, followed by
+# the baseline. Other policies, such as a cost limit, stay. Terraform sends the PATCH again whenever that array
+# changes. It doesn't read the policies back, so to undo an edit made in the portal or with the Azure CLI, run
+# terraform apply -replace=azapi_resource_action.baseline.
+#
+# Destroying this resource changes nothing on the gateway. To remove the baseline, apply with
+# -var remove_baseline=true first: the PATCH then keeps only the other policies.
+resource "azapi_resource_action" "baseline" {
+  type        = "Microsoft.ApiManagement/aigateways/workspaces@2026-11-01"
+  resource_id = data.azapi_resource.workspace.id
+  method      = "PATCH"
+
+  body = {
+    properties = {
+      # jsonencode() lets the two arrays differ in length and shape.
+      policies = jsondecode(var.remove_baseline ? jsonencode(local.other_policies) : jsonencode(flatten([local.other_policies, local.baseline])))
+    }
+  }
+
+  response_export_values = ["properties.policies"]
+}
+```
+<!-- gh:end -->
+
+`terraform/variables.tf` declares the gateway, your ranges, and `remove_baseline`, which **Clean up** uses.
+
+### Apply with terraform apply
+
+Move into the lab's Terraform folder, select your current subscription, pass your gateway and ranges as
+Terraform variables, then plan and apply. It takes a few seconds. The last command moves back to the lab's folder,
+where **Verify** runs the scripts.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Move into the lab's Terraform folder
+cd ~/aigateway/labs/09-gateway-baselines/terraform &&
+  echo "📂 Terraform folder: $(pwd)"
+
+# Use the Azure CLI's current subscription, your gateway, and the ranges that the IP filter allows
+export ARM_SUBSCRIPTION_ID="$(az account show --query id --output tsv)"
+export TF_VAR_resource_group_name="$RG"
+export TF_VAR_gateway_name="$GATEWAY"
+export TF_VAR_allowed_cidrs="$ALLOWED_CIDRS"
+echo "📝 Baseline for $GATEWAY in $RG, allowing $ALLOWED_CIDRS"
+
+# Download the provider, then plan and apply the baseline
+terraform init &&
+  terraform plan -out tfplan &&
+  terraform apply tfplan &&
+  echo "🔐 Baseline of four policies is on $GATEWAY at Gateway scope"
+# Move back to the lab's folder, which holds the scripts
+cd .. && echo "📂 Lab folder: $(pwd)"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Move into the lab's Terraform folder
+Set-Location ~/aigateway/labs/09-gateway-baselines/terraform
+if ($?) { Write-Host "📂 Terraform folder: $(Get-Location)" }
+
+# Use the Azure CLI's current subscription, your gateway, and the ranges that the IP filter allows
+$env:ARM_SUBSCRIPTION_ID         = az account show --query id --output tsv
+$env:TF_VAR_resource_group_name  = $RG
+$env:TF_VAR_gateway_name         = $GATEWAY
+$env:TF_VAR_allowed_cidrs        = $env:ALLOWED_CIDRS
+Write-Host "📝 Baseline for $GATEWAY in $RG, allowing $env:ALLOWED_CIDRS"
+
+# Download the provider, then plan and apply the baseline
+terraform init
+if ($?) { terraform plan -out tfplan }
+if ($?) { terraform apply tfplan }
+if ($?) { Write-Host "🔐 Baseline of four policies is on $GATEWAY at Gateway scope" }
+# Move back to the lab's folder, which holds the scripts
+Set-Location ..
+if ($?) { Write-Host "📂 Lab folder: $(Get-Location)" }
+```
+</details> <!-- gh -->
+
+> **Checkpoint**
+> `terraform apply` ended with `Apply complete! Resources: 1 added, 0 changed, 0 destroyed.`, and the
+> `gateway_scope_policies` output lists `tokenLimit`, `requestRateLimit`, `contentSafety`, and `ipFilter`, plus
+> any other Gateway scope policies you already had, such as `costLimit`.
+
+### Change the baseline
+
+To change a value, edit `infra/baseline-policies.json`, or pass `allowed_cidrs` to
+`terraform -chdir=terraform plan` for other ranges, and apply the plan. Terraform sends the merged array again, and the plan ends with
+`Plan: 0 to add, 1 to change, 0 to destroy.`
+
+Terraform doesn't read the policies back, so a plan doesn't show changes that someone makes in the portal or with
+the Azure CLI. To restore the file's values, run
+`terraform -chdir=terraform apply -replace=azapi_resource_action.baseline`.
 
 </details> <!-- gh -->
 <!-- /tracks -->
@@ -571,9 +853,11 @@ limits, and the prompt is benign.
 > [!WARNING]
 > If `check-call` keeps returning `403`, the gateway sees a different public IP address than `api.ipify.org`
 > reported. A VPN, a corporate proxy, or a client such as Global Secure Access can send your Azure traffic
-> through another egress address. Add your organization's egress ranges to `ALLOWED_CIDRS` and apply the
-> baseline again, or run the lab from Azure Cloud Shell, where both addresses match. If you completed
-[Federate MCP tools behind one endpoint](../04-federate-mcp-tools/README.md), run
+> through another egress address, and some networks rotate through a pool of egress addresses, so a `/32` can
+> pass one call and block the next. Add your organization's egress ranges to `ALLOWED_CIDRS` and apply the
+> baseline again, or run the lab from Azure Cloud Shell, where both addresses match.
+
+If you completed [Federate MCP tools behind one endpoint](../04-federate-mcp-tools/README.md), run
 `../04-federate-mcp-tools/infra/list-tools.sh learn` (PowerShell:
 `../04-federate-mcp-tools/infra/list-tools.ps1 -Server learn`). The MCP server is covered by the same IP
 filter, request rate limit, and content safety policies, and it still lists its tools.
@@ -659,13 +943,15 @@ Point the allow list at a documentation address that can't be yours, call the mo
 - **Azure CLI:** `az aigateway policy set-ip-filter -g "$RG" --gateway-name "$GATEWAY" --action Allow --allowed-ips "[203.0.113.10/32]" --output none`
 - **Script (Bash):** `ALLOWED_CIDRS="203.0.113.10/32" ./infra/apply-baseline.sh`
 - **Script (PowerShell):** `./infra/apply-baseline.ps1 -ResourceGroup $RG -Gateway $GATEWAY -AllowedCidrs "203.0.113.10/32"`
+- **Terraform:** in the lab folder, `terraform -chdir=terraform plan -var allowed_cidrs=203.0.113.10/32 -out tfplan`,
+  then `terraform -chdir=terraform apply tfplan`
 
 Wait about a minute, then run `check-call` again. It now returns `Status: 403`, and the request never reaches
 the model. Restore your range in the portal, with the same `set-ip-filter` command and
 `--allowed-ips "[${ALLOWED_CIDRS// /}]"`, or by running the script again without the override
-(`./infra/apply-baseline.sh`, or the PowerShell script without `-AllowedCidrs`). Then check that `check-call`
-returns `200`. Policy changes take up to a minute to reach the gateway, so if you still see the old result, wait
-and retry.
+(`./infra/apply-baseline.sh`, or the PowerShell script without `-AllowedCidrs`), or by planning and applying
+again without `-var` in Terraform. Then check that `check-call` returns `200`. Policy changes take up to a minute
+to reach the gateway, so if you still see the old result, wait and retry.
 
 ### Watch outcomes in Monitoring
 
@@ -686,10 +972,12 @@ If you configured Application Insights in [Monitor usage, cost, and traces](../1
 - **Tighten tool traffic.** Keep the baseline and add stricter controls to individual MCP servers in
   [Control which tools agents can call](../05-mcp-tool-controls/README.md) and
   [Protect tool calls with Agent 365 threat protection](../19-tool-threat-protection/README.md).
-- **Keep the allow list for inbound traffic.** Inbound private endpoints and turning off public network access
-  aren't available for AI Gateway yet, so the IP filter is how you restrict who can call the gateway. To keep
-  the gateway's traffic to your backends private, see
-  [Lock down backend traffic with private networking](../18-private-networking/README.md).
+- **Keep the allow list for inbound traffic.** Inbound private endpoints, with public network access turned off,
+  are in preview and need approval: see
+  [Reach the gateway through an inbound private endpoint](../18-private-networking/README.md#reach-the-gateway-through-an-inbound-private-endpoint)
+  and [Configure inbound access](https://ai.gateway.azure.com/docs/networking/private-endpoints). Until you have
+  them, the IP filter is how you restrict who can call the gateway. To keep the gateway's traffic to your
+  backends private, see [Lock down backend traffic with private networking](../18-private-networking/README.md).
 - **Count Entra callers.** With `identity` counters, each Entra caller gets its own allowance. Move clients to
   keyless calls in [Go keyless with Microsoft Entra ID and RBAC](../11-entra-rbac/README.md).
 
@@ -713,12 +1001,23 @@ Select **Policies**. For each of the four policies with **Gateway** scope, selec
 
 ### Remove the baseline
 
+`az aigateway policy remove` removes the token limit, request rate limit, and IP filter. Content safety has no
+`az aigateway` option in extension 1.0.0b34, so the second command reads the Gateway scope policies, drops the
+content safety policy, and writes the rest back with `az rest`.
+
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
-# Remove the four baseline policies from Gateway scope, and keep every other policy
+# Remove the token limit, request rate limit, and IP filter from Gateway scope, and keep every other policy
 az aigateway policy remove -g "$RG" --gateway-name "$GATEWAY" --output none \
-  --remove-token-limit true --remove-rate-limit true --remove-content-safety true --remove-ip-filter true &&
+  --remove-token-limit true --remove-rate-limit true --remove-ip-filter true &&
+  echo "🚮 Token limit, request rate limit, and IP filter are removed from $GATEWAY"
+
+# Read the Gateway scope policies, drop the content safety policy, and send the rest back
+GATEWAY_ID="$(az aigateway show -g "$RG" -n "$GATEWAY" --query id -o tsv)"
+URL="https://management.azure.com$GATEWAY_ID/workspaces/default?api-version=2026-11-01"
+POLICIES="$(az rest --method get --url "$URL" | jq -c '[(.properties.policies // [])[] | select(.type != "contentSafety")]')"
+az rest --method patch --url "$URL" --body "{\"properties\":{\"policies\":$POLICIES}}" --output none &&
   echo "🚮 Baseline is removed from $GATEWAY"
 ```
 </details> <!-- gh -->
@@ -726,10 +1025,20 @@ az aigateway policy remove -g "$RG" --gateway-name "$GATEWAY" --output none \
 <details><summary>PowerShell</summary> <!-- gh -->
 
 ```powershell title="PowerShell"
-# Remove the four baseline policies from Gateway scope, and keep every other policy
+# Remove the token limit, request rate limit, and IP filter from Gateway scope, and keep every other policy
 az aigateway policy remove -g $RG --gateway-name $GATEWAY --output none `
-  --remove-token-limit true --remove-rate-limit true --remove-content-safety true --remove-ip-filter true
+  --remove-token-limit true --remove-rate-limit true --remove-ip-filter true
+if ($?) { Write-Host "🚮 Token limit, request rate limit, and IP filter are removed from $GATEWAY" }
+
+# Read the Gateway scope policies, drop the content safety policy, and send the rest back from a file
+$GATEWAY_ID = az aigateway show -g $RG -n $GATEWAY --query id -o tsv
+$URL = "https://management.azure.com$GATEWAY_ID/workspaces/default?api-version=2026-11-01"
+$current  = az rest --method get --url $URL | ConvertFrom-Json
+$policies = @($current.properties.policies | Where-Object { $_ -and $_.type -ne 'contentSafety' })
+ConvertTo-Json -InputObject @{ properties = @{ policies = $policies } } -Depth 10 -Compress | Set-Content -Path patch.json
+az rest --method patch --url $URL --body '@patch.json' --output none
 if ($?) { Write-Host "🚮 Baseline is removed from $GATEWAY" }
+Remove-Item patch.json
 ```
 </details> <!-- gh -->
 
@@ -763,6 +1072,50 @@ The script removes the policy types listed in `baseline-policies.json` and keeps
 policy.
 
 </details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+### Remove the baseline
+
+In the `aigateway/labs/09-gateway-baselines` folder, with the variables from the Terraform track still
+set, apply once with `remove_baseline=true`: the `PATCH` then keeps only the other Gateway scope policies. Then
+run `terraform destroy`, which only removes the baseline from the Terraform state and changes nothing on the
+gateway.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Remove the policy types listed in baseline-policies.json from Gateway scope, and keep every other policy
+terraform -chdir=terraform plan -var remove_baseline=true -out tfplan &&
+  terraform -chdir=terraform apply tfplan &&
+  echo "🚮 Baseline is removed from $GATEWAY"
+
+# Forget the baseline in the Terraform state: this changes nothing on the gateway
+terraform -chdir=terraform destroy -auto-approve &&
+  echo "🚮 Terraform no longer tracks the baseline"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Remove the policy types listed in baseline-policies.json from Gateway scope, and keep every other policy
+terraform -chdir=terraform plan -var remove_baseline=true -out tfplan
+if ($?) { terraform -chdir=terraform apply tfplan }
+if ($?) { Write-Host "🚮 Baseline is removed from $GATEWAY" }
+
+# Forget the baseline in the Terraform state: this changes nothing on the gateway
+terraform -chdir=terraform destroy -auto-approve
+if ($?) { Write-Host "🚮 Terraform no longer tracks the baseline" }
+```
+</details> <!-- gh -->
+
+> **Checkpoint**
+> The apply ended with `Apply complete! Resources: 0 added, 1 changed, 0 destroyed.`, the
+> `gateway_scope_policies` output lists only the policies you had before, and `terraform destroy` ended with
+> `Destroy complete! Resources: 1 destroyed.`
+
+</details> <!-- gh -->
 <!-- /tracks -->
 
 Keep the gateway, model, and key. The next labs reuse them.
@@ -775,7 +1128,9 @@ Keep the gateway, model, and key. The next labs reuse them.
   policy.
 - [Lock down backend traffic with private networking](../18-private-networking/README.md): route the gateway's
   backend traffic through your virtual network.
-- Docs: [Policies in AI Gateway](https://ai.gateway.azure.com/docs/policies).
+- Docs: [Policies in AI Gateway](https://ai.gateway.azure.com/docs/policies),
+  [Request rate limit](https://ai.gateway.azure.com/docs/policies/request-rate-limit), and
+  [IP filter](https://ai.gateway.azure.com/docs/policies/ip-filter).
 
 <!-- gh:begin footer: generated by "npm run sync" from the metadata, do not edit -->
 
@@ -787,5 +1142,5 @@ Keep the gateway, model, and key. The next labs reuse them.
 | :-- | :-: | --: |
 | [08 · Content safety](../08-content-safety/README.md) | [All labs](../README.md) | [10 · Runtime API keys](../10-api-keys/README.md) |
 
-<sub>Learning paths: [Platform engineer](../README.md#learning-paths) (6 of 9) · [Security & compliance](../README.md#learning-paths) (5 of 7)</sub>
+<sub>Learning paths: [Platform engineer](../README.md#learning-paths) (8 of 11) · [Security & compliance](../README.md#learning-paths) (5 of 9)</sub>
 <!-- gh:end -->

@@ -4,7 +4,7 @@ summary: Cap how many tokens each app, agent, or user can consume per minute, ho
 category: governance
 level: Beginner
 duration: 25
-tracks: [portal, cli, rest, iac]
+tracks: [portal, cli, rest, iac, terraform]
 order: 6
 illustration: diagrams/token-limits.svg
 tags: [tokenLimit, TPM, quota, "429", Retry-After, noisy neighbor]
@@ -27,7 +27,7 @@ prereqs:
 
 | ⏱️ Time | 📶 Level | 🧭 Tracks | ✅ Before you start |
 | :-- | :-- | :-- | :-- |
-| 25 min | Beginner | Portal · Azure CLI · REST API · Bicep + azd · Notebook | [02 · First model call](../02-first-model-call/README.md) |
+| 25 min | Beginner | Portal · Azure CLI · REST API · Bicep + azd · Terraform · Notebook | [02 · First model call](../02-first-model-call/README.md) |
 
 **You'll learn to**
 
@@ -65,8 +65,8 @@ you give each caller its own token allowance at the gateway, so a noisy neighbor
 <!-- gh:end -->
 
 > [!TIP]
-> On the **Bicep + azd** track, `azd up` creates its own gateway, model, and key, so you can skip this section. You
-> need only the one-time setup above.
+> On the **Bicep + azd** and **Terraform** tracks, `azd up` or `terraform apply` creates its own gateway, model, and
+> key, so you can skip this section. You need only the one-time setup above.
 
 - Complete [Publish a Foundry model and make your first call](../02-first-model-call/README.md). You need a gateway, an imported
   model, a callable alias, and a runtime API key from **Access** › **API keys**.
@@ -97,7 +97,7 @@ echo "🔖 Model alias: $AI_GATEWAY_MODEL"
 
 # Paste the runtime key that you created in Access › API keys, without showing it
 # Don't commit the key or write it to a file
-read -rsp "AI Gateway API key: " AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
+printf "AI Gateway API key: " && read -rs AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 ```
 </details> <!-- gh -->
@@ -144,11 +144,12 @@ gateway answers `429 Too Many Requests` with a `Retry-After` header and never ca
 |---|---|---|---|
 | Allowance | **Allowed tokens** | `count` | Positive integer |
 | Window | **Time period** | `period` | `minute` (TPM), `hour`, `day` (quota) |
-| Who gets a counter | **Counter dimensions** | `counterKey` | An array: `["identity"]` (each API key, or each Entra tenant + object ID), `["ipAddress"]`, or both |
+| Who gets a counter | **Counter dimensions** | `counterKey` | A required array: `["identity"]` (each API key, or each Entra tenant + object ID), `["ipAddress"]`, both, or `[]` for one allowance that all callers share |
 
 You can attach a token limit to a **model** (applies to every alias that targets it), to an **alias** (only
-callers that use that name), or to the **gateway** (a default for every compatible model, including models you
-add later). Every applicable policy is checked, and any one of them can block the request.
+callers that use that name), or to the **gateway** (every compatible model and alias, including ones you add
+later). A gateway limit keeps one counter per caller across all of those assets, not one per model. Every
+applicable policy is checked, and any one of them can block the request.
 
 > [!NOTE]
 > The backend deployment has its own capacity, shown as **Token rate limit (TPM)** on the model's details page.
@@ -163,8 +164,8 @@ add later). Every applicable policy is checked, and any one of them can block th
 ## Add a token limit to the model
 
 Pick one track. Each track produces the same policy on your model: **1,000 tokens per minute for each caller
-identity**. The limit is deliberately low so you can trigger it in a few requests. The IaC track takes a
-different route, explained in its first step.
+identity**. The limit is deliberately low so you can trigger it in a few requests. The **Bicep + azd** and
+**Terraform** tracks take a different route, explained in their first step.
 
 <!-- track: portal | Portal -->
 <details open><summary><b>🖥️ Portal</b></summary> <!-- gh -->
@@ -172,15 +173,15 @@ different route, explained in its first step.
 ### Start the policy wizard
 
 Open the [AI Gateway portal](https://ai.gateway.azure.com) and select your gateway from the gateway switcher.
-Select **Policies** › **Add policy**. On the **Type** step, under **Cost & Rate Limits**, select
+Select **Policies** › **Add policy**. On the **Type** step, under **Cost and rate limits**, select
 **Token rate limit**, then **Next**.
 
-![The Add policy wizard on the Type step](../assets/screens/policy-add-wizard.png "Policies › Add policy opens a three-step wizard: Type, Scope, Configure.")
+![The Type step of the Add policy wizard, with Token rate limit selected under Cost and rate limits](../assets/screens/token-limits-01-policy-type.webp "Policies › Add policy opens a three-step wizard: Type, Scope, Details.")
 
 ### Choose where the limit applies
 
 On the **Scope** step, select **Individual assets** ("Apply only to selected models, aliases, or MCP servers").
-Select your model, then **Next**.
+Select the row of type **Model** for your model, then **Next**.
 
 > [!TIP]
 > **Gateway** scope applies the limit to every compatible asset, including models you add later. It's a good
@@ -188,19 +189,19 @@ Select your model, then **Next**.
 
 ### Configure the allowance
 
-On the **Details** step (**Configure** in some portal versions), under **Parameters**, set:
+On the **Details** step, under **Policy details**, set:
 
 | Field | Value |
 |---|---|
 | **Time period** | **Per minute** |
-| **Allowed tokens** | `1000` |
-| **Counter dimensions** | **Caller identity** |
+| **Allowed tokens** | `1000` (the default is `10000`) |
+| **Counter dimensions** | **Identity** (the default) |
 
-Select **Create**. The policy appears in the **Policies** list with your model as its scope.
+Select **Create**. The portal confirms **Policy created**.
 
 > **Checkpoint**
-> **Policies** lists a **Token rate limit** for your model with 1,000 tokens per minute and the
-> **Caller identity** counter.
+> **Policies** lists a **Token rate limit** for your model, with **1,000 tokens / minute per caller identity**
+> under **Configuration**.
 
 </details> <!-- gh -->
 <!-- track: cli | Azure CLI -->
@@ -271,7 +272,7 @@ always read it first and keep the policies you didn't mean to change.
 ```bash
 # Read your subscription ID, and build the model's management URL, with the API version
 SUB="$(az account show --query id -o tsv)"
-URL="https://management.azure.com/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.ApiManagement/aigateways/$GATEWAY/workspaces/default/modelProviders/$PROVIDER/models/$MODEL?api-version=2025-09-01-preview"
+URL="https://management.azure.com/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.ApiManagement/aigateways/$GATEWAY/workspaces/default/modelProviders/$PROVIDER/models/$MODEL?api-version=2026-11-01"
 echo "🆔 Subscription: $SUB"
 
 # Read the model's policies, so that you can keep the ones you don't change
@@ -302,7 +303,7 @@ az rest --method patch --url "$URL" --body "{\"properties\":{\"policies\":$POLIC
 ```powershell title="PowerShell"
 # Read your subscription ID, and build the model's management URL, with the API version
 $SUB = az account show --query id -o tsv
-$URL = "https://management.azure.com/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.ApiManagement/aigateways/$GATEWAY/workspaces/default/modelProviders/$PROVIDER/models/$MODEL`?api-version=2025-09-01-preview"
+$URL = "https://management.azure.com/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.ApiManagement/aigateways/$GATEWAY/workspaces/default/modelProviders/$PROVIDER/models/$MODEL`?api-version=2026-11-01"
 Write-Host "🆔 Subscription: $SUB"
 
 # Read the model, keep every policy except the token limit, and add the new one:
@@ -469,30 +470,30 @@ param period string = 'minute'
 param counterKey array = [ 'identity' ]
 
 #disable-next-line BCP081
-resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
+resource gateway 'Microsoft.ApiManagement/aigateways@2026-11-01' existing = {
   name: gatewayName
 }
 
 #disable-next-line BCP081
-resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' existing = {
+resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2026-11-01' existing = {
   parent: gateway
   name: 'default'
 }
 
 #disable-next-line BCP081
-resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2025-09-01-preview' existing = {
+resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2026-11-01' existing = {
   parent: workspace
   name: providerName
 }
 
 #disable-next-line BCP081
-resource model 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2025-09-01-preview' existing = {
+resource model 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2026-11-01' existing = {
   parent: provider
   name: modelName
 }
 
 #disable-next-line BCP081
-resource limitedAlias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2025-09-01-preview' = {
+resource limitedAlias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01' = {
   parent: workspace
   name: aliasName
   properties: {
@@ -650,6 +651,248 @@ Use `'["identity","ipAddress"]'` for both. Set it back to `'["identity"]'` befor
 counter is per key.
 
 </details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+**What you need:** only the one-time setup from **Before you begin**, plus Terraform 1.9 or later, as in
+[Deploy a lab with Terraform](../SETUP.md#deploy-a-lab-with-terraform). This track doesn't use your gateway from
+lab 02: `terraform apply` creates a new one, so it works on its own.
+
+### Review the configuration
+
+Like the Bicep template, the configuration **adds a new alias**, `<model-name>-limited`, that targets the same
+backend model and carries its own token limit, rather than redeclaring a model that you imported in the portal.
+Existing clients keep calling the original alias, and callers that you move to the new alias get the allowance.
+
+`terraform/main.tf` creates the resource group `rg-<environment_name>` and calls the quick start's
+[resources module](../quickstart/terraform/resources) for the gateway, the Foundry model, its default alias, and the
+`app-first-call` key:
+
+<!-- include: terraform/main.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/main.tf`](terraform/main.tf)
+
+```tf
+# Lab 06 with Terraform: creates the resource group rg-<environment_name>, the quick start's gateway, Foundry model,
+# default alias, and runtime API key, then a second alias for the same model with its own token limit
+# (limited-alias.tf). The runtime API key is never an output.
+data "azapi_client_config" "current" {}
+
+locals {
+  suffix = substr(sha1("${data.azapi_client_config.current.subscription_id}/${var.environment_name}/${var.location}"), 0, 6)
+  tags   = { "environment-name" = var.environment_name }
+}
+
+resource "azurerm_resource_group" "rg" {
+  name     = "rg-${var.environment_name}"
+  location = var.location
+  tags     = local.tags
+}
+
+# The quick start's module: a gateway, a Foundry model behind the default alias, and the app-first-call key.
+module "base" {
+  source = "../../quickstart/terraform/resources"
+
+  subscription_id     = data.azapi_client_config.current.subscription_id
+  resource_group_name = azurerm_resource_group.rg.name
+  resource_group_id   = azurerm_resource_group.rg.id
+  location            = var.location
+  tags                = local.tags
+  gateway_name        = "aigw-${local.suffix}"
+  foundry_name        = "aigw${local.suffix}"
+}
+```
+<!-- gh:end -->
+
+`terraform/limited-alias.tf` adds the alias with the `azapi` provider, which sends the AI Gateway API version,
+`2026-11-01`, as is. `terraform/variables.tf` declares the limit's settings with the same defaults as the Bicep
+template:
+
+<!-- include: terraform/limited-alias.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/limited-alias.tf`](terraform/limited-alias.tf)
+
+```tf
+# A token-limited alias for the quick start's model. It points at the same backend model as the default alias, but
+# carries its own token limit, so a "batch" or "trial" audience gets a smaller allowance without touching the model.
+resource "azapi_resource" "limited_alias" {
+  type      = "Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01"
+  name      = "${module.base.model_name}-limited"
+  parent_id = module.base.workspace_id
+
+  body = {
+    properties = {
+      backendModels = [
+        { resourceId = module.base.model_id }
+      ]
+      policies = [
+        {
+          type       = "tokenLimit"
+          count      = var.token_limit
+          period     = var.token_limit_period
+          counterKey = var.token_limit_counter_key
+        }
+      ]
+    }
+  }
+
+  schema_validation_enabled = false
+}
+```
+<!-- gh:end -->
+
+### Deploy with terraform apply
+
+Move into the lab's Terraform folder, select your current subscription, then plan and apply the configuration. It
+takes about five minutes, most of it while the new gateway activates.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Move into the lab's Terraform folder
+cd ~/aigateway/labs/06-token-limits/terraform &&
+  echo "📂 Terraform folder: $(pwd)"
+
+# Deploy to the Azure CLI's current subscription
+export ARM_SUBSCRIPTION_ID="$(az account show --query id --output tsv)" &&
+  echo "📍 Subscription: $ARM_SUBSCRIPTION_ID"
+
+# Download the providers, then plan and apply the gateway, the Foundry model, its default alias, the limited alias
+# with its token limit, and the key
+terraform init &&
+  terraform plan -out tfplan &&
+  terraform apply tfplan &&
+  echo "🚀 Gateway deployed: $(terraform output -raw ai_gateway_url)"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Move into the lab's Terraform folder
+Set-Location ~/aigateway/labs/06-token-limits/terraform
+if ($?) { Write-Host "📂 Terraform folder: $(Get-Location)" }
+
+# Deploy to the Azure CLI's current subscription
+$env:ARM_SUBSCRIPTION_ID = az account show --query id --output tsv
+if ($?) { Write-Host "📍 Subscription: $env:ARM_SUBSCRIPTION_ID" }
+
+# Download the providers, then plan and apply the gateway, the Foundry model, its default alias, the limited alias
+# with its token limit, and the key
+terraform init
+if ($?) { terraform plan -out tfplan }
+if ($?) { terraform apply tfplan }
+if ($?) { Write-Host "🚀 Gateway deployed: $(terraform output -raw ai_gateway_url)" }
+```
+</details> <!-- gh -->
+
+The configuration deploys to `eastus2`. For another region where AI Gateway and the `gpt-5-mini` model are
+available, as in [Find the available regions](../SETUP.md#find-the-available-regions), run
+`export TF_VAR_location=<region>` (PowerShell: `$env:TF_VAR_location = "<region>"`) before `terraform plan`.
+
+### Read the outputs and the key
+
+Set the variables that **Verify** uses from the Terraform outputs, and read the key from the gateway, so that it
+never shows on screen or lands in the Terraform state.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Read the configuration's outputs: the resource group, the gateway, the provider, the backend model, the runtime
+# URL, and the limited alias that apps send in the model field
+export RG="$(terraform output -raw azure_resource_group)"
+export GATEWAY="$(terraform output -raw ai_gateway_name)"
+export PROVIDER="$(terraform output -raw ai_gateway_provider)"
+export MODEL="$(terraform output -raw ai_gateway_backend_model)"
+export AI_GATEWAY_URL="$(terraform output -raw ai_gateway_url)"
+export AI_GATEWAY_MODEL="$(terraform output -raw ai_gateway_model)"
+echo "📝 Model $MODEL from $PROVIDER, on gateway $GATEWAY in $RG"
+echo "🌐 Runtime URL: $AI_GATEWAY_URL"
+
+# Read the key from the gateway, so that it never lands in a file or the Terraform state
+export AI_GATEWAY_API_KEY="$(az aigateway api-key list-secrets --ids "$(terraform output -raw ai_gateway_id)/apiKeys/app-first-call" \
+  --query primaryKey --output tsv)"
+echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
+echo "🔖 Model alias: $AI_GATEWAY_MODEL"
+
+# Move back to the lab's folder, which holds the scripts
+cd .. && echo "📂 Lab folder: $(pwd)"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Read the configuration's outputs: the resource group, the gateway, the provider, the backend model, the runtime
+# URL, the limited alias that apps send in the model field, and the gateway's resource ID
+$RG                     = terraform output -raw azure_resource_group
+$GATEWAY                = terraform output -raw ai_gateway_name
+$PROVIDER               = terraform output -raw ai_gateway_provider
+$MODEL                  = terraform output -raw ai_gateway_backend_model
+$env:AI_GATEWAY_URL     = terraform output -raw ai_gateway_url
+$env:AI_GATEWAY_MODEL   = terraform output -raw ai_gateway_model
+$GATEWAY_ID             = terraform output -raw ai_gateway_id
+Write-Host "📝 Model $MODEL from $PROVIDER, on gateway $GATEWAY in $RG"
+Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
+
+# Read the key from the gateway, so that it never lands in a file or the Terraform state
+$env:AI_GATEWAY_API_KEY = az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/app-first-call" `
+  --query primaryKey --output tsv
+Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) characters, not shown)"
+Write-Host "🔖 Model alias: $env:AI_GATEWAY_MODEL"
+
+# Move back to the lab's folder, which holds the scripts
+Set-Location ..
+if ($?) { Write-Host "📂 Lab folder: $(Get-Location)" }
+```
+</details> <!-- gh -->
+
+> **Checkpoint**
+> `terraform apply` ended with `Apply complete! Resources: 10 added, 0 changed, 0 destroyed.`, and the output
+> shows the limited alias, `🔖 Model alias: gpt-5-mini-limited`. In the portal, **Models** shows it next to
+> `gpt-5-mini`, and **Policies** lists a **Token rate limit** scoped to it.
+
+The next sections run from the lab's folder, with `-chdir=terraform` for the `terraform` commands.
+
+### Change the limit
+
+The settings are Terraform variables, with the defaults in `terraform/variables.tf`. To count tokens per client IP
+address instead of per key, pass `token_limit_counter_key` to `terraform plan` and apply the plan. Only the alias
+changes. `token_limit` and `token_limit_period` work the same way.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Plan the change: count tokens per client IP address instead of per key
+terraform -chdir=terraform plan -var 'token_limit_counter_key=["ipAddress"]' -out tfplan &&
+  echo "📝 The plan updates only the limited alias"
+
+# Apply the plan
+terraform -chdir=terraform apply tfplan &&
+  echo "🔐 The token limit on the limited alias counts tokens per client IP address"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Plan the change: count tokens per client IP address instead of per key
+terraform -chdir=terraform plan -var 'token_limit_counter_key=["ipAddress"]' -out tfplan
+if ($?) { Write-Host "📝 The plan updates only the limited alias" }
+
+# Apply the plan
+terraform -chdir=terraform apply tfplan
+if ($?) { Write-Host "🔐 The token limit on the limited alias counts tokens per client IP address" }
+```
+</details> <!-- gh -->
+
+> **Checkpoint**
+> The plan ended with `Plan: 0 to add, 1 to change, 0 to destroy.`, for `azapi_resource.limited_alias`.
+
+Use `'token_limit_counter_key=["identity","ipAddress"]'` for both. Before **Verify**, which proves the counter is
+per key, plan and apply again without `-var`, to go back to the default, `["identity"]`.
+
+</details> <!-- gh -->
 <!-- /tracks -->
 
 ## Verify
@@ -690,20 +933,20 @@ Expected output (your token counts will differ):
 ```text
 🚦 Expect 429 Too Many Requests once the 1,000-token allowance runs out:
 Request  Status  Retry-After  Tokens used  Backend tokens left
-1        200     -            231          9977
-2        200     -            214          9977
-3        200     -            220          9977
-4        200     -            221          9977
-5        200     -            223          9977
-6        200     -            229          9977
-7        429     1            -            -
-8        200     -            222          9977
+1        200     -            211          9977
+2        200     -            208          9977
+3        200     -            205          9977
+4        200     -            215          9977
+5        200     -            225          9977
+6        200     -            203          9977
+7        429     3            -            -
+8        429     3            -            -
 ```
 
-The gateway stops this caller once it passes 1,000 tokens, while the backend deployment still has most of its
-capacity left: that's the point of a per-caller limit. `Retry-After` says how many seconds to wait, and a request sent
-after that wait can succeed again, as request 8 shows. The gateway doesn't add its own remaining-tokens header, so
-watch the status and `Retry-After`.
+The gateway stops this caller once it passes 1,000 tokens, while the backend deployment still has most of its capacity
+left: that's the point of a per-caller limit. `Retry-After` says how many seconds to wait, and a request sent after
+that wait can succeed again. The gateway doesn't add its own remaining-tokens header, so watch the status and
+`Retry-After`.
 
 > [!NOTE]
 > The gateway counts a request's tokens after the response, and its counters catch up within a few seconds, so a
@@ -722,14 +965,16 @@ curl -i "${AI_GATEWAY_URL%/}/default/models/openai/v1/chat/completions" \
   -d "{\"model\":\"$AI_GATEWAY_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}]}"
 ```
 
-The status line is `HTTP/1.1 429`, and `Retry-After` tells the client how many seconds to wait. Well-behaved
-SDKs, including the OpenAI SDKs, honor `Retry-After` automatically when they retry.
+The status line is `HTTP/2 429`, and the body is
+`{ "statusCode": 429, "message": "Token limit is exceeded. Try again in 5 seconds." }`, with your own wait.
+`Retry-After` tells the client how many seconds to wait. Well-behaved SDKs, including the OpenAI SDKs, honor
+`Retry-After` automatically when they retry.
 
 ### Prove the counter is per caller
 
 Create a second runtime key in **Access** › **API keys**, set it as `AI_GATEWAY_API_KEY` in a new terminal, and
 run the burst again while the first key is still throttled. The second key starts with a full allowance,
-because **Caller identity** gives every key its own counter.
+because the **Identity** counter dimension gives every key its own counter.
 
 ### Find the throttled calls in Monitoring
 
@@ -749,11 +994,11 @@ If you configured Application Insights in [Monitor usage, cost, and traces](../1
 
 - **Set a gateway-wide default.** Add a second **Token rate limit** with **Gateway** scope and a generous
   allowance, such as `100000` per minute. New models get a guardrail the moment you import them, and you keep
-  the stricter model or alias limits on top.
+  the stricter model or alias limits on top. Each caller gets one allowance across all models and aliases.
 - **Add a daily quota.** Combine a per-minute limit (smooths bursts) with a **Per day** limit (caps total use).
   Both are checked on every request.
-- **Limit by IP address.** For a public demo with one shared key, use **Caller IP address** so each visitor
-  gets their own counter.
+- **Limit by IP address.** For a public demo with one shared key, use the **IP address** counter dimension so
+  each visitor gets their own counter.
 - **Budget in dollars instead of tokens.** Token counts don't reflect model prices. To cap spend, continue
   with [Enforce cost budgets](../07-cost-budgets/README.md).
 
@@ -767,8 +1012,9 @@ to a production value, before you continue.
 
 ### Remove the policy
 
-Select **Policies**, open the **Token rate limit** you created, and delete it. If you created a second runtime
-key for testing, revoke it in **Access** › **API keys**.
+Select **Policies**. On the row of the **Token rate limit** you created, select **More actions** (⋮) ›
+**Delete**, then **Delete** again in **Delete this policy?**. If you created a second runtime key for testing,
+revoke it in **Access** › **API keys**.
 
 </details> <!-- gh -->
 <!-- track: cli | Azure CLI -->
@@ -835,17 +1081,38 @@ To keep this gateway for other labs instead, skip `azd down` and raise the limit
 `azd env set TOKEN_LIMIT 100000`, then `azd provision`.
 
 </details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+### Delete everything Terraform created
+
+In the `aigateway/labs/06-token-limits` folder, delete the resource group with the gateway, the Foundry
+account, and the limited alias. The [`azurerm` provider](../SETUP.md#delete-what-terraform-created) also purges the
+soft-deleted Foundry account. It takes a few minutes.
+
+```bash
+# Delete everything that terraform apply created, and purge the soft-deleted Foundry account
+terraform -chdir=terraform destroy -auto-approve &&
+  echo "🚮 Everything that terraform apply created is deleted"
+```
+
+To keep this gateway for other labs instead, skip `terraform destroy` and raise the limit to a production value:
+`terraform -chdir=terraform apply -var token_limit=100000`.
+
+</details> <!-- gh -->
 <!-- /tracks -->
 
-Keep the gateway, model, and key from lab 02: the next labs reuse them. `azd down` doesn't touch them, because
-the Bicep + azd track created its own gateway.
+Keep the gateway, model, and key from lab 02: the next labs reuse them. `azd down` and `terraform destroy` don't
+touch them, because the Bicep + azd and Terraform tracks created their own gateways.
 
 ## Next steps
 
 - [Enforce cost budgets with per-key overrides](../07-cost-budgets/README.md): cap spend in dollars per caller.
 - [Monitor usage, cost, and traces](../13-monitoring/README.md): see which callers hit their limits.
 - [Publish model aliases across providers](../03-multi-provider-aliases/README.md): give each audience its own alias and limit.
-- Docs: [Policies in AI Gateway](https://ai.gateway.azure.com/docs/policies).
+- Docs: [Token rate limit](https://ai.gateway.azure.com/docs/policies/token-rate-limit),
+  [Limit requests by rate, tokens, or cost](https://ai.gateway.azure.com/docs/policies/limit-requests), and
+  [Policies in AI Gateway](https://ai.gateway.azure.com/docs/policies).
 
 <!-- gh:begin footer: generated by "npm run sync" from the metadata, do not edit -->
 
@@ -857,5 +1124,5 @@ the Bicep + azd track created its own gateway.
 | :-- | :-: | --: |
 | [05 · Tool allow & block lists](../05-mcp-tool-controls/README.md) | [All labs](../README.md) | [07 · Cost budgets](../07-cost-budgets/README.md) |
 
-<sub>Learning paths: [FinOps & operations](../README.md#learning-paths) (1 of 5)</sub>
+<sub>Learning paths: [FinOps & operations](../README.md#learning-paths) (1 of 6)</sub>
 <!-- gh:end -->

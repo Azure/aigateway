@@ -1,0 +1,12 @@
+[
+  { "kind": "simple", "prompt": "Is 17 a prime number? Answer yes or no." },
+  { "kind": "simple", "prompt": "Translate 'thank you very much' into French." },
+  { "kind": "simple", "prompt": "What is 12 times 12?" },
+  { "kind": "simple", "prompt": "What does HTTP stand for?" },
+  { "kind": "simple", "prompt": "Which planet is closest to the sun?" },
+  { "kind": "hard", "prompt": "Prove that the square root of 2 is irrational, then generalize the proof to show that the square root of any prime number is irrational." },
+  { "kind": "hard", "prompt": "A train leaves at 09:40 and travels 315 km at 84 km/h, then waits 12 minutes and travels 96 km at 64 km/h. A second train leaves the same station at 10:05 at 96 km/h on the same track with no stops. Does the second train overtake the first, and if so where and when? Show the reasoning." },
+  { "kind": "hard", "prompt": "Let f be a continuous function on [0,1] with f(0)=f(1). Prove that for every positive integer n there exist x in [0,1-1/n] with f(x)=f(x+1/n), and show by an explicit construction that the statement fails for every h in (0,1) that is not of the form 1/n." },
+  { "kind": "hard", "prompt": "Design a sharded rate limiter for 50 million API keys across three regions with a 1-second sliding window. Compare token bucket, sliding log, and GCRA, pick one, and explain the consistency trade-offs under a region partition." },
+  { "kind": "hard", "prompt": "Find all integer solutions of x^2 - 7y^2 = 1 with 0 < x < 10000 and prove that your list is complete." }
+]

@@ -30,12 +30,12 @@ var foundryResourceGroup = split(foundryAccountId, '/')[4]
 var cognitiveServicesAudience = 'https://cognitiveservices.azure.com/'
 
 #disable-next-line BCP081
-resource aiGateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
+resource aiGateway 'Microsoft.ApiManagement/aigateways@2026-11-01' existing = {
   name: gatewayName
 }
 
 #disable-next-line BCP081
-resource defaultWorkspace 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' existing = {
+resource defaultWorkspace 'Microsoft.ApiManagement/aigateways/workspaces@2026-11-01' existing = {
   parent: aiGateway
   name: 'default'
 }
@@ -49,29 +49,31 @@ var foundryEndpoint = foundryAccount.properties.endpoint
 var normalizedFoundryEndpoint = endsWith(foundryEndpoint, '/') ? foundryEndpoint : '${foundryEndpoint}/'
 
 #disable-next-line BCP081
-resource foundryProvider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2025-09-01-preview' = {
+resource foundryProvider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2026-11-01' = {
   parent: defaultWorkspace
   name: providerName
   properties: {
-    kind: 'Foundry'
+    modelProviderType: 'Foundry'
     displayName: displayName
     description: providerDescription
     foundry: {
-      endpoint: normalizedFoundryEndpoint
+      endpoint: {
+        url: normalizedFoundryEndpoint
+      }
       resourceIds: [
         foundryAccountId
       ]
-      authentication: {
-        kind: 'ManagedIdentity'
-        managedIdentity: empty(identityClientId)
-          ? {
-              resource: cognitiveServicesAudience
-            }
-          : {
-              clientId: identityClientId
-              resource: cognitiveServicesAudience
-            }
-      }
+    }
+    // The identity that the gateway uses to call the account. Without clientId, it's the system-assigned identity.
+    authentication: {
+      managedIdentity: empty(identityClientId)
+        ? {
+            resource: cognitiveServicesAudience
+          }
+        : {
+            resource: cognitiveServicesAudience
+            clientId: identityClientId
+          }
     }
   }
 }

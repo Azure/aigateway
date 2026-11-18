@@ -1,5 +1,5 @@
 // Declares the learn MCP server of lab 04, with its learn and docs backends, plus lab 05's tool controls: the tools
-// it publishes (allowList), the tools it refuses to run (blocked), whether clients can reach it (accessState), and a
+// it publishes (allowList), the tools it refuses to run (blockList), whether clients can reach it (accessState), and a
 // request rate limit for each caller. It also creates a runtime API key for the MCP clients. The key is never an output.
 // A deployment sends a PUT, which replaces the whole MCP server, so keep this template as its only source of truth.
 
@@ -30,7 +30,9 @@ param serverAccess string = 'active'
 @minValue(0)
 param callsPerPeriod int = 5
 
-@description('Renewal period in seconds. The portal offers 30, 60, 120, and 300.')
+@description('Renewal period in seconds, from 1 to 300. The portal offers 30, 60, 120, and 300.')
+@minValue(1)
+@maxValue(300)
 param periodSeconds int = 30
 
 @description('What gets its own counter: ["identity"], ["ipAddress"], both, or [] for one counter that all callers share.')
@@ -45,51 +47,55 @@ var learnUrl = 'https://learn.microsoft.com/api/mcp'
 
 var rateLimit = {
   type: 'requestRateLimit'
-  callsPerPeriod: callsPerPeriod
-  periodSeconds: periodSeconds
+  count: callsPerPeriod
+  period: 'PT${periodSeconds}S'
   counterKey: counterKey
 }
 
 #disable-next-line BCP081
-resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
+resource gateway 'Microsoft.ApiManagement/aigateways@2026-11-01' existing = {
   name: gatewayName
 }
 
 #disable-next-line BCP081
-resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' existing = {
+resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2026-11-01' existing = {
   parent: gateway
   name: 'default'
 }
 
 #disable-next-line BCP081
-resource toolServer 'Microsoft.ApiManagement/aigateways/workspaces/toolServers@2025-09-01-preview' = {
+resource toolServer 'Microsoft.ApiManagement/aigateways/workspaces/toolServers@2026-11-01' = {
   parent: workspace
   name: serverName
   properties: {
     displayName: 'Microsoft Learn'
     description: 'Search and fetch official Microsoft documentation and code samples.'
-    type: 'mcp'
+    toolServerType: 'mcp'
     accessState: serverAccess
     allowList: allowedTools
-    blocked: blockedTools
+    blockList: blockedTools
     endpoints: [
       {
         namespace: 'learn'
         kind: 'mcp'
+        mode: 'failClosed'
         mcp: {
-          url: learnUrl
+          endpoint: {
+            url: learnUrl
+          }
           transport: 'streamableHttp'
         }
-        required: true
       }
       {
         namespace: 'docs'
         kind: 'mcp'
+        mode: 'failOpen'
         mcp: {
-          url: learnUrl
+          endpoint: {
+            url: learnUrl
+          }
           transport: 'streamableHttp'
         }
-        required: false
       }
     ]
     policies: callsPerPeriod > 0 ? [ rateLimit ] : []
@@ -97,10 +103,12 @@ resource toolServer 'Microsoft.ApiManagement/aigateways/workspaces/toolServers@2
 }
 
 #disable-next-line BCP081
-resource apiKey 'Microsoft.ApiManagement/aigateways/apiKeys@2025-09-01-preview' = {
+resource apiKey 'Microsoft.ApiManagement/aigateways/apiKeys@2026-11-01' = {
   parent: gateway
   name: apiKeyName
-  properties: {}
+  properties: {
+    displayName: apiKeyName
+  }
 }
 
 output toolServerId string = toolServer.id

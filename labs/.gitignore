@@ -3,3 +3,11 @@ node_modules/
 __pycache__/
 .env
 .venv/
+# Terraform working files, state, and saved plans
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+crash.log

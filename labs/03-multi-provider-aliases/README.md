@@ -4,7 +4,7 @@ summary: Connect Anthropic or another non-Azure provider with a credential that 
 category: models
 level: Intermediate
 duration: 30
-tracks: [portal, cli, iac]
+tracks: [portal, cli, iac, terraform]
 order: 3
 illustration: diagrams/aliases.svg
 tags: [model alias, custom provider, Anthropic, OpenAI, AWS Bedrock, Google Vertex AI, Anthropic Messages, retarget]
@@ -29,7 +29,7 @@ prereqs:
 
 | ⏱️ Time | 📶 Level | 🧭 Tracks | ✅ Before you start |
 | :-- | :-- | :-- | :-- |
-| 30 min | Intermediate | Portal · Azure CLI · Bicep + azd | [02 · First model call](../02-first-model-call/README.md) |
+| 30 min | Intermediate | Portal · Azure CLI · Bicep + azd · Terraform | [02 · First model call](../02-first-model-call/README.md) |
 
 **You'll learn to**
 
@@ -70,8 +70,9 @@ the same name.
 <!-- gh:end -->
 
 > [!TIP]
-> On the **Bicep + azd** track, `azd up` creates its own gateway, Foundry model, and key, so you can skip this
-> section, except for the Anthropic key. You need only that key and the one-time setup above.
+> On the **Bicep + azd** and **Terraform** tracks, `azd up` or `terraform apply` creates its own gateway, Foundry
+> model, and key, so you can skip this section, except for the Anthropic key. You need only that key and the one-time
+> setup above.
 
 - Complete [Publish a Foundry model and make your first call](../02-first-model-call/README.md). You need the
   gateway, a runtime API key, and the Foundry alias you created there.
@@ -99,7 +100,7 @@ export AI_GATEWAY_URL="https://$(az aigateway show -g "$RG" -n "$GATEWAY" --quer
 echo "🌐 Runtime URL: $AI_GATEWAY_URL"
 
 # Paste the gateway runtime key from lab 02, not the Anthropic key. Don't commit it or write it to a file.
-read -rsp "AI Gateway API key: " AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
+printf "AI Gateway API key: " && read -rs AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 ```
 </details> <!-- gh -->
@@ -154,7 +155,8 @@ alias only to a model that supports the same interface.
 ## Add Anthropic as a custom provider
 
 The gateway connects to these providers. Microsoft Foundry and Azure OpenAI can use the gateway's managed
-identity. Every other provider is a custom provider, and the gateway stores its API key.
+identity. AWS Bedrock has its own wizard. Every other provider is a custom provider. For both, the gateway stores
+the API key.
 
 | | Provider | How you add it | Gateway authenticates with |
 |---|---|---|---|
@@ -162,13 +164,13 @@ identity. Every other provider is a custom provider, and the gateway stores its 
 | <img src="../assets/providers/azure-openai.png" alt="" height="24"> | Azure OpenAI | **Models from Microsoft Foundry** | Managed identity (recommended) or API key |
 | <img src="../assets/providers/openai.png" alt="" height="24"> | OpenAI | **Models from a custom provider** | API key |
 | <img src="../assets/providers/anthropic.png" alt="" height="24"> | Anthropic | **Models from a custom provider** | API key |
-| <img src="../assets/providers/aws-bedrock.png" alt="" height="24"> | AWS Bedrock | **Models from a custom provider** | API key |
+| <img src="../assets/providers/aws-bedrock.png" alt="" height="24"> | AWS Bedrock | **Models from AWS Bedrock** | Bedrock API key (the gateway adds the `Bearer` prefix) |
 | <img src="../assets/providers/google-vertex.png" alt="" height="24"> | Google Vertex AI | **Models from a custom provider** | API key |
 | <img src="../assets/providers/custom-models.png" alt="" height="24"> | Any other OpenAI-compatible endpoint | **Models from a custom provider** | API key |
 
 Pick one track. Every track creates the same result: a provider named `anthropic`, two backend models, and two
 aliases. `support-chat` points to the fast model, and `anthropic/claude-sonnet-5-5` points to the bigger one. The
-Bicep + azd track also declares the `batch-chat` alias and the token limits of the next section.
+Bicep + azd and Terraform tracks also declare the `batch-chat` alias and the token limits of the next section.
 
 <!-- track: portal | Portal -->
 <details open><summary><b>🖥️ Portal</b></summary> <!-- gh -->
@@ -184,7 +186,7 @@ On the **Provider** step, select **Create new provider** and fill in **Basic inf
 | Field | Value |
 |---|---|
 | **Display name** | `Anthropic` |
-| **Provider name** | `anthropic` (used in the resource ID; you can't change it later) |
+| **Provider name** | `anthropic`, which the wizard fills in from the display name. It's used in the resource ID, and you can't change it later. |
 | **Description** | Optional |
 
 Select **Next**.
@@ -196,9 +198,9 @@ On the **Endpoint** step, fill in **Endpoint and authentication**:
 | Field | Value for Anthropic |
 |---|---|
 | **Base endpoint URL** | `https://api.anthropic.com` |
-| **Header name** | `x-api-key` |
+| **Header name** | `x-api-key`, in place of the default `Authorization` |
 | **API key** | Your Anthropic API key |
-| **Authentication scheme** | Leave **Include Bearer in the authorization header value** cleared. Anthropic expects the raw key. |
+| **Authentication scheme** | Leave **Include Bearer scheme in the authorization header value** cleared. Anthropic expects the raw key. |
 
 The wizard lists the provider's models by calling `<base endpoint URL>/v1/models`, so leave `/v1` off the base
 URL. The key is stored in the gateway. Apps that call the gateway never receive it.
@@ -209,27 +211,29 @@ For other providers, change these values:
 |---|---|---|---|
 | OpenAI | `https://api.openai.com` | `Authorization` | Selected, so the gateway sends `Bearer <key>` |
 | Other OpenAI-compatible endpoints | The URL in front of `/v1/...` | The header the endpoint expects | As the endpoint expects |
-| AWS Bedrock, Google Vertex AI | The provider's OpenAI-compatible endpoint, without the `/v1/...` path | The header that the provider's API key goes in | As the provider expects |
+| Google Vertex AI | The provider's OpenAI-compatible endpoint, without the `/v1/...` path | The header that the provider's API key goes in | As the provider expects |
 
 Select **Next**.
 
 ### Choose the models and their aliases
 
-The **Models** step shows **Discovering available models…** while it calls the provider. Then select **Add** ›
-**Individual model** and add each model:
+The **Models** step calls the provider to discover its models. Select **Add** › **Individual model**, fill in the
+**Add model** dialog for each model, and select **Add**:
 
 | Field | First model | Second model |
 |---|---|---|
 | **Backend model** | `claude-haiku-5-5` | `claude-sonnet-5-5` |
-| **Supported endpoints** | **Anthropic messages** | **Anthropic messages** |
-| **Callable alias** | Change it to `support-chat` | Keep the default, `anthropic/claude-sonnet-5-5` |
+| **Create an alias** | Selected | Selected |
+| **Alias** | Change the default, `anthropic/claude-haiku-5-5`, to `support-chat` | Keep the default, `anthropic/claude-sonnet-5-5` |
+| **API format** | **Anthropic Messages**. **Provider path** fills in as `/v1/messages`. | **Anthropic Messages** |
 
-If discovery fails or times out, you can still add the models by hand. Select **Add models**.
+If the step shows **No models discovered.**, check the base URL and the key. You can still add the models by
+hand. When **Included** lists both models, select **Add models**.
 
 > **Checkpoint**
 > **Models** lists the two Claude models of the `Anthropic` provider and the aliases `support-chat` and
-> `anthropic/claude-sonnet-5-5`. Open a model: its **Overview** shows the Anthropic Messages endpoint,
-> `<gateway-url>/default/models/anthropic/v1/messages`.
+> `anthropic/claude-sonnet-5-5`. Open a model: under **Endpoints**, its **Overview** shows the **Messages**
+> endpoint, `<gateway-url>/default/models/anthropic/v1/messages`.
 
 </details> <!-- gh -->
 <!-- track: cli | Azure CLI -->
@@ -238,8 +242,8 @@ If discovery fails or times out, you can still add the models by hand. Select **
 ### Check the variables
 
 The provider, its models, and the aliases are child resources of the gateway's `default` workspace. You set
-`RG`, `GATEWAY`, `WS` (the workspace URL), and `API` in [Before you begin](#before-you-begin). Check that they
-point at your gateway by listing its model providers. The command is the same in Bash and PowerShell.
+`RG`, `GATEWAY`, `PROVIDER`, `FAST_MODEL`, and `SMART_MODEL` in [Before you begin](#before-you-begin). Check that
+they point at your gateway by listing its model providers. The command is the same in Bash and PowerShell.
 
 ```bash
 # List the gateway's model providers, to check that the variables point at your gateway
@@ -258,7 +262,7 @@ output, like `az aigateway model-provider show`, never includes the key.
 
 ```bash title="Bash"
 # Read the Anthropic key from a hidden prompt, so that it never lands in your shell history
-read -rsp "Anthropic API key: " ANTHROPIC_API_KEY && echo
+printf "Anthropic API key: " && read -rs ANTHROPIC_API_KEY && echo
 echo "🔑 Anthropic key: in ANTHROPIC_API_KEY (${#ANTHROPIC_API_KEY} characters, not shown)"
 
 # Add Anthropic as a custom provider: the gateway stores the key and sends it in the x-api-key header
@@ -267,7 +271,7 @@ az aigateway model-provider create -g "$RG" --gateway-name "$GATEWAY" -n "$PROVI
   --custom "$(jq -cn --arg key "$ANTHROPIC_API_KEY" '{
       endpoint: "https://api.anthropic.com",
       authentication: {kind: "ApiKey", apiKey: {headerName: "x-api-key", value: $key}}}')" \
-  --query "{name:name,kind:properties.kind,endpoint:properties.custom.endpoint}" &&
+  --query "{name:name,kind:properties.modelProviderType,endpoint:properties.custom.endpoint.url}" &&
   echo "🔌 Model provider $PROVIDER is ready, and its key stays in the gateway"
 
 # Clear the key from your shell, now that the gateway stores it
@@ -292,7 +296,7 @@ Write-Host "🔑 Anthropic key: in the key variable ($($key.Length) characters, 
 # Add Anthropic as a custom provider: the gateway stores the key, and apps never receive it
 az aigateway model-provider create -g $RG --gateway-name $GATEWAY -n $PROVIDER `
   --kind Custom --display-name "Anthropic" --custom '@custom.json' `
-  --query "{name:name,kind:properties.kind,endpoint:properties.custom.endpoint}"
+  --query "{name:name,kind:properties.modelProviderType,endpoint:properties.custom.endpoint.url}"
 if ($?) { Write-Host "🔌 Model provider $PROVIDER is ready, and its key stays in the gateway" }
 
 # Delete the file and the variable right away, because they held the key
@@ -340,6 +344,12 @@ foreach ($model in $FAST_MODEL, $SMART_MODEL) {
 > holds the provider path: `/v1/messages` for Anthropic, `/v1/chat/completions` or `/v1/responses` for
 > OpenAI-compatible endpoints. Leave out `--api-format` for custom providers. If the service rejects either
 > command, create the provider and models with the **Portal** tab, then continue here with the aliases.
+>
+> The CLI stores the provider in the shape of the GA management API (`2026-11-01`): `modelProviderType: "Custom"`,
+> the URL in `custom.endpoint.url`, and the key in `authentication.headers`, a list with exactly one
+> `{name, value}` header. That's why the command's output shows `"kind": "Custom"` and the URL. A `GET`, like
+> `az aigateway model-provider show`, returns the header name but never its value, so a full `PUT` to the provider
+> must send the key again.
 
 ### Create the aliases
 
@@ -511,14 +521,15 @@ output ANTHROPIC_SMART_MODEL string = anthropic.outputs.smartModel
 <!-- gh:end -->
 
 `infra/anthropic-aliases.bicep` declares the provider, the two backend models, and the three aliases, each with its
-callable name in `aliasName` and its token limit in `policies`. It only references the gateway, so you can also
-deploy it on its own to a gateway you already have, with `az deployment group create`:
+callable name in `aliasName` and its token limit in `policies`. The provider's key goes in `authentication.headers`,
+and every deployment sends it again, because the gateway never returns it. The template only references the gateway,
+so you can also deploy it on its own to a gateway you already have, with `az deployment group create`:
 
 <!-- include: infra/anthropic-aliases.bicep -->
 <!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
 📄 [`infra/anthropic-aliases.bicep`](infra/anthropic-aliases.bicep)
 
-<details><summary>Show all 130 lines</summary>
+<details><summary>Show all 135 lines</summary>
 
 ```bicep
 // Adds Anthropic to an existing AI Gateway as a custom provider, registers two Claude models, and publishes them
@@ -555,33 +566,38 @@ param supportChatTokensPerMinute int = 20000
 param batchChatTokensPerMinute int = 2000
 
 #disable-next-line BCP081
-resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
+resource gateway 'Microsoft.ApiManagement/aigateways@2026-11-01' existing = {
   name: gatewayName
 }
 
 #disable-next-line BCP081
-resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' existing = {
+resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2026-11-01' existing = {
   parent: gateway
   name: 'default'
 }
 
-// Leave /v1 off the endpoint. Anthropic expects the raw key in x-api-key, with no "Bearer" scheme.
+// Leave /v1 off the endpoint. Anthropic expects the raw key in x-api-key, with no "Bearer" scheme. A custom provider
+// takes exactly one header, and reads hide its value, so every deployment sends the key again.
 #disable-next-line BCP081
-resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2025-09-01-preview' = {
+resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2026-11-01' = {
   parent: workspace
   name: providerName
   properties: {
-    kind: 'Custom'
+    modelProviderType: 'Custom'
     displayName: 'Anthropic'
+    description: 'Anthropic Messages API, with the key in the x-api-key header.'
     custom: {
-      endpoint: 'https://api.anthropic.com'
-      authentication: {
-        kind: 'ApiKey'
-        apiKey: {
-          headerName: 'x-api-key'
+      endpoint: {
+        url: 'https://api.anthropic.com'
+      }
+    }
+    authentication: {
+      headers: [
+        {
+          name: 'x-api-key'
           value: anthropicApiKey
         }
-      }
+      ]
     }
   }
 }
@@ -589,7 +605,7 @@ resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@
 // Custom providers list the provider path in supportedEndpoints and leave out apiFormat. Names may only contain
 // lowercase letters, digits, and hyphens; modelName keeps the provider's real model ID.
 #disable-next-line BCP081
-resource models 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2025-09-01-preview' = [for name in [ fastModel, smartModel ]: {
+resource models 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2026-11-01' = [for name in [ fastModel, smartModel ]: {
   parent: provider
   name: name
   properties: {
@@ -627,7 +643,7 @@ var aliases = [
 ]
 
 #disable-next-line BCP081
-resource aliasResources 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2025-09-01-preview' = [for alias in aliases: {
+resource aliasResources 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01' = [for alias in aliases: {
   parent: workspace
   name: alias.name
   properties: {
@@ -660,7 +676,7 @@ output messagesUrl string = 'https://${gateway.properties.frontend.defaultHostna
 
 Move into the lab's folder, create an azd environment named `aigw-lab03` in your current subscription, and give it the
 Anthropic key from a hidden prompt, so that it never lands in your shell history. Then provision everything. It takes
-about three minutes.
+about two minutes.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -674,7 +690,7 @@ azd env new aigw-lab03 --location eastus2 --subscription "$(az account show --qu
   echo "📝 azd environment aigw-lab03 deploys to eastus2"
 
 # Read the Anthropic key from a hidden prompt, so that it never lands in your shell history
-read -rsp "Anthropic API key: " ANTHROPIC_API_KEY && echo
+printf "Anthropic API key: " && read -rs ANTHROPIC_API_KEY && echo
 echo "🔑 Anthropic key: in ANTHROPIC_API_KEY (${#ANTHROPIC_API_KEY} characters, not shown)"
 
 # Store the key in the azd environment, which passes it to the template's secure parameter
@@ -784,6 +800,332 @@ Write-Host "🔖 Aliases on ${GATEWAY}:"
 > quick start's `gpt-5-mini` → `foundry-models/gpt-5-mini`.
 
 </details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+**What you need:** the one-time setup and the Anthropic key from **Before you begin**, plus Terraform 1.11 or later,
+as in [Deploy a lab with Terraform](../SETUP.md#deploy-a-lab-with-terraform). The configuration keeps the Anthropic
+key in a write-only argument, which needs Terraform 1.11. This track doesn't use your gateway from earlier labs:
+`terraform apply` creates a new one, so it works on its own.
+
+### Review the configuration
+
+The configuration declares the same objects as the Bicep template. The Anthropic key is an ephemeral, sensitive
+variable: Terraform passes it to the `azapi` provider's write-only `sensitive_body`, so it never shows in the state,
+the saved plan, the outputs, or the `az aigateway model-provider show` output.
+
+| Terraform variable | Default |
+|---|---|
+| `anthropic_api_key` | None. The next step sets `TF_VAR_anthropic_api_key` from a hidden prompt. |
+| `fast_model` | `claude-haiku-5-5` |
+| `smart_model` | `claude-sonnet-5-5` |
+| `support_chat_model` | Empty, for the fast model |
+| `support_chat_tokens_per_minute` | `20000` |
+| `batch_chat_tokens_per_minute` | `2000` |
+
+`terraform/main.tf` creates the resource group `rg-<environment_name>` and calls the quick start's
+[resources module](../quickstart/terraform/resources) for the gateway, the Foundry model, its default alias, and the
+`app-first-call` key:
+
+<!-- include: terraform/main.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/main.tf`](terraform/main.tf)
+
+```tf
+# Lab 03 with Terraform: creates the resource group rg-<environment_name>, the quick start's gateway, Foundry model,
+# default alias, and runtime API key, then an Anthropic provider with two Claude models behind three aliases
+# (anthropic-aliases.tf). The Anthropic key comes from TF_VAR_anthropic_api_key and is never an output.
+data "azapi_client_config" "current" {}
+
+locals {
+  suffix = substr(sha1("${data.azapi_client_config.current.subscription_id}/${var.environment_name}/${var.location}"), 0, 6)
+  tags   = { "environment-name" = var.environment_name }
+}
+
+resource "azurerm_resource_group" "rg" {
+  name     = "rg-${var.environment_name}"
+  location = var.location
+  tags     = local.tags
+}
+
+# The quick start's module: a gateway, a Foundry model behind the default alias, and the app-first-call key.
+module "base" {
+  source = "../../quickstart/terraform/resources"
+
+  subscription_id     = data.azapi_client_config.current.subscription_id
+  resource_group_name = azurerm_resource_group.rg.name
+  resource_group_id   = azurerm_resource_group.rg.id
+  location            = var.location
+  tags                = local.tags
+  gateway_name        = "aigw-${local.suffix}"
+  foundry_name        = "aigw${local.suffix}"
+}
+```
+<!-- gh:end -->
+
+`terraform/anthropic-aliases.tf` adds the provider, its two models, and the three aliases with the `azapi` provider,
+which sends the AI Gateway API version, `2026-11-01`, as is. `terraform/variables.tf` declares the variables of the
+table:
+
+<!-- include: terraform/anthropic-aliases.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/anthropic-aliases.tf`](terraform/anthropic-aliases.tf)
+
+<details><summary>Show all 117 lines</summary>
+
+```tf
+# Adds Anthropic to the gateway as a custom provider, registers two Claude models, and publishes them behind three
+# callable aliases: support-chat and batch-chat, each with its own per-caller token limit, and anthropic/<smart model>.
+
+# Write-only arguments, such as sensitive_body, need Terraform 1.11 or later.
+terraform {
+  required_version = ">= 1.11"
+}
+
+locals {
+  provider_name      = "anthropic"
+  support_chat_model = var.support_chat_model == "" ? var.fast_model : var.support_chat_model
+
+  # The callable name goes in aliasName and can contain "/". The resource name can't, so it uses "-" instead.
+  aliases = {
+    "support-chat" = {
+      alias_name        = "support-chat"
+      model             = local.support_chat_model
+      tokens_per_minute = var.support_chat_tokens_per_minute
+    }
+    "batch-chat" = {
+      alias_name        = "batch-chat"
+      model             = var.fast_model
+      tokens_per_minute = var.batch_chat_tokens_per_minute
+    }
+    "${local.provider_name}-${var.smart_model}" = {
+      alias_name        = "${local.provider_name}/${var.smart_model}"
+      model             = var.smart_model
+      tokens_per_minute = 0
+    }
+  }
+}
+
+# Leave /v1 off the endpoint. Anthropic expects the raw key in x-api-key, with no "Bearer" scheme. The header goes in
+# sensitive_body, which is write-only: Terraform sends it on every create and update, because reads hide its value,
+# and never stores it in the state.
+resource "azapi_resource" "anthropic" {
+  type      = "Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2026-11-01"
+  name      = local.provider_name
+  parent_id = module.base.workspace_id
+
+  body = {
+    properties = {
+      modelProviderType = "Custom"
+      displayName       = "Anthropic"
+      description       = "Anthropic Messages API, with the key in the x-api-key header."
+      custom = {
+        endpoint = {
+          url = "https://api.anthropic.com"
+        }
+      }
+    }
+  }
+
+  sensitive_body = {
+    properties = {
+      authentication = {
+        headers = [
+          {
+            name  = "x-api-key"
+            value = var.anthropic_api_key
+          }
+        ]
+      }
+    }
+  }
+
+  schema_validation_enabled = false
+}
+
+# Custom providers list the provider path in supportedEndpoints and leave out apiFormat. Names may only contain
+# lowercase letters, digits, and hyphens; modelName keeps the provider's real model ID.
+resource "azapi_resource" "anthropic_model" {
+  for_each = toset([var.fast_model, var.smart_model])
+
+  type      = "Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2026-11-01"
+  name      = each.key
+  parent_id = azapi_resource.anthropic.id
+
+  body = {
+    properties = {
+      displayName        = each.key
+      supportedEndpoints = ["/v1/messages"]
+      deployment = {
+        modelName = each.key
+      }
+    }
+  }
+
+  schema_validation_enabled = false
+}
+
+resource "azapi_resource" "anthropic_alias" {
+  for_each = local.aliases
+
+  type      = "Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01"
+  name      = each.key
+  parent_id = module.base.workspace_id
+
+  body = {
+    properties = {
+      aliasName = each.value.alias_name
+      backendModels = [
+        { resourceId = azapi_resource.anthropic_model[each.value.model].id }
+      ]
+      policies = [
+        for count in(each.value.tokens_per_minute > 0 ? [each.value.tokens_per_minute] : []) : {
+          type       = "tokenLimit"
+          count      = count
+          period     = "minute"
+          counterKey = ["identity"]
+        }
+      ]
+    }
+  }
+
+  schema_validation_enabled = false
+}
+```
+
+</details>
+<!-- gh:end -->
+
+### Deploy with terraform apply
+
+Move into the lab's Terraform folder, select your current subscription, and give Terraform the Anthropic key from a
+hidden prompt, so that it never lands in your shell history. Then plan and apply the configuration. It takes two to
+ten minutes, most of it while the new gateway activates.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Move into the lab's Terraform folder
+cd ~/aigateway/labs/03-multi-provider-aliases/terraform &&
+  echo "📂 Terraform folder: $(pwd)"
+
+# Deploy to the Azure CLI's current subscription
+export ARM_SUBSCRIPTION_ID="$(az account show --query id --output tsv)" &&
+  echo "📍 Subscription: $ARM_SUBSCRIPTION_ID"
+
+# Read the Anthropic key from a hidden prompt into the variable that Terraform reads
+printf "Anthropic API key: " && read -rs TF_VAR_anthropic_api_key && export TF_VAR_anthropic_api_key && echo
+echo "🔑 Anthropic key: in TF_VAR_anthropic_api_key (${#TF_VAR_anthropic_api_key} characters, not shown)"
+
+# Download the providers, then plan and apply the gateway, the Foundry model, the key, the Anthropic provider, its
+# models, and the aliases
+terraform init &&
+  terraform plan -out tfplan &&
+  terraform apply tfplan &&
+  echo "🚀 Gateway deployed: $(terraform output -raw ai_gateway_url)"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Move into the lab's Terraform folder
+Set-Location ~/aigateway/labs/03-multi-provider-aliases/terraform
+if ($?) { Write-Host "📂 Terraform folder: $(Get-Location)" }
+
+# Deploy to the Azure CLI's current subscription
+$env:ARM_SUBSCRIPTION_ID = az account show --query id --output tsv
+if ($?) { Write-Host "📍 Subscription: $env:ARM_SUBSCRIPTION_ID" }
+
+# Read the Anthropic key from a hidden prompt into the variable that Terraform reads
+$env:TF_VAR_anthropic_api_key = Read-Host "Anthropic API key" -MaskInput
+Write-Host "🔑 Anthropic key: in TF_VAR_anthropic_api_key ($($env:TF_VAR_anthropic_api_key.Length) characters, not shown)"
+
+# Download the providers, then plan and apply the gateway, the Foundry model, the key, the Anthropic provider, its
+# models, and the aliases
+terraform init
+if ($?) { terraform plan -out tfplan }
+if ($?) { terraform apply tfplan }
+if ($?) { Write-Host "🚀 Gateway deployed: $(terraform output -raw ai_gateway_url)" }
+```
+</details> <!-- gh -->
+
+Keep `TF_VAR_anthropic_api_key` in this terminal until you clean up: every `terraform plan` and `terraform destroy`
+needs it, and so does `terraform apply` with a saved plan. In a new terminal, read it again with the same command.
+
+The configuration deploys to `eastus2`. For another region where AI Gateway and the `gpt-5-mini` model are available,
+as in [Find the available regions](../SETUP.md#find-the-available-regions), run `export TF_VAR_location=<region>`
+(PowerShell: `$env:TF_VAR_location = "<region>"`) before `terraform plan`. If your Claude Console key can't call the
+default models, set `TF_VAR_fast_model` and `TF_VAR_smart_model` the same way.
+
+### Read the outputs and the key
+
+Set the variables that the next sections and **Verify** use from the Terraform outputs, and read the gateway's runtime
+key, not the Anthropic key, from the gateway, so that it never shows on screen or lands in the Terraform state. Then
+move back to the lab's folder, which holds the scripts.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Read the configuration's outputs: the gateway, the provider, the two models, and the runtime URL
+export RG="$(terraform output -raw azure_resource_group)"
+export GATEWAY="$(terraform output -raw ai_gateway_name)"
+export PROVIDER="$(terraform output -raw anthropic_provider)"
+export FAST_MODEL="$(terraform output -raw anthropic_fast_model)"
+export SMART_MODEL="$(terraform output -raw anthropic_smart_model)"
+export AI_GATEWAY_URL="$(terraform output -raw ai_gateway_url)"
+echo "📝 Gateway $GATEWAY in $RG, provider $PROVIDER, models $FAST_MODEL and $SMART_MODEL"
+echo "🌐 Runtime URL: $AI_GATEWAY_URL"
+
+# Read the gateway's runtime key from the gateway, so that it never lands in a file or the Terraform state
+export AI_GATEWAY_API_KEY="$(az aigateway api-key list-secrets \
+  --ids "$(terraform output -raw ai_gateway_id)/apiKeys/app-first-call" --query primaryKey --output tsv)"
+echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
+
+# Move back to the lab's folder, then list the aliases that terraform apply created, with their backend models and
+# token limits
+cd .. && echo "📂 Lab folder: $(pwd)"
+echo "🔖 Aliases on $GATEWAY:"
+./infra/alias.sh list
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Read the configuration's outputs: the gateway, the provider, the two models, the runtime URL, and the gateway's
+# resource ID
+$RG                     = terraform output -raw azure_resource_group
+$GATEWAY                = terraform output -raw ai_gateway_name
+$PROVIDER               = terraform output -raw anthropic_provider
+$FAST_MODEL             = terraform output -raw anthropic_fast_model
+$SMART_MODEL            = terraform output -raw anthropic_smart_model
+$env:AI_GATEWAY_URL     = terraform output -raw ai_gateway_url
+$GATEWAY_ID             = terraform output -raw ai_gateway_id
+Write-Host "📝 Gateway $GATEWAY in $RG, provider $PROVIDER, models $FAST_MODEL and $SMART_MODEL"
+Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
+
+# Read the gateway's runtime key from the gateway, so that it never lands in a file or the Terraform state
+$env:AI_GATEWAY_API_KEY = az aigateway api-key list-secrets `
+  --ids "$GATEWAY_ID/apiKeys/app-first-call" --query primaryKey --output tsv
+Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) characters, not shown)"
+
+# Move back to the lab's folder, then list the aliases that terraform apply created, with their backend models and
+# token limits
+Set-Location ..
+if ($?) { Write-Host "📂 Lab folder: $(Get-Location)" }
+Write-Host "🔖 Aliases on ${GATEWAY}:"
+./infra/alias.ps1 -ResourceGroup $RG -Gateway $GATEWAY list
+```
+</details> <!-- gh -->
+
+> **Checkpoint**
+> `terraform apply` ended with `Apply complete! Resources: 15 added, 0 changed, 0 destroyed.` The list shows
+> `support-chat` → `anthropic/claude-haiku-5-5`, `batch-chat` → `anthropic/claude-haiku-5-5`, and
+> `anthropic/claude-sonnet-5-5` → `anthropic/claude-sonnet-5-5`, next to the quick start's `gpt-5-mini` →
+> `foundry-models/gpt-5-mini`.
+
+</details> <!-- gh -->
 <!-- /tracks -->
 
 ## Call Claude through the gateway
@@ -842,6 +1184,12 @@ with a `thinking` block, and thinking counts toward `max_tokens`. Read the `text
 > The call prints a `🤖` Claude reply and `✨ Backend model: claude-haiku-5-5`. Your app never sent an Anthropic
 > key.
 
+> [!TIP]
+> To stream the reply, add `"stream": true` to the body and pass `-N` to `curl`. The gateway answers with
+> `text/event-stream` and forwards Anthropic's events as they arrive: `message_start`, `content_block_delta`,
+> `message_delta`, and `message_stop`. Streaming Anthropic Messages through the gateway works since the
+> [November 6 release](https://ai.gateway.azure.com/docs/releases#release-2026-11-06).
+
 ## Give one backend model two aliases
 
 The batch team's nightly job shouldn't be able to use up the capacity that the support app needs. Point a second
@@ -854,29 +1202,33 @@ Policies on the backend model apply to every alias that targets it.
 
 ### Add the batch-chat alias
 
-Select **Models** › **Aliases** › **Add alias**. The **Create alias** wizard has four steps:
+Select **Models** › **Aliases** › **Add alias**. The **Create alias** wizard has seven steps:
 
 | Step | What to do |
 |---|---|
 | **Basics** | Set **Alias name** to `batch-chat` and **Description** to `Nightly batch summaries`. |
-| **Select models** | Under **Available backend models**, select `claude-haiku-5-5` from the `Anthropic` provider. |
-| **Priority and weights** | Keep the defaults, priority `0` and weight `1`. With one backend model, it gets all requests. |
+| **Auto model selection (preview)** | Leave **Choose a model based on the prompt** off. |
+| **Select models** | Select `claude-haiku-5-5` from the `Anthropic` provider. The models of one alias must share an API format. |
+| **Session affinity** | Keep the default. Session affinity needs several backend models. |
+| **Priorities and weights** | Keep the defaults, priority `0` and weight `1`. With one backend model, it gets all requests. |
+| **Failure handling** | Keep the default, with no failure rules. |
 | **Review** | Check the summary. |
 
-Select **Create**. You can also start from **Models** › **Add** › **Alias for an existing model**.
+Select **Create**. You can also start from **Models** › **Add** › **Alias for existing models**.
 
 ### Limit each alias
 
-Select **Policies** › **Add policy**. On the **Type** step, select **Token rate limit**, then **Next**. On the
-**Scope** step, select **Individual assets**, select the `batch-chat` alias, then **Next**. On the
-**Configure** step, set **Time period** to **Per minute**, **Allowed tokens** to `2000`, and **Counter
-dimensions** to **Caller identity**. Select **Create**.
+Select **Policies** › **Add policy**. On the **Type** step, select **Token rate limit** under **Cost and rate
+limits**, then **Next**. On the **Scope** step, select **Individual assets**, select the `batch-chat` alias, then
+**Next**. On the **Details** step, set **Time period** to **Per minute**, **Allowed tokens** to `2000`, and
+**Counter dimensions** to **Identity**. Select **Create**.
 
 Repeat for the `support-chat` alias with `20000` **Allowed tokens**.
 
 > **Checkpoint**
-> **Policies** lists two **Token rate limit** policies, one scoped to `batch-chat` and one scoped to
-> `support-chat`.
+> In **Models** › **Aliases**, open `batch-chat` and select its **Policies** tab. It lists a **Token rate limit**
+> with the configuration `2,000 tokens / minute per caller identity` and the scope **This alias**. The
+> `support-chat` alias lists `20,000 tokens / minute per caller identity`.
 
 </details> <!-- gh -->
 <!-- track: cli | Azure CLI -->
@@ -960,6 +1312,42 @@ run `azd provision`.
 > `"counterKey": ["identity"]`.
 
 </details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+### Check the declared limits
+
+`terraform apply` already created `batch-chat` and both limits: `anthropic-aliases.tf` declares each alias with a
+`tokenLimit` policy, the same object that the Azure CLI track passes in `--policies`. Show the `batch-chat` alias.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Show the policies that the configuration declared on the batch-chat alias
+echo "🔐 Policies on batch-chat:"
+./infra/alias.sh show batch-chat | jq '.properties.policies'
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Show the policies that the configuration declared on the batch-chat alias
+Write-Host "🔐 Policies on batch-chat:"
+(./infra/alias.ps1 -ResourceGroup $RG -Gateway $GATEWAY show batch-chat | ConvertFrom-Json).properties.policies
+```
+</details> <!-- gh -->
+
+To change a limit, pass `batch_chat_tokens_per_minute` or `support_chat_tokens_per_minute` to `terraform plan` in the
+Terraform folder, for example `-var batch_chat_tokens_per_minute=5000`, and apply the plan. Only that alias changes:
+the plan ends with `Plan: 0 to add, 1 to change, 0 to destroy.` Pass the same `-var` to every later `terraform plan`,
+or the plan sets the default back.
+
+> **Checkpoint**
+> The output lists one `tokenLimit` policy with `"count": 2000`, `"period": "minute"`, and
+> `"counterKey": ["identity"]`.
+
+</details> <!-- gh -->
 <!-- /tracks -->
 
 ## Retarget an alias without touching clients
@@ -972,12 +1360,12 @@ The support team wants better answers. Point `support-chat` at the bigger model.
 
 ### Edit the alias
 
-In **Models** › **Aliases**, open the `support-chat` alias and select **Edit**. **Edit alias** has the same
-steps as **Create alias**. On **Select models**, clear `claude-haiku-5-5` and select `claude-sonnet-5-5` from
-the `Anthropic` provider. Keep the defaults on **Priority and weights**, select **Next** until you reach
-**Review**, then select **Save**. New requests use the selected backend model immediately.
+In **Models** › **Aliases**, open the `support-chat` alias and select **Edit**. **Edit alias** shows the sections
+of **Create alias** on one page. Under **Select models**, clear `claude-haiku-5-5` and select `claude-sonnet-5-5`
+from the `Anthropic` provider, then select **Save**. New requests use the selected backend model within about
+30 seconds.
 
-![The Priority and weights step of the alias wizard, with a backend model at priority 0 and two at priority 1 split 75/25](../assets/screens/models-alias-routing.png "Edit alias changes the backend models behind the name. The alias name that clients send stays the same. With several backend models, Priority and weights decides which one serves each request, as in lab 22.")
+![The Priorities and weights step of Create alias, with two backend models at priority 0 split 80/20](../assets/screens/model-routing-01-priorities-weights.webp "Edit alias changes the backend models behind the name. The alias name that clients send stays the same. With several backend models, Priorities and weights decides which one serves each request, as in lab 22.")
 
 ### Check that the policy stayed
 
@@ -1068,6 +1456,68 @@ Write-Host "🔖 Aliases on ${GATEWAY}:"
 
 > **Checkpoint**
 > The output shows `support-chat` → `anthropic/claude-sonnet-5-5` and still `tokenLimit 20000/minute`.
+
+</details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+### Change the backend model with a variable
+
+The configuration points `support-chat` at the model in `support_chat_model`, and the fast model when it's empty. Pass
+the bigger model to `terraform plan` and apply the plan. Terraform updates the alias with its whole body, but the
+configuration declares the policy with it, so the limit stays.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Move into the lab's Terraform folder
+cd ~/aigateway/labs/03-multi-provider-aliases/terraform &&
+  echo "📂 Terraform folder: $(pwd)"
+
+# Plan the change: only support-chat changes, to the bigger model
+terraform plan -var "support_chat_model=$SMART_MODEL" -out tfplan &&
+  echo "📝 The plan updates only the support-chat alias"
+
+# Apply the plan, then move back to the lab's folder
+terraform apply tfplan &&
+  echo "🚀 Alias support-chat is deployed on $SMART_MODEL" &&
+  cd ..
+
+# List the aliases, to check the backend model and the token limit of support-chat
+echo "🔖 Aliases on $GATEWAY:"
+./infra/alias.sh list
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Move into the lab's Terraform folder
+Set-Location ~/aigateway/labs/03-multi-provider-aliases/terraform
+if ($?) { Write-Host "📂 Terraform folder: $(Get-Location)" }
+
+# Plan the change: only support-chat changes, to the bigger model
+terraform plan -var "support_chat_model=$SMART_MODEL" -out tfplan
+if ($?) { Write-Host "📝 The plan updates only the support-chat alias" }
+
+# Apply the plan, then move back to the lab's folder
+terraform apply tfplan
+if ($?) { Write-Host "🚀 Alias support-chat is deployed on $SMART_MODEL"; Set-Location .. }
+
+# List the aliases, to check the backend model and the token limit of support-chat
+Write-Host "🔖 Aliases on ${GATEWAY}:"
+./infra/alias.ps1 -ResourceGroup $RG -Gateway $GATEWAY list
+```
+</details> <!-- gh -->
+
+Pass the same `-var` to every later `terraform plan`: without it, the plan points `support-chat` back at the fast
+model. `support_chat_model` takes only the fast or the bigger model, so a plan with another model stops with
+`support_chat_model takes an empty string, fast_model, or smart_model.`
+
+> **Checkpoint**
+> The plan ended with `Plan: 0 to add, 1 to change, 0 to destroy.`, for
+> `azapi_resource.anthropic_alias["support-chat"]`. The output shows `support-chat` → `anthropic/claude-sonnet-5-5`
+> and still `tokenLimit 20000/minute`.
 
 </details> <!-- gh -->
 <!-- /tracks -->
@@ -1205,12 +1655,15 @@ open `support-chat` and select **Policies**.
   ```
 
 - **Move one alias between providers.** Add OpenAI as a second custom provider with the values from the
-  provider table, and register `gpt-5-mini` with **OpenAI chat completions**. Create an alias such as
+  provider table, and register `gpt-5-mini` with the **OpenAI Chat Completions** API format. Create an alias such as
   `team-chat` on your Foundry `gpt-5-mini`, then retarget it to the OpenAI model. Both speak Chat Completions,
   so clients don't notice the switch.
 - **Layer the limits.** Add a token limit to the `claude-haiku-5-5` backend model as in
   [Throttle tokens per caller with token limits](../06-token-limits/README.md). It applies to every alias that
   targets the model, on top of each alias's own limit.
+- **Read the product docs.** [Model API formats and providers](https://ai.gateway.azure.com/docs/models/api-formats-and-providers)
+  lists the supported APIs and providers, and [Create and update a model alias](https://ai.gateway.azure.com/docs/models/create-alias)
+  covers every step of the alias wizard.
 
 ## Clean up
 
@@ -1276,7 +1729,7 @@ if ($?) { Write-Host "🚮 Model provider $PROVIDER is deleted" }
 
 In the `aigateway/labs/03-multi-provider-aliases` folder, delete the resource group with the gateway, the Foundry
 account, and the Anthropic provider. [`--purge`](../SETUP.md#delete-what-azd-created) also purges the soft-deleted
-Foundry account. It takes about ten minutes. Then remove the azd environment, so that the Anthropic key doesn't stay
+Foundry account. It takes about three minutes. Then remove the azd environment, so that the Anthropic key doesn't stay
 in `.azure/aigw-lab03/.env`.
 
 ```bash
@@ -1290,6 +1743,65 @@ azd env remove aigw-lab03 --force &&
 ```
 
 `azd down` doesn't touch the gateway from earlier labs, because the Bicep + azd track created its own gateway.
+
+</details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+### Delete everything Terraform created
+
+Delete the resource group with the gateway, the Foundry account, and the Anthropic provider. The
+[`azurerm` provider](../SETUP.md#delete-what-terraform-created) also purges the soft-deleted Foundry account. It takes
+about two minutes. `terraform destroy` needs the Anthropic key variable too: the commands read it again if this
+terminal doesn't have it, then clear it.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Move into the lab's Terraform folder, and select the subscription that you deployed to
+cd ~/aigateway/labs/03-multi-provider-aliases/terraform &&
+  echo "📂 Terraform folder: $(pwd)"
+export ARM_SUBSCRIPTION_ID="$(az account show --query id --output tsv)"
+
+# Read the Anthropic key again if this terminal doesn't have it: Terraform needs a value for every variable
+[ -n "${TF_VAR_anthropic_api_key:-}" ] ||
+  { printf "Anthropic API key: " && read -rs TF_VAR_anthropic_api_key && export TF_VAR_anthropic_api_key && echo; }
+
+# Delete everything that terraform apply created, and purge the soft-deleted Foundry account
+terraform destroy -auto-approve &&
+  echo "🚮 Everything that terraform apply created is deleted"
+
+# Clear the Anthropic key from your shell
+unset TF_VAR_anthropic_api_key &&
+  echo "🚮 TF_VAR_anthropic_api_key is cleared from this shell"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Move into the lab's Terraform folder, and select the subscription that you deployed to
+Set-Location ~/aigateway/labs/03-multi-provider-aliases/terraform
+if ($?) { Write-Host "📂 Terraform folder: $(Get-Location)" }
+$env:ARM_SUBSCRIPTION_ID = az account show --query id --output tsv
+
+# Read the Anthropic key again if this terminal doesn't have it: Terraform needs a value for every variable
+if (-not $env:TF_VAR_anthropic_api_key) { $env:TF_VAR_anthropic_api_key = Read-Host "Anthropic API key" -MaskInput }
+
+# Delete everything that terraform apply created, and purge the soft-deleted Foundry account
+terraform destroy -auto-approve
+if ($?) { Write-Host "🚮 Everything that terraform apply created is deleted" }
+
+# Clear the Anthropic key from your shell
+Remove-Item Env:TF_VAR_anthropic_api_key
+if ($?) { Write-Host "🚮 TF_VAR_anthropic_api_key is cleared from this shell" }
+```
+</details> <!-- gh -->
+
+> **Checkpoint**
+> `terraform destroy` ended with `Destroy complete! Resources: 15 destroyed.`
+
+`terraform destroy` doesn't touch the gateway from earlier labs, because the Terraform track created its own gateway.
 
 </details> <!-- gh -->
 <!-- /tracks -->
@@ -1315,5 +1827,5 @@ you created the key only for this lab, delete it in the Claude Console.
 | :-- | :-: | --: |
 | [02 · First model call](../02-first-model-call/README.md) | [All labs](../README.md) | [22 · Priority & weighted routing](../22-model-routing/README.md) |
 
-<sub>Learning paths: [Platform engineer](../README.md#learning-paths) (3 of 9) · [App & agent developer](../README.md#learning-paths) (2 of 10)</sub>
+<sub>Learning paths: [Platform engineer](../README.md#learning-paths) (3 of 11) · [App & agent developer](../README.md#learning-paths) (2 of 15)</sub>
 <!-- gh:end -->

@@ -755,7 +755,7 @@ azd ai agent monitor gateway-agent --tail 300 | Select-String "Error code"
 If the agent's role hasn't applied yet, the logs show a `403`:
 
 ```text
-openai.PermissionDeniedError: Error code: 403 - {'statusCode': 403, 'message': 'Access denied. You do not have permission to access the requested resource. Ask an administrator to grant the required Azure role.', ...}
+... openai.PermissionDeniedError: Error code: 403 - Access denied. You do not have permission to access the requested resource. Ask an administrator to grant the required Azure role.
 ```
 
 Wait a minute and invoke again. A successful call prints nothing here.
@@ -801,8 +801,8 @@ any change to the agent. Use the track you picked.
 1. Select **Policies** › **Add policy**.
 2. On **Type**, select **Token rate limit**.
 3. On **Scope**, select **Individual assets** and pick your alias.
-4. On **Configure**, set **Time period** to **Per minute**, **Allowed tokens** to `1000`, and
-   **Counter dimensions** to **Caller identity**, then select **Create**.
+4. On **Details**, keep **Time period** at **Per minute**, set **Allowed tokens** to `1000`, keep
+   **Counter dimensions** at **Identity**, and select **Create**.
 
 </details> <!-- gh -->
 <!-- track: cli | Azure CLI -->
@@ -895,7 +895,7 @@ azd ai agent monitor gateway-agent --tail 300 | Select-String "Error code"
 
 ```text
 📊 Errors in the agent's logs:
-... openai.RateLimitError: Error code: 429 - {'statusCode': 429, 'message': 'Token limit is exceeded. Try again in 401 seconds.'}
+... openai.RateLimitError: Error code: 429 - Token limit is exceeded. Try again in 431 seconds.
 ...
 ```
 
@@ -906,8 +906,8 @@ invoke spent several times the 1,000-token budget. For more on limits, see
 
 ### Remove the limit
 
-In the portal, select **Policies**, open the **Token rate limit** you created for your alias, and delete it. With
-the CLI, remove the `tokenLimit` policy the same way you added it:
+In the portal, select **Policies**. On the row of the **Token rate limit** for your alias, select **More actions** ›
+**Delete**, and confirm with **Delete**. With the CLI, remove the `tokenLimit` policy the same way you added it:
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -972,6 +972,9 @@ it had. When the alias has no policies left, the update prints no policies, only
 - **Use another framework.** Swap the agent's internals for the OpenAI Agents SDK or LangGraph, as in
   [Connect agent frameworks to models and tools](../15-agent-frameworks/README.md). The gateway settings stay the
   same.
+- **Skip the agent code.** A gateway connection gives a Foundry project's playground and prompt agents the gateway's
+  models, with no code to deploy, as in
+  [Use gateway models in Microsoft Foundry projects](../32-foundry-gateway-connection/README.md).
 - **Charge the agent back.** Attribute its tokens and estimated cost with
   [Attribute tokens and cost with OpenTelemetry](../14-otel-chargeback/README.md).
 
@@ -1005,10 +1008,14 @@ AGENT_PRINCIPAL_ID="$(azd env get-value AGENT_GATEWAY_AGENT_INSTANCE_IDENTITY_PR
 PROJECT_PRINCIPAL_ID="$(az resource show --ids "$(azd env get-value AZURE_AI_PROJECT_ID)" \
   --query identity.principalId -o tsv)"
 
-# Delete each identity's role assignments on the gateway
+# Delete each identity's role assignments on the gateway and its assets
 for id in "$AGENT_PRINCIPAL_ID" "$PROJECT_PRINCIPAL_ID"; do
-  ids="$(az role assignment list --all --query "[?principalId=='$id' && starts_with(scope, '$GATEWAY_ID')].id" -o tsv)"
-  if [ -n "$ids" ]; then az role assignment delete --ids $ids && echo "🚮 Removed the gateway roles of $id"; fi
+  ids="$(az role assignment list --all -o tsv --query \
+    "[?principalId=='$id' && (ends_with(scope, '/aigateways/$GATEWAY') || contains(scope, '/aigateways/$GATEWAY/'))].id")"
+  # xargs passes one ID per line, the same way in Bash and zsh
+  if [ -n "$ids" ]; then
+    echo "$ids" | xargs az role assignment delete --ids && echo "🚮 Removed the gateway roles of $id"
+  fi
 done
 ```
 </details> <!-- gh -->
@@ -1021,10 +1028,11 @@ $AGENT_PRINCIPAL_ID = azd env get-value AGENT_GATEWAY_AGENT_INSTANCE_IDENTITY_PR
 $PROJECT_PRINCIPAL_ID = az resource show --ids (azd env get-value AZURE_AI_PROJECT_ID) `
   --query identity.principalId -o tsv
 
-# Delete each identity's role assignments on the gateway
+# Delete each identity's role assignments on the gateway and its assets
 foreach ($id in @($AGENT_PRINCIPAL_ID, $PROJECT_PRINCIPAL_ID)) {
-  $ids = az role assignment list --all --query "[?principalId=='$id' && starts_with(scope, '$GATEWAY_ID')].id" -o tsv
-  if ($ids) { az role assignment delete --ids $ids; if ($?) { Write-Host "🚮 Removed the gateway roles of $id" } }
+  $ids = @(az role assignment list --all -o tsv --query `
+    "[?principalId=='$id' && (ends_with(scope, '/aigateways/$GATEWAY') || contains(scope, '/aigateways/$GATEWAY/'))].id")
+  if ($ids) { az role assignment delete --ids @ids; if ($?) { Write-Host "🚮 Removed the gateway roles of $id" } }
 }
 ```
 </details> <!-- gh -->
@@ -1047,7 +1055,9 @@ azd down --purge --force &&
 ```
 
 Delete the `.azure` folder in `infra` if you no longer need the environment. Your gateway, its alias, and the
-`learn` MCP server aren't affected.
+`learn` MCP server aren't affected. To do the lab again soon after, create the azd environment with a new name, such
+as `aigw-lab16b`: in a Foundry project that you recreate with the same name, `azd deploy --all` can fail with
+`get_toolbox: the Foundry project has not synchronized`.
 
 ## Next steps
 
@@ -1067,7 +1077,7 @@ Delete the `.azure` folder in `infra` if you no longer need the environment. You
 
 | ⬅️ Previous | 🏠 | Next ➡️ |
 | :-- | :-: | --: |
-| [15 · Agent frameworks](../15-agent-frameworks/README.md) | [All labs](../README.md) | [17 · Coding-agent plugin](../17-coding-agent-plugin/README.md) |
+| [15 · Agent frameworks](../15-agent-frameworks/README.md) | [All labs](../README.md) | [32 · Foundry gateway connection](../32-foundry-gateway-connection/README.md) |
 
-<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (7 of 10)</sub>
+<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (10 of 15)</sub>
 <!-- gh:end -->

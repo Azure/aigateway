@@ -4,7 +4,7 @@ summary: Export Microsoft Entra token claims with the gateway's logs, traces, an
 category: observability
 level: Advanced
 duration: 35
-tracks: [portal, cli, iac]
+tracks: [portal, cli, iac, terraform]
 order: 14
 status: new
 illustration: diagrams/observability.svg
@@ -12,7 +12,7 @@ tags: [OpenTelemetry, token claims, chargeback, estimated cost, KQL, PromQL, Pro
 objectives:
   - Choose which JWT claims the gateway exports to logs, root traces, and token and cost metrics
   - Check which claims your callers' tokens actually carry before you rely on them
-  - Build a chargeback report from request logs by tenant, client app, and API key
+  - Build a chargeback report from request logs by tenant, client app, and API key, with failed requests and the gateway's cost estimate
   - Query token and cost metrics with PromQL without double counting token types
 prereqs:
   - 13-monitoring
@@ -29,13 +29,13 @@ prereqs:
 
 | ⏱️ Time | 📶 Level | 🧭 Tracks | ✅ Before you start |
 | :-- | :-- | :-- | :-- |
-| 35 min | Advanced | Portal · Azure CLI · Bicep + azd | [13 · Monitoring](../13-monitoring/README.md)<br>[11 · Entra ID & RBAC](../11-entra-rbac/README.md) |
+| 35 min | Advanced | Portal · Azure CLI · Bicep + azd · Terraform | [13 · Monitoring](../13-monitoring/README.md)<br>[11 · Entra ID & RBAC](../11-entra-rbac/README.md) |
 
 **You'll learn to**
 
 - Choose which JWT claims the gateway exports to logs, root traces, and token and cost metrics
 - Check which claims your callers' tokens actually carry before you rely on them
-- Build a chargeback report from request logs by tenant, client app, and API key
+- Build a chargeback report from request logs by tenant, client app, and API key, with failed requests and the gateway's cost estimate
 - Query token and cost metrics with PromQL without double counting token types
 
 **Follow along:** 🌐 [Interactive version](https://azure.github.io/aigateway/labs/14-otel-chargeback/) with your own values filled in · 📁 [Lab files](infra/)
@@ -62,11 +62,12 @@ Application Insights already collects.
 <!-- gh:end -->
 
 > [!TIP]
-> On the **Bicep + azd** track, `azd up` creates its own gateway, model, key, Application Insights, and role
-> assignment, so you can skip this section. You need only the one-time setup above, and permission to create role
-> assignments, for example **Owner** on the subscription. The later sections also use Python 3.10 or later.
+> On the **Bicep + azd** and **Terraform** tracks, `azd up` or `terraform apply` creates its own gateway, model, key,
+> Application Insights, and role assignment, so you can skip this section. You need only the one-time setup above,
+> and permission to create role assignments, for example **Owner** on the subscription. The later sections also use
+> Python 3.10 or later.
 
-- Complete [Monitor usage, cost, and traces](../13-monitoring/README.md) with **Configure telemetry**, so the
+- Complete [Connect Application Insights](../13-monitoring/README.md#connect-application-insights) in lab 13, so the
   gateway exports all three signals to Application Insights with an OpenTelemetry exporter.
 - Complete [Go keyless with Microsoft Entra ID and RBAC](../11-entra-rbac/README.md), or make sure your signed-in
   user has **AI Gateway Models User** (or **AI Gateway User**) on the gateway or on the model alias.
@@ -76,7 +77,9 @@ Application Insights already collects.
 - Run the scripts and samples from the lab's folder, `~/aigateway/labs/14-otel-chargeback`.
 
 Set these variables once. If you named the Application Insights resource differently in lab 13, change
-`$GATEWAY-insights`.
+`$GATEWAY-insights`. The portal's setup adds a short random suffix when that name is taken, such as
+`<gateway>-insights-ak7s`: list your components with
+`az resource list -g "$RG" --resource-type Microsoft.Insights/components --query "[].name" -o tsv`.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -92,7 +95,7 @@ export AI_GATEWAY_URL="https://$(az aigateway show -g "$RG" -n "$GATEWAY" --quer
 echo "🌐 Runtime URL: $AI_GATEWAY_URL"
 
 # Read your API key without showing it, and export it for the scripts
-read -rsp "AI Gateway API key: " AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
+printf "AI Gateway API key: " && read -rs AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 
 # Find the Application Insights resource from lab 13, and the Log Analytics workspace behind it
@@ -135,12 +138,14 @@ Every request already carries its caller. An API key call is attributed by the k
 copy the claims you pick into telemetry as `azure.ai_gateway.identity.claims.<claim>`. For each claim you choose the
 signals independently: **logs**, **root traces**, and **observed token and cost metrics**.
 
-Logs hold the per-request token usage the backend reported, so they're the best source for a detailed report.
-Metrics are cheaper to query over long ranges, but every exported claim value becomes a label, so keep metrics to
-claims with a bounded number of values.
+Logs hold the per-request token usage the backend reported, so they're the best source for a detailed report. Traces
+add the failures that HTTP status codes miss: a span gets the status **Error** when a model stream or an MCP call
+fails, even after HTTP 200. Metrics are cheaper to query over long ranges, but every exported claim value becomes
+a label, so keep metrics to claims with a bounded number of values.
 
-Estimated cost is **observed tokens × public pricing**. Treat it as an allocation key and reconcile the total with
-provider billing or Azure Cost Management.
+Estimated cost is **observed tokens × public pricing**. The gateway exports its estimate with each request as
+`azure.ai_gateway.client.token.cost`, also for streamed responses whose logs report no token usage. Treat it as an
+allocation key and reconcile the total with provider billing or Azure Cost Management.
 
 | Claim | Identifies | Recommended preset | Use it for |
 |---|---|---|---|
@@ -211,7 +216,7 @@ az aigateway telemetry-exporter show -g $RG --gateway-name $GATEWAY -n appinsigh
 
 Expected output: `tid` and `oid` with `logs, traces, metrics`, and `appid` and `azp` with `logs, traces`. If the
 exporter isn't found, list the exporters with `az aigateway telemetry-exporter list` and use the name of the one
-whose kind is `OpenTelemetry`. Without one, reconfigure monitoring as in
+whose `properties.telemetryExporterType` is `OpenTelemetry`. Without one, reconfigure monitoring as in
 [Monitor usage, cost, and traces](../13-monitoring/README.md) first.
 
 ### Add metrics for the client app
@@ -611,6 +616,281 @@ and run `azd hooks run postprovision`. Check that your callers' tokens carry it 
 report, follow the **Azure CLI** track: it uses the variables you set here.
 
 </details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+**What you need:** only the one-time setup from **Before you begin**, plus Terraform 1.9 or later, as in
+[Deploy a lab with Terraform](../SETUP.md#deploy-a-lab-with-terraform). This track doesn't use your gateway from the
+earlier labs: `terraform apply` creates a new one, so it works on its own. The apply also runs the Azure CLI that you
+signed in with, to wait for the OTLP endpoints.
+
+### Choose what to declare
+
+The configuration reuses lab 13's Terraform module,
+[telemetry](../13-monitoring/terraform/telemetry), which creates the Application Insights destination with OTLP
+ingestion turned on, assigns the gateway's managed identity **Monitoring Metrics Publisher** on its Data Collection
+Rule, and creates the gateway's OpenTelemetry exporter, all in one `terraform apply`. The claim attributes are part of
+that exporter, in its `telemetry.attributes` list. Each entry names a claim in `source` (`kind` is `claims`, `value`
+is the claim name, such as `tid`) and lists the signals that carry it in `signals`: `logs`, `traces`, and `metrics`.
+
+`terraform/main.tf` passes the recommended preset to the module's `claim_attributes` variable, and adds `metrics` for
+`appid` and `azp` while the `client_app_metrics` variable is `true`, its default. It also grants you
+**AI Gateway Models User** on the gateway, as lab 11 does, for the Entra calls in the next section.
+
+### Review the configuration
+
+`terraform/main.tf` creates the resource group `rg-<environment_name>` and calls the quick start's
+[resources module](../quickstart/terraform/resources) for the gateway, the Foundry model, its default alias, and the
+`app-first-call` key. Then it calls lab 13's `telemetry` module with the claims, and assigns the role to the identity
+that runs Terraform:
+
+<!-- include: terraform/main.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/main.tf`](terraform/main.tf)
+
+<details><summary>Show all 67 lines</summary>
+
+```tf
+# Lab 14 with Terraform: creates the resource group rg-<environment_name>, the quick start's gateway, Foundry model,
+# default alias, and runtime API key, then lab 13's Application Insights destination and OpenTelemetry exporter with
+# the token claims to export, and lab 11's role so that you can call the model with your Microsoft Entra token. The
+# runtime API key is never an output.
+data "azapi_client_config" "current" {}
+
+locals {
+  suffix = substr(sha1("${data.azapi_client_config.current.subscription_id}/${var.environment_name}/${var.location}"), 0, 6)
+  tags   = { "environment-name" = var.environment_name }
+
+  # The recommended preset exports appid and azp to logs and traces. client_app_metrics adds metrics, so that token
+  # and cost metrics can be split by client app.
+  client_app_signals = var.client_app_metrics ? ["logs", "traces", "metrics"] : ["logs", "traces"]
+  claim_attributes = [
+    { claim = "tid", signals = ["logs", "traces", "metrics"] },
+    { claim = "oid", signals = ["logs", "traces", "metrics"] },
+    { claim = "appid", signals = local.client_app_signals },
+    { claim = "azp", signals = local.client_app_signals },
+  ]
+
+  # AI Gateway Models User: lets the identity call the gateway's model aliases with a Microsoft Entra token.
+  models_user_role_id = "a6b68e3d-a1f0-4c60-8678-237c050cf4ea"
+  principal_id        = coalesce(var.principal_id, data.azapi_client_config.current.object_id)
+}
+
+resource "azurerm_resource_group" "rg" {
+  name     = "rg-${var.environment_name}"
+  location = var.location
+  tags     = local.tags
+}
+
+# The quick start's module: a gateway, a Foundry model behind the default alias, and the app-first-call key.
+module "base" {
+  source = "../../quickstart/terraform/resources"
+
+  subscription_id     = data.azapi_client_config.current.subscription_id
+  resource_group_name = azurerm_resource_group.rg.name
+  resource_group_id   = azurerm_resource_group.rg.id
+  location            = var.location
+  tags                = local.tags
+  gateway_name        = "aigw-${local.suffix}"
+  foundry_name        = "aigw${local.suffix}"
+}
+
+# Lab 13's module: the destination, the role on its Data Collection Rule, and the exporter with the claims above.
+module "telemetry" {
+  source = "../../13-monitoring/terraform/telemetry"
+
+  resource_group_name  = azurerm_resource_group.rg.name
+  resource_group_id    = azurerm_resource_group.rg.id
+  location             = var.location
+  tags                 = local.tags
+  gateway_name         = module.base.gateway_name
+  gateway_principal_id = module.base.gateway_principal_id
+  workspace_id         = module.base.workspace_id
+  claim_attributes     = local.claim_attributes
+}
+
+# Lab 11's role assignment: AI Gateway Models User on the gateway, for the Entra calls.
+resource "azurerm_role_assignment" "models_user" {
+  name                             = uuidv5("url", "${module.base.gateway_id}/${local.principal_id}/${local.models_user_role_id}")
+  scope                            = module.base.gateway_id
+  role_definition_id               = "/subscriptions/${data.azapi_client_config.current.subscription_id}/providers/Microsoft.Authorization/roleDefinitions/${local.models_user_role_id}"
+  principal_id                     = local.principal_id
+  principal_type                   = var.principal_type
+  skip_service_principal_aad_check = var.principal_type == "ServicePrincipal"
+}
+```
+
+</details>
+<!-- gh:end -->
+
+### Deploy with terraform apply
+
+Move into the lab's Terraform folder, select your current subscription, then plan and apply the configuration. It
+takes about four minutes, most of it while the new gateway activates.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Move into the lab's Terraform folder
+cd ~/aigateway/labs/14-otel-chargeback/terraform &&
+  echo "📂 Terraform folder: $(pwd)"
+
+# Deploy to the Azure CLI's current subscription
+export ARM_SUBSCRIPTION_ID="$(az account show --query id --output tsv)" &&
+  echo "📍 Subscription: $ARM_SUBSCRIPTION_ID"
+
+# Download the providers, then plan and apply the gateway, the model, the key, Application Insights, the exporter
+# with its claims, and your role
+terraform init &&
+  terraform plan -out tfplan &&
+  terraform apply tfplan &&
+  echo "🚀 Gateway deployed: $(terraform output -raw ai_gateway_url)"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Move into the lab's Terraform folder
+Set-Location ~/aigateway/labs/14-otel-chargeback/terraform
+if ($?) { Write-Host "📂 Terraform folder: $(Get-Location)" }
+
+# Deploy to the Azure CLI's current subscription
+$env:ARM_SUBSCRIPTION_ID = az account show --query id --output tsv
+if ($?) { Write-Host "📍 Subscription: $env:ARM_SUBSCRIPTION_ID" }
+
+# Download the providers, then plan and apply the gateway, the model, the key, Application Insights, the exporter
+# with its claims, and your role
+terraform init
+if ($?) { terraform plan -out tfplan }
+if ($?) { terraform apply tfplan }
+if ($?) { Write-Host "🚀 Gateway deployed: $(terraform output -raw ai_gateway_url)" }
+```
+</details> <!-- gh -->
+
+The configuration deploys to `eastus2`. For another region where AI Gateway and the `gpt-5-mini` model are
+available, as in [Find the available regions](../SETUP.md#find-the-available-regions), run
+`export TF_VAR_location=<region>` (PowerShell: `$env:TF_VAR_location = "<region>"`) before `terraform plan`.
+
+### Read the outputs and the key
+
+Set the variables that the next sections use from the Terraform outputs, and read the key from the gateway, so that
+it never shows on screen or lands in the Terraform state. The commands show the exporter's claims, then move back to
+the lab's folder, which holds the scripts and the query.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Read the names and URLs that terraform apply created
+export RG="$(terraform output -raw azure_resource_group)"
+export GATEWAY="$(terraform output -raw ai_gateway_name)"
+export AI_GATEWAY_MODEL="$(terraform output -raw ai_gateway_model)"
+export GATEWAY_ID="$(terraform output -raw ai_gateway_id)"
+export AI_GATEWAY_URL="$(terraform output -raw ai_gateway_url)"
+echo "📝 Gateway $GATEWAY in $RG, alias $AI_GATEWAY_MODEL"
+echo "🌐 Runtime URL: $AI_GATEWAY_URL"
+
+# Read the key from the gateway, so that it never lands in a file or the Terraform state
+export AI_GATEWAY_API_KEY="$(az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/app-first-call" \
+  --query primaryKey --output tsv)"
+echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
+
+# Read the IDs of the Application Insights resource and the Log Analytics workspace behind it
+APPI_ID="$(terraform output -raw app_insights_id)"
+LAW_ID="$(terraform output -raw log_analytics_workspace_id)"
+echo "🆔 Application Insights: $APPI_ID"
+echo "🆔 Log Analytics workspace: $LAW_ID"
+
+# Show the token claims that the gateway's exporter adds to its telemetry, with the signals of each one
+echo "📊 Token claims of the appinsights exporter:"
+az aigateway telemetry-exporter show -g "$RG" --gateway-name "$GATEWAY" -n appinsights \
+  --query "properties.telemetry.attributes[].{claim:source.value, signals:join(', ', signals)}" -o table
+
+# Move back to the lab's folder, which holds the scripts and the query
+cd .. && echo "📂 Lab folder: $(pwd)"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Read the names and URLs that terraform apply created
+$RG                     = terraform output -raw azure_resource_group
+$GATEWAY                = terraform output -raw ai_gateway_name
+$env:AI_GATEWAY_MODEL   = terraform output -raw ai_gateway_model
+$GATEWAY_ID             = terraform output -raw ai_gateway_id
+$env:AI_GATEWAY_URL     = terraform output -raw ai_gateway_url
+Write-Host "📝 Gateway $GATEWAY in $RG, alias $env:AI_GATEWAY_MODEL"
+Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
+
+# Read the key from the gateway, so that it never lands in a file or the Terraform state
+$env:AI_GATEWAY_API_KEY = az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/app-first-call" `
+  --query primaryKey --output tsv
+Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) characters, not shown)"
+
+# Read the IDs of the Application Insights resource and the Log Analytics workspace behind it
+$APPI_ID                = terraform output -raw app_insights_id
+$LAW_ID                 = terraform output -raw log_analytics_workspace_id
+Write-Host "🆔 Application Insights: $APPI_ID"
+Write-Host "🆔 Log Analytics workspace: $LAW_ID"
+
+# Show the token claims that the gateway's exporter adds to its telemetry, with the signals of each one
+Write-Host "📊 Token claims of the appinsights exporter:"
+az aigateway telemetry-exporter show -g $RG --gateway-name $GATEWAY -n appinsights `
+  --query "properties.telemetry.attributes[].{claim:source.value, signals:join(', ', signals)}" -o table
+
+# Move back to the lab's folder, which holds the scripts and the query
+Set-Location ..
+if ($?) { Write-Host "📂 Lab folder: $(Get-Location)" }
+```
+</details> <!-- gh -->
+
+Expected output: `terraform apply` ended with `Apply complete! Resources: 16 added, 0 changed, 0 destroyed.`, and the
+table lists `tid`, `oid`, `appid`, and `azp`, each with `logs, traces, metrics`.
+
+### Change the claims
+
+The claims are in `terraform/main.tf`, and the `client_app_metrics` variable adds `metrics` for `appid` and `azp`. To
+go back to the recommended preset, without metrics for the client app, pass `client_app_metrics=false` to
+`terraform plan` and apply the plan. Only the exporter changes. You're in the lab's folder, so `-chdir=terraform`
+runs Terraform in its folder. Then show the claims again: `appid` and `azp` list only `logs` and `traces`. If you try
+it now, plan and apply again without `-var` before you continue, so that the PromQL section can split metrics by
+client app.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Plan the change: export the client app claims, appid and azp, to logs and traces only, as in the recommended preset
+terraform -chdir=terraform plan -var client_app_metrics=false -out tfplan &&
+  echo "📝 The plan updates only the exporter"
+
+# Apply the plan
+terraform -chdir=terraform apply tfplan &&
+  echo "🚀 Applied: appid and azp export to logs and traces only"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Plan the change: export the client app claims, appid and azp, to logs and traces only, as in the recommended preset
+terraform -chdir=terraform plan -var client_app_metrics=false -out tfplan
+if ($?) { Write-Host "📝 The plan updates only the exporter" }
+
+# Apply the plan
+terraform -chdir=terraform apply tfplan
+if ($?) { Write-Host "🚀 Applied: appid and azp export to logs and traces only" }
+```
+</details> <!-- gh -->
+
+> **Checkpoint**
+> The plan ended with `Plan: 0 to add, 1 to change, 0 to destroy.`, for `module.telemetry.azapi_resource.exporter`.
+
+To export a custom claim, such as `cost_center`, add an entry to the `claim_attributes` list in `terraform/main.tf`,
+then plan and apply. Check that your callers' tokens carry it first, as the next section shows. For the chargeback
+report, follow the **Azure CLI** track: it uses the variables you set here.
+
+</details> <!-- gh -->
 <!-- /tracks -->
 
 > **Checkpoint**
@@ -658,7 +938,8 @@ Expected output: `aud` is AI Gateway's app ID, `18550318-e177-4205-a743-6816d6fc
 ### Call the gateway as two callers
 
 Run the script for your shell. It sends five requests with your API key and five with your Entra token, each with an
-`x-correlation-id` header.
+`x-correlation-id` header that you can match in your client's own logs. The gateway doesn't add that header to its
+telemetry, so in Monitoring you find the calls by caller and time.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -688,12 +969,13 @@ rows means your role assignment is missing or hasn't propagated yet.
 
 Wait a few minutes, then open **Monitoring** › **Models** with **1H** selected. In
 **Model usage by caller identity**, your API key and your Entra identity appear as separate rows with their own
-tokens and estimated cost. Entra callers are resolved from `tid` and `oid`. Callers with neither an API key nor
-those claims show as **Unattributed**.
+estimated cost, tokens, and calls: `app-first-call` as an **API key**, and your name as a **User** with your tenant.
+Entra callers are resolved from `tid` and `oid`. Callers with neither an API key nor those claims show as
+**Unattributed**.
 
-Then select **Traces**, open one of the Entra requests, and expand its log under **Correlated logs**. Look for
-`azure.ai_gateway.identity.claims.tid`, `...oid`, and `...appid` or `...azp`. An API key request shows
-`azure.ai_gateway.api_key_id` instead.
+Then select **Traces**. The **Caller identities** column shows the key or your name. Open one of your Entra requests:
+under **Correlated logs**, its log shows `azure.ai_gateway.identity.claims.tid`, `...oid`, and `...appid` or `...azp`.
+An API key request shows `azure.ai_gateway.api_key_id` instead.
 
 <!-- /steps -->
 
@@ -702,18 +984,20 @@ Then select **Traces**, open one of the Entra requests, and expand its log under
 
 ## Build a chargeback report
 
-The report groups the token usage in request logs by owner and prices it with a price list you control. The query
-is in [infra/chargeback.kql](infra/chargeback.kql):
+The report groups the request logs by owner: requests, failed requests, token usage, and the gateway's own cost
+estimate. It then prices the tokens with a price list you control. The query is in
+[infra/chargeback.kql](infra/chargeback.kql):
 
 <!-- include: infra/chargeback.kql kusto -->
 <!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
 📄 [`infra/chargeback.kql`](infra/chargeback.kql)
 
-<details><summary>Show all 41 lines</summary>
+<details><summary>Show all 89 lines</summary>
 
 ```kusto
-// Chargeback starter: tokens per tenant, caller, client app, API key, and model, from AI Gateway request logs.
-// This is a starting point. Check the attribute names in one request's correlated log before you rely on a column.
+// Chargeback starter: requests, tokens, and cost per tenant, caller, client app, API key, and model, from AI Gateway
+// request logs. This is a starting point. Check the attribute names in one request's correlated log before you rely
+// on a column.
 //
 // Where to run it: the Log Analytics workspace behind your Application Insights resource, Logs, KQL mode.
 // Then export the result as CSV, or call the query API, and price it with chargeback_report.py.
@@ -723,19 +1007,51 @@ is in [infra/chargeback.kql](infra/chargeback.kql):
 //   Token claim attributes. Claims are exported as azure.ai_gateway.identity.claims.<claim>.
 // - Token usage that the backend reported, exported as azure.ai_gateway.client.usage.*. Chat Completions reports
 //   prompt_tokens and completion_tokens, and cached input tokens are part of the prompt tokens. The input_tokens and
-//   output_tokens fallbacks cover APIs that use those names.
-// Requests without reported usage, such as calls a policy rejected, aren't counted. Missing usage means "unknown",
-// not zero.
+//   output_tokens fallbacks cover APIs that use those names. Missing usage means "unknown", not zero: streamed
+//   responses and failed calls often have none, and RequestsWithoutUsage counts them.
+// - The gateway's own estimate, azure.ai_gateway.client.token.cost: observed tokens x public prices, in
+//   azure.ai_gateway.currency. It's also there for streamed responses, so GatewayCost can exceed your token totals.
+// - The Traces signal, for FailedRequests: a request failed if it answered HTTP 4xx or 5xx, or if one of its own
+//   spans has the status Error, such as a model stream that reported an error after HTTP 200.
+// Calls to an alias that doesn't exist have no model in their log, so they aren't counted.
+//
+// One request, one row before the totals:
+// - A request's log has the span ID of its request span, the gateway's Server span. A client that sends a
+//   traceparent header puts all its requests in one trace, so an Error span counts only for the request span above
+//   it: HTTP POST › chat <model> › backend › request span.
+// - A request that the gateway retried or failed over logs one record per attempt, with the same span ID and
+//   azure.ai_gateway.routing.attempt 1, 2, and so on. The last attempt decides whether the request failed, and
+//   the tokens and cost of every attempt add up.
 let lookback = 30d;
+let spans = OTelSpans
+    | where TimeGenerated > ago(lookback)
+    | project TraceId, SpanId, ParentSpanId, StatusCode, Attempt = toint(Attributes["azure.ai_gateway.routing.attempt"]);
+let errorSpans = spans | where StatusCode == "Error";
+let errorTraceSpans = spans | where TraceId in ((errorSpans | distinct TraceId));
+// Each Error span, with the attempt it belongs to, under the span itself and its three nearest ancestors.
+// The request span is one of them.
+let spanErrors = errorSpans
+    | project TraceId, S0 = SpanId, S1 = ParentSpanId, ErrorAttempt = Attempt
+    | lookup kind=leftouter (errorTraceSpans | project TraceId, S1 = SpanId, S2 = ParentSpanId) on TraceId, S1
+    | lookup kind=leftouter (errorTraceSpans | project TraceId, S2 = SpanId, S3 = ParentSpanId) on TraceId, S2
+    | mv-expand SpanId = pack_array(S0, S1, S2, S3) to typeof(string)
+    | where isnotempty(SpanId)
+    // An Error span without an attempt, such as inbound or response transfer, fails the whole request.
+    | summarize ErrorAttempts = make_set(coalesce(ErrorAttempt, 0)) by TraceId, SpanId;
 OTelLogs
 | where TimeGenerated > ago(lookback)
-| extend InputTokens = coalesce(tolong(Attributes["azure.ai_gateway.client.usage.prompt_tokens"]),
+// Request logs of model calls. Tool calls have no gen_ai.request.model.
+| where isnotempty(Attributes["gen_ai.request.model"])
+| extend Attempt = coalesce(toint(Attributes["azure.ai_gateway.routing.attempt"]), 1),
+         Status = toint(Attributes["http.response.status_code"]),
+         InputTokens = coalesce(tolong(Attributes["azure.ai_gateway.client.usage.prompt_tokens"]),
                                 tolong(Attributes["azure.ai_gateway.client.usage.input_tokens"])),
          CachedInputTokens = coalesce(tolong(Attributes["azure.ai_gateway.client.usage.prompt_tokens_details.cached_tokens"]),
                                       tolong(Attributes["azure.ai_gateway.client.usage.input_tokens_details.cached_tokens"])),
          OutputTokens = coalesce(tolong(Attributes["azure.ai_gateway.client.usage.completion_tokens"]),
-                                 tolong(Attributes["azure.ai_gateway.client.usage.output_tokens"]))
-| where isnotnull(InputTokens) or isnotnull(OutputTokens)
+                                 tolong(Attributes["azure.ai_gateway.client.usage.output_tokens"])),
+         // The model that answered, such as a versioned name. A call that failed before an answer has only the alias.
+         Model = coalesce(tostring(Attributes["gen_ai.response.model"]), tostring(Attributes["gen_ai.request.model"]))
 | extend Tenant = tostring(Attributes["azure.ai_gateway.identity.claims.tid"]),
          ObjectId = tostring(Attributes["azure.ai_gateway.identity.claims.oid"]),
          // v2 tokens carry azp, v1 tokens carry appid. Both identify the client application.
@@ -744,12 +1060,27 @@ OTelLogs
          // Empty unless you add a custom claim named cost_center and your tokens carry it.
          CostCenter = tostring(Attributes["azure.ai_gateway.identity.claims.cost_center"]),
          ApiKeyId = tostring(Attributes["azure.ai_gateway.api_key_id"]),
-         Alias = tostring(Attributes["gen_ai.request.model"]),
-         Model = coalesce(tostring(Attributes["gen_ai.response.model"]), tostring(Attributes["gen_ai.request.model"]))
-| summarize Requests = count(),
+         Alias = tostring(Attributes["gen_ai.request.model"])
+// One row per request: the status and model of its last attempt, and the tokens and cost of all its attempts
+| summarize arg_max(Attempt, Status, Model),
+            HasUsage = countif(isnotnull(InputTokens) or isnotnull(OutputTokens)) > 0,
             InputTokens = sum(coalesce(InputTokens, long(0))),
             CachedInputTokens = sum(coalesce(CachedInputTokens, long(0))),
-            OutputTokens = sum(coalesce(OutputTokens, long(0)))
+            OutputTokens = sum(coalesce(OutputTokens, long(0))),
+            GatewayCost = sum(coalesce(todouble(Attributes["azure.ai_gateway.client.token.cost"]), 0.0)),
+            Currency = take_anyif(tostring(Attributes["azure.ai_gateway.currency"]),
+                                  isnotempty(Attributes["azure.ai_gateway.currency"]))
+    by TraceId, SpanId, Tenant, ObjectId, ClientApp, CostCenter, ApiKeyId, Alias
+| lookup kind=leftouter spanErrors on TraceId, SpanId
+| extend Failed = coalesce(Status, 0) >= 400 or set_has_element(ErrorAttempts, 0) or set_has_element(ErrorAttempts, Attempt)
+| summarize Requests = count(),
+            FailedRequests = countif(Failed),
+            RequestsWithoutUsage = countif(not(HasUsage)),
+            InputTokens = sum(InputTokens),
+            CachedInputTokens = sum(CachedInputTokens),
+            OutputTokens = sum(OutputTokens),
+            GatewayCost = round(sum(GatewayCost), 6),
+            Currency = take_anyif(Currency, isnotempty(Currency))
     by Tenant, ObjectId, ClientApp, CostCenter, ApiKeyId, Alias, Model
 | extend TotalTokens = InputTokens + OutputTokens
 | order by TotalTokens desc
@@ -780,12 +1111,14 @@ prices per million tokens from your provider's pricing page or agreement. A vers
 ### Run the query
 
 In the [Azure portal](https://portal.azure.com), open the Log Analytics workspace behind your Application Insights
-resource and select **Logs**. Switch to **KQL mode**, paste the contents of `infra/chargeback.kql`, and select
-**Run**. You get one row per tenant, object ID, client app, API key, alias, and model.
+resource and select **Logs**. Switch from **Simple mode** to **KQL mode**, paste the contents of
+`infra/chargeback.kql`, and select **Run**. You get one row per tenant, object ID, client app, API key, alias, and
+model.
 
 ### Export it
 
-Select **Export** and choose CSV with all columns. Save the file as `usage.csv` in the lab folder.
+Select **Share** › **Export to CSV (all columns)**. The browser downloads `query_data.csv`: move it to the lab folder
+and rename it `usage.csv`.
 
 ### Price it
 
@@ -870,12 +1203,35 @@ if ($?) { Write-Host "📄 Report saved to chargeback.csv" }
 </details> <!-- gh -->
 <!-- /tracks -->
 
-On GitHub, open [infra/chargeback_report.py](infra/chargeback_report.py). It sums requests and tokens per group,
-prices uncached input, cached input, and output tokens separately, and lists any model without a price. Group by
-any column from the query, for example `--by CostCenter` or `--by ApiKeyId,Model`.
+On GitHub, open [infra/chargeback_report.py](infra/chargeback_report.py). It sums requests, failed requests, and
+tokens per group, prices uncached input, cached input, and output tokens separately, and lists any model without a
+price. Group by any column from the query, for example `--by CostCenter` or `--by ApiKeyId,Model`.
 
-Expected output: a table with one row for your API key (`(none)` in `Tenant` and `ClientApp`) and one for your
-Entra identity (your tenant ID and the Azure CLI's client ID), followed by a total.
+Expected output: one row for your API key (`(none)` in `Tenant` and `ClientApp`) and one for your Entra identity
+(your tenant ID and the Azure CLI's client ID), followed by a total. For five calls per caller, the report looks like
+this, with your own token counts and costs:
+
+```text
+Tenant     ClientApp  ApiKeyId        Requests  FailedRequests  InputTokens  CachedInputTokens  OutputTokens  UnpricedTokens  EstimatedCost (USD)  GatewayCost (USD)
+(none)     (none)     app-first-call  5         0               85           0                  797           0               0.003273             0.001615
+<tenant>   <app-id>   (none)          5         0               85           0                  706           0               0.002909             0.001433
+
+Total: 1,673 tokens, estimated 0.006182 USD
+```
+
+Two columns come from the gateway rather than from your price list:
+
+- **FailedRequests** counts calls that answered HTTP 4xx or 5xx, and calls with a span of their own whose status is
+  **Error**. A model stream or an MCP call can fail after HTTP 200; see
+  [Operation failures](https://ai.gateway.azure.com/docs/observability/telemetry-reference#operation-failures).
+  Decide whether you charge for them: a failed stream can still have consumed tokens. A call that the gateway retried
+  or failed over counts once, by its last attempt, so a failover that answered isn't a failure. Calls that share a
+  client trace, through a W3C `traceparent` header, are still judged one by one.
+- **GatewayCost** sums `azure.ai_gateway.client.token.cost`, the gateway's estimate from public prices. The logs of
+  streamed responses carry this cost but no token usage, so they add nothing to **EstimatedCost**. If you sent
+  streamed or failing traffic, for example with lab 13's traffic script, the API key row counts those calls too, and
+  the report ends with a line such as
+  `14 request(s) reported no token usage, such as streamed responses or failed calls.`
 
 > [!TIP]
 > The report shows IDs. Resolve a client app's name with
@@ -924,22 +1280,34 @@ Write-Host "👤 Token acquired: in PROM_TOKEN ($($PROM_TOKEN.Length) characters
 
 ### Query token usage for the last day
 
-The metric names contain dots, so the selector uses quoted names. The `microsoft.appresourceid` label limits the
-query to your Application Insights resource.
+The metric and label names contain dots, so the query quotes them. The `microsoft.appresourceid` label limits it to
+your Application Insights resource.
+
+Each gateway instance exports its own cumulative counters, labeled with `service.instance.id`, so the query takes the
+highest value of each series in the last day and adds up the instances. `increase()` doesn't fit lab traffic: it
+measures growth between samples, and a new series often appears with its first burst already counted, so a short
+burst reads as 0.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
 ```bash title="Bash"
 # Select the token usage metric of your Application Insights resource, with quoted names because they contain dots
-SELECTOR="{__name__=\"azure.ai_gateway.client.token.usage\",\"microsoft.appresourceid\"=\"$(echo "$APPI_ID" | tr '[:upper:]' '[:lower:]')\"}"
+APPI_LABEL="$(echo "$APPI_ID" | tr '[:upper:]' '[:lower:]')"
+SELECTOR="{__name__=\"azure.ai_gateway.client.token.usage\",\"microsoft.appresourceid\"=\"$APPI_LABEL\"}"
 
-# Query the tokens of the last day, and print one row per model, token type, API key, tenant, and client app
+# Group by model, token type, API key, tenant, and client app
+BY='"gen_ai.response.model","gen_ai.token.type","azure.ai_gateway.api_key_id"'
+BY+=',"azure.ai_gateway.identity.claims.tid","azure.ai_gateway.identity.claims.appid"'
+BY+=',"azure.ai_gateway.identity.claims.azp"'
+
+# Query the tokens of the last day, and print one row per group. v1 tokens carry appid, v2 tokens carry azp
 echo "📊 Tokens in the last day, by model, token type, API key, tenant, and client app:"
 curl -sS -G "${PROM_URL%/}/api/v1/query" -H "Authorization: Bearer $PROM_TOKEN" \
-  --data-urlencode "query=increase(${SELECTOR}[1d])" \
+  --data-urlencode "query=sum by ($BY) (max_over_time(${SELECTOR}[1d])) > 0" \
   | jq -r '.data.result[] | [.metric["gen_ai.response.model"], .metric["gen_ai.token.type"],
-      (.metric["azure.ai_gateway.api_key_id"] // "-"), (.metric["azure.ai_gateway.identity.claims.tid"] // "-"),
-      (.metric["azure.ai_gateway.identity.claims.appid"] // .metric["azure.ai_gateway.identity.claims.azp"] // "-"),
+      .metric["azure.ai_gateway.api_key_id"], .metric["azure.ai_gateway.identity.claims.tid"],
+      ((.metric["azure.ai_gateway.identity.claims.appid"] | select(. != "n/a"))
+        // .metric["azure.ai_gateway.identity.claims.azp"] // "-"),
       (.value[1] | tonumber | round)] | @tsv'
 ```
 </details> <!-- gh -->
@@ -948,25 +1316,49 @@ curl -sS -G "${PROM_URL%/}/api/v1/query" -H "Authorization: Bearer $PROM_TOKEN" 
 
 ```powershell title="PowerShell"
 # Select the token usage metric of your Application Insights resource, with quoted names because they contain dots
-$selector = '{__name__="azure.ai_gateway.client.token.usage","microsoft.appresourceid"="' + $APPI_ID.ToLower() + '"}'
+$APPI_LABEL = $APPI_ID.ToLower()
+$selector = '{__name__="azure.ai_gateway.client.token.usage","microsoft.appresourceid"="' + $APPI_LABEL + '"}'
+
+# Group by model, token type, API key, tenant, and client app
+$by = '"gen_ai.response.model","gen_ai.token.type","azure.ai_gateway.api_key_id",' +
+  '"azure.ai_gateway.identity.claims.tid","azure.ai_gateway.identity.claims.appid",' +
+  '"azure.ai_gateway.identity.claims.azp"'
 
 # Query the tokens of the last day from the Prometheus query API
+$query = 'sum by (' + $by + ') (max_over_time(' + $selector + '[1d])) > 0'
 $result = Invoke-RestMethod -Uri "$($PROM_URL.TrimEnd('/'))/api/v1/query" `
-  -Headers @{ Authorization = "Bearer $PROM_TOKEN" } -Body @{ query = 'increase(' + $selector + '[1d])' }
+  -Headers @{ Authorization = "Bearer $PROM_TOKEN" } -Body @{ query = $query }
 
-# Print one row per model, token type, API key, tenant, and client app
+# Print one row per group. v1 tokens carry appid, v2 tokens carry azp
 if ($?) { Write-Host "📊 Tokens in the last day, by model, token type, API key, tenant, and client app:" }
-$result.data.result | ForEach-Object { [pscustomobject]@{
-  Model     = $_.metric.'gen_ai.response.model'
-  TokenType = $_.metric.'gen_ai.token.type'
-  ApiKeyId  = $_.metric.'azure.ai_gateway.api_key_id'
-  Tenant    = $_.metric.'azure.ai_gateway.identity.claims.tid'
-  ClientApp = $_.metric.'azure.ai_gateway.identity.claims.appid' ?? $_.metric.'azure.ai_gateway.identity.claims.azp'
-  Tokens    = [math]::Round([double]$_.value[1]) } } | Format-Table
+$result.data.result | ForEach-Object {
+  $appid = $_.metric.'azure.ai_gateway.identity.claims.appid'
+  $azp = $_.metric.'azure.ai_gateway.identity.claims.azp'
+  [pscustomobject]@{
+    Model     = $_.metric.'gen_ai.response.model'
+    TokenType = $_.metric.'gen_ai.token.type'
+    ApiKeyId  = $_.metric.'azure.ai_gateway.api_key_id'
+    Tenant    = $_.metric.'azure.ai_gateway.identity.claims.tid'
+    ClientApp = if ($appid -and $appid -ne 'n/a') { $appid } elseif ($azp) { $azp } else { '-' }
+    Tokens    = [long][double]$_.value[1] } } | Format-Table
 ```
 </details> <!-- gh -->
 
-Expected output: rows per model, token type, and caller. Your Entra rows carry your tenant ID and the client app.
+Expected output: rows per model, token type, and caller, in any order. A claim that a caller doesn't have shows
+`n/a`, so your API key rows show `n/a` for the tenant and client app, and your Entra rows show `unknown` for the API
+key. A `-` for the client app marks series from before you exported `appid` and `azp` to metrics, such as lab 13's
+traffic.
+
+```text
+gpt-5-mini-2025-08-07  prompt_tokens                               app-first-call  n/a       n/a       85
+gpt-5-mini-2025-08-07  completion_tokens                           app-first-call  n/a       n/a       809
+gpt-5-mini-2025-08-07  completion_tokens_details.reasoning_tokens  app-first-call  n/a       n/a       512
+gpt-5-mini-2025-08-07  total_tokens                                app-first-call  n/a       n/a       894
+gpt-5-mini-2025-08-07  prompt_tokens                               unknown         <tenant>  <app-id>  85
+gpt-5-mini-2025-08-07  completion_tokens                           unknown         <tenant>  <app-id>  958
+gpt-5-mini-2025-08-07  total_tokens                                unknown         <tenant>  <app-id>  1043
+gpt-5-mini-2025-08-07  total_tokens                                app-first-call  n/a       -         2202
+```
 
 > [!WARNING]
 > Don't add up every token type. A model reports totals and details (for example `total_tokens` and
@@ -976,18 +1368,93 @@ Expected output: rows per model, token type, and caller. Your Entra rows carry y
 The names follow the API of each call: Chat Completions reports `prompt_tokens` and `completion_tokens`, while
 Responses reports `input_tokens` and `output_tokens`. `gen_ai.response.model` is the model name that the provider
 returned, so one deployment can show up as `gpt-5-mini-2025-08-07` for Chat Completions and `gpt-5-mini` for Responses.
+Streamed calls report no token usage, so they have no series here, but they have a cost.
 
 ### Query estimated cost
 
-Replace `azure.ai_gateway.client.token.usage` with `azure.ai_gateway.client.token.cost` and run the query again. Each
-series carries `azure.ai_gateway.currency`. Series with `azure.ai_gateway.price_missing="true"` had no public price,
-so their cost isn't counted.
+`azure.ai_gateway.client.token.cost` has one series per token type and one that covers the whole call, with an empty
+`gen_ai.token.type`. Select that one, so you don't add up the same cost twice.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Select the cost series that cover a whole call: their gen_ai.token.type label is empty
+COST_SELECTOR="{__name__=\"azure.ai_gateway.client.token.cost\",\"gen_ai.token.type\"=\"\","
+COST_SELECTOR+="\"microsoft.appresourceid\"=\"$APPI_LABEL\"}"
+
+# Group by model, API key, tenant, client app, currency, and whether a price was missing
+COST_BY='"gen_ai.response.model","azure.ai_gateway.api_key_id","azure.ai_gateway.identity.claims.tid"'
+COST_BY+=',"azure.ai_gateway.identity.claims.appid","azure.ai_gateway.identity.claims.azp"'
+COST_BY+=',"azure.ai_gateway.currency","azure.ai_gateway.price_missing"'
+
+# Query the cost of the last day, and print one row per group
+echo "📊 Estimated cost in the last day, by model, API key, tenant, client app, and price status:"
+curl -sS -G "${PROM_URL%/}/api/v1/query" -H "Authorization: Bearer $PROM_TOKEN" \
+  --data-urlencode "query=sum by ($COST_BY) (max_over_time(${COST_SELECTOR}[1d])) > 0" \
+  | jq -r '.data.result[] | [.metric["gen_ai.response.model"], .metric["azure.ai_gateway.api_key_id"],
+      .metric["azure.ai_gateway.identity.claims.tid"],
+      ((.metric["azure.ai_gateway.identity.claims.appid"] | select(. != "n/a"))
+        // .metric["azure.ai_gateway.identity.claims.azp"] // "-"),
+      .metric["azure.ai_gateway.price_missing"], .metric["azure.ai_gateway.currency"],
+      (.value[1] | tonumber * 1000000 | round / 1000000)] | @tsv'
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Select the cost series that cover a whole call: their gen_ai.token.type label is empty
+$costSelector = '{__name__="azure.ai_gateway.client.token.cost","gen_ai.token.type"="",' +
+  '"microsoft.appresourceid"="' + $APPI_LABEL + '"}'
+
+# Group by model, API key, tenant, client app, currency, and whether a price was missing
+$costBy = '"gen_ai.response.model","azure.ai_gateway.api_key_id","azure.ai_gateway.identity.claims.tid",' +
+  '"azure.ai_gateway.identity.claims.appid","azure.ai_gateway.identity.claims.azp",' +
+  '"azure.ai_gateway.currency","azure.ai_gateway.price_missing"'
+
+# Query the cost of the last day from the Prometheus query API
+$query = 'sum by (' + $costBy + ') (max_over_time(' + $costSelector + '[1d])) > 0'
+$result = Invoke-RestMethod -Uri "$($PROM_URL.TrimEnd('/'))/api/v1/query" `
+  -Headers @{ Authorization = "Bearer $PROM_TOKEN" } -Body @{ query = $query }
+
+# Print one row per group
+if ($?) { Write-Host "📊 Estimated cost in the last day, by model, API key, tenant, client app, and price status:" }
+$result.data.result | ForEach-Object {
+  $appid = $_.metric.'azure.ai_gateway.identity.claims.appid'
+  $azp = $_.metric.'azure.ai_gateway.identity.claims.azp'
+  [pscustomobject]@{
+    Model        = $_.metric.'gen_ai.response.model'
+    ApiKeyId     = $_.metric.'azure.ai_gateway.api_key_id'
+    Tenant       = $_.metric.'azure.ai_gateway.identity.claims.tid'
+    ClientApp    = if ($appid -and $appid -ne 'n/a') { $appid } elseif ($azp) { $azp } else { '-' }
+    PriceMissing = $_.metric.'azure.ai_gateway.price_missing'
+    Currency     = $_.metric.'azure.ai_gateway.currency'
+    Cost         = '{0:0.######}' -f [double]$_.value[1] } } | Format-Table
+```
+</details> <!-- gh -->
+
+Expected output: one row per model and caller, in the currency `usd`. Add up a caller's rows: the total matches its
+**GatewayCost** in the chargeback report. Lab 13's traffic adds API key rows for `gpt-5-mini`, from streamed
+Responses calls that have a cost but no token series, and for `unknown`, from streams that failed before a model
+answered.
+
+```text
+gpt-5-mini-2025-08-07  app-first-call  n/a       n/a       true   usd  0.001639
+gpt-5-mini-2025-08-07  unknown         <tenant>  <app-id>  true   usd  0.001937
+gpt-5-mini-2025-08-07  app-first-call  n/a       -         true   usd  0.004248
+gpt-5-mini             app-first-call  n/a       -         false  usd  0.002518
+unknown                app-first-call  n/a       -         false  usd  0.000338
+```
+
+`azure.ai_gateway.price_missing` is `true` when a token type of the call has no public price, so the cost is a lower
+bound. Chat Completions calls can show `true` even when every token you used has a price: the call also reports
+categories such as `completion_tokens_details.accepted_prediction_tokens`, which have no price, even at 0 tokens.
 
 <!-- /steps -->
 
 > [!NOTE]
-> Counters are cumulative, and `increase()` extrapolates and can miss the first sample of a brand new series, so
-> treat short-range metric results as approximate. The docs show PromQL in its underscore form,
+> The query above is exact for series that started in the last day, and also counts the earlier traffic of an
+> instance that ran longer. The docs show PromQL in its underscore form,
 > `sum by (gen_ai_request_model) (gen_ai_client_token_usage)`, which is how some OTLP backends store these names.
 > If a query returns nothing, list the names your backend stored with `count by (__name__) ({__name__=~".*token.*"})`.
 
@@ -997,13 +1464,14 @@ so their cost isn't counted.
 
 ### Compare the report with the dashboard
 
-Open **Monitoring** › **Models** with **24H** selected. The input and output tokens of your two callers in
-**Model usage by caller identity** are in the same range as their rows in `chargeback.csv`.
+Open **Monitoring** › **Models** with **24H** selected. The cost, tokens, and calls of your two callers in
+**Model usage by caller identity** are in the same range as their **GatewayCost** and token columns in
+`chargeback.csv`.
 
 ### Confirm the client app label
 
-Run the PromQL query again. Your Entra rows show a client app ID, which comes from the **Metrics** signal you
-enabled for `appid` and `azp`.
+Run the PromQL queries again. Your Entra rows show a client app ID, which comes from the **Metrics** signal you
+enabled for `appid` and `azp`, and each caller's cost adds up to its **GatewayCost**.
 
 <!-- /steps -->
 
@@ -1014,9 +1482,11 @@ enabled for `appid` and `azp`.
   [Enforce cost budgets with per-caller overrides](../07-cost-budgets/README.md).
 - **Send telemetry to another backend.** In the setup wizard, **Custom OpenTelemetry destination** takes a
   **Metrics endpoint**, **Logs endpoint**, and **Traces endpoint**, such as a collector, Grafana, Datadog, or any
-  OTLP service. Authenticate with **Custom headers** (values are masked and never shown again after saving) or a
-  **Managed identity** with a token audience. Claims are exported the same way. The built-in dashboard only reads
-  Application Insights, so with a custom destination you build these views in that platform.
+  OTLP service. Authenticate with **Custom headers**, whose saved values the API doesn't return, or a
+  **Managed identity** with the receiver's token audience. Claims are exported the same way. The built-in dashboard
+  only reads Application Insights, so with a custom destination you build these views in that platform. See
+  [Send telemetry to a custom destination](https://ai.gateway.azure.com/docs/observability/custom-destination) and
+  [Attribute estimated model costs](https://ai.gateway.azure.com/docs/finops/attribute-costs).
 - **Fan out with a collector.** To keep claims in one place and send them to several backends, point the gateway at
   your own OpenTelemetry Collector and route from there.
 - **Keep metric cardinality in check.** Every distinct claim value is a new series. Put high-cardinality claims such
@@ -1033,8 +1503,9 @@ The exported files contain tenant and object IDs. Treat them as personal data.
 
 ### Restore the preset
 
-In **Monitoring** › **Settings** › **Logging** › **Token claim attributes**, clear **Metrics** for `appid` and
-`azp`. Remove any custom claim you added.
+In **Monitoring** › **Settings** › **Logging** › **Token claim attributes**, clear **Include appid in metrics** and
+**Include azp in metrics**. **Saving changes…** shows while the portal saves each change. Remove any custom claim you
+added with its row's **More actions** menu › **Remove**. Close and reopen **Settings** to confirm.
 
 ### Delete the exported files
 
@@ -1104,8 +1575,9 @@ Write-Host "🚮 The exported files are deleted"
 
 In the same folder, delete the resource group with the gateway, the Foundry account, the Application Insights
 component, the Log Analytics workspace, and your role assignment on the gateway. Azure deletes the component's managed
-resource group with it. [`--purge`](../SETUP.md#delete-what-azd-created) also purges the soft-deleted Foundry account.
-It takes about ten minutes.
+resource group too, once the Azure Monitor workspace in it is gone, which can take longer than `azd down`.
+[`--purge`](../SETUP.md#delete-what-azd-created) also purges the soft-deleted Foundry account. It takes a few
+minutes.
 
 ```bash
 # Delete everything that azd up created, and purge the Foundry account
@@ -1117,11 +1589,55 @@ To keep this gateway for other labs instead, skip `azd down` and restore the pre
 `azd env set CLIENT_APP_METRICS false`, then `azd hooks run postprovision`.
 
 </details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+### Delete the exported files
+
+In the `aigateway/labs/14-otel-chargeback` folder, delete the files the report created:
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Delete the usage, the price list, and the report, because they hold tenant and object IDs
+rm -f usage.json prices.json chargeback.csv &&
+  echo "🚮 The exported files are deleted"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Delete the usage, the price list, and the report, because they hold tenant and object IDs
+Remove-Item usage.json, prices.json, chargeback.csv -ErrorAction SilentlyContinue
+Write-Host "🚮 The exported files are deleted"
+```
+</details> <!-- gh -->
+
+### Delete everything Terraform created
+
+From the same folder, delete the resource group with the gateway, the Foundry account, the Application Insights
+component, the Log Analytics workspace, and your role assignment on the gateway. Azure deletes the component's managed
+resource group too, once the Azure Monitor workspace in it is gone, which can take longer than `terraform destroy`.
+The [`azurerm` provider](../SETUP.md#delete-what-terraform-created) also purges the soft-deleted Foundry account. It
+takes a few minutes.
+
+```bash
+# Delete everything that terraform apply created, and purge the soft-deleted Foundry account
+terraform -chdir=terraform destroy -auto-approve &&
+  echo "🚮 Everything that terraform apply created is deleted"
+```
+
+To keep this gateway for other labs instead, skip `terraform destroy` and restore the preset: plan and apply with
+`-var client_app_metrics=false`, as in **Change the claims**.
+
+</details> <!-- gh -->
 <!-- /tracks -->
 
 Keep monitoring on if you continue: the agent labs use it to show where agent calls went. Otherwise, follow the
-clean-up steps in [Monitor usage, cost, and traces](../13-monitoring/README.md). `azd down` doesn't touch the
-gateway and monitoring from the earlier labs, because the Bicep + azd track created its own.
+clean-up steps in [Monitor usage, cost, and traces](../13-monitoring/README.md). `azd down` and `terraform destroy`
+don't touch the gateway and monitoring from the earlier labs, because the Bicep + azd and Terraform tracks created
+their own.
 
 ## Next steps
 
@@ -1131,7 +1647,9 @@ gateway and monitoring from the earlier labs, because the Bicep + azd track crea
   identity so the report shows it.
 - [Go keyless with Microsoft Entra ID and RBAC](../11-entra-rbac/README.md): move callers from keys to identities
   that carry claims.
-- Docs: [Observability](https://ai.gateway.azure.com/docs/observability)
+- Docs: [Observability](https://ai.gateway.azure.com/docs/observability),
+  [Export Microsoft Entra token claims](https://ai.gateway.azure.com/docs/observability/entra-claims), and
+  [Attribute estimated model costs](https://ai.gateway.azure.com/docs/finops/attribute-costs)
 
 <!-- gh:begin footer: generated by "npm run sync" from the metadata, do not edit -->
 
@@ -1143,5 +1661,5 @@ gateway and monitoring from the earlier labs, because the Bicep + azd track crea
 | :-- | :-: | --: |
 | [13 · Monitoring](../13-monitoring/README.md) | [All labs](../README.md) | [15 · Agent frameworks](../15-agent-frameworks/README.md) |
 
-<sub>Learning paths: [FinOps & operations](../README.md#learning-paths) (5 of 5)</sub>
+<sub>Learning paths: [FinOps & operations](../README.md#learning-paths) (6 of 6)</sub>
 <!-- gh:end -->

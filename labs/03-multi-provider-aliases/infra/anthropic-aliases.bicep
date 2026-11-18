@@ -32,33 +32,38 @@ param supportChatTokensPerMinute int = 20000
 param batchChatTokensPerMinute int = 2000
 
 #disable-next-line BCP081
-resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
+resource gateway 'Microsoft.ApiManagement/aigateways@2026-11-01' existing = {
   name: gatewayName
 }
 
 #disable-next-line BCP081
-resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' existing = {
+resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2026-11-01' existing = {
   parent: gateway
   name: 'default'
 }
 
-// Leave /v1 off the endpoint. Anthropic expects the raw key in x-api-key, with no "Bearer" scheme.
+// Leave /v1 off the endpoint. Anthropic expects the raw key in x-api-key, with no "Bearer" scheme. A custom provider
+// takes exactly one header, and reads hide its value, so every deployment sends the key again.
 #disable-next-line BCP081
-resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2025-09-01-preview' = {
+resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2026-11-01' = {
   parent: workspace
   name: providerName
   properties: {
-    kind: 'Custom'
+    modelProviderType: 'Custom'
     displayName: 'Anthropic'
+    description: 'Anthropic Messages API, with the key in the x-api-key header.'
     custom: {
-      endpoint: 'https://api.anthropic.com'
-      authentication: {
-        kind: 'ApiKey'
-        apiKey: {
-          headerName: 'x-api-key'
+      endpoint: {
+        url: 'https://api.anthropic.com'
+      }
+    }
+    authentication: {
+      headers: [
+        {
+          name: 'x-api-key'
           value: anthropicApiKey
         }
-      }
+      ]
     }
   }
 }
@@ -66,7 +71,7 @@ resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@
 // Custom providers list the provider path in supportedEndpoints and leave out apiFormat. Names may only contain
 // lowercase letters, digits, and hyphens; modelName keeps the provider's real model ID.
 #disable-next-line BCP081
-resource models 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2025-09-01-preview' = [for name in [ fastModel, smartModel ]: {
+resource models 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2026-11-01' = [for name in [ fastModel, smartModel ]: {
   parent: provider
   name: name
   properties: {
@@ -104,7 +109,7 @@ var aliases = [
 ]
 
 #disable-next-line BCP081
-resource aliasResources 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2025-09-01-preview' = [for alias in aliases: {
+resource aliasResources 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01' = [for alias in aliases: {
   parent: workspace
   name: alias.name
   properties: {

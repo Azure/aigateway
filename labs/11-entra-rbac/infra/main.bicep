@@ -1,5 +1,5 @@
 // Lab 11 with azd: "azd up" creates the resource group rg-<environment name>, the quick start's gateway, Foundry
-// model, default alias, and runtime API key, then grants you an AI Gateway data-plane role so that you can call the
+// model, default alias, and runtime API key, then grants you an AI Gateway runtime role so that you can call the
 // model with a Microsoft Entra token instead of a key. The runtime API key is never an output.
 targetScope = 'subscription'
 
@@ -23,9 +23,9 @@ param principalType string = 'User'
 @allowed([ 'user', 'models', 'tools' ])
 param role string = 'models'
 
-@description('Where to grant it: the whole gateway, or only the model alias. azd reads it from DATA_PLANE_ROLE_SCOPE.')
-@allowed([ 'gateway', 'alias' ])
-param roleScope string = 'gateway'
+@description('Where to grant it: all assets (the default workspace), the whole gateway, or only the model alias. azd reads it from DATA_PLANE_ROLE_SCOPE.')
+@allowed([ 'workspace', 'gateway', 'alias' ])
+param roleScope string = 'workspace'
 
 var suffix = take(uniqueString(subscription().id, environmentName, location), 6)
 var tags = { 'azd-env-name': environmentName }

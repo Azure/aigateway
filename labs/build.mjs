@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { initHighlighter, renderLab, escapeHtml } from './site/markdown.mjs';
 import { parseLab, stripGitHub, syncLab, syncIndex, syncSkill, findVideo, ghSlug } from './site/github.mjs';
 import { readSetupTasks, inlineMd } from './site/setup.mjs';
-import { layout, homePage, catalogPage, labPage, releaseNotesPage, setupPage, troubleshootingPage, notFoundPage } from './site/templates.mjs';
+import { layout, heroLabs, homePage, catalogPage, labPage, releaseNotesPage, setupPage, troubleshootingPage, notFoundPage } from './site/templates.mjs';
 
 const LABS = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(LABS, '..');
@@ -78,6 +78,21 @@ function checkTemplate(lab, site) {
     const branch = b.match(/--branch[\s=](\S+)/);
     if (branch && branch[1] !== site.branch) warn(`${lab.slug}: the template clone block uses branch ${branch[1]}, not ${site.branch}`);
   }
+}
+
+// A Terraform track runs from the lab's terraform/ folder (AUTHORING.md, "Terraform").
+function checkTerraform(lab) {
+  const dir = path.join(lab.dir, 'terraform');
+  const has = fs.existsSync(path.join(dir, 'main.tf'));
+  const listed = lab.tracks.includes('terraform');
+  if (has && !listed) warn(`${lab.slug}: has terraform/main.tf, but no terraform track in front matter tracks`);
+  if (listed && !has) warn(`${lab.slug}: lists the terraform track, but has no terraform/main.tf`);
+  if (!has || !listed) return;
+  const folder = `labs/${lab.slug}/terraform`;
+  const cd = new RegExp(`\\b(?:cd|Set-Location)\\s+\\S*${folder}/?(?=\\s|$)`, 'm');
+  const blocks = [...lab.content.matchAll(/^```[^\n]*\n([\s\S]*?)^```/gm)].map((m) => m[1]);
+  if (!blocks.some((b) => cd.test(b))) warn(`${lab.slug}: has a Terraform track, but no code block moves into ${folder}`);
+  if (!blocks.some((b) => /\bterraform destroy\b/.test(b))) warn(`${lab.slug}: has a Terraform track, but no code block runs terraform destroy`);
 }
 
 // Readers paste shell blocks into macOS zsh, so keep them paste-safe (AUTHORING.md, "CLI comments and status lines").
@@ -193,6 +208,8 @@ function loadLabs(catalog) {
       updated: gitUpdated(path.join(LABS, slug)),
       notebook,
       video: findVideo(content),
+      // The lab's first shared diagram, which the home page's architecture map previews.
+      illustration: content.match(/\]\((?:\.\.\/)+assets\/(diagrams\/[a-z0-9-]+\.svg)[\s)]/)?.[1] || null,
       source,
       raw: `---\n${meta}\n---\n\n${content}`,
       content,
@@ -329,7 +346,8 @@ function syncSources(labs, catalog, { check = false } = {}) {
 }
 
 // Renders labs/RELEASE-NOTES.md. Each "## <date>" section is one product release: an "### <title>" heading and a
-// link to https://ai.gateway.azure.com/docs/releases/YYYY-MM-DD, then the table that maps each change to a lab.
+// link to https://ai.gateway.azure.com/docs/releases#release-YYYY-MM-DD (or the older /docs/releases/YYYY-MM-DD),
+// then the table that maps each change to a lab.
 async function renderReleaseNotes(site, known, rendered, guides) {
   if (!fs.existsSync(RELEASE_NOTES)) return null;
   const source = stripGitHub(fs.readFileSync(RELEASE_NOTES, 'utf8'));
@@ -352,7 +370,7 @@ async function renderReleaseNotes(site, known, rendered, guides) {
   for (const section of source.split(/^(?=## )/m).slice(1)) {
     const date = section.match(/^## (.+)/)[1].trim();
     const title = section.match(/^### (.+)/m)?.[1].trim();
-    const product = section.match(/https:\/\/ai\.gateway\.azure\.com\/docs\/releases\/(\d{4}-\d{2}-\d{2})/)?.[1];
+    const product = section.match(/https:\/\/ai\.gateway\.azure\.com\/docs\/releases(?:\/|#release-)(\d{4}-\d{2}-\d{2})/)?.[1];
     if (!title || !product) continue;
     const id = toc.find((t) => t.text === date)?.id;
     releases.push({ date, title: title.replace(/[*`_]/g, ''), product, id });
@@ -553,6 +571,7 @@ export async function build({ strict = false } = {}) {
       fs.copyFileSync(path.join(lab.dir, m), dest);
     }
     checkTemplate(lab, site);
+    checkTerraform(lab);
     checkShellBlocks(lab.slug, lab.content);
     const headings = [...lab.html.matchAll(/<h([23]) id="([^"]+)"><a class="anchor"[^>]*>#<\/a>([\s\S]*?)<\/h\1>/g)]
       .map((m) => ({ id: m[2], text: htmlToText(m[3]), level: Number(m[1]) }));
@@ -623,6 +642,9 @@ export async function build({ strict = false } = {}) {
     write('release-notes/index.md', notes.source);
   }
 
+  const onMap = heroLabs();
+  for (const l of labs) if (!onMap.has(l.slug)) warn(`${l.slug}: isn't on the home page's architecture map; add it to HX in site/templates.mjs`);
+  for (const s of onMap) if (!known.has(s)) warn(`site/templates.mjs: the architecture map links to ${s}, which isn't a lab`);
   write('index.html', layout({ rel: '', site, kind: 'home', title: '', description: site.tagline, body: homePage({ rel: '', site, catalog, labs, totals, latest: notes?.releases[0] }), canonical: BASE_URL, data: shared }));
   write('labs/index.html', layout({ rel: '../', site, kind: 'catalog', title: 'All labs', description: `${labs.length} hands-on labs for Azure AI Gateway.`, body: catalogPage({ rel: '../', catalog, labs }), canonical: `${BASE_URL}labs/`, data: shared }));
   write('404.html', layout({ rel: BASE_PATH, site, kind: 'notfound', title: 'Page not found', body: notFoundPage({ rel: BASE_PATH }), data: shared }));

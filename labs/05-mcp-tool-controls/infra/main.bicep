@@ -33,7 +33,9 @@ param serverAccess string = 'active'
 @minValue(0)
 param callsPerPeriod int = 5
 
-@description('Renewal period in seconds. azd reads it from REQUEST_RATE_LIMIT_PERIOD.')
+@description('Renewal period in seconds, from 1 to 300. azd reads it from REQUEST_RATE_LIMIT_PERIOD.')
+@minValue(1)
+@maxValue(300)
 param periodSeconds int = 30
 
 @description('Counter dimensions, such as ["identity"]. azd reads it from REQUEST_RATE_LIMIT_COUNTER_KEY.')

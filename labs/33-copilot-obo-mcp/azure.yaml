@@ -1,0 +1,39 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+# Lab 33: "azd up" creates a gateway, two managed identities, the three Microsoft Entra ID app registrations of the
+# on-behalf-of chain, and the demo MCP server on Azure Container Apps, which an ACR Tasks run builds from GitHub. Then it
+# attaches the gateway identity and registers the obo-demo MCP server with an on-behalf-of endpoint. The lab clones the
+# repo's main branch from GitHub and runs azd up in this folder.
+name: aigw-lab33
+metadata:
+  template: aigw-lab33@1.0.0
+infra:
+  provider: bicep
+  path: infra
+hooks:
+  # The app registrations live in Microsoft Entra ID, not in the resource group, so deleting the resource group doesn't
+  # delete them. Before "azd down" deletes the resource group (and the outputs saved in the azd environment), this hook
+  # deletes each registration with the client ID that the deployment saved, then removes it from the deleted items so
+  # that the next "azd up" can register it again.
+  predown:
+    continueOnError: true
+    posix:
+      shell: sh
+      run: >-
+        for app in "$CONNECTOR_APP_ID" "$TOKEN_EXCHANGE_APP_ID" "$BACKEND_APP_ID"; do
+        if [ -n "$app" ]; then
+        id=$(az ad app show --id "$app" --query id --output tsv) &&
+        az ad app delete --id "$app" &&
+        az rest --method delete --url "https://graph.microsoft.com/v1.0/directory/deletedItems/$id" &&
+        echo "Deleted the app registration $app";
+        fi;
+        done
+    windows:
+      shell: pwsh
+      run: >-
+        foreach ($app in @($env:CONNECTOR_APP_ID, $env:TOKEN_EXCHANGE_APP_ID, $env:BACKEND_APP_ID)) {
+        if ($app) {
+        $id = az ad app show --id $app --query id --output tsv;
+        if ($id) {
+        az ad app delete --id $app;
+        az rest --method delete --url "https://graph.microsoft.com/v1.0/directory/deletedItems/$id";
+        "Deleted the app registration $app" } } }

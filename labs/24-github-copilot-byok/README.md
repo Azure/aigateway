@@ -4,7 +4,7 @@ summary: Point GitHub Copilot in VS Code, the Copilot CLI, the Copilot SDK, and 
 category: agents
 level: Intermediate
 duration: 40
-tracks: [portal, cli, iac, code]
+tracks: [portal, cli, iac, terraform, code]
 order: 17.5
 status: new
 illustration: diagrams/github-copilot-byok.svg
@@ -32,7 +32,7 @@ prereqs:
 
 | ⏱️ Time | 📶 Level | 🧭 Tracks | ✅ Before you start |
 | :-- | :-- | :-- | :-- |
-| 40 min | Intermediate | Portal · Azure CLI · Bicep + azd · Code · Notebook | [02 · First model call](../02-first-model-call/README.md) |
+| 40 min | Intermediate | Portal · Azure CLI · Bicep + azd · Terraform · Code · Notebook | [02 · First model call](../02-first-model-call/README.md) |
 
 **You'll learn to**
 
@@ -72,9 +72,10 @@ surfaces its tools, with the same key, so Copilot's tool calls get the same cont
 <!-- gh:end -->
 
 > [!TIP]
-> On the **Bicep + azd** track, `azd up` creates its own gateway, Foundry account, `gpt-6.1-sol` alias, key, and
-> `learn` MCP server, and the track sets the variables, so you can skip lab 02 and the variables below. You need the
-> one-time setup above, plus quota for the model, a Copilot surface, and the practice project.
+> On the **Bicep + azd** and **Terraform** tracks, `azd up` or `terraform apply` creates its own gateway, Foundry
+> account, `gpt-6.1-sol` alias, key, and `learn` MCP server, and the track sets the variables, so you can skip lab 02
+> and the variables below. You need the one-time setup above, plus quota for the model, a Copilot surface, and the
+> practice project.
 
 - Complete [Publish a Foundry model and make your first call](../02-first-model-call/README.md). You need a gateway
   with a Foundry provider, and permission to change it, for example **Contributor** on the resource group.
@@ -85,8 +86,8 @@ surfaces its tools, with the same key, so Copilot's tool calls get the same cont
   | Surface | Version tested | Needs |
   |---|---|---|
   | [VS Code](https://code.visualstudio.com/download) with GitHub Copilot | 1.143 | Nothing else. Chat and agent mode work with your own model without a GitHub sign-in. |
-  | [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli) | 1.0.103 | Nothing else. A GitHub sign-in is optional with your own model. |
-  | [GitHub Copilot SDK](https://github.com/github/copilot-sdk) | 1.0.26 (TypeScript), 1.0.22 (Python) | Node.js 22.18 or later, or Python 3.11 or later, and a clone of this repository. |
+  | [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli) | 1.0.112 | Nothing else. A GitHub sign-in is optional with your own model. |
+  | [GitHub Copilot SDK](https://github.com/github/copilot-sdk) | 1.0.34 (TypeScript), 1.0.31 (Python) | Node.js 22.18 or later, or Python 3.11 or later, and a clone of this repository. |
   | [GitHub Copilot app](https://docs.github.com/en/copilot/get-started/quickstart-copilot-app) | Public preview | A GitHub sign-in. A Copilot plan isn't required for your own models. |
 - Run the scripts and samples from the lab's folder, `~/aigateway/labs/24-github-copilot-byok`.
 
@@ -240,27 +241,30 @@ with the deployment name `gpt-6.1-sol`. Or paste the command from the **Azure CL
 
 1. Open the [AI Gateway portal](https://ai.gateway.azure.com) and select your gateway in the top bar.
 2. Select **Models** › **Add** › **Models from Microsoft Foundry**.
-3. Select the subscription and resource group of your Foundry account, then select the `gpt-6.1-sol` deployment.
-   Keep **Managed identity** as the **Authentication method**.
-4. Under **Aliases**, keep **Create an alias for each model** selected, then select **Add models**.
+3. In **Subscriptions** and **Resource groups**, select those of your Foundry account. Keep **Managed identity** as
+   the **Authentication method**.
+4. In **Models**, select only the `gpt-6.1-sol` deployment: the page can preselect other deployments of the account.
+5. Under **Aliases**, keep **Create an alias for each model** selected, then select **Add models**.
 
 ### Publish the gpt-6.1-sol alias
 
 The import names its alias after the provider and the deployment, for example `<foundry-account-name>/gpt-6.1-sol`.
 Copilot needs the plain model name, so add an alias called `gpt-6.1-sol`:
 
-1. Select **Models** › **Aliases** › **Add alias**.
+1. Select **Models** › **Add** › **Alias for existing models**.
 2. On **Basics**, set **Alias name** to `gpt-6.1-sol`. Select **Next**.
-3. On **Select models**, select `gpt-6.1-sol` in **Available backend models**. Select **Next**.
-4. Keep the defaults on **Priority and weights**, select **Next**, then select **Create** on **Review**.
+3. On **Select models**, select the `gpt-6.1-sol` backend model in the grid. Select **Next**.
+4. Keep the defaults on **Auto model selection (preview)**, **Session affinity**, **Priorities and weights**, and
+   **Failure handling**, selecting **Next** on each, then select **Create** on **Review**.
 
 ### Add the token limit
 
-1. Select **Policies** › **Add policy**. On the **Type** step, under **Cost & Rate Limits**, select
+1. Select **Policies** › **Add policy**. On the **Type** step, under **Cost and rate limits**, select
    **Token rate limit**, then **Next**.
-2. On the **Scope** step, select **Individual assets**, select the `gpt-6.1-sol` alias, then **Next**.
-3. On the **Details** step, set **Time period** to **Per minute**, **Allowed tokens** to `100000`, and
-   **Counter dimensions** to **Caller identity**. Select **Create**.
+2. On the **Scope** step, select **Individual assets**, select the `gpt-6.1-sol` asset of type **Alias**, then
+   **Next**.
+3. On the **Details** step, set **Time period** to **Per minute** and **Allowed tokens** to `100000`. Keep
+   **Counter dimensions** at **Identity**, so that each key gets its own counter. Select **Create**.
 
 ### Create the key for Copilot
 
@@ -273,7 +277,7 @@ Copilot needs the plain model name, so add an alias called `gpt-6.1-sol`:
 
 ```bash title="Bash"
 # Paste the key without showing it, and export it for the test calls and the Copilot surfaces
-read -rsp "AI Gateway API key: " AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
+printf "AI Gateway API key: " && read -rs AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 ```
 </details> <!-- gh -->
@@ -334,7 +338,9 @@ az cognitiveservices account deployment create -g $FOUNDRY_RG -n $FOUNDRY_ACCOUN
 ### Register the model with its token limit
 
 Register the deployment under the provider, then give the backend model a token limit of 100,000 tokens per minute
-for each caller. `az aigateway model policy set-token-limit` keeps any other policy that's already on the model.
+for each caller. `az aigateway model policy set-token-limit` keeps any other policy that's already on the model. If
+you registered `gpt-6.1-sol` under this provider in another lab, `model create` fails with
+`The model already exists`: carry on with the token limit, which applies to the existing model.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -394,9 +400,7 @@ az aigateway model-alias set -g $RG --gateway-name $GATEWAY -n $MODEL `
 ```
 </details> <!-- gh -->
 
-`az aigateway model-alias set` creates the alias, or updates it if it exists, so you can run the step again. When
-it creates the alias, it warns that the service doesn't enforce atomic alias creation. That's expected: it only
-matters when two people create the same alias at the same time.
+`az aigateway model-alias set` creates the alias, or updates it if it exists, so you can run the step again.
 
 ### Create the key for Copilot
 
@@ -569,7 +573,7 @@ to your gateway from lab 02.
 <!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
 📄 [`infra/copilot-model.bicep`](infra/copilot-model.bicep)
 
-<details><summary>Show all 127 lines</summary>
+<details><summary>Show all 126 lines</summary>
 
 ```bicep
 // Publishes gpt-6.1-sol through an existing AI Gateway so GitHub Copilot can use it as a bring-your-own-key model.
@@ -630,30 +634,29 @@ module deployment 'deployment.bicep' = {
 }
 
 #disable-next-line BCP081
-resource aiGateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
+resource aiGateway 'Microsoft.ApiManagement/aigateways@2026-11-01' existing = {
   name: gatewayName
 }
 
 #disable-next-line BCP081
-resource defaultWorkspace 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' existing = {
+resource defaultWorkspace 'Microsoft.ApiManagement/aigateways/workspaces@2026-11-01' existing = {
   parent: aiGateway
   name: 'default'
 }
 
 #disable-next-line BCP081
-resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2025-09-01-preview' existing = {
+resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2026-11-01' existing = {
   parent: defaultWorkspace
   name: providerName
 }
 
 #disable-next-line BCP081
-resource model 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2025-09-01-preview' = {
+resource model 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2026-11-01' = {
   parent: provider
   name: modelName
   properties: {
     displayName: modelName
     description: 'Foundry deployment ${modelName} published through AI Gateway for GitHub Copilot.'
-    apiFormat: 'OpenAIChatCompletions'
     supportedEndpoints: [
       '/openai/v1/chat/completions'
       '/openai/v1/responses'
@@ -677,7 +680,7 @@ resource model 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/mod
 }
 
 #disable-next-line BCP081
-resource alias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2025-09-01-preview' = {
+resource alias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01' = {
   parent: defaultWorkspace
   name: modelName
   properties: {
@@ -688,7 +691,7 @@ resource alias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2025-09-01
 }
 
 #disable-next-line BCP081
-resource apiKey 'Microsoft.ApiManagement/aigateways/apiKeys@2025-09-01-preview' = {
+resource apiKey 'Microsoft.ApiManagement/aigateways/apiKeys@2026-11-01' = {
   parent: aiGateway
   name: apiKeyName
   properties: {
@@ -749,7 +752,7 @@ output deploymentName string = deployment.name
 ### Deploy with azd up
 
 Move into the lab's folder, create an azd environment named `aigw-lab24` in your current subscription, then provision
-everything. It takes about four minutes.
+everything. It takes two to four minutes.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -882,6 +885,354 @@ azd env get-value AI_GATEWAY_MODEL_ENDPOINT
 > `azd up` ended with `SUCCESS`, and the last command printed the base URL that Copilot needs, under
 > `🌐 Base URL for Copilot:`, ending in `/default/models/openai/v1`. In the portal, **Models** › **Aliases** lists
 > `gpt-6.1-sol`.
+
+</details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+**What you need:** only the one-time setup from **Before you begin**, plus Terraform 1.9 or later, as in
+[Deploy a lab with Terraform](../SETUP.md#deploy-a-lab-with-terraform). This track doesn't use your gateway from
+lab 02: `terraform apply` creates a new one, so it works on its own.
+
+### Review the configuration
+
+`terraform/main.tf` creates the resource group `rg-<environment_name>` and calls the quick start's
+[resources module](../quickstart/terraform/resources) for the gateway, a Foundry account with `gpt-5-mini`, and the
+`foundry-models` provider:
+
+<!-- include: terraform/main.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/main.tf`](terraform/main.tf)
+
+<details><summary>Show all 29 lines</summary>
+
+```tf
+# Lab 24 with Terraform: creates the resource group rg-<environment_name>, the quick start's gateway, Foundry model,
+# default alias, and runtime API key, then publishes gpt-6.1-sol for GitHub Copilot with its token limit and the
+# github-copilot runtime API key (copilot-model.tf), and registers the Microsoft Learn MCP server as learn
+# (tool-server.tf). No key value is ever an output.
+data "azapi_client_config" "current" {}
+
+locals {
+  suffix = substr(sha1("${data.azapi_client_config.current.subscription_id}/${var.environment_name}/${var.location}"), 0, 6)
+  tags   = { "environment-name" = var.environment_name }
+}
+
+resource "azurerm_resource_group" "rg" {
+  name     = "rg-${var.environment_name}"
+  location = var.location
+  tags     = local.tags
+}
+
+# The quick start's module: a gateway, gpt-5-mini behind the default alias, and the app-first-call key.
+module "base" {
+  source = "../../quickstart/terraform/resources"
+
+  subscription_id     = data.azapi_client_config.current.subscription_id
+  resource_group_name = azurerm_resource_group.rg.name
+  resource_group_id   = azurerm_resource_group.rg.id
+  location            = var.location
+  tags                = local.tags
+  gateway_name        = "aigw-${local.suffix}"
+  foundry_name        = "aigw${local.suffix}"
+}
+```
+
+</details>
+<!-- gh:end -->
+
+`terraform/copilot-model.tf` deploys `gpt-6.1-sol` in the same Foundry account, then uses the `azapi` provider, which
+sends the AI Gateway API version, `2026-11-01`, as is, to register the deployment as a model with its token limit,
+publish the `gpt-6.1-sol` alias, and create the `github-copilot` key:
+
+<!-- include: terraform/copilot-model.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/copilot-model.tf`](terraform/copilot-model.tf)
+
+<details><summary>Show all 82 lines</summary>
+
+```tf
+# Publishes gpt-6.1-sol for GitHub Copilot: a deployment in the quick start's Foundry account, a backend model under
+# the quick start's Foundry provider with a per-caller token limit, the gpt-6.1-sol alias, and the github-copilot
+# runtime API key. The gateway's Foundry User role on the account already covers the new deployment.
+resource "azurerm_cognitive_deployment" "copilot" {
+  name                 = var.model_name
+  cognitive_account_id = module.base.foundry_id
+
+  sku {
+    name     = var.model_sku
+    capacity = var.model_capacity
+  }
+
+  model {
+    format  = "OpenAI"
+    name    = var.model_name
+    version = var.model_version
+  }
+}
+
+resource "azapi_resource" "copilot_model" {
+  type      = "Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2026-11-01"
+  name      = azurerm_cognitive_deployment.copilot.name
+  parent_id = module.base.provider_id
+
+  body = {
+    properties = {
+      displayName = var.model_name
+      description = "Foundry deployment ${var.model_name} published through AI Gateway for GitHub Copilot."
+      supportedEndpoints = [
+        "/openai/v1/chat/completions",
+        "/openai/v1/responses",
+      ]
+      deployment = {
+        resourceId   = azurerm_cognitive_deployment.copilot.id
+        modelName    = var.model_name
+        modelVersion = var.model_version
+      }
+      # Each caller identity, here each API key, gets this many tokens per minute.
+      policies = [
+        {
+          type       = "tokenLimit"
+          period     = "minute"
+          count      = var.tokens_per_minute
+          counterKey = ["identity"]
+        },
+      ]
+    }
+  }
+
+  schema_validation_enabled = false
+}
+
+resource "azapi_resource" "copilot_alias" {
+  type      = "Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01"
+  name      = var.model_name
+  parent_id = module.base.workspace_id
+
+  body = {
+    properties = {
+      backendModels = [
+        { resourceId = azapi_resource.copilot_model.id },
+      ]
+    }
+  }
+
+  schema_validation_enabled = false
+}
+
+# The key that GitHub Copilot sends. Read its value with az aigateway api-key list-secrets.
+resource "azapi_resource" "copilot_key" {
+  type      = "Microsoft.ApiManagement/aigateways/apiKeys@2026-11-01"
+  name      = "github-copilot"
+  parent_id = module.base.gateway_id
+
+  body = {
+    properties = {
+      displayName = "GitHub Copilot"
+    }
+  }
+
+  schema_validation_enabled = false
+}
+```
+
+</details>
+<!-- gh:end -->
+
+`terraform/tool-server.tf` registers the Microsoft Learn MCP server as `learn`, the same `toolServers` resource as
+lab 04's [tool-server.bicep](../04-federate-mcp-tools/infra/tool-server.bicep), for
+[Publish Microsoft Learn tools for Copilot](#publish-microsoft-learn-tools-for-copilot):
+
+<!-- include: terraform/tool-server.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/tool-server.tf`](terraform/tool-server.tf)
+
+<details><summary>Show all 29 lines</summary>
+
+```tf
+# Registers the public Microsoft Learn MCP server as the federated MCP server learn, as lab 04 does. Clients call
+# <gateway-url>/default/toolservers/learn/mcp, and the gateway publishes the backend's tools as learn_<tool>. The
+# backend is required (mode failClosed), and the public server needs no credentials.
+resource "azapi_resource" "learn" {
+  type      = "Microsoft.ApiManagement/aigateways/workspaces/toolServers@2026-11-01"
+  name      = "learn"
+  parent_id = module.base.workspace_id
+
+  body = {
+    properties = {
+      displayName    = "Microsoft Learn"
+      description    = "Search and fetch official Microsoft documentation and code samples."
+      toolServerType = "mcp"
+      endpoints = [
+        {
+          namespace = "learn"
+          kind      = "mcp"
+          mode      = "failClosed"
+          mcp = {
+            endpoint  = { url = "https://learn.microsoft.com/api/mcp" }
+            transport = "streamableHttp"
+          }
+        },
+      ]
+    }
+  }
+
+  schema_validation_enabled = false
+}
+```
+
+</details>
+<!-- gh:end -->
+
+### Deploy with terraform apply
+
+Move into the lab's Terraform folder, select your current subscription, then plan and apply the configuration. It
+takes about three minutes.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Move into the lab's Terraform folder
+cd ~/aigateway/labs/24-github-copilot-byok/terraform &&
+  echo "📂 Terraform folder: $(pwd)"
+
+# Deploy to the Azure CLI's current subscription
+export ARM_SUBSCRIPTION_ID="$(az account show --query id --output tsv)" &&
+  echo "📍 Subscription: $ARM_SUBSCRIPTION_ID"
+
+# Download the providers, then plan and apply the gateway, Foundry with both models, the alias, the key, and the
+# learn MCP server
+terraform init &&
+  terraform plan -out tfplan &&
+  terraform apply tfplan &&
+  echo "🚀 Gateway deployed: $(terraform output -raw ai_gateway_url)"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Move into the lab's Terraform folder
+Set-Location ~/aigateway/labs/24-github-copilot-byok/terraform
+if ($?) { Write-Host "📂 Terraform folder: $(Get-Location)" }
+
+# Deploy to the Azure CLI's current subscription
+$env:ARM_SUBSCRIPTION_ID = az account show --query id --output tsv
+if ($?) { Write-Host "📍 Subscription: $env:ARM_SUBSCRIPTION_ID" }
+
+# Download the providers, then plan and apply the gateway, Foundry with both models, the alias, the key, and the
+# learn MCP server
+terraform init
+if ($?) { terraform plan -out tfplan }
+if ($?) { terraform apply tfplan }
+if ($?) { Write-Host "🚀 Gateway deployed: $(terraform output -raw ai_gateway_url)" }
+```
+</details> <!-- gh -->
+
+The configuration deploys to `eastus2`. For another region where AI Gateway and the `gpt-5-mini` and `gpt-6.1-sol`
+models are available, as in [Find the available regions](../SETUP.md#find-the-available-regions), run
+`export TF_VAR_location=<region>` (PowerShell: `$env:TF_VAR_location = "<region>"`) before `terraform plan`. If the
+Foundry deployment fails with `InsufficientQuota`, deploy `gpt-6.1-sol` with the Data Zone Standard SKU instead, and
+apply again:
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Deploy gpt-6.1-sol with the Data Zone Standard SKU instead of Global Standard
+export TF_VAR_model_sku=DataZoneStandard &&
+  echo "📝 TF_VAR_model_sku is DataZoneStandard"
+
+# Plan and apply again, with the new SKU
+terraform plan -out tfplan &&
+  terraform apply tfplan &&
+  echo "🚀 Apply is done, with gpt-6.1-sol on Data Zone Standard"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Deploy gpt-6.1-sol with the Data Zone Standard SKU instead of Global Standard
+$env:TF_VAR_model_sku = "DataZoneStandard"
+if ($?) { Write-Host "📝 TF_VAR_model_sku is DataZoneStandard" }
+
+# Plan and apply again, with the new SKU
+terraform plan -out tfplan
+if ($?) { terraform apply tfplan }
+if ($?) { Write-Host "🚀 Apply is done, with gpt-6.1-sol on Data Zone Standard" }
+```
+</details> <!-- gh -->
+
+Keep `TF_VAR_model_sku` set for later plans: without it, the next plan moves the deployment back to Global Standard.
+
+### Read the outputs and the key
+
+Set the variables that the rest of the lab uses from the Terraform outputs, read the `github-copilot` key from the
+gateway, so that it never shows on screen or lands in the Terraform state, then move back to the lab folder.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Read the names of what Terraform created, the model, and the key from the outputs
+export RG="$(terraform output -raw azure_resource_group)"
+export GATEWAY="$(terraform output -raw ai_gateway_name)"
+export PROVIDER="$(terraform output -raw ai_gateway_provider)"
+export MODEL="$(terraform output -raw ai_gateway_backend_model)"
+export KEY_NAME="$(terraform output -raw ai_gateway_key_name)"
+
+# Read the gateway's resource ID, runtime URL, and alias
+export GATEWAY_ID="$(terraform output -raw ai_gateway_id)"
+export AI_GATEWAY_URL="$(terraform output -raw ai_gateway_url)"
+export AI_GATEWAY_MODEL="$(terraform output -raw ai_gateway_model)"
+
+# Read the github-copilot key from the gateway, so that it never lands in a file or the Terraform state
+export AI_GATEWAY_API_KEY="$(az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/$KEY_NAME" \
+  --query primaryKey --output tsv)"
+echo "📝 Gateway $GATEWAY in $RG, with provider $PROVIDER and model $MODEL"
+echo "🌐 Runtime URL: $AI_GATEWAY_URL"
+echo "🔖 Model alias: $AI_GATEWAY_MODEL"
+echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
+
+# Print the base URL that Copilot needs, then move back to the lab folder
+echo "🌐 Base URL for Copilot:"
+terraform output -raw ai_gateway_model_endpoint && echo && cd ..
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Read the names of what Terraform created, the model, and the key from the outputs
+$RG                     = terraform output -raw azure_resource_group
+$GATEWAY                = terraform output -raw ai_gateway_name
+$PROVIDER               = terraform output -raw ai_gateway_provider
+$MODEL                  = terraform output -raw ai_gateway_backend_model
+$KEY_NAME               = terraform output -raw ai_gateway_key_name
+
+# Read the gateway's resource ID, runtime URL, and alias
+$GATEWAY_ID             = terraform output -raw ai_gateway_id
+$env:AI_GATEWAY_URL     = terraform output -raw ai_gateway_url
+$env:AI_GATEWAY_MODEL   = terraform output -raw ai_gateway_model
+
+# Read the github-copilot key from the gateway, so that it never lands in a file or the Terraform state
+$env:AI_GATEWAY_API_KEY = az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/$KEY_NAME" `
+  --query primaryKey --output tsv
+Write-Host "📝 Gateway $GATEWAY in $RG, with provider $PROVIDER and model $MODEL"
+Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
+Write-Host "🔖 Model alias: $env:AI_GATEWAY_MODEL"
+Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) characters, not shown)"
+
+# Print the base URL that Copilot needs, then move back to the lab folder
+Write-Host "🌐 Base URL for Copilot:"
+terraform output -raw ai_gateway_model_endpoint
+if ($?) { Write-Host ""; Set-Location .. }
+```
+</details> <!-- gh -->
+
+> **Checkpoint**
+> `terraform apply` ended with `Apply complete! Resources: 14 added, 0 changed, 0 destroyed.`, and the last command
+> printed the base URL that Copilot needs, under `🌐 Base URL for Copilot:`, ending in `/default/models/openai/v1`.
+> In the portal, **Models** › **Aliases** lists `gpt-6.1-sol`.
 
 </details> <!-- gh -->
 <!-- /tracks -->
@@ -1107,9 +1458,11 @@ I'm powered by gpt-6.1-sol (model ID: gpt-6.1-sol).
 Changes    +0 -0
 Duration   6s
 Tokens     ↑ 14.4k (14.4k written) • ↓ 24
+Resume     copilot --resume=<session-id>
 ```
 
-The **Tokens** line shows how much context even a short question carries.
+The **Tokens** line shows how much context even a short question carries. **Resume** reopens the session in
+interactive mode.
 
 ### Run an agent task
 
@@ -1411,9 +1764,11 @@ Learn server is public, so the backend needs no credentials. Pick a track.
 1. Open the [AI Gateway portal](https://ai.gateway.azure.com), select your gateway, and select **MCP servers** ›
    **Add MCP server**.
 2. On **Basic info**, set **Name** to `learn`, **Display name** to `Microsoft Learn`, and **Description** to
-   `Search and fetch official Microsoft documentation and code samples.` Select **Next**.
-3. On **Backends**, select **Add backend** › **MCP server**. Set **URL** to `https://learn.microsoft.com/api/mcp`,
-   **Namespace** to `learn`, and **Authentication** to **None**. Select **Next**.
+   `Search and fetch official Microsoft documentation and code samples.` In **Supported MCP versions**, select
+   `2025-06-18`, the version that the Learn server reports. Select **Next**.
+3. On **Backends**, select **Add backend** › **MCP server**. Set **Endpoint URL** to
+   `https://learn.microsoft.com/api/mcp`, keep **Authentication** at **None**, and set **Namespace** to `learn`.
+   Select **Add**, then **Next**, which saves the server and opens **Tools**.
 4. On **Tools**, keep **Allow all tools**, and select **Create**.
 
 [Register the Learn MCP server](../04-federate-mcp-tools/README.md#register-the-learn-mcp-server) in lab 04
@@ -1506,6 +1861,42 @@ azd env get-value AI_GATEWAY_MCP_URL
 
 > [!WARNING]
 > `azd provision` replaces the whole MCP server, including backends and tool rules that you added in the portal.
+
+> **Checkpoint**
+> The commands print `🔌 Endpoint of the learn MCP server:` and the endpoint, ending in
+> `/default/toolservers/learn/mcp`.
+
+</details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+### Check the Learn server
+
+`terraform apply` already deployed it: `terraform/tool-server.tf` declares one `toolServers` resource, `learn`, on
+your gateway. Print its endpoint from the lab folder (`aigateway/labs/24-github-copilot-byok`); `-chdir=terraform`
+reads the outputs of the lab's Terraform folder:
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Print the endpoint of the learn MCP server that terraform apply deployed
+echo "🔌 Endpoint of the learn MCP server:"
+terraform -chdir=terraform output -raw ai_gateway_mcp_url && echo
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Print the endpoint of the learn MCP server that terraform apply deployed
+Write-Host "🔌 Endpoint of the learn MCP server:"
+terraform -chdir=terraform output -raw ai_gateway_mcp_url
+if ($?) { Write-Host "" }
+```
+</details> <!-- gh -->
+
+> [!WARNING]
+> `terraform apply` replaces the whole MCP server, including backends and tool rules that you added in the portal.
 
 > **Checkpoint**
 > The commands print `🔌 Endpoint of the learn MCP server:` and the endpoint, ending in
@@ -1690,7 +2081,7 @@ copilot mcp list
 ```
 </details> <!-- gh -->
 
-Expected output:
+Expected output (your built-in servers can differ):
 
 ```text
 Added server "ai-gateway-learn"
@@ -1706,6 +2097,10 @@ ai-gateway-learn
 🔌 MCP servers in the Copilot CLI:
 User servers:
   ai-gateway-learn (http)
+
+Builtin servers:
+  computer-use (local)
+  github-mcp-server (http)
 ```
 
 ![copilot mcp add, list, and get show ai-gateway-learn with its URL and a masked Authorization header](../assets/screens/copilot-mcp-06-cli-add.webp "The CLI masks header values. Run copilot mcp get ai-gateway-learn to see the server again.")
@@ -1792,6 +2187,7 @@ the HTTP function URL printed in the terminal; see [Microsoft Learn](https://lea
 Changes    +0 -0
 Duration   18s
 Tokens     ↑ 50.8k (30.4k cached, 20.4k written) • ↓ 204
+Resume     copilot --resume=<session-id>
 ```
 
 Compare the **Tokens** line with the 14,400 tokens of the plain question in
@@ -1966,6 +2362,7 @@ Expected output, after the CLI retries twice:
 Request failed due to a transient API error. Retrying...
 Request failed due to a transient API error. Retrying...
 Authentication failed with provider at https://<gateway-host>/default/models/openai/v1 (HTTP 401).
+  Check your COPILOT_PROVIDER_API_KEY, COPILOT_PROVIDER_API_KEY_COMMAND, or COPILOT_PROVIDER_BEARER_TOKEN.
 ```
 
 VS Code, the SDK, and the app get the same `401`. One key change cuts off every Copilot surface that uses the key, on
@@ -2165,7 +2562,7 @@ if ($?) { Write-Host "🚮 MCP server learn is deleted" }
 
 In the `aigateway/labs/24-github-copilot-byok` folder, delete the resource group with the gateway, the `gpt-6.1-sol`
 alias, the `github-copilot` key, the `learn` MCP server, and the Foundry account with its two deployments.
-[`--purge`](../SETUP.md#delete-what-azd-created) also purges the soft-deleted Foundry account. It takes about ten
+[`--purge`](../SETUP.md#delete-what-azd-created) also purges the soft-deleted Foundry account. It takes about three
 minutes.
 
 ```bash
@@ -2175,10 +2572,28 @@ azd down --purge --force &&
 ```
 
 </details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+### Delete everything Terraform created
+
+Move back into the lab's `terraform` folder, and delete the resource group with the gateway, the
+`gpt-6.1-sol` alias, the `github-copilot` key, the `learn` MCP server, and the Foundry account with its two
+deployments. The [`azurerm` provider](../SETUP.md#delete-what-terraform-created) also purges the soft-deleted Foundry
+account. It takes one to two minutes.
+
+```bash
+# Delete everything that terraform apply created, and purge the soft-deleted Foundry account
+cd ~/aigateway/labs/24-github-copilot-byok/terraform &&
+  terraform destroy -auto-approve &&
+  echo "🚮 Everything that terraform apply created is deleted"
+```
+
+</details> <!-- gh -->
 <!-- /tracks -->
 
-`azd down` doesn't touch the gateway, provider, and key from lab 02, because the Bicep + azd track created its own
-gateway.
+`azd down` and `terraform destroy` don't touch the gateway, provider, and key from lab 02, because the Bicep + azd
+and Terraform tracks created their own gateways.
 
 ## Next steps
 
@@ -2206,5 +2621,5 @@ gateway.
 | :-- | :-: | --: |
 | [17 · Coding-agent plugin](../17-coding-agent-plugin/README.md) | [All labs](../README.md) | [25 · Claude Code](../25-claude-code/README.md) |
 
-<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (9 of 10)</sub>
+<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (14 of 15)</sub>
 <!-- gh:end -->

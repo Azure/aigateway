@@ -35,8 +35,9 @@ http.createServer((req, res) => {
   }
   if (!fs.existsSync(file)) {
     res.writeHead(404, { 'Content-Type': TYPES['.html'] });
-    return fs.createReadStream(path.join(ROOT, '404.html')).pipe(res);
+    // A rebuild can remove files mid-request; end the response instead of crashing the server.
+    return fs.createReadStream(path.join(ROOT, '404.html')).on('error', () => res.end()).pipe(res);
   }
   res.writeHead(200, { 'Content-Type': TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
-  fs.createReadStream(file).pipe(res);
+  fs.createReadStream(file).on('error', () => res.end()).pipe(res);
 }).listen(PORT, () => console.log(`Serving docs/ at http://localhost:${PORT}${BASE}`));

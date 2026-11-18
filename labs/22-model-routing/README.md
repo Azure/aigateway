@@ -4,7 +4,7 @@ summary: Put two Foundry models behind one alias, canary a new model version wit
 category: models
 level: Intermediate
 duration: 25
-tracks: [portal, cli, iac]
+tracks: [portal, cli, iac, terraform]
 order: 3.5
 status: new
 illustration: diagrams/alias-routing.svg
@@ -28,7 +28,7 @@ prereqs:
 
 | ⏱️ Time | 📶 Level | 🧭 Tracks | ✅ Before you start |
 | :-- | :-- | :-- | :-- |
-| 25 min | Intermediate | Portal · Azure CLI · Bicep + azd | [02 · First model call](../02-first-model-call/README.md) |
+| 25 min | Intermediate | Portal · Azure CLI · Bicep + azd · Terraform | [02 · First model call](../02-first-model-call/README.md) |
 
 **You'll learn to**
 
@@ -66,8 +66,8 @@ apps never change the model name they send.
 <!-- gh:end -->
 
 > [!TIP]
-> On the **Bicep + azd** track, `azd up` creates its own gateway, both models, the alias, and a key, so you can skip
-> this section. You need only the one-time setup above.
+> On the **Bicep + azd** and **Terraform** tracks, `azd up` or `terraform apply` creates its own gateway, both
+> models, the alias, and a key, so you can skip this section. You need only the one-time setup above.
 
 - Complete [Publish a Foundry model and make your first call](../02-first-model-call/README.md). You need the
   gateway, a runtime API key, and the `gpt-5-mini` backend model. Lab 02 also gave the gateway the
@@ -104,7 +104,7 @@ echo "🆔 Foundry account: $FOUNDRY_ID"
 echo "🌐 Runtime URL: $AI_GATEWAY_URL"
 
 # Paste the gateway runtime key from lab 02 without showing it, and don't commit it or write it to a file
-read -rsp "AI Gateway API key: " AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
+printf "AI Gateway API key: " && read -rs AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 ```
 </details> <!-- gh -->
@@ -192,12 +192,21 @@ An alias holds a list of backend models. Each one has a priority and a weight:
 
 | Setting | Values | Default | What it does |
 |---|---|---|---|
-| **Priority** | Whole number from 0 to 100 | `0` | Lower numbers are preferred. Requests go to the backend models with the lowest priority number. |
-| **Weight** | Whole number from 1 to 100 | `1` | Splits traffic among the backend models that share a priority, in proportion to their weights. |
+| **Priority** | Whole number from 0 to 100 | `0` | Lower numbers are preferred. Backend models with the same priority form a group, and requests go to the available group with the lowest number. |
+| **Weight** | Whole number from 1 to 100 | `1` | Splits the requests within a group in proportion to the weights. Weights count requests, not tokens or cost. |
 
 A backend model's **Share within priority** is its weight divided by the sum of the weights at its priority.
-Weights `80` and `20` give 80% and 20%; weights `3` and `1` give 75% and 25%. With one backend model, the alias
-behaves like the single-target aliases of labs 02 and 03.
+Weights `80` and `20` give 80% and 20%; weights `3` and `1` give 75% and 25%. Weights are relative, so `5` and
+`1` split the requests like `50` and `10`. With one backend model, the alias behaves like the single-target aliases
+of labs 02 and 03.
+
+Priority and weight are two steps of the alias's
+[routing order](https://ai.gateway.azure.com/docs/models/routing-order). The gateway first drops the backend
+models whose [backend condition](https://ai.gateway.azure.com/docs/models/conditional-backends) doesn't match the
+request. Then it applies priority, [auto model selection](https://ai.gateway.azure.com/docs/models/auto-model-selection),
+and [session affinity](https://ai.gateway.azure.com/docs/models/session-affinity) in the order that the alias sets.
+Weights choose among the backend models that remain. This lab uses only priority and weight, so the gateway picks
+the lowest priority group, then a backend model in it by weight.
 
 Pick the values from the job you need to do:
 
@@ -212,15 +221,16 @@ A few rules keep every request answerable:
 
 - Each backend model can appear only once in an alias.
 - All backend models must support at least one interface in common, for example **OpenAI Chat Completions**.
-  Mixing an Anthropic Messages model with an OpenAI model in one alias fails.
+  Mixing an Anthropic Messages model with an OpenAI model in one alias fails with `Active-priority models must
+  share at least one supported endpoint.`
 - The response tells you which backend served the request: the `model` field holds the backend's model name and
   version, for example `gpt-6.1-sol-2026-09-29`, and Foundry models also return an `x-ms-served-model` header.
 
 > [!IMPORTANT]
-> Priority sets a preference, not a guaranteed failover. In our tests, when the preferred backend returned an error
-> such as `429` or `404`, the gateway passed that error to the client instead of retrying a lower-priority
-> backend. Test how your gateway behaves under throttling before you rely on priority for
-> availability, and keep retries in your clients.
+> Priority sets a preference, not a failover. Without failure rules on the alias, when the preferred backend
+> returns an error such as `429` or `404`, the gateway passes that error to the client and doesn't try a
+> lower-priority backend for that request. To retry the backend or switch to the next one, add failure rules to the
+> alias, as in [Fail over to a backup model when a backend fails](../29-model-failover/README.md).
 
 ## Split traffic 80/20 between two models
 
@@ -234,26 +244,30 @@ weights `80` and `20`.
 
 1. Open the [AI Gateway portal](https://ai.gateway.azure.com) and select your gateway in the top bar.
 2. Select **Models** › **Add** › **Models from Microsoft Foundry**.
-3. Select the subscription and resource group of your Foundry account, then select the `gpt-6.1-sol`
-   deployment. Keep **Managed identity** as the **Authentication method**.
-4. Select **Add models**. If the wizard also creates an alias named after the model, keep it; this lab doesn't
-   use it.
+3. In **Subscriptions** and **Resource groups**, select those of your Foundry account. Keep **Managed identity**
+   as the **Authentication method**.
+4. Clear **Create an alias for each model**: this lab publishes the model through the `chat` alias.
+5. In **Models**, select only the `gpt-6.1-sol` deployment of your Foundry account, then select **Add models**.
 
 ### Create the chat alias
 
-1. Select **Models** › **Aliases** › **Add alias**.
+1. Select **Models** › **Add** › **Alias for existing models**.
 2. On **Basics**, set **Alias name** to `chat` and **Description** to `Canary: 80/20 between the current and the
    new model`. Select **Next**.
-3. On **Select models**, select `gpt-5-mini` and `gpt-6.1-sol` in **Available backend models**. Select **Next**.
-4. On **Priority and weights**, keep **Priority** at `0` for both models. Set **Weight** to `80` for
+3. On **Auto model selection (preview)**, leave **Choose a model based on the prompt** off. Select **Next**.
+4. On **Select models**, select `gpt-5-mini` and `gpt-6.1-sol` in the grid. Select **Next**.
+5. On **Session affinity**, clear **Enable session affinity**, which is on by default, so that the weights alone
+   split the requests. Select **Next**.
+6. On **Priorities and weights**, keep **Priority** at `0` for both models. Set **Weight** to `80` for
    `gpt-5-mini` and `20` for `gpt-6.1-sol`. **Share within priority** shows `80%` and `20%`. Select **Next**.
-5. On **Review**, check the shares, then select **Create**.
+7. On **Failure handling**, keep **No custom failure rules configured.** Select **Next**.
+8. On **Review**, check the shares, then select **Create**.
 
-![The Priority and weights step of Create alias, with Priority, Weight, and Share within priority columns for each backend model](../assets/screens/models-alias-routing.png "Priority and weights. This example from the product documentation uses three GPT-4o deployments: one at priority 0, and two at priority 1 that split 75/25.")
+![The Priorities and weights step of Create alias: gpt-5-mini and gpt-6.1-sol at priority 0, with weights 80 and 20 and shares of 80% and 20%](../assets/screens/model-routing-01-priorities-weights.webp "Priorities and weights. Both models share priority 0, so the weights split the requests 80/20.")
 
 > **Checkpoint**
-> **Models** › **Aliases** lists `chat`. Its **Backend models** tab shows `gpt-5-mini` and `gpt-6.1-sol`, both at
-> priority `0`, with weights `80` and `20`.
+> The alias's **Overview** shows **Session affinity** `Disabled` and **Routing order** `Priorities only`. Its
+> **Backend models** tab shows `gpt-5-mini` and `gpt-6.1-sol`, both at priority `0`, with weights `80` and `20`.
 
 </details> <!-- gh -->
 <!-- track: cli | Azure CLI -->
@@ -511,7 +525,7 @@ between a weighted split and a priority preference. You can also deploy it on it
 <!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
 📄 [`infra/alias-routing.bicep`](infra/alias-routing.bicep)
 
-<details><summary>Show all 136 lines</summary>
+<details><summary>Show all 135 lines</summary>
 
 ```bicep
 // Routes one callable alias across two Foundry backend models. main.bicep calls it after the quick start's template,
@@ -570,36 +584,35 @@ type route = {
 }
 
 #disable-next-line BCP081
-resource aiGateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
+resource aiGateway 'Microsoft.ApiManagement/aigateways@2026-11-01' existing = {
   name: gatewayName
 }
 
 #disable-next-line BCP081
-resource defaultWorkspace 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' existing = {
+resource defaultWorkspace 'Microsoft.ApiManagement/aigateways/workspaces@2026-11-01' existing = {
   parent: aiGateway
   name: 'default'
 }
 
 #disable-next-line BCP081
-resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2025-09-01-preview' existing = {
+resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2026-11-01' existing = {
   parent: defaultWorkspace
   name: providerName
 }
 
 #disable-next-line BCP081
-resource primary 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2025-09-01-preview' existing = {
+resource primary 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2026-11-01' existing = {
   parent: provider
   name: primaryModelName
 }
 
 #disable-next-line BCP081
-resource candidate 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2025-09-01-preview' = {
+resource candidate 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2026-11-01' = {
   parent: provider
   name: candidateDeploymentName
   properties: {
     displayName: candidateDeploymentName
     description: 'Candidate deployment that the ${aliasName} alias routes to.'
-    apiFormat: 'OpenAIChatCompletions'
     supportedEndpoints: [
       '/openai/v1/chat/completions'
       '/openai/v1/responses'
@@ -623,7 +636,7 @@ var routes route[] = strategy == 'weighted'
     ]
 
 #disable-next-line BCP081
-resource alias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2025-09-01-preview' = {
+resource alias 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01' = {
   parent: defaultWorkspace
   name: aliasName
   properties: {
@@ -658,7 +671,7 @@ output chatCompletionsUrl string = 'https://${aiGateway.properties.frontend.defa
 ### Deploy with azd up
 
 Move into the lab's folder, create an azd environment named `aigw-lab22` in your current subscription, then provision
-everything. It takes about five minutes.
+everything. It takes about three minutes.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -765,6 +778,292 @@ az aigateway model-alias show -g $RG --gateway-name $GATEWAY -n $ALIAS --query p
 > `gpt-6.1-sol  priority 0  weight 20`.
 
 </details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+**What you need:** only the one-time setup from **Before you begin**, plus Terraform 1.9 or later, as in
+[Deploy a lab with Terraform](../SETUP.md#deploy-a-lab-with-terraform). This track doesn't use your gateway from
+lab 02: `terraform apply` creates a new one, so it works on its own.
+
+### Review the configuration
+
+`terraform/main.tf` creates the resource group `rg-<environment_name>` and calls the quick start's
+[resources module](../quickstart/terraform/resources) for the gateway, `gpt-5-mini`, its default alias, and the
+`app-first-call` key:
+
+<!-- include: terraform/main.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/main.tf`](terraform/main.tf)
+
+<details><summary>Show all 29 lines</summary>
+
+```tf
+# Lab 22 with Terraform: creates the resource group rg-<environment_name>, the quick start's gateway, Foundry model,
+# default alias, and runtime API key, then deploys a candidate model in the same Foundry account
+# (candidate-deployment.tf) and publishes the chat alias, which routes across both models by weight or by priority
+# (alias-routing.tf). The runtime API key is never an output.
+data "azapi_client_config" "current" {}
+
+locals {
+  suffix = substr(sha1("${data.azapi_client_config.current.subscription_id}/${var.environment_name}/${var.location}"), 0, 6)
+  tags   = { "environment-name" = var.environment_name }
+}
+
+resource "azurerm_resource_group" "rg" {
+  name     = "rg-${var.environment_name}"
+  location = var.location
+  tags     = local.tags
+}
+
+# The quick start's module: a gateway, gpt-5-mini behind the default alias, and the app-first-call key.
+module "base" {
+  source = "../../quickstart/terraform/resources"
+
+  subscription_id     = data.azapi_client_config.current.subscription_id
+  resource_group_name = azurerm_resource_group.rg.name
+  resource_group_id   = azurerm_resource_group.rg.id
+  location            = var.location
+  tags                = local.tags
+  gateway_name        = "aigw-${local.suffix}"
+  foundry_name        = "aigw${local.suffix}"
+}
+```
+
+</details>
+<!-- gh:end -->
+
+`terraform/candidate-deployment.tf` deploys the candidate model in the same Foundry account with the `azurerm`
+provider:
+
+<!-- include: terraform/candidate-deployment.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/candidate-deployment.tf`](terraform/candidate-deployment.tf)
+
+```tf
+# The candidate deployment, in the same Foundry account as gpt-5-mini. The gateway's Foundry User role on the
+# account already covers it.
+resource "azurerm_cognitive_deployment" "candidate" {
+  name                 = var.candidate_model_name
+  cognitive_account_id = module.base.foundry_id
+
+  sku {
+    name     = "GlobalStandard"
+    capacity = 10
+  }
+
+  model {
+    format  = "OpenAI"
+    name    = var.candidate_model_name
+    version = var.candidate_model_version
+  }
+}
+```
+<!-- gh:end -->
+
+`terraform/alias-routing.tf` registers the candidate as a backend model and publishes the `chat` alias with the
+`azapi` provider, which sends the AI Gateway API version, `2026-11-01`, as is. It keeps both strategies in a map,
+and the `strategy` variable picks one, so switching strategies changes only the alias. `terraform/variables.tf`
+declares the strategy, the candidate weight, and the candidate model, with the same defaults as the Bicep template:
+
+<!-- include: terraform/alias-routing.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/alias-routing.tf`](terraform/alias-routing.tf)
+
+<details><summary>Show all 63 lines</summary>
+
+```tf
+# Registers the candidate deployment under the quick start's Foundry provider, then publishes the chat alias, which
+# either splits traffic between gpt-5-mini and the candidate by weight, or prefers gpt-5-mini by priority.
+# gpt-5-mini is only referenced, so its settings stay untouched.
+locals {
+  primary   = module.base.model_name
+  candidate = azapi_resource.candidate.name
+
+  # The chat alias's backend models for each strategy. Lower priority numbers are preferred (0 to 100), and the
+  # weights split the traffic among the models that share a priority (1 to 100).
+  routes = {
+    weighted = [
+      { resourceId = module.base.model_id, priority = 0, weight = 100 - var.candidate_weight },
+      { resourceId = azapi_resource.candidate.id, priority = 0, weight = var.candidate_weight },
+    ]
+    priority = [
+      { resourceId = module.base.model_id, priority = 0, weight = 1 },
+      { resourceId = azapi_resource.candidate.id, priority = 1, weight = 1 },
+    ]
+  }
+  descriptions = {
+    weighted = "Splits traffic ${100 - var.candidate_weight}/${var.candidate_weight} between ${local.primary} and ${local.candidate}."
+    priority = "Prefers ${local.primary}. ${local.candidate} has a lower preference."
+  }
+}
+
+resource "azapi_resource" "candidate" {
+  type      = "Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2026-11-01"
+  name      = azurerm_cognitive_deployment.candidate.name
+  parent_id = module.base.provider_id
+
+  body = {
+    properties = {
+      displayName = azurerm_cognitive_deployment.candidate.name
+      description = "Candidate deployment that the chat alias routes to."
+      supportedEndpoints = [
+        "/openai/v1/chat/completions",
+        "/openai/v1/responses",
+      ]
+      deployment = {
+        resourceId   = azurerm_cognitive_deployment.candidate.id
+        modelName    = var.candidate_model_name
+        modelVersion = var.candidate_model_version
+      }
+    }
+  }
+
+  schema_validation_enabled = false
+}
+
+resource "azapi_resource" "chat_alias" {
+  type      = "Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01"
+  name      = "chat"
+  parent_id = module.base.workspace_id
+
+  body = {
+    properties = {
+      description   = local.descriptions[var.strategy]
+      backendModels = local.routes[var.strategy]
+    }
+  }
+
+  schema_validation_enabled = false
+}
+```
+
+</details>
+<!-- gh:end -->
+
+### Deploy with terraform apply
+
+Move into the lab's Terraform folder, select your current subscription, then plan and apply the configuration. It
+takes about three minutes.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Move into the lab's Terraform folder
+cd ~/aigateway/labs/22-model-routing/terraform &&
+  echo "📂 Terraform folder: $(pwd)"
+
+# Deploy to the Azure CLI's current subscription
+export ARM_SUBSCRIPTION_ID="$(az account show --query id --output tsv)" &&
+  echo "📍 Subscription: $ARM_SUBSCRIPTION_ID"
+
+# Download the providers, then plan and apply the gateway, the Foundry account with both models, the chat alias,
+# and the key
+terraform init &&
+  terraform plan -out tfplan &&
+  terraform apply tfplan &&
+  echo "🚀 Gateway deployed: $(terraform output -raw ai_gateway_url)"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Move into the lab's Terraform folder
+Set-Location ~/aigateway/labs/22-model-routing/terraform
+if ($?) { Write-Host "📂 Terraform folder: $(Get-Location)" }
+
+# Deploy to the Azure CLI's current subscription
+$env:ARM_SUBSCRIPTION_ID = az account show --query id --output tsv
+if ($?) { Write-Host "📍 Subscription: $env:ARM_SUBSCRIPTION_ID" }
+
+# Download the providers, then plan and apply the gateway, the Foundry account with both models, the chat alias,
+# and the key
+terraform init
+if ($?) { terraform plan -out tfplan }
+if ($?) { terraform apply tfplan }
+if ($?) { Write-Host "🚀 Gateway deployed: $(terraform output -raw ai_gateway_url)" }
+```
+</details> <!-- gh -->
+
+The configuration deploys to `eastus2`. For another region where AI Gateway and the `gpt-5-mini` and `gpt-6.1-sol`
+models are available, as in [Find the available regions](../SETUP.md#find-the-available-regions), run
+`export TF_VAR_location=<region>` (PowerShell: `$env:TF_VAR_location = "<region>"`) before `terraform plan`.
+
+### Read the outputs and the key
+
+Set the variables that the next sections and **Verify** use from the Terraform outputs, read the key from the
+gateway so that it never shows on screen or lands in the Terraform state, then print the alias's routes.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Read the configuration's outputs into the variables that the next sections use, and build the backend models'
+# ID prefix
+export RG="$(terraform output -raw azure_resource_group)"
+export GATEWAY="$(terraform output -raw ai_gateway_name)"
+export GATEWAY_ID="$(terraform output -raw ai_gateway_id)"
+export PROVIDER="$(terraform output -raw ai_gateway_provider)"
+export PRIMARY="$(terraform output -raw ai_gateway_backend_model)"
+export CANDIDATE="$(terraform output -raw ai_gateway_candidate_model)"
+export ALIAS="$(terraform output -raw ai_gateway_model)"
+export MODELS="$GATEWAY_ID/workspaces/default/modelProviders/$PROVIDER/models"
+export AI_GATEWAY_URL="$(terraform output -raw ai_gateway_url)"
+echo "📝 Alias $ALIAS routes between $PRIMARY and $CANDIDATE on gateway $GATEWAY in $RG"
+echo "🌐 Runtime URL: $AI_GATEWAY_URL"
+
+# Read the app-first-call key from the gateway, so that it never lands in a file or the Terraform state
+export AI_GATEWAY_API_KEY="$(az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/app-first-call" \
+  --query primaryKey --output tsv)"
+echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
+
+# Print the alias's backend models, with the priority and the weight of each one
+echo "🔖 Alias $ALIAS routes to:"
+az aigateway model-alias show -g "$RG" --gateway-name "$GATEWAY" -n "$ALIAS" --query properties.backendModels -o json |
+  jq -r '.[] | "\(.resourceId | split("/") | last)  priority \(.priority)  weight \(.weight)"'
+
+# Move back to the lab folder, where the scripts of the next sections are
+cd .. && echo "📂 Lab folder: $(pwd)"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Read the configuration's outputs into the variables that the next sections use, and build the backend models'
+# ID prefix
+$RG                     = terraform output -raw azure_resource_group
+$GATEWAY                = terraform output -raw ai_gateway_name
+$GATEWAY_ID             = terraform output -raw ai_gateway_id
+$PROVIDER               = terraform output -raw ai_gateway_provider
+$PRIMARY                = terraform output -raw ai_gateway_backend_model
+$CANDIDATE              = terraform output -raw ai_gateway_candidate_model
+$ALIAS                  = terraform output -raw ai_gateway_model
+$MODELS                 = "$GATEWAY_ID/workspaces/default/modelProviders/$PROVIDER/models"
+$env:AI_GATEWAY_URL     = terraform output -raw ai_gateway_url
+Write-Host "📝 Alias $ALIAS routes between $PRIMARY and $CANDIDATE on gateway $GATEWAY in $RG"
+Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
+
+# Read the app-first-call key from the gateway, so that it never lands in a file or the Terraform state
+$env:AI_GATEWAY_API_KEY = az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/app-first-call" `
+  --query primaryKey --output tsv
+Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) characters, not shown)"
+
+# Print the alias's backend models, with the priority and the weight of each one
+Write-Host "🔖 Alias $ALIAS routes to:"
+az aigateway model-alias show -g $RG --gateway-name $GATEWAY -n $ALIAS --query properties.backendModels -o json |
+  ConvertFrom-Json | ForEach-Object { '{0}  priority {1}  weight {2}' -f ($_.resourceId -split '/')[-1], $_.priority, $_.weight }
+
+# Move back to the lab folder, where the scripts of the next sections are
+Set-Location ..
+if ($?) { Write-Host "📂 Lab folder: $(Get-Location)" }
+```
+</details> <!-- gh -->
+
+> **Checkpoint**
+> `terraform apply` ended with `Apply complete! Resources: 12 added, 0 changed, 0 destroyed.`, and the alias
+> command printed `gpt-5-mini  priority 0  weight 80` and `gpt-6.1-sol  priority 0  weight 20`.
+
+</details> <!-- gh -->
 <!-- /tracks -->
 
 ## Watch the split
@@ -841,11 +1140,11 @@ Give `gpt-6.1-sol` priority `1`. It stays in the alias, ready to promote, but re
 
 ### Edit the alias
 
-1. In **Models** › **Aliases**, open `chat` and select **Edit**.
-2. Select **Next** until you reach **Priority and weights**.
-3. Set **Priority** to `1` for `gpt-6.1-sol` and set both weights to `1`. `gpt-5-mini` now shows `100%` at
-   priority `0`, and `gpt-6.1-sol` shows `100%` at priority `1`.
-4. Select **Next**, then **Save**. New requests use the new settings within a few seconds.
+1. In **Models** › **Aliases**, select `chat`, then select **Edit**.
+2. In **Priorities and weights**, set **Priority** to `1` for `gpt-6.1-sol` and set both weights to `1`.
+   **Share within priority** shows `100%` for each model: `gpt-5-mini` at priority `0`, and `gpt-6.1-sol` at
+   priority `1`.
+3. Select **Save**. New requests use the new settings within a few seconds.
 
 > **Checkpoint**
 > The alias **Backend models** tab shows `gpt-5-mini` at priority `0` and `gpt-6.1-sol` at priority `1`.
@@ -932,6 +1231,57 @@ To go back to the weighted split, run `azd env set ROUTING_STRATEGY weighted` an
 > and `gpt-6.1-sol  priority 1  weight 1`.
 
 </details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+### Apply the priority strategy
+
+Pass `strategy=priority` to `terraform plan` and apply the plan. Only the alias changes: `gpt-5-mini` keeps
+priority `0`, and `gpt-6.1-sol` gets priority `1`.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Move into the lab's Terraform folder
+cd ~/aigateway/labs/22-model-routing/terraform &&
+  echo "📂 Terraform folder: $(pwd)"
+
+# Plan the change from the weighted split to priority: only the alias changes
+terraform plan -var strategy=priority -out tfplan &&
+  echo "📝 The plan updates only the $ALIAS alias"
+
+# Apply the plan, then move back to the lab folder for Verify
+terraform apply tfplan &&
+  echo "🚀 The $ALIAS alias now prefers $PRIMARY" &&
+  cd ..
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Move into the lab's Terraform folder
+Set-Location ~/aigateway/labs/22-model-routing/terraform
+if ($?) { Write-Host "📂 Terraform folder: $(Get-Location)" }
+
+# Plan the change from the weighted split to priority: only the alias changes
+terraform plan -var strategy=priority -out tfplan
+if ($?) { Write-Host "📝 The plan updates only the $ALIAS alias" }
+
+# Apply the plan, then move back to the lab folder for Verify
+terraform apply tfplan
+if ($?) { Write-Host "🚀 The $ALIAS alias now prefers $PRIMARY"; Set-Location .. }
+```
+</details> <!-- gh -->
+
+To go back to the weighted split, plan and apply again without `-var`. Pass `candidate_weight` the same way, for
+example `-var candidate_weight=50`, to canary in steps.
+
+> **Checkpoint**
+> The plan ended with `Plan: 0 to add, 1 to change, 0 to destroy.`, for `azapi_resource.chat_alias`. **Read the
+> alias** in **Verify** shows `gpt-5-mini  priority 0  weight 1` and `gpt-6.1-sol  priority 1  weight 1`.
+
+</details> <!-- gh -->
 <!-- /tracks -->
 
 ## Verify
@@ -982,7 +1332,9 @@ Write-Host "📊 Counting the backend models that serve $ALIAS, one request ever
 
 > **Checkpoint**
 > All 10 requests show `gpt-5-mini-…`. `gpt-6.1-sol` stays in the alias at priority `1`. If one of the first
-> requests still shows `gpt-6.1-sol-…`, the change was still reaching the gateway; run the count again.
+> requests still shows `gpt-6.1-sol-…`, the change was still reaching the gateway; run the count again. If some
+> show `HTTP 429 rate_limit_exceeded`, the `gpt-5-mini` deployment used up its 10 requests per minute; wait a
+> minute and run the count again.
 
 ### Promote the new model
 
@@ -999,8 +1351,9 @@ never change.
   and cost per model in [Monitor usage, cost, and traces](../13-monitoring/README.md). Weights must be at least
   `1`, so to stop sending traffic to a model, give it a higher priority number or remove it from the alias.
 - **Prefer provisioned throughput.** Put a provisioned deployment at priority `0` and a pay-as-you-go
-  deployment of the same model at priority `1`, so purchased capacity is used first. Test what happens when the
-  provisioned deployment is saturated before you depend on it.
+  deployment of the same model at priority `1`, so purchased capacity is used first. Add a failure rule for
+  `429` so that requests switch to the pay-as-you-go deployment when the provisioned one is saturated, as in
+  [Fail over to a backup model when a backend fails](../29-model-failover/README.md).
 - **Balance regions or providers.** Register the same model from two Foundry accounts, or from Foundry and a
   custom provider, and give them weights in proportion to their quota.
 - **Limit each model and the alias.** A token limit on a backend model, as in
@@ -1017,10 +1370,10 @@ this lab: the alias first, then the backend model, then the Foundry deployment.
 
 ### Remove the alias and the candidate model
 
-Open `chat` in **Models** › **Aliases** and select **Delete**. Requests that use the alias fail immediately; the
-backend models stay in the gateway. Then delete the `gpt-6.1-sol` model, and any alias that the import created for
-it, from **Models**. Finally, delete the `gpt-6.1-sol` deployment from your Foundry account, for example with the
-last command of the CLI track.
+In **Models** › **Aliases**, select **More actions** on the `chat` row, then **Delete** and **Delete alias**.
+Requests that use the alias fail immediately; the backend models stay in the gateway. Then delete the
+`gpt-6.1-sol` model, and any alias that the import created for it, from **Models**. Finally, delete the
+`gpt-6.1-sol` deployment from your Foundry account, for example with the last command of the CLI track.
 
 </details> <!-- gh -->
 <!-- track: cli | Azure CLI -->
@@ -1072,7 +1425,7 @@ If an alias that the portal import created still points to `gpt-6.1-sol`, delete
 
 In the `aigateway/labs/22-model-routing` folder, delete the resource group with the gateway, the Foundry account and
 its two deployments, and the `chat` alias. [`--purge`](../SETUP.md#delete-what-azd-created) also purges the
-soft-deleted Foundry account. It takes about ten minutes.
+soft-deleted Foundry account. It takes about three minutes.
 
 ```bash
 # Delete everything that azd up created in this lab, purge the soft-deleted Foundry account, and skip the prompt
@@ -1081,17 +1434,36 @@ azd down --purge --force &&
 ```
 
 </details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+### Delete everything Terraform created
+
+In the `aigateway/labs/22-model-routing` folder, delete the resource group with the gateway, the Foundry
+account and its two deployments, and the `chat` alias. The
+[`azurerm` provider](../SETUP.md#delete-what-terraform-created) also purges the soft-deleted Foundry account. It
+takes one to two minutes.
+
+```bash
+# Delete everything that terraform apply created, and purge the soft-deleted Foundry account
+terraform -chdir=terraform destroy -auto-approve &&
+  echo "🚮 Everything that terraform apply created is deleted"
+```
+
+</details> <!-- gh -->
 <!-- /tracks -->
 
-`azd down` doesn't touch the gateway, key, and `gpt-5-mini` from lab 02, because the Bicep + azd track created its
-own gateway.
+`azd down` and `terraform destroy` don't touch the gateway, key, and `gpt-5-mini` from lab 02, because the Bicep +
+azd and Terraform tracks created their own gateways.
 
 ## Next steps
 
-- [Monitor usage, cost, and traces](../13-monitoring/README.md)
-- [Throttle tokens per caller with token limits](../06-token-limits/README.md)
-- [Publish models from any provider behind stable aliases](../03-multi-provider-aliases/README.md)
-- [October 16 release: priority and weighted model routing](https://ai.gateway.azure.com/docs/releases/2026-10-16)
+- [Route alias requests with conditions and session affinity](../27-conditional-routing/README.md)
+- [Let the gateway choose the model for each request](../28-auto-model-selection/README.md)
+- [Fail over to a backup model when a backend fails](../29-model-failover/README.md)
+- Docs: [Priorities and weights](https://ai.gateway.azure.com/docs/models/priorities-and-weights),
+  [Routing order](https://ai.gateway.azure.com/docs/models/routing-order), and
+  [October 16 release: priority and weighted model routing](https://ai.gateway.azure.com/docs/releases#release-2026-10-16).
 
 <!-- gh:begin footer: generated by "npm run sync" from the metadata, do not edit -->
 
@@ -1101,7 +1473,7 @@ own gateway.
 
 | ⬅️ Previous | 🏠 | Next ➡️ |
 | :-- | :-: | --: |
-| [03 · Multi-provider aliases](../03-multi-provider-aliases/README.md) | [All labs](../README.md) | [23 · Streaming responses](../23-streaming-responses/README.md) |
+| [03 · Multi-provider aliases](../03-multi-provider-aliases/README.md) | [All labs](../README.md) | [27 · Conditions & session affinity](../27-conditional-routing/README.md) |
 
-<sub>Learning paths: [Platform engineer](../README.md#learning-paths) (4 of 9) · [App & agent developer](../README.md#learning-paths) (3 of 10)</sub>
+<sub>Learning paths: [Platform engineer](../README.md#learning-paths) (4 of 11) · [App & agent developer](../README.md#learning-paths) (4 of 15)</sub>
 <!-- gh:end -->

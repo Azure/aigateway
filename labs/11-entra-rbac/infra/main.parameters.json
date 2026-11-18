@@ -18,7 +18,7 @@
       "value": "${DATA_PLANE_ROLE=models}"
     },
     "roleScope": {
-      "value": "${DATA_PLANE_ROLE_SCOPE=gateway}"
+      "value": "${DATA_PLANE_ROLE_SCOPE=workspace}"
     }
   }
 }

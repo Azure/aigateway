@@ -4,7 +4,7 @@ summary: Stream Chat Completions and Responses API replies through the gateway, 
 category: models
 level: Intermediate
 duration: 20
-tracks: [cli, code, portal, iac]
+tracks: [cli, code, portal, iac, terraform]
 order: 3.7
 status: new
 illustration: diagrams/streaming-usage.svg
@@ -28,7 +28,7 @@ prereqs:
 
 | ⏱️ Time | 📶 Level | 🧭 Tracks | ✅ Before you start |
 | :-- | :-- | :-- | :-- |
-| 20 min | Intermediate | Azure CLI · Code · Portal · Bicep + azd · Notebook | [02 · First model call](../02-first-model-call/README.md) |
+| 20 min | Intermediate | Azure CLI · Code · Portal · Bicep + azd · Terraform · Notebook | [02 · First model call](../02-first-model-call/README.md) |
 
 **You'll learn to**
 
@@ -67,9 +67,9 @@ then prove that a token limit still counts every streamed token.
 <!-- gh:end -->
 
 > [!TIP]
-> On the **Bicep + azd** track, `azd up` creates its own gateway, model, key, and the token-limited streaming alias,
-> so you can skip this section. Run that track in [Put a token limit on a streaming
-> alias](#put-a-token-limit-on-a-streaming-alias) first: it sets the variables that [Stream a
+> On the **Bicep + azd** and **Terraform** tracks, `azd up` or `terraform apply` creates its own gateway, model, key,
+> and the token-limited streaming alias, so you can skip this section. Run that track in [Put a token limit on a
+> streaming alias](#put-a-token-limit-on-a-streaming-alias) first: it sets the variables that [Stream a
 > response](#stream-a-response) and **Verify** use. You need only the one-time setup above.
 
 - Complete [Publish a Foundry model and make your first call](../02-first-model-call/README.md). You need a gateway, an imported
@@ -105,7 +105,7 @@ export AI_GATEWAY_MODEL="$(az aigateway model show -g "$RG" --gateway-name "$GAT
 echo "🔖 Model alias: $AI_GATEWAY_MODEL"
 
 # Paste the runtime key that you created in Access › API keys, without showing it: don't commit it or write it to a file
-read -rsp "AI Gateway API key: " AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
+printf "AI Gateway API key: " && read -rs AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 ```
 </details> <!-- gh -->
@@ -168,16 +168,19 @@ stream starts. Once a stream starts, it runs to the end, even if it takes the co
 is throttled. While the stream flows, the gateway records its token usage for token limits, cost limits, and
 Monitoring.
 
-**Usage without `include_usage`.** Since the [September 24, 2026 release](https://ai.gateway.azure.com/docs/releases/2026-09-24),
+**Usage without `include_usage`.** Since the [September 24, 2026 release](https://ai.gateway.azure.com/docs/releases#release-2026-09-24),
 the gateway makes sure it has a usage record for every streamed Chat Completions response, even when the client
 doesn't set `stream_options.include_usage`, so the counters stay accurate. The release notes ask clients that parse
 the events themselves to accept a usage-only chunk before `[DONE]`, even when they didn't ask for one. In our test
-run in October 2026, a client that didn't set `include_usage` received no usage chunk, yet the token limit counted its
-tokens exactly as it did for a client that asked. So write your client to work either way: skip chunks with an empty
-`choices` array, and take usage from whichever chunk carries it.
+run in November 2026, a client that didn't set `include_usage` received no usage chunk, yet the token limit counted
+its tokens exactly as it did for a client that asked. So write your client to work either way: skip chunks with an
+empty `choices` array, and take usage from whichever chunk carries it.
 
 The Responses API streams typed events instead: each `data:` line follows an `event:` line, and the last event,
-`response.completed`, always carries the usage.
+`response.completed`, always carries the usage. A streamed response is stored like any other, so you can continue
+it with `previous_response_id`. The gateway sends that follow-up to the backend that stores the response, even
+when the alias has several backend models. See
+[Session affinity](https://ai.gateway.azure.com/docs/models/session-affinity).
 
 ## Stream a response
 
@@ -273,7 +276,7 @@ done
 PROMPT="${1:-Explain in three short sentences why streaming makes chat apps feel faster.}"
 : "${AI_GATEWAY_URL:?Set AI_GATEWAY_URL to the gateway runtime URL, for example https://aigw-labs-k3v7qz2m9xw4p.eastus2-01.ai.gateway.azure.com}"
 : "${AI_GATEWAY_MODEL:?Set AI_GATEWAY_MODEL to the callable model alias}"
-: "${AI_GATEWAY_API_KEY:?Set AI_GATEWAY_API_KEY to a runtime key from Access > Keys}"
+: "${AI_GATEWAY_API_KEY:?Set AI_GATEWAY_API_KEY to a runtime key from Access > API keys}"
 
 # reasoning_effort none spends the budget on the reply instead of hidden reasoning, so the first token arrives sooner.
 BODY=$(jq -n --arg m "$AI_GATEWAY_MODEL" --arg p "$PROMPT" --argjson usage "$USAGE" '
@@ -629,24 +632,26 @@ lab 02, so clients that call that alias aren't affected.
 ### Create the alias
 
 1. Open the [AI Gateway portal](https://ai.gateway.azure.com) and select your gateway in the top bar.
-2. Select **Models** › **Aliases** › **Add alias**.
+2. Select **Models** › **Aliases** › **Add** › **Alias for existing models**.
 3. On **Basics**, set **Alias name** to `<model-name>-stream`, for example `gpt-5-mini-stream`. Select **Next**.
-4. On **Select models**, select your model in **Available backend models**. Select **Next**.
-5. Keep the defaults on **Priority and weights**, select **Next**, then select **Create** on **Review**.
+4. Keep the defaults on **Auto model selection (preview)**, and select **Next**.
+5. On **Select models**, select your model in the list. Select **Next**.
+6. Keep the defaults on **Session affinity**, **Priorities and weights**, and **Failure handling**, then select
+   **Create** on **Review**.
 
 ### Add the token limit
 
-1. Select **Policies** › **Add policy**. On the **Type** step, under **Cost & Rate Limits**, select
+1. Select **Policies** › **Add policy**. On the **Type** step, under **Cost and rate limits**, select
    **Token rate limit**, then **Next**.
 2. On the **Scope** step, select **Individual assets**, select the `<model-name>-stream` alias, then **Next**.
-3. On the **Details** step, set **Time period** to **Per minute**, **Allowed tokens** to `1000`, and
-   **Counter dimensions** to **Caller identity**. Select **Create**.
+3. On the **Details** step, keep **Time period** at **Per minute** and **Counter dimensions** at **Identity**, set
+   **Allowed tokens** to `1000`, and select **Create**.
 
-![The Add policy wizard on the Type step](../assets/screens/policy-add-wizard.png "Policies › Add policy opens a three-step wizard: Type, Scope, Configure.")
+![The Add policy wizard on the Type step, with Token rate limit and Next highlighted](../assets/screens/streaming-responses-01-policy-type.webp "Policies › Add policy opens a three-step wizard: Type, Scope, Details.")
 
 > **Checkpoint**
-> **Models** › **Aliases** lists `<model-name>-stream`, and **Policies** lists a **Token rate limit** of 1,000
-> tokens per minute scoped to it.
+> **Models** › **Aliases** lists `<model-name>-stream`, and **Policies** lists **1,000 tokens / minute per caller
+> identity**, a **Token rate limit** on that alias.
 
 </details> <!-- gh -->
 <!-- track: cli | Azure CLI -->
@@ -889,6 +894,210 @@ Write-Host "🔖 Streaming alias: $STREAM_ALIAS"
 > scoped to it. If you came here from **Before you begin**, go back to [Stream a response](#stream-a-response) now.
 
 </details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+**What you need:** only the one-time setup from **Before you begin**, plus Terraform 1.9 or later, as in
+[Deploy a lab with Terraform](../SETUP.md#deploy-a-lab-with-terraform). This track doesn't use your gateway from
+lab 02: `terraform apply` creates a new one, so it works on its own.
+
+### Review the configuration
+
+`terraform/main.tf` creates the resource group `rg-<environment_name>` and calls the quick start's
+[resources module](../quickstart/terraform/resources) for the gateway, the Foundry model, its default alias, and the
+`app-first-call` key:
+
+<!-- include: terraform/main.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/main.tf`](terraform/main.tf)
+
+```tf
+# Lab 23 with Terraform: creates the resource group rg-<environment_name>, the quick start's gateway, Foundry
+# account, gpt-5-mini alias, and app-first-call key, then the gpt-5-mini-stream alias with a limit of 1,000 tokens
+# per minute for each caller (stream-alias.tf). The key value is never an output.
+data "azapi_client_config" "current" {}
+
+locals {
+  suffix = substr(sha1("${data.azapi_client_config.current.subscription_id}/${var.environment_name}/${var.location}"), 0, 6)
+  tags   = { "environment-name" = var.environment_name }
+}
+
+resource "azurerm_resource_group" "rg" {
+  name     = "rg-${var.environment_name}"
+  location = var.location
+  tags     = local.tags
+}
+
+# The quick start's module: a gateway, a Foundry account with gpt-5-mini, the gpt-5-mini alias, and a key.
+module "base" {
+  source = "../../quickstart/terraform/resources"
+
+  subscription_id     = data.azapi_client_config.current.subscription_id
+  resource_group_name = azurerm_resource_group.rg.name
+  resource_group_id   = azurerm_resource_group.rg.id
+  location            = var.location
+  tags                = local.tags
+  gateway_name        = "aigw-${local.suffix}"
+  foundry_name        = "aigw${local.suffix}"
+}
+```
+<!-- gh:end -->
+
+`terraform/stream-alias.tf` publishes the streaming alias with the `azapi` provider, which sends the AI Gateway API
+version, `2026-11-01`, as is. Like the Bicep template, it targets the same backend model as the default alias and
+carries a limit of 1,000 tokens per minute for each caller identity:
+
+<!-- include: terraform/stream-alias.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/stream-alias.tf`](terraform/stream-alias.tf)
+
+```tf
+# The streaming alias, like lab 06's limited alias: a second alias for the same backend model, with a deliberately low
+# limit of 1,000 tokens per minute for each caller identity. Clients that call the gpt-5-mini alias aren't affected.
+resource "azapi_resource" "stream_alias" {
+  type      = "Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01"
+  name      = "${module.base.model_name}-stream"
+  parent_id = module.base.workspace_id
+
+  body = {
+    properties = {
+      backendModels = [
+        { resourceId = module.base.model_id }
+      ]
+      policies = [
+        {
+          type       = "tokenLimit"
+          count      = 1000
+          period     = "minute"
+          counterKey = ["identity"]
+        }
+      ]
+    }
+  }
+
+  schema_validation_enabled = false
+}
+```
+<!-- gh:end -->
+
+### Deploy with terraform apply
+
+Move into the lab's Terraform folder, select your current subscription, then plan and apply the configuration. It
+takes about three minutes.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Move into the lab's Terraform folder
+cd ~/aigateway/labs/23-streaming-responses/terraform &&
+  echo "📂 Terraform folder: $(pwd)"
+
+# Deploy to the Azure CLI's current subscription
+export ARM_SUBSCRIPTION_ID="$(az account show --query id --output tsv)" &&
+  echo "📍 Subscription: $ARM_SUBSCRIPTION_ID"
+
+# Download the providers, then plan and apply the gateway, the Foundry model, its default alias, the key, and the
+# token-limited streaming alias
+terraform init &&
+  terraform plan -out tfplan &&
+  terraform apply tfplan &&
+  echo "🚀 Gateway deployed: $(terraform output -raw ai_gateway_url)"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Move into the lab's Terraform folder
+Set-Location ~/aigateway/labs/23-streaming-responses/terraform
+if ($?) { Write-Host "📂 Terraform folder: $(Get-Location)" }
+
+# Deploy to the Azure CLI's current subscription
+$env:ARM_SUBSCRIPTION_ID = az account show --query id --output tsv
+if ($?) { Write-Host "📍 Subscription: $env:ARM_SUBSCRIPTION_ID" }
+
+# Download the providers, then plan and apply the gateway, the Foundry model, its default alias, the key, and the
+# token-limited streaming alias
+terraform init
+if ($?) { terraform plan -out tfplan }
+if ($?) { terraform apply tfplan }
+if ($?) { Write-Host "🚀 Gateway deployed: $(terraform output -raw ai_gateway_url)" }
+```
+</details> <!-- gh -->
+
+The configuration deploys to `eastus2`. For another region where AI Gateway and the `gpt-5-mini` model are
+available, as in [Find the available regions](../SETUP.md#find-the-available-regions), run
+`export TF_VAR_location=<region>` (PowerShell: `$env:TF_VAR_location = "<region>"`) before `terraform plan`.
+
+### Read the outputs and the key
+
+Set the variables that the rest of the lab uses from the Terraform outputs, read the key from the gateway, so that
+it never shows on screen or lands in the Terraform state, then move back to the lab folder, where the scripts are.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Read the configuration's outputs into the variables that the rest of the lab uses
+export RG="$(terraform output -raw azure_resource_group)"
+export GATEWAY="$(terraform output -raw ai_gateway_name)"
+export PROVIDER="$(terraform output -raw ai_gateway_provider)"
+export MODEL="$(terraform output -raw ai_gateway_backend_model)"
+export STREAM_ALIAS="$(terraform output -raw ai_gateway_stream_alias)"
+export GATEWAY_ID="$(terraform output -raw ai_gateway_id)"
+export AI_GATEWAY_URL="$(terraform output -raw ai_gateway_url)"
+export AI_GATEWAY_MODEL="$(terraform output -raw ai_gateway_model)"
+
+# Read the key from the gateway, so that it never lands in a file or the Terraform state
+export AI_GATEWAY_API_KEY="$(az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/app-first-call" \
+  --query primaryKey --output tsv)"
+echo "📝 Gateway $GATEWAY in $RG"
+echo "🌐 Runtime URL: $AI_GATEWAY_URL"
+echo "🔖 Model alias: $AI_GATEWAY_MODEL"
+echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
+echo "🔖 Streaming alias: $STREAM_ALIAS"
+
+# Move back to the lab folder, where the scripts are
+cd .. && echo "📂 Lab folder: $(pwd)"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Read the configuration's outputs into the variables that the rest of the lab uses
+$RG                     = terraform output -raw azure_resource_group
+$GATEWAY                = terraform output -raw ai_gateway_name
+$PROVIDER               = terraform output -raw ai_gateway_provider
+$MODEL                  = terraform output -raw ai_gateway_backend_model
+$STREAM_ALIAS           = terraform output -raw ai_gateway_stream_alias
+$GATEWAY_ID             = terraform output -raw ai_gateway_id
+$env:AI_GATEWAY_URL     = terraform output -raw ai_gateway_url
+$env:AI_GATEWAY_MODEL   = terraform output -raw ai_gateway_model
+
+# Read the key from the gateway, so that it never lands in a file or the Terraform state
+$env:AI_GATEWAY_API_KEY = az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/app-first-call" `
+  --query primaryKey --output tsv
+Write-Host "📝 Gateway $GATEWAY in $RG"
+Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
+Write-Host "🔖 Model alias: $env:AI_GATEWAY_MODEL"
+Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) characters, not shown)"
+Write-Host "🔖 Streaming alias: $STREAM_ALIAS"
+
+# Move back to the lab folder, where the scripts are
+Set-Location ..
+if ($?) { Write-Host "📂 Lab folder: $(Get-Location)" }
+```
+</details> <!-- gh -->
+
+`AI_GATEWAY_MODEL` is the default alias, `gpt-5-mini`, which has no token limit, so the steps in
+[Stream a response](#stream-a-response) aren't throttled. **Verify** calls the streaming alias.
+
+> **Checkpoint**
+> `terraform apply` ended with `Apply complete! Resources: 10 added, 0 changed, 0 destroyed.`, and the
+> outputs command printed `🔖 Streaming alias: gpt-5-mini-stream`. If you came here from **Before you begin**, go
+> back to [Stream a response](#stream-a-response) now.
+
+</details> <!-- gh -->
 <!-- /tracks -->
 
 ## Verify
@@ -980,18 +1189,18 @@ Expected output:
 ⏳ Waiting 60 seconds for the token limit's window to reset
 🚦 Expect 429 Too Many Requests at the same point, now with usage chunks:
 Request  Status  Retry-After  Events  Usage chunk
-1        200     -            196     218 tokens
-2        200     -            186     208 tokens
-3        200     -            196     218 tokens
-4        200     -            191     213 tokens
-5        200     -            211     233 tokens
-6        200     -            191     213 tokens
-7        429     1            -       Token limit is exceeded. Try again in 1 seconds.
-8        200     -            193     215 tokens
+1        200     -            183     211 tokens
+2        200     -            186     214 tokens
+3        200     -            202     230 tokens
+4        200     -            181     209 tokens
+5        200     -            180     208 tokens
+6        200     -            188     216 tokens
+7        429     5            -       Token limit is exceeded. Try again in 5 seconds.
+8        429     5            -       Token limit is exceeded. Try again in 5 seconds.
 ```
 
 The throttle point is the same: the gateway counted the streams the same way whether or not the client asked for
-usage. Request 8 succeeds again because it was sent after the `Retry-After` wait.
+usage. If a request after the `429` returns `200`, it was sent after the `Retry-After` wait.
 
 ### Inspect a throttled streaming request
 
@@ -1022,9 +1231,11 @@ the model. Check the status code before you start reading events, and honor `Ret
 
 ### Find the streamed calls in Monitoring
 
-If you configured Application Insights in [Monitor usage, cost, and traces](../13-monitoring/README.md), open
-**Monitoring**. The streamed requests show their token counts next to the non-streamed ones, and the throttled
-requests appear as `429` outcomes.
+If you set up telemetry in [Monitor usage, cost, and traces](../13-monitoring/README.md), open **Monitoring**. On
+**Overview**, **Top models** lists the streaming alias with its calls and estimated cost next to the non-streamed
+calls, and **Top blocking policies** counts the throttled requests under **Token limit**. On **Traces**, the
+throttled requests show the outcome **Blocked by policy**, and the streams before them show **Token limit** under
+**Applied policies**.
 
 <!-- /steps -->
 
@@ -1042,6 +1253,10 @@ requests appear as `429` outcomes.
   [Connect agent frameworks to models and tools](../15-agent-frameworks/README.md).
 - **Check your proxies.** Anything between the client and the gateway, such as a reverse proxy or an API layer of your
   own, must pass `text/event-stream` responses through without buffering.
+- **Find streams that fail after they start.** A stream that fails partway, for example with a Responses
+  `response.failed` event, has already returned HTTP `200`. With tracing on, the gateway marks the span as `Error`
+  and keeps the status code. See
+  [Operation failures](https://ai.gateway.azure.com/docs/observability/telemetry-reference#operation-failures).
 
 ## Clean up
 
@@ -1086,7 +1301,7 @@ if ($?) { Write-Host "🚮 Alias $STREAM_ALIAS is deleted" }
 
 In the `aigateway/labs/23-streaming-responses` folder, delete the resource group with the gateway, the Foundry
 account, and both aliases. [`--purge`](../SETUP.md#delete-what-azd-created) also purges the soft-deleted Foundry
-account. It takes about ten minutes.
+account. It takes about three minutes.
 
 ```bash
 # Delete everything that azd up created, and purge the Foundry account
@@ -1095,17 +1310,33 @@ azd down --purge --force &&
 ```
 
 </details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+### Delete everything Terraform created
+
+In the `aigateway/labs/23-streaming-responses` folder, delete the resource group with the gateway, the
+Foundry account, and both aliases. The [`azurerm` provider](../SETUP.md#delete-what-terraform-created) also purges
+the soft-deleted Foundry account. It takes one to two minutes.
+
+```bash
+# Delete everything that terraform apply created, and purge the soft-deleted Foundry account
+terraform -chdir=terraform destroy -auto-approve &&
+  echo "🚮 Everything that terraform apply created is deleted"
+```
+
+</details> <!-- gh -->
 <!-- /tracks -->
 
-Keep the gateway, model, and key from lab 02: the next labs reuse them. `azd down` doesn't touch them, because
-the Bicep + azd track created its own gateway.
+Keep the gateway, model, and key from lab 02: the next labs reuse them. `azd down` and `terraform destroy` don't
+touch them, because the Bicep + azd and Terraform tracks created their own gateways.
 
 ## Next steps
 
 - [Throttle tokens per caller with token limits](../06-token-limits/README.md): give every caller its own allowance.
 - [Enforce cost budgets with per-caller overrides](../07-cost-budgets/README.md): cap spend in dollars.
 - [Monitor usage, cost, and traces](../13-monitoring/README.md): see streamed and throttled requests side by side.
-- [September 24 release: usage for streamed Chat Completions responses](https://ai.gateway.azure.com/docs/releases/2026-09-24)
+- [September 24 release: usage for streamed Chat Completions responses](https://ai.gateway.azure.com/docs/releases#release-2026-09-24)
 
 <!-- gh:begin footer: generated by "npm run sync" from the metadata, do not edit -->
 
@@ -1115,7 +1346,7 @@ the Bicep + azd track created its own gateway.
 
 | ⬅️ Previous | 🏠 | Next ➡️ |
 | :-- | :-: | --: |
-| [22 · Priority & weighted routing](../22-model-routing/README.md) | [All labs](../README.md) | [04 · Federate MCP tools](../04-federate-mcp-tools/README.md) |
+| [29 · Model failover](../29-model-failover/README.md) | [All labs](../README.md) | [26 · Embeddings](../26-embeddings/README.md) |
 
-<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (4 of 10) · [FinOps & operations](../README.md#learning-paths) (2 of 5)</sub>
+<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (6 of 15) · [FinOps & operations](../README.md#learning-paths) (2 of 6)</sub>
 <!-- gh:end -->

@@ -4,7 +4,7 @@ summary: Point Claude Code at the Claude models that your gateway publishes from
 category: agents
 level: Intermediate
 duration: 40
-tracks: [portal, cli, iac, code]
+tracks: [portal, cli, iac, terraform, code]
 order: 17.6
 status: new
 illustration: diagrams/claude-code.svg
@@ -30,7 +30,7 @@ prereqs:
 
 | ⏱️ Time | 📶 Level | 🧭 Tracks | ✅ Before you start |
 | :-- | :-- | :-- | :-- |
-| 40 min | Intermediate | Portal · Azure CLI · Bicep · Code · Notebook | [02 · First model call](../02-first-model-call/README.md) |
+| 40 min | Intermediate | Portal · Azure CLI · Bicep · Terraform · Code · Notebook | [02 · First model call](../02-first-model-call/README.md) |
 
 **You'll learn to**
 
@@ -75,7 +75,7 @@ the token limit and the budget, and see how Claude Code reports them.
   for the regions and requirements. Model inference is billed per use.
 - Permission to assign roles on that Foundry account, for example **Owner** or **User Access Administrator**. The
   gateway's managed identity needs the **Foundry User** role there to call the models.
-- [Claude Code](https://code.claude.com/docs/en/setup). This lab was tested with version 2.1.314. You don't need an
+- [Claude Code](https://code.claude.com/docs/en/setup). This lab was tested with version 2.1.326. You don't need an
   Anthropic account or a Claude subscription: Claude Code uses the gateway's key.
 - `jq` for the Bash commands.
 
@@ -187,7 +187,8 @@ only the model calls leave for the gateway. Five environment variables do it:
 
 Claude Code picks a model by tier, so `--model sonnet` or `/model sonnet` switches it to the Sonnet alias. A model that
 you saved with `/model`, or set in `ANTHROPIC_MODEL`, replaces the default, so the commands that need Opus pass
-`--model opus`. The gateway gives each alias its own policies, and **Caller identity** gives each key its own counters:
+`--model opus`. The gateway gives each alias its own policies, and the **Identity** counter dimension gives each key its
+own counters:
 
 | Alias | Token limit for each caller | Cost limit for each caller |
 |---|---|---|
@@ -218,30 +219,33 @@ key `claude-code`. Pick a track.
 
 1. Open the [AI Gateway portal](https://ai.gateway.azure.com) and select your gateway in the top bar.
 2. Select **Models** › **Add** › **Models from Microsoft Foundry**.
-3. Select the subscription and resource group of your Foundry account, then select the `claude-opus-5-5`,
-   `claude-sonnet-5-5`, and `claude-haiku-5-5` deployments. Keep **Managed identity** as the
-   **Authentication method**.
-4. Under **Aliases**, keep **Create an alias for each model** selected, then select **Add models**.
+3. In **Subscriptions** and **Resource groups**, select those of your Foundry account. Keep **Managed identity** as
+   the **Authentication method**.
+4. In **Models**, check that only your Foundry account is selected, with its `claude-opus-5-5`,
+   `claude-sonnet-5-5`, and `claude-haiku-5-5` deployments: the page preselects every deployment it lists.
+5. Under **Aliases**, keep **Create an alias for each model** selected, then select **Add models**. The page reports
+   **Models and aliases imported.**
 
 The import names each alias after the Foundry account and the deployment, for example
 `<foundry-account-name>/claude-opus-5-5`. Claude Code sends these names in the request's `model` field.
 
 ### Add the token limit
 
-1. Select **Policies** › **Add policy**. On the **Type** step, under **Cost & Rate Limits**, select
+1. Select **Policies** › **Add policy**. On the **Type** step, under **Cost and rate limits**, select
    **Token rate limit**, then **Next**.
-2. On the **Scope** step, select **Individual assets**, select the three Claude aliases, then **Next**.
-3. On the **Details** step, set **Time period** to **Per minute**, **Allowed tokens** to `100000`, and
-   **Counter dimensions** to **Caller identity**. Select **Create**.
+2. On the **Scope** step, select **Individual assets**, select the three `<foundry-account-name>/claude-*-5-5` assets
+   of type **Alias**, then **Next**.
+3. On the **Details** step, set **Time period** to **Per minute** and **Allowed tokens** to `100000`. Keep
+   **Counter dimensions** at **Identity**, so that each key gets its own counter. Select **Create**.
 
 ### Add the daily budget to Opus
 
-1. Select **Policies** › **Add policy**. On the **Type** step, under **Cost & Rate Limits**, select **Cost limit**,
+1. Select **Policies** › **Add policy**. On the **Type** step, under **Cost and rate limits**, select **Cost limit**,
    then **Next**.
-2. On the **Scope** step, select **Individual assets**, select the `<foundry-account-name>/claude-opus-5-5` alias,
-   then **Next**.
-3. On the **Details** step, under **Parameters**, set **Budget amount** to `5`, **Renewal period** to **Daily**, and
-   **Counter dimensions** to **Caller identity**. Select **Next**.
+2. On the **Scope** step, select **Individual assets**, select the `<foundry-account-name>/claude-opus-5-5` asset of
+   type **Alias**, then **Next**.
+3. On the **Details** step, under **Parameters**, set **Budget amount** to `5` and **Renewal period** to **Daily**.
+   Keep **Counter dimensions** at **Identity**. Select **Next**.
 4. Skip the **Overrides** step, and select **Create**.
 
 [Set a cost budget with cost limits](../07-cost-budgets/README.md) explains the budget's fields and overrides.
@@ -257,7 +261,7 @@ The import names each alias after the Foundry account and the deployment, for ex
 
 ```bash title="Bash"
 # Paste the key without showing it, and export it for the test calls and Claude Code
-read -rsp "AI Gateway API key: " AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
+printf "AI Gateway API key: " && read -rs AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 ```
 </details> <!-- gh -->
@@ -284,8 +288,8 @@ Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) c
 
 `az aigateway model-provider import --foundry-resource-id` imports the account's deployments as the models of a
 provider. It also turns on the gateway's managed identity and grants it the **Foundry User** role on the account. It
-doesn't create aliases. The command needs the `aigateway` extension 1.0.0b30 or later: if `az aigateway version`
-reports an older one, [run the installer again](../SETUP.md#install-the-aigateway-extension).
+doesn't create aliases. The command needs the `aigateway` extension 1.0.0b30 or later: if the `extensionVersion` that
+`az aigateway version` prints is older, [run the installer again](../SETUP.md#install-the-aigateway-extension).
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -470,7 +474,7 @@ policies with the template's.
 <!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
 📄 [`infra/claude-code.bicep`](infra/claude-code.bicep)
 
-<details><summary>Show all 180 lines</summary>
+<details><summary>Show all 183 lines</summary>
 
 ```bicep
 // Publishes the Claude deployments of a Microsoft Foundry account through an existing Azure AI Gateway, for Claude
@@ -521,12 +525,12 @@ var foundrySubscriptionId = split(foundryAccountId, '/')[2]
 var foundryResourceGroup = split(foundryAccountId, '/')[4]
 
 #disable-next-line BCP081
-resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
+resource gateway 'Microsoft.ApiManagement/aigateways@2026-11-01' existing = {
   name: gatewayName
 }
 
 #disable-next-line BCP081
-resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' existing = {
+resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2026-11-01' existing = {
   parent: gateway
   name: 'default'
 }
@@ -556,25 +560,26 @@ module foundryUserRole '../../02-first-model-call/infra/foundry-user-role.bicep'
 }
 
 #disable-next-line BCP081
-resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2025-09-01-preview' = if (createProvider) {
+resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2026-11-01' = if (createProvider) {
   parent: workspace
   name: foundryAccountName
   dependsOn: [
     foundryUserRole
   ]
   properties: {
-    kind: 'Foundry'
+    modelProviderType: 'Foundry'
     displayName: foundryAccountName
     foundry: {
-      endpoint: endsWith(foundryEndpoint, '/') ? foundryEndpoint : '${foundryEndpoint}/'
+      endpoint: {
+        url: endsWith(foundryEndpoint, '/') ? foundryEndpoint : '${foundryEndpoint}/'
+      }
       resourceIds: [
         foundryAccountId
       ]
-      authentication: {
-        kind: 'ManagedIdentity'
-        managedIdentity: {
-          resource: 'https://cognitiveservices.azure.com/'
-        }
+    }
+    authentication: {
+      managedIdentity: {
+        resource: 'https://cognitiveservices.azure.com/'
       }
     }
   }
@@ -582,14 +587,16 @@ resource provider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@
 
 // The models go under the provider, whether the template created it or the gateway already had it.
 #disable-next-line BCP081
-resource accountProvider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2025-09-01-preview' existing = {
+resource accountProvider 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2026-11-01' existing = {
   parent: workspace
   name: foundryAccountName
 }
 
-// Claude deployments speak the Anthropic Messages API, so the gateway serves them on /default/models/anthropic.
+// Claude deployments speak the Anthropic Messages API. A Foundry account serves them on /anthropic/v1/messages, so the
+// models declare that path: with /v1/messages, every call fails with "Resource not found". The gateway serves them on
+// /default/models/anthropic/v1/messages, the route that Claude Code uses, and on /default/models/v1/messages.
 #disable-next-line BCP081
-resource models 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2025-09-01-preview' = [for (m, i) in claudeModels: {
+resource models 'Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2026-11-01' = [for (m, i) in claudeModels: {
   parent: accountProvider
   name: m.name
   dependsOn: [
@@ -619,7 +626,7 @@ var budgetPolicy = {
 
 // Each caller identity, a key or a Microsoft Entra identity, gets its own counters.
 #disable-next-line BCP081
-resource aliases 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2025-09-01-preview' = [for (m, i) in claudeModels: {
+resource aliases 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01' = [for (m, i) in claudeModels: {
   parent: workspace
   name: '${foundryAccountName}-${m.name}'
   properties: {
@@ -639,7 +646,7 @@ resource aliases 'Microsoft.ApiManagement/aigateways/workspaces/aliases@2025-09-
 }]
 
 #disable-next-line BCP081
-resource apiKey 'Microsoft.ApiManagement/aigateways/apiKeys@2025-09-01-preview' = {
+resource apiKey 'Microsoft.ApiManagement/aigateways/apiKeys@2026-11-01' = {
   parent: gateway
   name: apiKeyName
   properties: {
@@ -681,7 +688,7 @@ echo "🔐 Foundry User assignments: $ROLES, grantFoundryUser=$GRANT"
 
 # Create the provider only if the gateway doesn't have it yet
 PROVIDERS="$(az aigateway model-provider list -g "$RG" --gateway-name "$GATEWAY" \
-  --query "length([?name=='$PROVIDER'])" -o tsv)"
+  --query "length([?name=='$PROVIDER'])" -o tsv --only-show-errors)"
 CREATE="$([ "$PROVIDERS" = "0" ] && echo true || echo false)"
 echo "🏭 Providers named $PROVIDER: $PROVIDERS, createProvider=$CREATE"
 
@@ -709,7 +716,7 @@ Write-Host "🔐 Foundry User assignments: $ROLES, grantFoundryUser=$GRANT"
 
 # Create the provider only if the gateway doesn't have it yet
 $PROVIDERS = az aigateway model-provider list -g $RG --gateway-name $GATEWAY `
-  --query "length([?name=='$PROVIDER'])" -o tsv
+  --query "length([?name=='$PROVIDER'])" -o tsv --only-show-errors
 $CREATE = if ($PROVIDERS -eq "0") { "true" } else { "false" }
 Write-Host "🏭 Providers named ${PROVIDER}: $PROVIDERS, createProvider=$CREATE"
 
@@ -764,6 +771,365 @@ Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) c
 > **Checkpoint**
 > The deployment printed the three aliases, and the last command printed the key's length. In the portal,
 > **Models** › **Aliases** lists the three `<foundry-account-name>/claude-*-5-5` aliases.
+
+</details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+**What you need:** your gateway from lab 02 and the variables from **Before you begin**, plus Terraform 1.9 or later,
+as in [Deploy a lab with Terraform](../SETUP.md#deploy-a-lab-with-terraform). Like the Bicep track, this track
+deploys onto that gateway: it creates no resource group, and `terraform destroy` removes only what it added.
+
+### Review the configuration
+
+`terraform/main.tf` reads your gateway, the Foundry account, and its three Claude deployments with the `azapi`
+provider. It reads the account by resource ID, so the account can be in another resource group or subscription. Then
+it grants the gateway's managed identity the **Foundry User** role on the account, unless `grant_foundry_user` is
+`false`:
+
+<!-- include: terraform/main.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/main.tf`](terraform/main.tf)
+
+<details><summary>Show all 55 lines</summary>
+
+```tf
+# Lab 25 with Terraform: publishes the Claude deployments of a Microsoft Foundry account through an existing gateway,
+# for Claude Code, like infra/claude-code.bicep. It reads the gateway and the account, and grants the gateway's
+# managed identity the Foundry User role on the account (main.tf). Then it creates the provider, the models, the
+# aliases with their limits, and the runtime API key (claude-models.tf), and optionally the learn MCP server
+# (learn-mcp.tf). It creates no resource group: terraform destroy removes only what this lab added.
+data "azapi_client_config" "current" {}
+
+locals {
+  foundry_user_role_id    = "53ca6127-db72-4b80-b1b0-d745d6d5456d"
+  foundry_account_name    = element(split("/", var.foundry_account_id), 8)
+  foundry_subscription_id = element(split("/", var.foundry_account_id), 2)
+  workspace_id            = "${data.azapi_resource.gateway.id}/workspaces/default"
+  gateway_url             = "https://${data.azapi_resource.gateway.output.properties.frontend.defaultHostname}"
+}
+
+# The existing gateway, its managed identity, and its runtime host name.
+data "azapi_resource" "gateway" {
+  type      = "Microsoft.ApiManagement/aigateways@2026-11-01"
+  name      = var.gateway_name
+  parent_id = "/subscriptions/${data.azapi_client_config.current.subscription_id}/resourceGroups/${var.resource_group_name}"
+
+  response_export_values = ["identity.principalId", "properties.frontend.defaultHostname"]
+}
+
+# The Foundry account and each Claude deployment, read by resource ID, so the account can be in another resource
+# group or subscription. The models record the model and version that Foundry serves.
+data "azapi_resource" "foundry" {
+  type        = "Microsoft.CognitiveServices/accounts@2025-04-01-preview"
+  resource_id = var.foundry_account_id
+
+  response_export_values = ["properties.endpoint"]
+}
+
+data "azapi_resource" "deployment" {
+  for_each = { for m in var.claude_models : m.name => m }
+
+  type      = "Microsoft.CognitiveServices/accounts/deployments@2025-04-01-preview"
+  name      = each.key
+  parent_id = data.azapi_resource.foundry.id
+
+  response_export_values = ["properties.model.name", "properties.model.version"]
+}
+
+# Foundry User on the account, so that the gateway can call the deployments with its managed identity. A second
+# assignment of the same role fails with RoleAssignmentExists, so grant_foundry_user = false skips it.
+resource "azurerm_role_assignment" "foundry_user" {
+  count = var.grant_foundry_user ? 1 : 0
+
+  name                             = uuidv5("url", "${var.foundry_account_id}/${data.azapi_resource.gateway.id}/${local.foundry_user_role_id}")
+  scope                            = var.foundry_account_id
+  role_definition_id               = "/subscriptions/${local.foundry_subscription_id}/providers/Microsoft.Authorization/roleDefinitions/${local.foundry_user_role_id}"
+  principal_id                     = data.azapi_resource.gateway.output.identity.principalId
+  principal_type                   = "ServicePrincipal"
+  skip_service_principal_aad_check = true
+}
+```
+
+</details>
+<!-- gh:end -->
+
+`terraform/claude-models.tf` declares the provider, the three models, the three aliases with their policies, and the
+`claude-code` key, with the same names as the Bicep template, so the rest of the lab is the same on every track.
+`create_provider = false` keeps a provider that the gateway already has, with its authentication, and adds only the
+models to it. `terraform/variables.tf` declares the settings with the same defaults as the template: 100,000 tokens
+per minute for each caller on every alias, and a budget of $5 a day on Opus.
+
+<!-- include: terraform/claude-models.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/claude-models.tf`](terraform/claude-models.tf)
+
+<details><summary>Show all 115 lines</summary>
+
+```tf
+# Publishes the Claude deployments for Claude Code: a Foundry provider named after the account, one Anthropic
+# Messages model per deployment, the alias "<account>/<deployment>" for each one with a token limit per caller, a
+# cost limit per caller on budget_model's alias, and a runtime API key. The aliases have the same names as the ones
+# that the portal's import creates, so the Claude Code settings work with every track. The key is never an output.
+locals {
+  models = { for m in var.claude_models : m.name => m }
+
+  budget_policy = {
+    type       = "costLimit"
+    id         = var.budget_id
+    amount     = var.budget_amount
+    period     = var.budget_period
+    counterKey = ["identity"]
+  }
+}
+
+# The provider signs in to Foundry with the gateway's managed identity, so callers never see a Foundry credential.
+resource "azapi_resource" "provider" {
+  count = var.create_provider ? 1 : 0
+
+  type      = "Microsoft.ApiManagement/aigateways/workspaces/modelProviders@2026-11-01"
+  name      = local.foundry_account_name
+  parent_id = local.workspace_id
+
+  body = {
+    properties = {
+      modelProviderType = "Foundry"
+      displayName       = local.foundry_account_name
+      foundry = {
+        endpoint = {
+          url = "${trimsuffix(data.azapi_resource.foundry.output.properties.endpoint, "/")}/"
+        }
+        resourceIds = [var.foundry_account_id]
+      }
+      authentication = {
+        managedIdentity = {
+          resource = "https://cognitiveservices.azure.com/"
+        }
+      }
+    }
+  }
+
+  schema_validation_enabled = false
+  depends_on                = [azurerm_role_assignment.foundry_user]
+}
+
+# Claude deployments speak the Anthropic Messages API. A Foundry account serves them on /anthropic/v1/messages, so
+# the models declare that path: with /v1/messages, every call fails with "Resource not found". The models go under
+# the provider, whether Terraform created it or the gateway already had it.
+resource "azapi_resource" "model" {
+  for_each = local.models
+
+  type      = "Microsoft.ApiManagement/aigateways/workspaces/modelProviders/models@2026-11-01"
+  name      = each.key
+  parent_id = "${local.workspace_id}/modelProviders/${local.foundry_account_name}"
+
+  body = {
+    properties = {
+      displayName        = each.key
+      supportedEndpoints = ["/anthropic/v1/messages"]
+      deployment = {
+        resourceId   = data.azapi_resource.deployment[each.key].id
+        modelName    = data.azapi_resource.deployment[each.key].output.properties.model.name
+        modelVersion = data.azapi_resource.deployment[each.key].output.properties.model.version
+      }
+    }
+  }
+
+  schema_validation_enabled = false
+  depends_on                = [azurerm_role_assignment.foundry_user, azapi_resource.provider]
+}
+
+# Each caller identity, a key or a Microsoft Entra identity, gets its own counters. The callable name goes in
+# aliasName and contains "/". The resource name can't, so it uses "-" instead.
+resource "azapi_resource" "alias" {
+  for_each = local.models
+
+  type      = "Microsoft.ApiManagement/aigateways/workspaces/aliases@2026-11-01"
+  name      = "${local.foundry_account_name}-${each.key}"
+  parent_id = local.workspace_id
+
+  body = {
+    properties = {
+      aliasName = "${local.foundry_account_name}/${each.key}"
+      backendModels = [
+        { resourceId = azapi_resource.model[each.key].id }
+      ]
+      policies = concat([
+        {
+          type       = "tokenLimit"
+          count      = each.value.tokens_per_minute
+          period     = "minute"
+          counterKey = ["identity"]
+        }
+      ], each.key == var.budget_model ? [local.budget_policy] : [])
+    }
+  }
+
+  schema_validation_enabled = false
+}
+
+# The runtime API key for Claude Code. Read its value with az aigateway api-key list-secrets.
+resource "azapi_resource" "api_key" {
+  type      = "Microsoft.ApiManagement/aigateways/apiKeys@2026-11-01"
+  name      = var.api_key_name
+  parent_id = data.azapi_resource.gateway.id
+
+  body = {
+    properties = {
+      displayName = var.api_key_name
+    }
+  }
+
+  schema_validation_enabled = false
+}
+```
+
+</details>
+<!-- gh:end -->
+
+### Deploy with terraform apply
+
+Move into the lab's Terraform folder and point Terraform at your gateway and the Foundry account. Like the Bicep
+track, the commands check the role and the provider first: a second assignment of the **Foundry User** role fails
+with `RoleAssignmentExists`, and an existing provider keeps its settings. They also keep what Terraform already
+manages in this folder, so that you can run them again without removing the role or the provider that Terraform
+created. Then plan and apply the configuration. It takes less than a minute.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Move into the lab's Terraform folder
+cd ~/aigateway/labs/25-claude-code/terraform &&
+  echo "📂 Terraform folder: $(pwd)"
+
+# Deploy to the Azure CLI's current subscription, onto your gateway, with the Foundry account's deployments
+export ARM_SUBSCRIPTION_ID="$(az account show --query id --output tsv)"
+export TF_VAR_resource_group_name="$RG" TF_VAR_gateway_name="$GATEWAY"
+export TF_VAR_foundry_account_id="$(az cognitiveservices account show -g "$FOUNDRY_RG" -n "$FOUNDRY_ACCOUNT" \
+  --query id -o tsv)"
+echo "🆔 Foundry account: ${TF_VAR_foundry_account_id##*/}"
+
+# List what Terraform already manages in this folder: the checks below keep it
+MANAGED="$(terraform state list 2>/dev/null)"
+
+# Grant the gateway's identity Foundry User on the account only if it doesn't have the role there yet
+PRINCIPAL_ID="$(az aigateway show -g "$RG" -n "$GATEWAY" --query identity.principalId -o tsv)"
+ROLES="$(az role assignment list --assignee "$PRINCIPAL_ID" --scope "$TF_VAR_foundry_account_id" \
+  --role 53ca6127-db72-4b80-b1b0-d745d6d5456d --query "length(@)" -o tsv)"
+export TF_VAR_grant_foundry_user="$( { [ "$ROLES" = "0" ] || grep -q '^azurerm_role_assignment' <<<"$MANAGED"; } &&
+  echo true || echo false)"
+echo "🔐 Foundry User assignments: $ROLES, grant_foundry_user=$TF_VAR_grant_foundry_user"
+
+# Create the provider only if the gateway doesn't have it yet
+PROVIDERS="$(az aigateway model-provider list -g "$RG" --gateway-name "$GATEWAY" \
+  --query "length([?name=='$PROVIDER'])" -o tsv --only-show-errors)"
+export TF_VAR_create_provider="$( { [ "$PROVIDERS" = "0" ] || grep -q '^azapi_resource.provider' <<<"$MANAGED"; } &&
+  echo true || echo false)"
+echo "🏭 Providers named $PROVIDER: $PROVIDERS, create_provider=$TF_VAR_create_provider"
+
+# Download the providers, plan and apply the configuration, and print the aliases that it published
+terraform init &&
+  terraform plan -out tfplan &&
+  terraform apply tfplan &&
+  echo "🚀 Aliases for Claude Code:" &&
+  terraform output -json alias_names | jq -r '.[]'
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Move into the lab's Terraform folder
+Set-Location ~/aigateway/labs/25-claude-code/terraform
+if ($?) { Write-Host "📂 Terraform folder: $(Get-Location)" }
+
+# Deploy to the Azure CLI's current subscription, onto your gateway, with the Foundry account's deployments
+$env:ARM_SUBSCRIPTION_ID     = az account show --query id --output tsv
+$env:TF_VAR_resource_group_name = $RG
+$env:TF_VAR_gateway_name        = $GATEWAY
+$env:TF_VAR_foundry_account_id  = az cognitiveservices account show -g $FOUNDRY_RG -n $FOUNDRY_ACCOUNT --query id -o tsv
+Write-Host "🆔 Foundry account: $(Split-Path $env:TF_VAR_foundry_account_id -Leaf)"
+
+# List what Terraform already manages in this folder: the checks below keep it
+$MANAGED = terraform state list 2>$null
+
+# Grant the gateway's identity Foundry User on the account only if it doesn't have the role there yet
+$PRINCIPAL_ID = az aigateway show -g $RG -n $GATEWAY --query identity.principalId -o tsv
+$ROLES = az role assignment list --assignee $PRINCIPAL_ID --scope $env:TF_VAR_foundry_account_id `
+  --role 53ca6127-db72-4b80-b1b0-d745d6d5456d --query "length(@)" -o tsv
+$env:TF_VAR_grant_foundry_user =
+  if ($ROLES -eq "0" -or ($MANAGED -match '^azurerm_role_assignment')) { "true" } else { "false" }
+Write-Host "🔐 Foundry User assignments: $ROLES, grant_foundry_user=$env:TF_VAR_grant_foundry_user"
+
+# Create the provider only if the gateway doesn't have it yet
+$PROVIDERS = az aigateway model-provider list -g $RG --gateway-name $GATEWAY `
+  --query "length([?name=='$PROVIDER'])" -o tsv --only-show-errors
+$env:TF_VAR_create_provider =
+  if ($PROVIDERS -eq "0" -or ($MANAGED -match '^azapi_resource.provider')) { "true" } else { "false" }
+Write-Host "🏭 Providers named ${PROVIDER}: $PROVIDERS, create_provider=$env:TF_VAR_create_provider"
+
+# Download the providers, plan and apply the configuration, and print the aliases that it published
+terraform init
+if ($?) { terraform plan -out tfplan }
+if ($?) { terraform apply tfplan }
+if ($?) { Write-Host "🚀 Aliases for Claude Code:"; terraform output -json alias_names | ConvertFrom-Json }
+```
+</details> <!-- gh -->
+
+Expected output, between Terraform's own messages:
+
+```text
+📂 Terraform folder: /home/<user>/aigateway/labs/25-claude-code/terraform
+🆔 Foundry account: <foundry-account-name>
+🔐 Foundry User assignments: 0, grant_foundry_user=true
+🏭 Providers named <foundry-account-name>: 0, create_provider=true
+🚀 Aliases for Claude Code:
+<foundry-account-name>/claude-opus-5-5
+<foundry-account-name>/claude-sonnet-5-5
+<foundry-account-name>/claude-haiku-5-5
+```
+
+The limits are Terraform variables, with the defaults in `terraform/variables.tf`. To change one, pass it to
+`terraform plan`, for example `-var budget_amount=10`, and apply the plan: only the Opus alias changes.
+
+> [!WARNING]
+> Applying the configuration again sets the aliases' policies back to its values, including changes that you made in
+> the portal or with the Azure CLI. If the models, the aliases, or the key already exist, for example from the portal's
+> import or the Bicep track, `terraform apply` stops with `Error: Resource already exists`: Terraform doesn't take
+> over resources that it didn't create. Delete them first with the Azure CLI track's commands in **Clean up**.
+
+### Read the key
+
+The configuration creates the key but never outputs it, so it stays out of the Terraform state. Read it from the
+gateway straight into a variable:
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Read the claude-code key's value straight into a variable, so that it never shows on screen
+AI_GATEWAY_API_KEY="$(az aigateway api-key list-secrets \
+  --ids "$(terraform output -raw ai_gateway_id)/apiKeys/$(terraform output -raw api_key_name)" \
+  --query primaryKey -o tsv)" && export AI_GATEWAY_API_KEY
+echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Read the claude-code key's value straight into an environment variable, so that it never shows on screen
+$env:AI_GATEWAY_API_KEY = az aigateway api-key list-secrets `
+  --ids "$(terraform output -raw ai_gateway_id)/apiKeys/$(terraform output -raw api_key_name)" `
+  --query primaryKey -o tsv
+Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) characters, not shown)"
+```
+</details> <!-- gh -->
+
+> **Checkpoint**
+> `terraform apply` ended with `Apply complete! Resources: 9 added, 0 changed, 0 destroyed.` (7 when the checks set
+> both `grant_foundry_user` and `create_provider` to `false`), the commands printed the three aliases, and the last
+> command printed the key's length. In the portal, **Models** › **Aliases** lists the three
+> `<foundry-account-name>/claude-*-5-5` aliases.
 
 </details> <!-- gh -->
 <!-- /tracks -->
@@ -900,7 +1266,7 @@ Expected output:
 🔖 Sonnet: <foundry-account-name>/claude-sonnet-5-5
 🔖 Haiku: <foundry-account-name>/claude-haiku-5-5
 🔑 Key: in ANTHROPIC_AUTH_TOKEN (32 characters, not shown)
-2.1.314 (Claude Code)
+2.1.326 (Claude Code)
 ```
 
 These variables last for the current terminal. [Go further](#go-further) shows how to keep them in Claude Code's
@@ -949,11 +1315,12 @@ Expected output (your cost differs):
 ```text
 📂 Practice project: ~/contoso-calc
 🤖 Claude Code answer:
-✅ pong · <foundry-account-name>/claude-opus-5-5 · $0.021
+✅ pong · <foundry-account-name>/claude-opus-5-5 · $0.0821
 ```
 
-The alias in the output proves that the call went through the gateway. Add `--model sonnet` or `--model haiku` to ask
-another tier.
+The alias in the output proves that the call went through the gateway. The cost estimate varies from run to run,
+even for the same prompt: on Opus, it ranged from $0.003 to $0.08 in testing. Add `--model sonnet` or `--model haiku`
+to ask another tier.
 
 ### Run an agent task
 
@@ -966,7 +1333,7 @@ claude
 ```
 
 The first time, Claude Code asks you to pick a theme and shows its security notes. Then it asks whether you trust the
-folder: select **Yes, I trust this folder**. The banner shows `Claude Code v2.1.314` and
+folder: select **Yes, I trust this folder**. The banner shows `Claude Code v2.1.326` and
 `Opus 5.5 · API Usage Billing`. Claude Code runs on the gateway's Opus alias, and it doesn't ask you to sign in.
 
 Type `/status` to see where the requests go. It shows `ANTHROPIC_AUTH_TOKEN` as the auth token, the gateway's
@@ -978,11 +1345,10 @@ Then send this prompt:
 Fix the bug in calc.py and add a guard for division by zero
 ```
 
-Claude Code reads `calc.py`, makes `add` return `a + b`, and makes `divide` raise
-`ZeroDivisionError("cannot divide by zero")` when `b` is zero. Depending on its permission mode, it asks before each
-edit and command, or runs them. In testing, the session started in auto mode, shown as
-`⏵⏵ auto mode on (shift+tab to cycle)` under the prompt, and each step showed `Allowed by auto mode`. Press
-Shift+Tab to cycle the modes.
+Claude Code reads `calc.py`, makes `add` return `a + b`, and makes `divide` raise an error, such as
+`ZeroDivisionError`, when `b` is zero. Depending on its permission mode, it asks before each edit and command, or
+runs them. In testing, the session started in auto mode, shown as `⏵⏵ auto mode on (shift+tab to cycle)` under the
+prompt, and each step showed `Allowed by auto mode`. Press Shift+Tab to cycle the modes.
 
 <!-- /steps -->
 
@@ -1021,9 +1387,11 @@ Learn server is public, so the backend needs no credentials. Pick a track.
 1. Open the [AI Gateway portal](https://ai.gateway.azure.com), select your gateway, and select **MCP servers** ›
    **Add MCP server**.
 2. On **Basic info**, set **Name** to `learn`, **Display name** to `Microsoft Learn`, and **Description** to
-   `Search and fetch official Microsoft documentation and code samples.` Select **Next**.
-3. On **Backends**, select **Add backend** › **MCP server**. Set **URL** to `https://learn.microsoft.com/api/mcp`,
-   **Namespace** to `learn`, and **Authentication** to **None**. Select **Next**.
+   `Search and fetch official Microsoft documentation and code samples.` In **Supported MCP versions**, select
+   `2025-06-18`, the version that the Learn server reports. Select **Next**.
+3. On **Backends**, select **Add backend** › **MCP server**. Set **Endpoint URL** to
+   `https://learn.microsoft.com/api/mcp`, keep **Authentication** at **None**, and set **Namespace** to `learn`.
+   Select **Add**, then **Next**, which saves the server and opens **Tools**.
 4. On **Tools**, keep **Allow all tools**, and select **Create**.
 
 [Register the Learn MCP server](../04-federate-mcp-tools/README.md#register-the-learn-mcp-server) in lab 04
@@ -1121,6 +1489,91 @@ az deployment group create -g $RG -n learn-mcp -f ../04-federate-mcp-tools/infra
 > **Checkpoint**
 > The commands print `🔌 Endpoint of the learn MCP server:` and the endpoint, ending in
 > `/default/toolservers/learn/mcp`.
+
+</details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+### Deploy the Learn server
+
+`terraform/learn-mcp.tf` declares the same `toolServers` resource as lab 04's template, `learn`, with the public
+Learn backend, when `learn_mcp_server` is `true`:
+
+<!-- include: terraform/learn-mcp.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/learn-mcp.tf`](terraform/learn-mcp.tf)
+
+<details><summary>Show all 31 lines</summary>
+
+```tf
+# Registers the public Microsoft Learn MCP server as the MCP server learn when learn_mcp_server is true, like lab
+# 04's tool-server.bicep: one backend in the learn namespace, with no credentials. Claude Code calls it on
+# <gateway-url>/default/toolservers/learn/mcp with the same claude-code key as the models.
+resource "azapi_resource" "learn" {
+  count = var.learn_mcp_server ? 1 : 0
+
+  type      = "Microsoft.ApiManagement/aigateways/workspaces/toolServers@2026-11-01"
+  name      = "learn"
+  parent_id = local.workspace_id
+
+  body = {
+    properties = {
+      displayName    = "Microsoft Learn"
+      description    = "Search and fetch official Microsoft documentation and code samples."
+      toolServerType = "mcp"
+      endpoints = [
+        {
+          namespace = "learn"
+          kind      = "mcp"
+          mode      = "failClosed"
+          mcp = {
+            endpoint  = { url = "https://learn.microsoft.com/api/mcp" }
+            transport = "streamableHttp"
+          }
+        }
+      ]
+    }
+  }
+
+  schema_validation_enabled = false
+}
+```
+
+</details>
+<!-- gh:end -->
+
+In the terminal where you applied the configuration, so that the `TF_VAR_` variables are still set, move back into
+the lab's `terraform` folder, then pass `learn_mcp_server` to `terraform plan` and apply the plan:
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Plan and apply the learn MCP server on your gateway, and print its endpoint
+cd ~/aigateway/labs/25-claude-code/terraform &&
+  terraform plan -var learn_mcp_server=true -out tfplan &&
+  terraform apply tfplan &&
+  echo "🔌 Endpoint of the learn MCP server: $(terraform output -raw mcp_endpoint)"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Plan and apply the learn MCP server on your gateway, and print its endpoint
+Set-Location ~/aigateway/labs/25-claude-code/terraform
+if ($?) { terraform plan -var learn_mcp_server=true -out tfplan }
+if ($?) { terraform apply tfplan }
+if ($?) { Write-Host "🔌 Endpoint of the learn MCP server: $(terraform output -raw mcp_endpoint)" }
+```
+</details> <!-- gh -->
+
+Pass `-var learn_mcp_server=true` to every later `terraform plan` too: without it, Terraform plans to delete `learn`.
+If `learn` already exists, for example from lab 04, `terraform apply` stops with `Error: Resource already exists`. In
+that case, skip this step: the next section uses the existing server.
+
+> **Checkpoint**
+> The plan ended with `Plan: 1 to add, 0 to change, 0 to destroy.`, and the last command printed
+> `🔌 Endpoint of the learn MCP server:` and the endpoint, ending in `/default/toolservers/learn/mcp`.
 
 </details> <!-- gh -->
 <!-- /tracks -->
@@ -1241,13 +1694,13 @@ must be an environment variable, as the earlier steps set it.
 ### Ask a question that needs the docs
 
 Claude Code names the server's tools `mcp__ai-gateway-learn__<tool>`. `claude -p` can't ask for permission, so
-`--allowedTools` allows the server's tools up front:
+`--allowedTools "mcp__ai-gateway-learn__*"` allows all the server's tools up front:
 
 ```bash
 # Ask a question that needs current docs, and allow the Learn tools for this one-shot run
 echo "🤖 Claude Code answer, with the Learn tools:"
 claude -p "Use the Microsoft Learn tools to find the Azure Functions Core Tools command that creates a new Python function project. Answer in two sentences, with the command and the link to the page." \
-  --allowedTools "mcp__ai-gateway-learn"
+  --allowedTools "mcp__ai-gateway-learn__*"
 ```
 
 Expected output (your text differs):
@@ -1279,7 +1732,7 @@ Lower the token limit on the Haiku alias to 1,000 tokens per minute for each cal
 
 - **Portal:** in **Policies**, open the **Token rate limit**, select **Edit**, set **Allowed tokens** to `1000`, and
   **Save**. The policy covers the three aliases, so all three get the lower limit. That's fine for the test.
-- **Azure CLI and Bicep:** run the commands below. Both tracks give the aliases the same names.
+- **Azure CLI, Bicep, and Terraform:** run the commands below. The three tracks give the aliases the same names.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -1366,7 +1819,7 @@ resets.
 ### Restore the Haiku token limit
 
 - **Portal:** set **Allowed tokens** on the **Token rate limit** back to `100000`.
-- **Azure CLI and Bicep:**
+- **Azure CLI, Bicep, and Terraform:**
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -1401,7 +1854,7 @@ the spend counted so far today. The agent task and the Learn question already ra
 more than $0.05 today, and the first request may be blocked right away.
 
 - **Portal:** in **Policies**, open the **Cost limit**, select **Edit**, set **Budget amount** to `0.05`, and **Save**.
-- **Azure CLI and Bicep:**
+- **Azure CLI, Bicep, and Terraform:**
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -1498,7 +1951,7 @@ Expected output (your cost differs):
 ### Restore the Opus budget
 
 - **Portal:** set **Budget amount** on the **Cost limit** back to `5`.
-- **Azure CLI and Bicep:**
+- **Azure CLI, Bicep, and Terraform:**
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -1528,6 +1981,9 @@ if ($?) { Write-Host "🔐 Opus budget: `$5 per day for each caller" }
 Remove-Item policies.json
 ```
 </details> <!-- gh -->
+
+On the Terraform track, the restore commands set the configuration's values back, so `terraform plan` shows no
+changes.
 
 <!-- /steps -->
 
@@ -1682,8 +2138,8 @@ Set-Location ~/contoso-calc; claude -p "Say hi in three words"
   `claudeCode.environmentVariables` setting. See [Use Claude Code in VS Code](https://code.claude.com/docs/en/vs-code).
 - **Turn off nonessential traffic.** `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` turns off Claude Code's telemetry,
   error reports, and automatic updates. See [Environment variables](https://code.claude.com/docs/en/env-vars).
-- **Give each developer their own key.** Keys are cheap, and **Caller identity** gives each key its own token limit
-  and budget. Rotate or revoke them with [Manage runtime API keys](../10-api-keys/README.md).
+- **Give each developer their own key.** Keys are cheap, and the **Identity** counter dimension gives each key its own
+  token limit and budget. Rotate or revoke them with [Manage runtime API keys](../10-api-keys/README.md).
 - **Cap one run.** `claude -p --max-budget-usd 1` stops a one-shot run when Claude Code's own estimate reaches $1. The
   gateway's budget stays the limit that Claude Code can't change.
 - **Choose which tools Claude Code can call.** On the gateway, publish only some Learn tools or cap tool calls per
@@ -1764,7 +2220,7 @@ done
 
 # Delete the provider only if it has no models left
 LEFT="$(az aigateway model list -g "$RG" --gateway-name "$GATEWAY" --provider-name "$PROVIDER" \
-  --query "length(@)" -o tsv)"
+  --query "length(@)" -o tsv --only-show-errors)"
 if [ "$LEFT" = "0" ]; then
   az aigateway model-provider delete -g "$RG" --gateway-name "$GATEWAY" -n "$PROVIDER" --yes &&
     echo "🚮 Provider $PROVIDER is deleted"
@@ -1791,7 +2247,7 @@ foreach ($m in 'claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5') {
 
 # Delete the provider only if it has no models left
 $LEFT = az aigateway model list -g $RG --gateway-name $GATEWAY --provider-name $PROVIDER `
-  --query "length(@)" -o tsv
+  --query "length(@)" -o tsv --only-show-errors
 if ($LEFT -eq "0") {
   az aigateway model-provider delete -g $RG --gateway-name $GATEWAY -n $PROVIDER --yes
   if ($?) { Write-Host "🚮 Provider $PROVIDER is deleted" }
@@ -1851,11 +2307,65 @@ if ($?) { Write-Host "🚮 Deployment records claude-code and learn-mcp are dele
 </details> <!-- gh -->
 
 </details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+### Delete what Terraform created
+
+Delete what `terraform apply` added to your gateway: the key, the aliases, the models, the provider and the
+**Foundry User** role assignment if Terraform created them, and `learn` if you deployed it. The gateway, the Foundry
+account, and its deployments stay. It takes a few seconds. The commands set the Terraform variables again, in case
+you're in a new terminal.
+
+To keep `learn` for [Control which tools agents can call](../05-mcp-tool-controls/README.md), first run
+`terraform state rm 'azapi_resource.learn[0]'` in the Terraform folder: Terraform then stops managing it, and
+`terraform destroy` leaves it on the gateway.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Move into the lab's Terraform folder, and point Terraform at your gateway and the Foundry account
+cd ~/aigateway/labs/25-claude-code/terraform &&
+  echo "📂 Terraform folder: $(pwd)"
+export ARM_SUBSCRIPTION_ID="$(az account show --query id --output tsv)"
+export TF_VAR_resource_group_name="$RG" TF_VAR_gateway_name="$GATEWAY"
+export TF_VAR_foundry_account_id="$(az cognitiveservices account show -g "$FOUNDRY_RG" -n "$FOUNDRY_ACCOUNT" \
+  --query id -o tsv)"
+
+# Delete everything that terraform apply added to your gateway: the gateway and the Foundry account stay
+terraform destroy -auto-approve &&
+  echo "🚮 Everything that terraform apply added is deleted"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Move into the lab's Terraform folder, and point Terraform at your gateway and the Foundry account
+Set-Location ~/aigateway/labs/25-claude-code/terraform
+if ($?) { Write-Host "📂 Terraform folder: $(Get-Location)" }
+$env:ARM_SUBSCRIPTION_ID        = az account show --query id --output tsv
+$env:TF_VAR_resource_group_name = $RG
+$env:TF_VAR_gateway_name        = $GATEWAY
+$env:TF_VAR_foundry_account_id  = az cognitiveservices account show -g $FOUNDRY_RG -n $FOUNDRY_ACCOUNT --query id -o tsv
+
+# Delete everything that terraform apply added to your gateway: the gateway and the Foundry account stay
+terraform destroy -auto-approve
+if ($?) { Write-Host "🚮 Everything that terraform apply added is deleted" }
+```
+</details> <!-- gh -->
+
+> **Checkpoint**
+> `terraform destroy` ended with `Destroy complete! Resources: 9 destroyed.`, or 7 when Terraform didn't create the
+> role assignment and the provider. Add one when Terraform manages `learn`.
+
+</details> <!-- gh -->
 <!-- /tracks -->
 
-The gateway's managed identity keeps the **Foundry User** role on the Foundry account. Leave it if another provider on
-the gateway uses the account. Otherwise, remove it in the Foundry account's **Access control (IAM)** in the Azure
-portal.
+On the portal, Azure CLI, and Bicep tracks, the gateway's managed identity keeps the **Foundry User** role on the
+Foundry account, and so it does on the Terraform track when the checks set `grant_foundry_user` to `false`. Leave it
+if another provider on the gateway uses the account. Otherwise, remove it in the Foundry account's **Access control
+(IAM)** in the Azure portal.
 
 ## Next steps
 
@@ -1884,5 +2394,5 @@ portal.
 | :-- | :-: | --: |
 | [24 · GitHub Copilot BYOK](../24-github-copilot-byok/README.md) | [All labs](../README.md) | [18 · Private networking](../18-private-networking/README.md) |
 
-<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (10 of 10)</sub>
+<sub>Learning paths: [App & agent developer](../README.md#learning-paths) (15 of 15)</sub>
 <!-- gh:end -->

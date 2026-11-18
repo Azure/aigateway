@@ -1,6 +1,6 @@
 // Federates the public Microsoft Learn MCP server behind the gateway as one governed MCP server, and optionally gives
 // Microsoft Entra principals the AI Gateway Tools User role on it. Clients connect to
-// https://<gateway-host>/default/toolservers/<serverName>/mcp and see tools named <namespace>___<tool>.
+// https://<gateway-host>/default/toolservers/<serverName>/mcp and see tools named <namespace>_<tool>.
 targetScope = 'resourceGroup'
 
 import { principal } from './types.bicep'
@@ -29,30 +29,32 @@ param toolUsers principal[] = []
 var aiGatewayToolsUserRoleDefinitionId = 'dce03f8d-857f-4e40-a90d-67770fa6ecd2'
 
 #disable-next-line BCP081
-resource aiGateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
+resource aiGateway 'Microsoft.ApiManagement/aigateways@2026-11-01' existing = {
   name: gatewayName
 }
 
 #disable-next-line BCP081
-resource defaultWorkspace 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' existing = {
+resource defaultWorkspace 'Microsoft.ApiManagement/aigateways/workspaces@2026-11-01' existing = {
   parent: aiGateway
   name: 'default'
 }
 
 #disable-next-line BCP081
-resource toolServer 'Microsoft.ApiManagement/aigateways/workspaces/toolServers@2025-09-01-preview' = {
+resource toolServer 'Microsoft.ApiManagement/aigateways/workspaces/toolServers@2026-11-01' = {
   parent: defaultWorkspace
   name: serverName
   properties: {
     displayName: displayName
     description: serverDescription
-    type: 'mcp'
+    toolServerType: 'mcp'
     endpoints: [
       {
         namespace: namespace
         kind: 'mcp'
         mcp: {
-          url: mcpUrl
+          endpoint: {
+            url: mcpUrl
+          }
           transport: 'streamableHttp'
         }
       }

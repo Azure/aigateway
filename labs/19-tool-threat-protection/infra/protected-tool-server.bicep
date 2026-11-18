@@ -26,33 +26,33 @@ param apiKeyName string = 'app-first-call'
 var toolsUserRoleId = 'dce03f8d-857f-4e40-a90d-67770fa6ecd2'
 
 #disable-next-line BCP081
-resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
+resource gateway 'Microsoft.ApiManagement/aigateways@2026-11-01' existing = {
   name: gatewayName
 }
 
 #disable-next-line BCP081
-resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' existing = {
+resource workspace 'Microsoft.ApiManagement/aigateways/workspaces@2026-11-01' existing = {
   parent: gateway
   name: 'default'
 }
 
 #disable-next-line BCP081
-resource toolServer 'Microsoft.ApiManagement/aigateways/workspaces/toolServers@2025-09-01-preview' = {
+resource toolServer 'Microsoft.ApiManagement/aigateways/workspaces/toolServers@2026-11-01' = {
   parent: workspace
   name: serverName
   properties: {
     displayName: 'Microsoft Learn'
     description: 'Search and fetch official Microsoft documentation and code samples.'
-    type: 'mcp'
+    toolServerType: 'mcp'
     endpoints: [
       {
         namespace: 'learn'
         kind: 'mcp'
+        mode: 'failClosed'
         mcp: {
-          url: 'https://learn.microsoft.com/api/mcp'
+          endpoint: { url: 'https://learn.microsoft.com/api/mcp' }
           transport: 'streamableHttp'
         }
-        required: true
       }
     ]
     // A tool threat protection policy needs at least one stage.
@@ -79,10 +79,12 @@ resource toolsUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!e
 }
 
 #disable-next-line BCP081
-resource apiKey 'Microsoft.ApiManagement/aigateways/apiKeys@2025-09-01-preview' = {
+resource apiKey 'Microsoft.ApiManagement/aigateways/apiKeys@2026-11-01' = {
   parent: gateway
   name: apiKeyName
-  properties: {}
+  properties: {
+    displayName: apiKeyName
+  }
 }
 
 output toolServerId string = toolServer.id

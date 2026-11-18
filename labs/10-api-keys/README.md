@@ -4,13 +4,13 @@ summary: Give every app its own runtime API key, keep the value out of your code
 category: security
 level: Beginner
 duration: 15
-tracks: [portal, cli, iac]
+tracks: [portal, cli, iac, terraform]
 order: 10
 illustration: diagrams/identity-boundaries.svg
-tags: [API keys, rotation, revocation, Key Vault, secrets, cost attribution, runtime access]
+tags: [API keys, rotation, revocation, Key Vault, secrets, cost attribution, runtime access, Terraform]
 objectives:
   - Create one runtime API key for each app and keep its value in a secret store, not in code
-  - Declare the keys with Bicep and azd, and keep rotation and revocation as operations
+  - Declare the keys with Bicep and azd or Terraform, and keep rotation and revocation as operations
   - Rotate a key without downtime by moving clients between its primary and secondary values
   - Revoke a leaked key and confirm that the gateway rejects it with 401
   - Find usage and estimated cost for each key in Monitoring
@@ -29,12 +29,12 @@ prereqs:
 
 | ⏱️ Time | 📶 Level | 🧭 Tracks | ✅ Before you start |
 | :-- | :-- | :-- | :-- |
-| 15 min | Beginner | Portal · Azure CLI · Bicep + azd | [01 · Provision a gateway](../01-provision-gateway/README.md) |
+| 15 min | Beginner | Portal · Azure CLI · Bicep + azd · Terraform | [01 · Provision a gateway](../01-provision-gateway/README.md) |
 
 **You'll learn to**
 
 - Create one runtime API key for each app and keep its value in a secret store, not in code
-- Declare the keys with Bicep and azd, and keep rotation and revocation as operations
+- Declare the keys with Bicep and azd or Terraform, and keep rotation and revocation as operations
 - Rotate a key without downtime by moving clients between its primary and secondary values
 - Revoke a leaked key and confirm that the gateway rejects it with 401
 - Find usage and estimated cost for each key in Monitoring
@@ -42,7 +42,7 @@ prereqs:
 
 **Follow along:** 🌐 [Interactive version](https://azure.github.io/aigateway/labs/10-api-keys/) with your own values filled in · 📁 [Lab files](infra/)
 
-**On this page:** [Before you begin](#before-you-begin) · [How it works](#how-it-works) · [Create a key for each app](#create-a-key-for-each-app) · [Store the key outside your code](#store-the-key-outside-your-code) · [Rotate a key without downtime](#rotate-a-key-without-downtime) · [Revoke a leaked key](#revoke-a-leaked-key) · [See usage and cost per key](#see-usage-and-cost-per-key) · [When to move to Microsoft Entra ID](#when-to-move-to-microsoft-entra-id) · [Verify](#verify) · [Go further](#go-further) · [Clean up](#clean-up) · [Next steps](#next-steps)
+**On this page:** [Before you begin](#before-you-begin) · [How it works](#how-it-works) · [Create a key for each app](#create-a-key-for-each-app) · [Send the key in either header](#send-the-key-in-either-header) · [Store the key outside your code](#store-the-key-outside-your-code) · [Rotate a key without downtime](#rotate-a-key-without-downtime) · [Revoke a leaked key](#revoke-a-leaked-key) · [See usage and cost per key](#see-usage-and-cost-per-key) · [When to move to Microsoft Entra ID](#when-to-move-to-microsoft-entra-id) · [Verify](#verify) · [Go further](#go-further) · [Clean up](#clean-up) · [Next steps](#next-steps)
 <!-- gh:end -->
 
 Three callers now use your gateway: the `app-dev` web app, the `support-bot` agent, and a data scientist's
@@ -69,8 +69,8 @@ leaked notebook key. Because every key is a separate caller identity, you can al
 <!-- gh:end -->
 
 > [!TIP]
-> On the **Bicep + azd** track, `azd up` creates its own gateway, model, and keys, so you can skip this section. You
-> need only the one-time setup above.
+> On the **Bicep + azd** and **Terraform** tracks, `azd up` or `terraform apply` creates its own gateway, model, and
+> keys, so you can skip this section. You need only the one-time setup above.
 
 - Complete [Provision your AI Gateway](../01-provision-gateway/README.md). You need the gateway, its resource
   group, and its runtime URL.
@@ -169,9 +169,11 @@ if ($?) { Write-Host "🔐 You're a Key Vault Secrets Officer on the vault (it c
 
 A runtime API key is a gateway resource with a name and two values, **primary** and **secondary**.
 Both values work at the same time, which is what makes rotation without downtime possible. Clients send either
-value as `Authorization: Bearer <key>`, which is how OpenAI SDKs send their API key. The gateway validates the key
-before it applies policies or forwards the request, so a missing, wrong, rotated, or deleted value, or a suspended
-key, gets `401 Unauthorized` and never reaches a model.
+value as `Authorization: Bearer <key>`, which is how OpenAI SDKs send their API key, or in an `api-key` header. The
+gateway validates the key before it applies policies or forwards the request, so a missing, wrong, rotated, or
+deleted value, or a suspended key, gets `401 Unauthorized` and never reaches a model. The `401` message is the same
+one that Microsoft Entra ID callers get: `Unauthorized. Missing or invalid Entra ID token, or missing Data.All
+scope.`
 
 A key is gateway-scoped: it grants access to every published model and MCP server on the gateway. Each key is
 also a separate caller identity, which token limits, cost limits, and Monitoring use to tell callers apart.
@@ -200,7 +202,7 @@ for the key that leaked. Pick one track.
 1. In the [AI Gateway portal](https://ai.gateway.azure.com), open your gateway and select **Access** › **API keys**.
 2. Select **Create API key**.
 3. In **Key name**, enter `app-dev`, and select **Create**.
-4. The **API key created successfully** dialog shows the value. Select **Copy & done**.
+4. The **API key created** dialog shows the value. Select **Copy & done**.
 
 Store the value right away; the next section shows where. After you close the dialog, only people with the
 `apiKeys/listSecrets/action` permission, such as Contributors, can display the value again, with **View keys**.
@@ -220,7 +222,7 @@ into your shell for the checks in this lab:
 
 ```bash title="Bash"
 # Paste the key without showing it, and export it for the checks in this lab
-read -rsp "AI Gateway API key: " AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
+printf "AI Gateway API key: " && read -rs AI_GATEWAY_API_KEY && export AI_GATEWAY_API_KEY && echo
 echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
 ```
 </details> <!-- gh -->
@@ -240,7 +242,8 @@ Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) c
 
 ### Create the keys
 
-The service gives each key its own display name, so identify keys by `name`.
+`create` sets each key's display name to its name. Commands identify a key by `name`, so use the name, not the
+display name, in later commands.
 
 <details open><summary>Bash</summary> <!-- gh -->
 
@@ -418,17 +421,17 @@ param apiKeyNames array = [
 ]
 
 #disable-next-line BCP081
-resource gateway 'Microsoft.ApiManagement/aigateways@2025-09-01-preview' existing = {
+resource gateway 'Microsoft.ApiManagement/aigateways@2026-11-01' existing = {
   name: gatewayName
 }
 
 // Redeploying keeps each key's values: rotation and revocation are operations, not part of the template.
 #disable-next-line BCP081
-resource apiKeys 'Microsoft.ApiManagement/aigateways/apiKeys@2025-09-01-preview' = [for name in apiKeyNames: {
+resource apiKeys 'Microsoft.ApiManagement/aigateways/apiKeys@2026-11-01' = [for name in apiKeyNames: {
   parent: gateway
   name: name
   properties: {
-    // The service replaces the display name with its own, so identify keys by name.
+    // Keep the display name the same as the key's name, which the CLI and the scripts use.
     displayName: name
   }
 }]
@@ -572,6 +575,239 @@ Removing a name from the list doesn't delete the key: the deployment only create
 declares. Delete a key with the CLI, as in [Revoke a leaked key](#revoke-a-leaked-key).
 
 </details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+**What you need:** only the one-time setup from **Before you begin**, plus Terraform 1.9 or later, as in
+[Deploy a lab with Terraform](../SETUP.md#deploy-a-lab-with-terraform). This track doesn't use your gateway from
+earlier labs: `terraform apply` creates a new one, so it works on its own.
+
+### Choose what to declare
+
+Like the Bicep templates, the configuration declares which keys exist, as `Microsoft.ApiManagement/aigateways/apiKeys`
+resources. The gateway generates their values, so they never reach the Terraform state, and a later
+`terraform apply` keeps them. Rotating and revoking a key are operations, not declarations, so you run them with the
+Azure CLI in the next sections.
+
+### Review the configuration
+
+`terraform/main.tf` creates the resource group `rg-<environment_name>` and calls the quick start's
+[resources module](../quickstart/terraform/resources) for the gateway, the Foundry model, its default alias, and the
+`app-first-call` key, so the checks have an alias to call:
+
+<!-- include: terraform/main.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/main.tf`](terraform/main.tf)
+
+```tf
+# Lab 10 with Terraform: creates the resource group rg-<environment_name>, the quick start's gateway, Foundry model,
+# default alias, and runtime API key, then one runtime API key for each caller in api_key_names (api-keys.tf). Key
+# values are never outputs: read them with az aigateway api-key list-secrets.
+data "azapi_client_config" "current" {}
+
+locals {
+  suffix = substr(sha1("${data.azapi_client_config.current.subscription_id}/${var.environment_name}/${var.location}"), 0, 6)
+  tags   = { "environment-name" = var.environment_name }
+}
+
+resource "azurerm_resource_group" "rg" {
+  name     = "rg-${var.environment_name}"
+  location = var.location
+  tags     = local.tags
+}
+
+# The quick start's module: a gateway, a Foundry model behind the default alias, and the app-first-call key.
+module "base" {
+  source = "../../quickstart/terraform/resources"
+
+  subscription_id     = data.azapi_client_config.current.subscription_id
+  resource_group_name = azurerm_resource_group.rg.name
+  resource_group_id   = azurerm_resource_group.rg.id
+  location            = var.location
+  tags                = local.tags
+  gateway_name        = "aigw-${local.suffix}"
+  foundry_name        = "aigw${local.suffix}"
+}
+```
+<!-- gh:end -->
+
+`terraform/api-keys.tf` creates one key for each name in `api_key_names`, with the `azapi` provider, which sends the
+AI Gateway API version, `2026-11-01`, as is. `terraform/variables.tf` declares the names, with the same default as
+the Bicep template:
+
+<!-- include: terraform/api-keys.tf -->
+<!-- gh:begin include: generated by "npm run sync" from the metadata, do not edit -->
+📄 [`terraform/api-keys.tf`](terraform/api-keys.tf)
+
+```tf
+# One runtime API key for each caller in api_key_names. Each key is a separate caller identity in metrics and logs,
+# and the gateway generates its primary and secondary values, so they never reach the Terraform state. Rotation and
+# suspension are operations, not configuration: terraform apply keeps each key's values and state. Removing a name
+# from the list deletes that key.
+resource "azapi_resource" "api_keys" {
+  for_each = toset(var.api_key_names)
+
+  type      = "Microsoft.ApiManagement/aigateways/apiKeys@2026-11-01"
+  name      = each.key
+  parent_id = module.base.gateway_id
+
+  body = {
+    properties = {
+      # Keep the display name the same as the key's name, which the CLI and the scripts use.
+      displayName = each.key
+    }
+  }
+
+  schema_validation_enabled = false
+}
+```
+<!-- gh:end -->
+
+### Deploy with terraform apply
+
+Move into the lab's Terraform folder, select your current subscription, then plan and apply the configuration. It
+takes about three minutes, most of it while the new gateway activates.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Move into the lab's Terraform folder
+cd ~/aigateway/labs/10-api-keys/terraform &&
+  echo "📂 Terraform folder: $(pwd)"
+
+# Deploy to the Azure CLI's current subscription
+export ARM_SUBSCRIPTION_ID="$(az account show --query id --output tsv)" &&
+  echo "📍 Subscription: $ARM_SUBSCRIPTION_ID"
+
+# Download the providers, then plan and apply the gateway, the Foundry model, its alias, and the runtime API keys
+terraform init &&
+  terraform plan -out tfplan &&
+  terraform apply tfplan &&
+  echo "🚀 Gateway deployed: $(terraform output -raw ai_gateway_url)"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Move into the lab's Terraform folder
+Set-Location ~/aigateway/labs/10-api-keys/terraform
+if ($?) { Write-Host "📂 Terraform folder: $(Get-Location)" }
+
+# Deploy to the Azure CLI's current subscription
+$env:ARM_SUBSCRIPTION_ID = az account show --query id --output tsv
+if ($?) { Write-Host "📍 Subscription: $env:ARM_SUBSCRIPTION_ID" }
+
+# Download the providers, then plan and apply the gateway, the Foundry model, its alias, and the runtime API keys
+terraform init
+if ($?) { terraform plan -out tfplan }
+if ($?) { terraform apply tfplan }
+if ($?) { Write-Host "🚀 Gateway deployed: $(terraform output -raw ai_gateway_url)" }
+```
+</details> <!-- gh -->
+
+The configuration deploys to `eastus2`. For another region where AI Gateway and the `gpt-5-mini` model are
+available, as in [Find the available regions](../SETUP.md#find-the-available-regions), run
+`export TF_VAR_location=<region>` (PowerShell: `$env:TF_VAR_location = "<region>"`) before `terraform plan`.
+
+### Read the outputs and the key
+
+Set the variables that the next sections and **Verify** use from the Terraform outputs, and read the `app-dev` key
+from the gateway, so that it never shows on screen or lands in the Terraform state.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Read the configuration's outputs into the variables that the next sections use
+export RG="$(terraform output -raw azure_resource_group)"
+export GATEWAY="$(terraform output -raw ai_gateway_name)"
+export AI_GATEWAY_MODEL="$(terraform output -raw ai_gateway_model)"
+export GATEWAY_ID="$(terraform output -raw ai_gateway_id)"
+export AI_GATEWAY_URL="$(terraform output -raw ai_gateway_url)"
+echo "📝 Gateway $GATEWAY in $RG, model alias $AI_GATEWAY_MODEL"
+echo "🌐 Runtime URL: $AI_GATEWAY_URL"
+
+# Read the app-dev key from the gateway, so that it never lands in a file or the Terraform state
+export AI_GATEWAY_API_KEY="$(az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/app-dev" \
+  --query primaryKey --output tsv)"
+echo "🔑 Key: in AI_GATEWAY_API_KEY (${#AI_GATEWAY_API_KEY} characters, not shown)"
+
+# List the gateway's keys and their state, without their values
+echo "🔑 API keys on $GATEWAY:"
+az aigateway api-key list -g "$RG" --gateway-name "$GATEWAY" --query "[].{name:name, state:properties.state}" -o table
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Read the configuration's outputs into the variables that the next sections use
+$RG                     = terraform output -raw azure_resource_group
+$GATEWAY                = terraform output -raw ai_gateway_name
+$env:AI_GATEWAY_MODEL   = terraform output -raw ai_gateway_model
+$GATEWAY_ID             = terraform output -raw ai_gateway_id
+$env:AI_GATEWAY_URL     = terraform output -raw ai_gateway_url
+Write-Host "📝 Gateway $GATEWAY in $RG, model alias $env:AI_GATEWAY_MODEL"
+Write-Host "🌐 Runtime URL: $env:AI_GATEWAY_URL"
+
+# Read the app-dev key from the gateway, so that it never lands in a file or the Terraform state
+$env:AI_GATEWAY_API_KEY = az aigateway api-key list-secrets --ids "$GATEWAY_ID/apiKeys/app-dev" `
+  --query primaryKey --output tsv
+Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) characters, not shown)"
+
+# List the gateway's keys and their state, without their values
+Write-Host "🔑 API keys on ${GATEWAY}:"
+az aigateway api-key list -g $RG --gateway-name $GATEWAY --query "[].{name:name, state:properties.state}" -o table
+```
+</details> <!-- gh -->
+
+> **Checkpoint**
+> `terraform apply` ended with `Apply complete! Resources: 12 added, 0 changed, 0 destroyed.` The table lists the
+> built-in `master` key, the quick start's `app-first-call`, and `app-dev`, `support-bot`, and `old-notebook`, all
+> `active`.
+
+### Change the keys
+
+The key names are the `api_key_names` variable, with the default in `terraform/variables.tf`. To add a key, pass the
+whole list to `terraform plan` and apply the plan. Existing keys keep their values.
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Plan the change: the whole list of key names, with a new batch-job key at the end
+terraform plan -var 'api_key_names=["app-dev","support-bot","old-notebook","batch-job"]' -out tfplan &&
+  echo "📝 The plan adds only batch-job"
+
+# Apply the plan: Terraform creates batch-job, and the existing keys keep their values
+terraform apply tfplan &&
+  echo "🔑 API key batch-job is ready, and the other keys keep their values"
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Plan the change: the whole list of key names, with a new batch-job key at the end
+terraform plan -var 'api_key_names=["app-dev","support-bot","old-notebook","batch-job"]' -out tfplan
+if ($?) { Write-Host "📝 The plan adds only batch-job" }
+
+# Apply the plan: Terraform creates batch-job, and the existing keys keep their values
+terraform apply tfplan
+if ($?) { Write-Host "🔑 API key batch-job is ready, and the other keys keep their values" }
+```
+</details> <!-- gh -->
+
+> **Checkpoint**
+> The plan ended with `Plan: 1 to add, 0 to change, 0 to destroy.`, for `azapi_resource.api_keys["batch-job"]`.
+
+Unlike a Bicep deployment, Terraform deletes a key whose name leaves the list: the next plan without `-var` shows
+`Plan: 0 to add, 0 to change, 1 to destroy.` for `batch-job`. Before you go on, plan and apply again without `-var`,
+to go back to the default list.
+
+The next sections and **Verify** run the scripts from the lab's folder, so move up to it:
+`cd ..` (PowerShell: `Set-Location ..`).
+
+</details> <!-- gh -->
 <!-- /tracks -->
 
 From the lab folder, send one request with the `app-dev` key:
@@ -661,6 +897,62 @@ printf '%-14s %-8s HTTP %s  %s\n' "$LABEL" "$HINT" "$STATUS" "$RESULT"
 > **Access** › **API keys** lists `app-dev`, `support-bot`, and `old-notebook`, and the check prints
 > `HTTP 200  accepted` for `app-dev`.
 
+## Send the key in either header
+
+The gateway reads a runtime key from one of two headers. Use one per request; a request with both gets `400`.
+
+| Header | Used by |
+|---|---|
+| `Authorization: Bearer <key>` | The docs, OpenAI SDKs, and the checks in this lab |
+| `api-key: <key>` | Azure OpenAI SDKs and tools that send an Azure OpenAI key |
+
+Send the same request with each header, and then with both:
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# Send the same request once with each header, and print only the HTTP status
+URL="${AI_GATEWAY_URL%/}/default/models/openai/v1/chat/completions"
+BODY="$(printf '{"model":"%s","messages":[{"role":"user","content":"ping"}]}' "$AI_GATEWAY_MODEL")"
+for HEADER in "Authorization: Bearer" "api-key:"; do
+  # Read the header from stdin, so that the key doesn't appear in the process list
+  STATUS="$(printf '%s %s\n' "$HEADER" "$AI_GATEWAY_API_KEY" | curl -sS -o /dev/null -w '%{http_code}' "$URL" \
+    -H @- -H "Content-Type: application/json" -d "$BODY")"
+  echo "🔑 ${HEADER%%:*} header: HTTP $STATUS"
+done
+
+# Send both headers in one request: the gateway rejects it with 400
+echo "🚦 Expect 400 Bad Request for both headers:"
+printf 'Authorization: Bearer %s\napi-key: %s\n' "$AI_GATEWAY_API_KEY" "$AI_GATEWAY_API_KEY" |
+  curl -sS "$URL" -H @- -H "Content-Type: application/json" -d "$BODY" -w '\nHTTP %{http_code}\n'
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# Send the same request once with each header, and print only the HTTP status
+$uri  = "$($env:AI_GATEWAY_URL.TrimEnd('/'))/default/models/openai/v1/chat/completions"
+$body = @{ model = $env:AI_GATEWAY_MODEL; messages = @(@{ role = "user"; content = "ping" }) } | ConvertTo-Json -Depth 5
+foreach ($headers in @{ "Authorization" = "Bearer $env:AI_GATEWAY_API_KEY" }, @{ "api-key" = $env:AI_GATEWAY_API_KEY }) {
+  $response = Invoke-WebRequest -Method Post -Uri $uri -Headers $headers -ContentType "application/json" `
+    -Body $body -SkipHttpErrorCheck
+  Write-Host "🔑 $($headers.Keys) header: HTTP $($response.StatusCode)"
+}
+
+# Send both headers in one request: the gateway rejects it with 400
+Write-Host "🚦 Expect 400 Bad Request for both headers:"
+$both = @{ "Authorization" = "Bearer $env:AI_GATEWAY_API_KEY"; "api-key" = $env:AI_GATEWAY_API_KEY }
+$response = Invoke-WebRequest -Method Post -Uri $uri -Headers $both -ContentType "application/json" `
+  -Body $body -SkipHttpErrorCheck
+Write-Host "$($response.Content)`nHTTP $($response.StatusCode)"
+```
+</details> <!-- gh -->
+
+> **Checkpoint**
+> Both headers print `HTTP 200`, and the request with both prints `HTTP 400` with
+> `"Specify either an API key or an Authorization header, not both."`
+
 ## Store the key outside your code
 
 A runtime key opens every model and MCP server on the gateway, so treat it like a password:
@@ -736,7 +1028,8 @@ Write-Host "🔑 Key: in AI_GATEWAY_API_KEY ($($env:AI_GATEWAY_API_KEY.Length) c
 Rotate keys on a schedule, and whenever someone who had a value leaves the team. Regenerating a value invalidates
 that value only, and right away. The trick is to regenerate the value that no client is using.
 
-On the Bicep + azd track, follow the **Azure CLI** track. A later `azd provision` keeps the regenerated values.
+On the Bicep + azd and Terraform tracks, follow the **Azure CLI** track. A later `azd provision` or
+`terraform apply` keeps the regenerated values.
 
 <!-- track: portal | Portal -->
 <details open><summary><b>🖥️ Portal</b></summary> <!-- gh -->
@@ -750,7 +1043,7 @@ You use the old value later to prove that it stopped working. On the `support-bo
 
 ```bash title="Bash"
 # Paste the current support-bot value without showing it, to prove later that the rotation retired it
-read -rsp "Current support-bot value: " OLD_SUPPORT_BOT && echo
+printf "Current support-bot value: "; read -rs OLD_SUPPORT_BOT; echo
 echo "🔑 Current support-bot value: in OLD_SUPPORT_BOT (${#OLD_SUPPORT_BOT} characters, not shown)"
 ```
 </details> <!-- gh -->
@@ -767,9 +1060,9 @@ Write-Host "🔑 Current support-bot value: in OLD_SUPPORT_BOT ($($OLD_SUPPORT_B
 ### Rotate the key
 
 1. On the `support-bot` row, select **…** (**More actions**) › **Rotate key**.
-2. The `Rotate "support-bot" key?` dialog warns that the current value stops working immediately and that the
-   new value is displayed once. Select **Rotate**.
-3. In **API key rotated successfully**, copy the new value and update the client, or the `support-bot-api-key`
+2. The `Rotate "support-bot" key?` dialog warns that clients using the old value get `401 Unauthorized` until
+   you update them. Select **Rotate**.
+3. In **API key rotated**, copy the new value and update the client, or the `support-bot-api-key`
    secret in Key Vault.
 
 > [!NOTE]
@@ -952,7 +1245,7 @@ automatically.
 ## Revoke a leaked key
 
 When a key leaks, revoke it first and investigate afterward. Deleting a key invalidates both of its values
-immediately, and anyone who holds them gets `401`. Pick one track.
+within about 10 seconds, and anyone who holds them then gets `401`. Pick one track.
 
 On the Bicep + azd track, follow the **Azure CLI** track. Then remove `old-notebook` from the template's list, and
 keep any names you added, so that a later `azd provision` doesn't create it again, with new values:
@@ -975,6 +1268,36 @@ if ($?) { Write-Host "📝 AI_GATEWAY_API_KEYS lists app-dev and support-bot" }
 ```
 </details> <!-- gh -->
 
+On the Terraform track, follow the **Azure CLI** track too, then come back and run this block. If you run it first,
+Terraform deletes `old-notebook` before the CLI track saves its value for **Verify**. Plan without `old-notebook`, and
+keep any names you added: a plan with the default list creates `old-notebook` again, with new values (`Plan: 1 to
+add, 0 to change, 0 to destroy.`). Pass the same list to every later plan, or change the default in
+`terraform/variables.tf`:
+
+<details open><summary>Bash</summary> <!-- gh -->
+
+```bash title="Bash"
+# After the CLI deletes old-notebook, plan with only the keys you still need: the plan changes only an output
+cd ~/aigateway/labs/10-api-keys/terraform &&
+  terraform plan -var 'api_key_names=["app-dev","support-bot"]' -out tfplan &&
+  terraform apply tfplan &&
+  echo "📝 Terraform manages app-dev and support-bot"
+cd ..
+```
+</details> <!-- gh -->
+
+<details><summary>PowerShell</summary> <!-- gh -->
+
+```powershell title="PowerShell"
+# After the CLI deletes old-notebook, plan with only the keys you still need: the plan changes only an output
+Set-Location ~/aigateway/labs/10-api-keys/terraform
+if ($?) { terraform plan -var 'api_key_names=["app-dev","support-bot"]' -out tfplan }
+if ($?) { terraform apply tfplan }
+if ($?) { Write-Host "📝 Terraform manages app-dev and support-bot" }
+Set-Location ..
+```
+</details> <!-- gh -->
+
 <!-- track: portal | Portal -->
 <details open><summary><b>🖥️ Portal</b></summary> <!-- gh -->
 
@@ -987,7 +1310,7 @@ You use it to prove that the key no longer works. On the `old-notebook` row, sel
 
 ```bash title="Bash"
 # Paste the leaked value without showing it, to prove later that the gateway rejects it
-read -rsp "Leaked value: " LEAKED_KEY && echo
+printf "Leaked value: "; read -rs LEAKED_KEY; echo
 echo "🔑 Leaked value: in LEAKED_KEY (${#LEAKED_KEY} characters, not shown)"
 ```
 </details> <!-- gh -->
@@ -1021,7 +1344,7 @@ LEAKED_KEY="$(az aigateway api-key list-secrets -g "$RG" --gateway-name "$GATEWA
   --query primaryKey -o tsv)"
 echo "🔑 Leaked value: in LEAKED_KEY (${#LEAKED_KEY} characters, not shown)"
 
-# Delete the key: both of its values stop working right away
+# Delete the key: both of its values stop working within about 10 seconds
 az aigateway api-key delete -g "$RG" --gateway-name "$GATEWAY" -n old-notebook --yes &&
   echo "🚮 API key old-notebook is deleted"
 ```
@@ -1035,7 +1358,7 @@ $LEAKED_KEY = az aigateway api-key list-secrets -g $RG --gateway-name $GATEWAY -
   --query primaryKey -o tsv
 Write-Host "🔑 Leaked value: in LEAKED_KEY ($($LEAKED_KEY.Length) characters, not shown)"
 
-# Delete the key: both of its values stop working right away
+# Delete the key: both of its values stop working within about 10 seconds
 az aigateway api-key delete -g $RG --gateway-name $GATEWAY -n old-notebook --yes
 if ($?) { Write-Host "🚮 API key old-notebook is deleted" }
 ```
@@ -1043,8 +1366,8 @@ if ($?) { Write-Host "🚮 API key old-notebook is deleted" }
 
 ### Suspend a key instead
 
-To block a key while you investigate, without deleting it, set its `state` to `suspended`. About 20 seconds
-later, calls with the key get `401` until you set it back to `active`. The **Verify** section expects
+To block a key while you investigate, without deleting it, set its `state` to `suspended`. Within about 10
+seconds, calls with the key get `401` until you set it back to `active`. The **Verify** section expects
 `support-bot` to work, so set it back to `active` before you continue:
 
 <details open><summary>Bash</summary> <!-- gh -->
@@ -1106,7 +1429,7 @@ Each key is a caller identity, so Monitoring can break usage down by key. This n
 The same identity drives enforcement. A **Cost limit** counted by **Caller identity** gives each key its own
 budget:
 
-![A Cost limit policy with a $100 monthly budget counted by caller identity](../assets/screens/policy-cost-limit-details.png "A Cost limit counted by caller identity: each API key gets its own $100 monthly budget, and a caller that reaches it gets 403 LlmCostQuotaExceeded.")
+![A Cost limit policy with a $5 daily budget counted by caller identity](../assets/screens/policy-cost-limit-details.png "A Cost limit counted by caller identity: each API key gets its own $5 daily budget, and a caller that reaches it gets 403 LlmCostQuotaExceeded.")
 
 To set budgets and limits per key, continue with
 [Enforce cost budgets with per-caller overrides](../07-cost-budgets/README.md).
@@ -1118,7 +1441,7 @@ API keys are the fastest way to start, but the docs don't recommend them for pro
 | | Runtime API key | Microsoft Entra ID with Azure RBAC |
 |---|---|---|
 | What the gateway sees | One named key | A user, agent, or workload identity in your tenant |
-| What it can call | Every published model and MCP server | What its role grants: **AI Gateway User** (models and tools), **AI Gateway Models User**, or **AI Gateway Tools User**, at gateway, alias, or MCP server scope |
+| What it can call | Every published model and MCP server | What its role grants: **AI Gateway User** (models and tools), **AI Gateway Models User**, or **AI Gateway Tools User**, on all assets, one alias, or one MCP server |
 | Secret to protect | The key value | None with a managed identity; tokens are short-lived |
 | Rotation | You rotate and redistribute values | Microsoft Entra ID issues new tokens |
 | Good fit | Prototypes, labs, and tools that only accept a key | Production apps, agents, and per-user access |
@@ -1191,7 +1514,7 @@ the check again. After the CLI flow, both the new primary and the new secondary 
 
 ```bash title="Bash"
 # Paste a current support-bot value without showing it
-read -rsp "Current support-bot value: " SUPPORT_BOT && echo
+printf "Current support-bot value: "; read -rs SUPPORT_BOT; echo
 echo "🔑 Current support-bot value: in SUPPORT_BOT (${#SUPPORT_BOT} characters, not shown)"
 
 # Check it: after the rotation, the gateway accepts both the new primary and the new secondary value
@@ -1260,8 +1583,8 @@ az aigateway api-key delete -g "$RG" --gateway-name "$GATEWAY" -n support-bot-v2
 ### Delete everything azd created
 
 In the `aigateway/labs/10-api-keys` folder, delete the resource group with the gateway, the Foundry account, and the
-keys. [`--purge`](../SETUP.md#delete-what-azd-created) also purges the soft-deleted Foundry account. It takes about
-ten minutes.
+keys. [`--purge`](../SETUP.md#delete-what-azd-created) also purges the soft-deleted Foundry account. It takes a few
+minutes.
 
 ```bash
 # Delete everything that azd up created, and purge the Foundry account
@@ -1270,6 +1593,23 @@ azd down --purge --force &&
 ```
 
 The Bicep + azd track of lab 07 creates its own `app-dev` and `support-bot` keys, so you don't need to keep these.
+
+</details> <!-- gh -->
+<!-- track: terraform | Terraform -->
+<details><summary><b>🌍 Terraform</b></summary> <!-- gh -->
+
+### Delete everything Terraform created
+
+In the `aigateway/labs/10-api-keys/terraform` folder, delete the resource group with the gateway, the Foundry
+account, and the keys. The [`azurerm` provider](../SETUP.md#delete-what-terraform-created) also purges the
+soft-deleted Foundry account. It takes a few minutes.
+
+```bash
+# Delete everything that terraform apply created, and purge the soft-deleted Foundry account
+cd ~/aigateway/labs/10-api-keys/terraform &&
+  terraform destroy -auto-approve &&
+  echo "🚮 Everything that terraform apply created is deleted"
+```
 
 </details> <!-- gh -->
 <!-- /tracks -->
@@ -1290,8 +1630,8 @@ az keyvault purge -n "$KEY_VAULT" &&
 Clear the key values from your shell with `unset AI_GATEWAY_API_KEY OLD_SUPPORT_BOT LEAKED_KEY SUPPORT_BOT`
 (Bash) or `Remove-Variable OLD_SUPPORT_BOT, LEAKED_KEY, SUPPORT_BOT; Remove-Item Env:AI_GATEWAY_API_KEY`
 (PowerShell). Delete the gateway from earlier labs only when you finish all labs, as described in
-[Provision your AI Gateway](../01-provision-gateway/README.md#clean-up). `azd down` doesn't touch it, because the
-Bicep + azd track created its own gateway.
+[Provision your AI Gateway](../01-provision-gateway/README.md#clean-up). `azd down` and `terraform destroy` don't
+touch it, because the Bicep + azd and Terraform tracks created their own gateway.
 
 ## Next steps
 
@@ -1300,7 +1640,8 @@ Bicep + azd track created its own gateway.
 - [Enforce cost budgets with per-caller overrides](../07-cost-budgets/README.md): give `app-dev` and
   `support-bot` different budgets.
 - [Monitor usage, cost, and traces](../13-monitoring/README.md): see usage and cost for each key.
-- Docs: [Security and identity in AI Gateway](https://ai.gateway.azure.com/docs/security-identity).
+- Docs: [Security and identity in AI Gateway](https://ai.gateway.azure.com/docs/security-identity) and
+  [Authenticate with an API key](https://ai.gateway.azure.com/docs/security/authenticate-keys).
 
 <!-- gh:begin footer: generated by "npm run sync" from the metadata, do not edit -->
 
@@ -1312,5 +1653,5 @@ Bicep + azd track created its own gateway.
 | :-- | :-: | --: |
 | [09 · Gateway-wide baselines](../09-gateway-baselines/README.md) | [All labs](../README.md) | [11 · Entra ID & RBAC](../11-entra-rbac/README.md) |
 
-<sub>Learning paths: [Security & compliance](../README.md#learning-paths) (1 of 7)</sub>
+<sub>Learning paths: [Security & compliance](../README.md#learning-paths) (1 of 9)</sub>
 <!-- gh:end -->

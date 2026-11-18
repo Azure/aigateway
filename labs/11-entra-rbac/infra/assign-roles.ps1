@@ -1,18 +1,18 @@
-# Grants an AI Gateway data-plane role to a Microsoft Entra identity at the gateway, a model alias, or an MCP server.
+# Grants an AI Gateway runtime role to a Microsoft Entra identity on all assets, a model alias, or an MCP server.
 #
-# Usage: ./assign-roles.ps1 -Role <user|models|tools> [-Scope gateway|alias:<name>|mcp:<name>]
+# Usage: ./assign-roles.ps1 -Role <user|models|tools> [-Scope workspace|gateway|alias:<name>|mcp:<name>]
 #                           [-PrincipalId <object-id>] [-PrincipalType User|Group|ServicePrincipal]
 #   user   = AI Gateway User        (models and tools)
 #   models = AI Gateway Models User (models only)
 #   tools  = AI Gateway Tools User  (tools only)
-# PrincipalId defaults to the signed-in user.
+# Scope defaults to workspace: all assets, the default workspace. PrincipalId defaults to the signed-in user.
 #
 # Requires $RG and $GATEWAY (or -ResourceGroup and -GatewayName), the Azure CLI with the aigateway extension, and
 # permission to create role assignments (Owner, User Access Administrator, or Role Based Access Control
 # Administrator). Contributor isn't enough.
 param(
   [Parameter(Mandatory)][ValidateSet('user', 'models', 'tools')][string]$Role,
-  [string]$Scope = 'gateway',
+  [string]$Scope = 'workspace',
   [string]$PrincipalId,
   [ValidateSet('User', 'Group', 'ServicePrincipal')][string]$PrincipalType = 'User',
   [string]$ResourceGroup = $RG,
@@ -32,6 +32,7 @@ $gatewayId = az aigateway show -g $ResourceGroup -n $GatewayName --query id -o t
 if ($LASTEXITCODE -ne 0) { throw "Couldn't read gateway $GatewayName." }
 
 switch -Regex ($Scope) {
+  '^workspace$' { $scopeId = "$gatewayId/workspaces/default" }
   '^gateway$' { $scopeId = $gatewayId }
   '^alias:.+' {
     if ($Role -eq 'tools') { throw "AI Gateway Tools User can't be assigned on a model alias." }
@@ -41,7 +42,7 @@ switch -Regex ($Scope) {
     if ($Role -eq 'models') { throw "AI Gateway Models User can't be assigned on an MCP server." }
     $scopeId = "$gatewayId/workspaces/default/toolServers/$($Scope.Substring(4))"
   }
-  default { throw "Unknown scope '$Scope'. Use gateway, alias:<name>, or mcp:<name>." }
+  default { throw "Unknown scope '$Scope'. Use workspace, gateway, alias:<name>, or mcp:<name>." }
 }
 
 if (-not $PrincipalId) {
