@@ -692,13 +692,20 @@ class _Walk:
                     element["fragmentId"], section=section, via=(),
                     under_branch=conditional, seen=frozenset(),
                 ))
-        if not inherited and index > 0:
-            parent_level, parent = chain[index - 1]
-            if parent is not None and _declares(parent, section):
-                self.breaks.append({
-                    "policyId": document["id"], "section": section,
-                    "parentLevel": parent_level, "parentPolicyId": parent["id"],
-                })
+        if not inherited:
+            # The nearest ancestor that says anything, not the immediate one:
+            # a scope with no policy of its own is transparent, so an API that
+            # drops `<base />` while its product is silent is still overriding
+            # the global policy, and reporting only against the product would
+            # have found nothing to report.
+            for above in range(index - 1, -1, -1):
+                parent_level, parent = chain[above]
+                if parent is not None and _declares(parent, section):
+                    self.breaks.append({
+                        "policyId": document["id"], "section": section,
+                        "parentLevel": parent_level, "parentPolicyId": parent["id"],
+                    })
+                    break
         return out
 
     def expand_fragment(

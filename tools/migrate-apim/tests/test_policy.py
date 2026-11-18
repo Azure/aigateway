@@ -323,6 +323,19 @@ class TestInheritanceIsWhatTheChildAsksFor:
         assert broken["section"] == "inbound"
         assert broken["parentPolicyId"] == "policy:global"
 
+    def test_the_omission_is_reported_against_the_nearest_scope_that_speaks(self):
+        # A scope with no policy of its own is transparent, so an API dropping
+        # `<base />` under a silent product still overrides the global policy.
+        graph = policy.PolicyGraph(
+            [
+                self._global(inbound("<llm-token-limit tokens-per-minute='7000' />")),
+                api_policy("aoai", inbound("<ip-filter action='allow' />")),
+            ],
+            products=[{"policyId": "policy:product/ai", "apiIds": ["api:aoai"]}],
+        )
+        [broken] = graph.governing(api="aoai").inheritance_breaks
+        assert broken["parentPolicyId"] == "policy:global"
+
     def test_an_api_with_no_policy_at_all_inherits(self):
         # APIM's default template is `<base />` in every section, so silence is
         # inheritance -- reading it as an override would drop a global policy
