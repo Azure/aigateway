@@ -359,7 +359,7 @@ class TestTheRulesDecideAndTheBuilderReads:
 
     def test_the_verdict_and_kind_come_from_the_rule(self, plan, capabilities):
         rule = next(r for r in capabilities.structural_rules()
-                    if r["match"]["kind"] == "workspace")
+                    if r["selects"] == "workspace")
         [item] = items_of(plan, "collapse")
         assert (item["verdict"], item["kind"]) == (rule["verdict"], rule["itemKind"])
 
@@ -376,7 +376,7 @@ class TestTheRulesDecideAndTheBuilderReads:
         for kind in ("certificates", "credentialProviders"):
             item = next(i for i in built["items"] if i["source"]["assetKind"] == kind)
             rule = next(r for r in capabilities.structural_rules()
-                        if r["match"]["kind"] == kind)
+                        if r["selects"] == kind)
             assert item["proposal"] == rule["proposal"], kind
             assert item["proposal"] in {o["value"] for o in item["options"]}, kind
 
@@ -1552,7 +1552,7 @@ class TestWhichApplicationInsightsIsAQuestion:
 
     def test_which_destinations_need_it_is_the_rule_s_to_say(self, capabilities):
         rule = next(r for r in capabilities.structural_rules()
-                    if r["match"]["kind"] == "telemetry")
+                    if r["selects"] == "telemetry")
         assert set(rule["prerequisiteWhen"]) == {"reuse-appinsights", "new-appinsights"}
         assert set(rule["prerequisiteWhen"]) <= {o["value"] for o in rule["options"]}
 

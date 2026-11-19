@@ -17,8 +17,8 @@
   ],
   "assets": [
     {
-      "match": {
-        "family": "mcpServers",
+      "selects": "mcpServer",
+      "where": {
         "pattern": "passthrough"
       },
       "verdict": "native",
@@ -26,16 +26,16 @@
       "note": "The target takes streamableHttp or sse transports, and authorizationCode for OAuth2. Nothing checks a collected server against that here: a transport or grant type outside it is a gap the apply step surfaces, not a rule this file can select on. Recorded so the limit is written down where the mapping is."
     },
     {
-      "match": {
-        "family": "mcpServers",
+      "selects": "mcpServer",
+      "where": {
         "pattern": "federationRouter"
       },
       "verdict": "native",
       "capabilityId": "mcp.create"
     },
     {
-      "match": {
-        "family": "mcpServers",
+      "selects": "mcpServer",
+      "where": {
         "pattern": "toolProjection"
       },
       "verdict": "partial",
@@ -50,8 +50,8 @@
       "rationale": "The REST contract becomes an openApi tool-server source, but APIM's per-tool policies and tool name overrides do not survive."
     },
     {
-      "match": {
-        "family": "mcpServers",
+      "selects": "mcpServer",
+      "where": {
         "pattern": "unconfigured"
       },
       "verdict": "gap",
@@ -65,8 +65,8 @@
       "proposal": "retain-in-apim"
     },
     {
-      "match": {
-        "family": "mcpServers",
+      "selects": "mcpServer",
+      "where": {
         "toolDiscovery": "runtimeOnly"
       },
       "verdict": "gap",
@@ -89,9 +89,7 @@
       "rationale": "APIM stores no tool names for a passthrough server, and the CLI cannot author allowList/blocked in this baseline regardless."
     },
     {
-      "match": {
-        "family": "agents"
-      },
+      "selects": "agent",
       "verdict": "gap",
       "itemKind": "accept-loss",
       "options": [
@@ -104,8 +102,9 @@
   ],
   "policies": [
     {
-      "match": {
-        "element": [
+      "selects": "policyElement",
+      "where": {
+        "name": [
           "azure-openai-token-limit",
           "llm-token-limit"
         ]
@@ -132,8 +131,9 @@
       ]
     },
     {
-      "match": {
-        "element": [
+      "selects": "policyElement",
+      "where": {
+        "name": [
           "ip-filter"
         ]
       },
@@ -145,8 +145,9 @@
       ]
     },
     {
-      "match": {
-        "element": [
+      "selects": "policyElement",
+      "where": {
+        "name": [
           "authentication-managed-identity"
         ]
       },
@@ -156,8 +157,9 @@
       "rationale": "Becomes provider authentication configuration. Carried by the model provider item rather than raised again here."
     },
     {
-      "match": {
-        "element": [
+      "selects": "policyElement",
+      "where": {
+        "name": [
           "rate-limit-by-key",
           "rate-limit"
         ]
@@ -179,8 +181,9 @@
       ]
     },
     {
-      "match": {
-        "element": [
+      "selects": "policyElement",
+      "where": {
+        "name": [
           "azure-openai-emit-token-metric",
           "llm-emit-token-metric"
         ]
@@ -196,8 +199,9 @@
       "rationale": "Token metrics are emitted by the gateway, but custom dimensions do not carry over one for one. Where the telemetry goes is a separate decision, on the telemetry destination item."
     },
     {
-      "match": {
-        "element": [
+      "selects": "policyElement",
+      "where": {
+        "name": [
           "validate-jwt",
           "validate-azure-ad-token"
         ]
@@ -217,8 +221,9 @@
       "batchOn": []
     },
     {
-      "match": {
-        "element": [
+      "selects": "policyElement",
+      "where": {
+        "name": [
           "quota",
           "quota-by-key",
           "limit-concurrency"
@@ -230,8 +235,9 @@
       "proposal": "retain-in-apim"
     },
     {
-      "match": {
-        "element": [
+      "selects": "policyElement",
+      "where": {
+        "name": [
           "azure-openai-semantic-cache-lookup",
           "azure-openai-semantic-cache-store",
           "llm-semantic-cache-lookup",
@@ -248,8 +254,9 @@
       "proposal": "accept"
     },
     {
-      "match": {
-        "element": [
+      "selects": "policyElement",
+      "where": {
+        "name": [
           "azure-openai-content-safety",
           "llm-content-safety"
         ]
@@ -260,7 +267,8 @@
       "proposal": "retain-in-apim"
     },
     {
-      "match": {
+      "selects": "policyElement",
+      "where": {
         "family": "transform"
       },
       "verdict": "gap",
@@ -269,7 +277,8 @@
       "proposal": "accept"
     },
     {
-      "match": {
+      "selects": "policyElement",
+      "where": {
         "family": "validation"
       },
       "verdict": "gap",
@@ -278,7 +287,8 @@
       "proposal": "retain-in-apim"
     },
     {
-      "match": {
+      "selects": "policyElement",
+      "where": {
         "family": "backendAuthentication"
       },
       "verdict": "gap",
@@ -287,7 +297,8 @@
       "proposal": "retain-in-apim"
     },
     {
-      "match": {
+      "selects": "policyElement",
+      "where": {
         "family": "authentication"
       },
       "verdict": "gap",
@@ -296,7 +307,8 @@
       "proposal": "retain-in-apim"
     },
     {
-      "match": {
+      "selects": "policyElement",
+      "where": {
         "family": "observability"
       },
       "verdict": "gap",
@@ -305,8 +317,9 @@
       "proposal": "accept"
     },
     {
-      "match": {
-        "element": [
+      "selects": "policyElement",
+      "where": {
+        "name": [
           "mcp-server"
         ]
       },
@@ -315,7 +328,8 @@
       "rationale": "The tool server this policy exposes is collected as an MCP asset from the API that carries it, and registered by the MCP server item rather than raised again here."
     },
     {
-      "match": {
+      "selects": "policyElement",
+      "where": {
         "family": "mcp"
       },
       "verdict": "gap",
@@ -324,7 +338,8 @@
       "proposal": "retain-in-apim"
     },
     {
-      "match": {
+      "selects": "policyElement",
+      "where": {
         "family": "routing"
       },
       "verdict": "gap",
@@ -333,8 +348,9 @@
       "proposal": "retain-in-apim"
     },
     {
-      "match": {
-        "element": [
+      "selects": "policyElement",
+      "where": {
+        "name": [
           "send-request",
           "send-one-way-request",
           "return-response",
@@ -347,8 +363,9 @@
       "proposal": "accept"
     },
     {
-      "match": {
-        "element": [
+      "selects": "policyElement",
+      "where": {
+        "name": [
           "set-backend-service",
           "forward-request"
         ]
@@ -381,8 +398,9 @@
       }
     },
     {
-      "match": {
-        "element": [
+      "selects": "policyElement",
+      "where": {
+        "name": [
           "base",
           "include-fragment",
           "choose",
@@ -398,7 +416,8 @@
       "rationale": "Composition, control flow, and gateway plumbing with no target object."
     },
     {
-      "match": {
+      "selects": "policyElement",
+      "derived": {
         "hasExpression": true
       },
       "verdict": "gap",
@@ -408,9 +427,8 @@
       "proposal": "retain-in-apim"
     },
     {
-      "match": {
-        "anyElement": true
-      },
+      "selects": "policyElement",
+      "fallback": true,
       "verdict": "gap",
       "itemKind": "accept-loss",
       "note": "Last of the four passes in capability.policy_rule, and the one that makes an unmapped element impossible rather than merely unlikely. `compile` holds every element in policy.FAMILIES to a rule of its own or a family rule, so nothing reaching here is a policy the tool has ever been taught; it is a policy APIM has that this catalog does not know about. Deliberately blocking: the alternative is a migration that silently drops a policy nobody has read.",
@@ -420,9 +438,7 @@
   ],
   "structural": [
     {
-      "match": {
-        "kind": "workspace"
-      },
+      "selects": "workspace",
       "note": "Selection is by kind alone. The default workspace is skipped by the planner before this rule is consulted, so a name condition here would be read by nobody.",
       "verdict": "partial",
       "itemKind": "collapse",
@@ -435,9 +451,7 @@
       "rationale": "AI Gateway configures the implicit default workspace only. Flattening can collide with same-named assets in other workspaces."
     },
     {
-      "match": {
-        "kind": "subscriptions"
-      },
+      "selects": "subscriptions",
       "verdict": "partial",
       "itemKind": "scope",
       "options": [
@@ -449,34 +463,30 @@
       "rationale": "APIM subscription keys are scoped per product, per API, or service-wide. AI Gateway keys are gateway-wide and no key value can be imported, so every caller is re-keyed."
     },
     {
-      "match": {
-        "kind": "certificates"
-      },
+      "selects": "certificates",
       "verdict": "gap",
       "itemKind": "accept-loss",
       "rationale": "APIM does not export a certificate private key. Client certificates are re-provisioning work, not migration work.",
       "proposal": "accept"
     },
     {
-      "match": {
-        "kind": "credentialProviders"
-      },
+      "selects": "credentialProviders",
       "verdict": "gap",
       "itemKind": "accept-loss",
       "rationale": "Credential-manager connections are never exported. The equivalent tool-server OAuth connection is re-authorized interactively.",
       "proposal": "accept"
     },
     {
-      "match": {
-        "kind": "policyFragments",
+      "selects": "policyFragment",
+      "where": {
         "disposition": "dissolved"
       },
       "verdict": "handled",
       "rationale": "AI Gateway has no policy composition: no fragments, no includes, no inheritance. A fragment is therefore dissolved into every scope that includes it, and what it carries is assessed as the elements of that scope. Listed so a reader can see the fragment reached the plan rather than having to infer it from the policies it contributed."
     },
     {
-      "match": {
-        "kind": "policyFragments",
+      "selects": "policyFragment",
+      "where": {
         "disposition": "conditional"
       },
       "verdict": "partial",
@@ -499,8 +509,8 @@
       "rationale": "A `choose` branch at the include site decides whether this fragment runs at all, and dissolving it into the including scope keeps what it carries and not the condition on it. The target has nowhere to put the branch: its policy surface is six declarative types with no predicate."
     },
     {
-      "match": {
-        "kind": "policyFragments",
+      "selects": "policyFragment",
+      "where": {
         "disposition": "splitSection"
       },
       "verdict": "partial",
@@ -523,16 +533,16 @@
       "rationale": "The same fragment is included into more than one section, so what it does depends on where it was pulled in -- a check on the way in is not the same check on the way out. One dissolution cannot be both."
     },
     {
-      "match": {
-        "kind": "policyFragments",
+      "selects": "policyFragment",
+      "where": {
         "disposition": "unreferenced"
       },
       "verdict": "notApplicable",
       "rationale": "Nothing includes this fragment, so it governs no traffic and there is nothing to dissolve it into. Reported rather than dropped: a fragment that governs nothing and a fragment nobody looked for are the same silence, and operation policies are not collected unless asked for."
     },
     {
-      "match": {
-        "kind": "policyFragments",
+      "selects": "policyFragment",
+      "where": {
         "disposition": "unresolved"
       },
       "verdict": "gap",
@@ -552,9 +562,7 @@
       "rationale": "A policy includes a fragment this inventory does not hold, so what runs at that point is unknown rather than absent. It cannot be accepted as a loss: nobody has read it, so nobody can say what accepting it costs."
     },
     {
-      "match": {
-        "kind": "coverageGap"
-      },
+      "selects": "coverageGap",
       "verdict": "gap",
       "itemKind": "enumerate",
       "blocking": true,
@@ -572,9 +580,7 @@
       "rationale": "A control-plane read failed, so this is unknown rather than absent. Unknown coverage cannot be accepted as an acceptable loss."
     },
     {
-      "match": {
-        "kind": "telemetry"
-      },
+      "selects": "telemetry",
       "verdict": "partial",
       "itemKind": "translate",
       "capabilityId": "telemetry.create",

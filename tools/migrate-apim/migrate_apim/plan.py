@@ -33,20 +33,24 @@ GENERATOR_VERSION = "0.1.0"
 # list somewhere else.
 MCP_BY_PATTERN = selector(
     "assets",
-    keys=("family", "pattern"),
-    values={"family": ("mcpServers",), "pattern": MCP_PATTERNS},
+    selects="mcpServer",
+    keys=("pattern",),
+    values={"pattern": MCP_PATTERNS},
+    fields={"pattern": "assets.mcpServers[].pattern"},
     site="plan._mcp",
     reads=("verdict", "itemKind", "capabilityId", "proposal", "rationale", "options"),
 )
 MCP_BY_TOOL_DISCOVERY = selector(
     "assets",
-    keys=("family", "toolDiscovery"),
-    values={"family": ("mcpServers",), "toolDiscovery": ("runtimeOnly",)},
+    selects="mcpServer",
+    keys=("toolDiscovery",),
+    values={"toolDiscovery": ("runtimeOnly",)},
+    fields={"toolDiscovery": "assets.mcpServers[].toolDiscovery"},
     site="plan._mcp tool exposure",
     reads=("verdict", "itemKind", "proposal", "rationale", "options"),
 )
 AGENT_RULE = selector(
-    "assets", keys=("family",), values={"family": ("agents",)}, site="plan._agent",
+    "assets", selects="agent", site="plan._agent",
     reads=("verdict", "itemKind", "proposal", "rationale", "options"),
 )
 
@@ -55,10 +59,9 @@ AGENT_RULE = selector(
 # One selector for all six would have to declare the union of what they read,
 # which would excuse a field on the workspace rule because the telemetry branch
 # happens to read it. So each branch declares its own.
-def _structural_selector(kind: str, *, reads: tuple[str, ...]) -> Any:
+def _structural_selector(subject: str, *, reads: tuple[str, ...]) -> Any:
     return selector(
-        "structural", keys=("kind",), values={"kind": (kind,)},
-        site=f"plan._structural {kind}", reads=reads,
+        "structural", selects=subject, site=f"plan._structural {subject}", reads=reads,
     )
 
 
@@ -84,8 +87,8 @@ STRUCTURAL_COVERAGE_GAP = _structural_selector(
 # what varies is only whether the dissolution can keep what the fragment meant.
 FRAGMENT_DISPOSITIONS = ("dissolved", "conditional", "splitSection", "unreferenced", "unresolved")
 STRUCTURAL_POLICY_FRAGMENTS = selector(
-    "structural", keys=("kind", "disposition"),
-    values={"kind": ("policyFragments",), "disposition": FRAGMENT_DISPOSITIONS},
+    "structural", selects="policyFragment", keys=("disposition",),
+    values={"disposition": FRAGMENT_DISPOSITIONS},
     site="plan._policy_fragments",
     reads=(*_DECIDED, "blocking", "cannotAccept"),
 )
@@ -868,7 +871,7 @@ class PlanBuilder:
         asset_id = server["id"]
         pattern = server.get("pattern")
         rule = MCP_BY_PATTERN.first(
-            self.caps.asset_rules(), family="mcpServers", pattern=pattern
+            self.caps.asset_rules(), pattern=pattern
         )
         if rule:
             self._add(
@@ -916,7 +919,7 @@ class PlanBuilder:
             )
         if discovery == "runtimeOnly":
             tool_rule = MCP_BY_TOOL_DISCOVERY.first(
-                self.caps.asset_rules(), family="mcpServers", toolDiscovery="runtimeOnly"
+                self.caps.asset_rules(), toolDiscovery="runtimeOnly"
             ) or {}
             self._add(
                 item_id=ids.item(asset_id, "tools"),
@@ -930,7 +933,7 @@ class PlanBuilder:
             )
 
     def _agent(self, agent: dict[str, Any]) -> None:
-        rule = AGENT_RULE.first(self.caps.asset_rules(), family="agents") or {}
+        rule = AGENT_RULE.first(self.caps.asset_rules()) or {}
         self._add(
             item_id=ids.item(agent["id"], "registration"),
             source={"assetId": agent["id"], "assetKind": "agent", "aspect": "registration"},
@@ -1109,7 +1112,7 @@ class PlanBuilder:
             else:
                 disposition = "dissolved"
             rule = STRUCTURAL_POLICY_FRAGMENTS.first(
-                structural, kind="policyFragments", disposition=disposition
+                structural, disposition=disposition
             ) or {}
             self._add(
                 item_id=ids.item("fragment", document["id"]),
@@ -1147,7 +1150,7 @@ class PlanBuilder:
         # by name left the unknown policy unmentioned.
         for missing in sorted(set(self._unresolved_fragments)):
             rule = STRUCTURAL_POLICY_FRAGMENTS.first(
-                structural, kind="policyFragments", disposition="unresolved"
+                structural, disposition="unresolved"
             ) or {}
             self._add(
                 item_id=ids.item("fragment", f"unresolved/{missing}"),
@@ -1315,7 +1318,7 @@ class PlanBuilder:
         for workspace in self.inventory.get("workspaces") or []:
             if workspace.get("name") == "default" or not workspace.get("collected"):
                 continue
-            rule = STRUCTURAL_WORKSPACE.first(structural, kind="workspace") or {}
+            rule = STRUCTURAL_WORKSPACE.first(structural) or {}
             self._add(
                 item_id=ids.item("workspace", workspace["name"]),
                 source={"assetId": None, "assetKind": "workspace", "aspect": workspace["name"]},
@@ -1330,7 +1333,7 @@ class PlanBuilder:
 
         subscriptions = shared.get("subscriptions") or []
         if subscriptions:
-            rule = STRUCTURAL_SUBSCRIPTIONS.first(structural, kind="subscriptions") or {}
+            rule = STRUCTURAL_SUBSCRIPTIONS.first(structural) or {}
             scopes = sorted({entry["scope"]["level"] for entry in subscriptions})
             self._add(
                 item_id=ids.item("access", "subscriptions"),
@@ -1359,7 +1362,7 @@ class PlanBuilder:
             # cost, and that is mapping knowledge: one touches a resource other
             # workloads may be reading, the next leaves every existing dashboard
             # pointing at a gateway that no longer reports to it.
-            rule = STRUCTURAL_TELEMETRY.first(structural, kind="telemetry") or {}
+            rule = STRUCTURAL_TELEMETRY.first(structural) or {}
             loggers = [
                 logger.get("name") for logger in
                 ((self.inventory.get("shared") or {}).get("telemetry") or {}).get("loggers") or []
@@ -1384,7 +1387,7 @@ class PlanBuilder:
             entries = shared.get(kind) or []
             if not entries:
                 continue
-            rule = site.first(structural, kind=kind) or {}
+            rule = site.first(structural) or {}
             verdict = rule.get("verdict", "gap")
             self._add(
                 item_id=ids.item("shared", kind),
@@ -1426,7 +1429,7 @@ class PlanBuilder:
             if entry.get("status") == "failed"
         ]
         for failure in failures:
-            rule = STRUCTURAL_COVERAGE_GAP.first(structural, kind="coverageGap") or {}
+            rule = STRUCTURAL_COVERAGE_GAP.first(structural) or {}
             self._add(
                 item_id=ids.item("coverage", f"{failure['collection']}/{failure['scope']}"),
                 source={"assetId": None, "assetKind": "coverageGap", "aspect": failure["collection"]},
@@ -1518,8 +1521,7 @@ class PlanBuilder:
         # resource, and two do not. Which is which is mapping knowledge, so the
         # rule says it; until the item is settled nothing is ruled out and the
         # administrator still has to know. An unsettled plan asks.
-        telemetry_rule = STRUCTURAL_TELEMETRY.first(
-            self.caps.structural_rules(), kind="telemetry") or {}
+        telemetry_rule = STRUCTURAL_TELEMETRY.first(self.caps.structural_rules()) or {}
         needs_endpoint = telemetry_rule.get("prerequisiteWhen")
         if self._reports_telemetry() and (
             settled is None or not needs_endpoint or settled in needs_endpoint

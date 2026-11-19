@@ -127,7 +127,7 @@ class TestPolicyRules:
     def test_expression_is_the_fallback_for_unmapped_elements(self, caps):
         rule = caps.policy_rule("some-future-policy", family="other", has_expression=True)
         assert rule["verdict"] == "gap"
-        assert (rule.get("match") or {}).get("hasExpression") is True
+        assert (rule.get("derived") or {}).get("hasExpression") is True
 
     def test_an_unmapped_element_without_an_expression_reaches_the_terminal_rule(self, caps):
         # It used to match nothing, and `plan._policies` dropped what matched
@@ -179,7 +179,7 @@ class TestTargetSurface:
 
     def test_an_unknown_coverage_gap_cannot_be_accepted(self, caps):
         rule = next(
-            r for r in caps.structural_rules() if (r.get("match") or {}).get("kind") == "coverageGap"
+            r for r in caps.structural_rules() if r.get("selects") == "coverageGap"
         )
         assert rule["cannotAccept"] is True
         assert rule["blocking"] is True

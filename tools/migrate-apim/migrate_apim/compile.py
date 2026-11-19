@@ -335,8 +335,7 @@ def check_rules(catalog: dict[str, Any], rules: dict[str, Any], out: Compilation
 
     for section in _SELECTED_SECTIONS:
         for rule in rules.get(section) or []:
-            match = rule.get("match") or {}
-            label = f"{section} {json.dumps(match, sort_keys=True)}"
+            label = f"{section} {_rule_label(rule)}"
             governing = dispatch.governing(rule, section)
 
             if not governing:
@@ -395,23 +394,40 @@ def _option_values(options: list[Any]) -> list[str]:
     return [o["value"] if isinstance(o, dict) else o for o in options if o]
 
 
+
+def _rule_label(rule: dict[str, Any]) -> str:
+    """A rule named by how it is selected, for a diagnostic to point at."""
+    shown = {k: v for k, v in rule.items()
+             if k in ("selects", "where", "derived", "fallback")}
+    return json.dumps(shown, sort_keys=True)
+
+
 def _explain_unreachable(rule: dict[str, Any], section: str, label: str, out: Compilation) -> None:
     """Say *why* nothing can choose this rule, not merely that nothing can.
 
-    "No site selects this" is true of a bogus match value and of an invented
-    match key alike, and the fix is different. A rule whose keys a site does
-    read, but whose value it never compares against, is a vocabulary problem;
-    a rule naming a key no site reads at all is a different mistake.
+    "No site selects this" is true of a subject nothing decides about, of a
+    bogus `where` value, and of an invented `where` key alike, and the fix is
+    different each time. A rule whose keys a site does read but whose value it
+    never compares against is a vocabulary problem; a rule naming a key no site
+    reads is a different mistake; and a rule naming a subject no site has is the
+    one this check gained when subjects became explicit.
     """
-    match = rule.get("match") or {}
-    sites = [s for s in dispatch.REGISTRY if s.section == section]
-    key_compatible = [s for s in sites if not set(match) - set(s.keys)]
+    where = rule.get("where") or {}
+    sites = [s for s in dispatch.REGISTRY if s.selects == rule.get("selects")]
+    if not sites:
+        out.error(
+            "rule-reachable",
+            f"{label}: selects {rule.get('selects')!r}, which no selection site decides about. "
+            f"Known subjects: {', '.join(sorted({s.selects for s in dispatch.REGISTRY}))}.",
+        )
+        return
+    key_compatible = [s for s in sites if not set(where) - set(s.keys)]
 
     if key_compatible:
         for selector in key_compatible:
             for key, permitted in selector.values.items():
-                value = match.get(key)
-                if key in match and permitted and value not in permitted:
+                value = where.get(key)
+                if key in where and permitted and value not in permitted:
                     out.error(
                         "match-value-known",
                         f"{label}: {selector.site} never compares {key} against {value!r}; "
@@ -420,11 +436,11 @@ def _explain_unreachable(rule: dict[str, Any], section: str, label: str, out: Co
         return
 
     readable = sorted({key for selector in sites for key in selector.keys})
-    unknown = sorted(set(match) - set(readable))
+    unknown = sorted(set(where) - set(readable))
     detail = (
-        f"it matches on {unknown}, which no {section} selection site reads"
+        f"it matches on {unknown}, which no site deciding {rule.get('selects')!r} reads"
         if unknown
-        else f"no site reads this combination of keys {sorted(match)}"
+        else f"no site reads this combination of keys {sorted(where)}"
     )
     out.error(
         "rule-reachable",
@@ -451,10 +467,9 @@ def check_fragment_dispositions(rules: dict[str, Any], out: Compilation) -> None
     )
     seen: set[str] = set()
     for rule in structural:
-        match = rule.get("match") or {}
-        if match.get("kind") != "policyFragments":
+        if rule.get("selects") != "policyFragment":
             continue
-        disposition = match.get("disposition")
+        disposition = (rule.get("where") or {}).get("disposition")
         if disposition is None:
             out.error(
                 "fragment-disposition",
@@ -531,11 +546,11 @@ def _check_uniqueness(rules: dict[str, Any], out: Compilation) -> None:
             for rule in rules.get(section) or []:
                 if not selector.governs(rule):
                     continue
-                match = rule.get("match") or {}
-                # A match value may itself be a list of alternatives -- a policy
-                # rule naming several elements. Each alternative is its own way
-                # to reach the rule, so each is its own chance of a tie.
-                for key in _match_keys(match, selector.keys):
+                where = rule.get("where") or {}
+                # A `where` value may itself be a list of alternatives -- a
+                # policy rule naming several elements. Each alternative is its
+                # own way to reach the rule, so each is its own chance of a tie.
+                for key in _where_keys(where, selector.keys):
                     if key in seen:
                         out.error(
                             "rule-unique",
@@ -545,11 +560,11 @@ def _check_uniqueness(rules: dict[str, Any], out: Compilation) -> None:
                     seen.add(key)
 
 
-def _match_keys(match: dict[str, Any], keys: tuple[str, ...]) -> list[tuple]:
+def _where_keys(where: dict[str, Any], keys: tuple[str, ...]) -> list[tuple]:
     """Every distinct way a site keyed on `keys` can arrive at this rule."""
     combinations: list[tuple] = [()]
     for name in keys:
-        value = match.get(name)
+        value = where.get(name)
         alternatives = value if isinstance(value, list) else [value]
         combinations = [(*prefix, alt) for prefix in combinations for alt in alternatives]
     return combinations
@@ -565,10 +580,9 @@ def _check_required_fields(rules: dict[str, Any], out: Compilation) -> None:
     for section in _SELECTED_SECTIONS:
         for rule in rules.get(section) or []:
             if "verdict" not in rule:
-                match = json.dumps(rule.get("match") or {}, sort_keys=True)
                 out.error(
                     "rule-has-verdict",
-                    f"{section} {match}: has no verdict, which decides the item's status",
+                    f"{section} {_rule_label(rule)}: has no verdict, which decides the item's status",
                 )
 
 
