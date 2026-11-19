@@ -59,6 +59,40 @@
         "note": {"type": "string"}
       }
     },
+    "partialWhen": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "description": "What makes this mapping lossy for one element. Any one condition that holds demotes the rule to partial and overlays `partial` on it; requiring all of them would let an element that trips a single condition read as cleanly mapped. Each condition is named by `plan._apply_partial_when`, and a key it does not know would never fire while reading as though it did, so the set is closed here. The booleans take `true` only, for the same reason: there is no condition that holds by an element lacking an expression.",
+      "properties": {
+        "attributeIsExpression": {
+          "type": "string",
+          "description": "The attribute whose value is a policy expression rather than a literal."
+        },
+        "hasExpression": {
+          "const": true,
+          "description": "The element evaluates a policy expression anywhere in it."
+        },
+        "underConditional": {
+          "const": true,
+          "description": "A `choose` branch in the source decides whether the element runs at all."
+        }
+      }
+    },
+    "partialOverlay": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "description": "The rule as it reads once `partialWhen` holds, overlaid on the rule itself. The verdict is already partial by then, so it is not restated here.",
+      "properties": {
+        "itemKind": {"$ref": "#/$defs/itemKind"},
+        "capabilityId": {"type": "string"},
+        "options": {"$ref": "#/$defs/options"},
+        "proposal": {"type": "string"},
+        "rationale": {"type": "string"},
+        "target": {"type": "string"}
+      }
+    },
     "partialNeedsOptions": {
       "if": {"properties": {"verdict": {"const": "partial"}}, "required": ["verdict"]},
       "then": {"required": ["options"]}
@@ -88,17 +122,30 @@
         "note": {"type": "string"}
       }
     },
+    "decidedNeedsItemKind": {
+      "if": {"properties": {"verdict": {"enum": ["partial", "gap"]}}, "required": ["verdict"]},
+      "then": {"required": ["itemKind"]}
+    },
     "structuralRule": {
       "type": "object",
-      "required": ["match", "itemKind", "verdict"],
+      "required": ["match", "verdict"],
       "additionalProperties": false,
-      "allOf": [{"$ref": "#/$defs/partialNeedsOptions"}],
+      "allOf": [
+        {"$ref": "#/$defs/partialNeedsOptions"},
+        {"$ref": "#/$defs/decidedNeedsItemKind"}
+      ],
       "properties": {
         "match": {
           "type": "object",
           "required": ["kind"],
           "additionalProperties": false,
-          "properties": {"kind": {"type": "string"}}
+          "properties": {
+            "kind": {"type": "string"},
+            "disposition": {
+              "type": "string",
+              "description": "Which case of `kind` this rule answers for, when one asset family resolves to several. A fragment the target must dissolve is not a fragment nothing includes, and neither is an `include-fragment` naming one this inventory does not hold."
+            }
+          }
         },
         "verdict": {"$ref": "#/$defs/verdict"},
         "itemKind": {"$ref": "#/$defs/itemKind"},
@@ -122,6 +169,7 @@
       "required": ["match", "verdict"],
       "additionalProperties": false,
       "allOf": [{"$ref": "#/$defs/partialNeedsOptions"}],
+      "dependentRequired": {"partial": ["partialWhen"]},
       "properties": {
         "match": {
           "type": "object",
@@ -130,7 +178,11 @@
           "properties": {
             "element": {"type": "array", "items": {"type": "string"}, "minItems": 1},
             "family": {"type": "string"},
-            "hasExpression": {"type": "boolean"}
+            "hasExpression": {"type": "boolean"},
+            "anyElement": {
+              "const": true,
+              "description": "The terminal rule, tried last and matching anything the passes above did not. There is exactly one; a second is a tie `compile` rejects. It exists so that an element no rule recognises still reaches the plan, rather than being dropped where it was classified."
+            }
           }
         },
         "verdict": {"$ref": "#/$defs/verdict"},
@@ -141,8 +193,8 @@
         "rationale": {"type": "string"},
         "note": {"type": "string"},
         "target": {"type": "string"},
-        "partial": {"type": "object"},
-        "partialWhen": {"type": "object"},
+        "partial": {"$ref": "#/$defs/partialOverlay"},
+        "partialWhen": {"$ref": "#/$defs/partialWhen"},
         "batchOn": {"type": "array", "items": {"type": "string"}}
       }
     }

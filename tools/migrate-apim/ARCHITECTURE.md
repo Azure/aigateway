@@ -25,9 +25,11 @@ Declares how APIM shapes map to target capabilities. Never versioned separately;
   - `options` — If `partial`, the choices the operator can make
   - `proposal` — If `partial`, the recommended choice
 
-- **`structural[]`** — Rules for cross-asset things (workspaces, subscriptions, telemetry, coverage gaps).
+- **`structural[]`** — Rules for cross-asset things (workspaces, subscriptions, telemetry, policy fragments, coverage gaps). A rule may pin a second match key where one kind resolves to several cases: `policyFragments` carries a `disposition`, because a fragment the target must dissolve is not a fragment nothing includes, and neither is an `include-fragment` naming one the inventory does not hold.
 
-- **`policies[]`** — How APIM policies map to AI Gateway policies. Matched by element name, then by family, with fallbacks for expressions and unknowns.
+- **`policies[]`** — How APIM policies map to AI Gateway policies. Four passes in order: by element name, then by family, then a fallback for anything carrying a policy expression, then one terminal rule (`match: {anyElement: true}`) that answers for everything else.
+
+  The last pass is what makes an unmapped element impossible rather than unlikely: before it, an element matching no rule was dropped where it was classified, and the ones that vanished were those carrying *no* expression, since an expression at least reached the pass above. It is a net and not a mapping, so `compile` holds every element in `policy.FAMILIES` to a rule of its own or a family rule and fails if one is left to it. The planner counts what reaches it into `policyCoverage.unrecognised` on the plan.
 
 - **`publishableRoutes[]`** — The four routes AI Gateway publishes (`/openai/v1/chat/completions`, `/v1/messages`, etc.). Used to decide what part of a model API surface can move.
 
@@ -126,6 +128,8 @@ A newer release existing is a suggestion. The catalog is a claim about one relea
 The catalog says which release to install; nothing here reads `cli/` to find out. `cli/install.sh` is the CLI's own artifact and moves when the CLI releases, so checking the catalog against it would have made the newest release the only one the catalog could ever pin — and then every run would validate against latest, which is the opposite of pinning. the export job in `migrate-apim.yml` takes the version and digest from `cliEvidence` and installs exactly that wheel. The installers keep their own pin honest through `cli/tests/test_installers.py`.
 
 ### The selector registry
+
+One question is answered in one place for the same reason. `migrate_apim/policy.py` owns which policy governs which API: the scope chain, `<base />` inheritance, fragment splicing and the workspace qualification of every name. `collect` asks it to decide what authenticates a backend and `plan` asks it to decide what a policy item covers, so the two cannot drift — which they had, the collector folding in the product and global policy but never the workspace, and the planner answering for neither a fragment nor an operation. Nothing is re-derived to answer it: `include-fragment` and `base` are already elements in the inventory, each with its section and path.
 
 Reachability is checkable only because selection happens in one place. `migrate_apim/dispatch.py` defines `Selector`, which both performs a match and states what the match looks at; `plan.py` and `capability.py` declare one per selection site. `compile` imports those modules and reads `dispatch.REGISTRY`, so the contract it checks is the one the planner runs — not a second declaration that can drift from it.
 

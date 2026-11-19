@@ -130,9 +130,15 @@ def render_plan(document: dict[str, Any], *, fmt: str = "text") -> str:
         src = item.get("source") or {}
         asset = src.get("assetId") or f"{src.get('assetKind')}:{src.get('aspect')}"
         options = "/".join(option["value"] for option in item.get("options") or [])
+        # Some items deliberately propose nothing: a read that failed, or a
+        # fragment nobody could open, offers no recommended choice because
+        # nothing is known about what choosing would cost. Printing
+        # `proposal=None` made that read as a defect in the plan.
+        proposal = (f" -> proposal={item['proposal']}" if item.get("proposal")
+                    else " -> no proposal")
         lines.append(
             f"{'  - ' if fmt == 'markdown' else '    '}{flag} [{item.get('kind')}] {asset}"
-            f" -> proposal={item.get('proposal')}"
+            + proposal
             + (f" of {options}" if options else "")
         )
         if item.get("status") == "stale":

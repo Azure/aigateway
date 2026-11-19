@@ -33,11 +33,17 @@ from pathlib import Path
 from typing import Any
 
 from . import dispatch
-from .capability import CAPABILITIES_DIR, DEFAULT_CATALOG
+from .capability import (
+    CAPABILITIES_DIR,
+    DEFAULT_CATALOG,
+    POLICY_TERMINAL,
+    resolve_policy_rule,
+)
+from .policy import FAMILIES, family_of
 
 # Importing these registers every selection site in dispatch.REGISTRY. The
 # import is the point: the contract checked below is the one the planner runs.
-from . import plan as _plan  # noqa: F401  (imported for its selector declarations)
+from . import plan as _plan  # imported for its selector declarations, and for the vocabularies below
 
 ERROR = "error"
 WARNING = "warning"
@@ -427,6 +433,89 @@ def _explain_unreachable(rule: dict[str, Any], section: str, label: str, out: Co
     )
 
 
+def check_fragment_dispositions(rules: dict[str, Any], out: Compilation) -> None:
+    """Every case the planner can classify a fragment into must have a rule.
+
+    `plan.FRAGMENT_DISPOSITIONS` is the vocabulary, declared where the
+    classifying happens, so this is one list checked rather than two kept in
+    step. The gap it closes is specific to a site that dispatches on a second
+    match key: a `policyFragments` rule naming no disposition passes
+    `Selector.governs` -- pinning fewer keys is allowed, and usually right --
+    and is then never equal to any disposition the planner asks for. Reachable
+    and unselectable at once, which is the shape of a rule nobody notices.
+    """
+    structural = rules.get("structural") or []
+    out.cover(
+        f"{len(_plan.FRAGMENT_DISPOSITIONS)} fragment dispositions the planner can classify: "
+        f"each answered by a rule naming it"
+    )
+    seen: set[str] = set()
+    for rule in structural:
+        match = rule.get("match") or {}
+        if match.get("kind") != "policyFragments":
+            continue
+        disposition = match.get("disposition")
+        if disposition is None:
+            out.error(
+                "fragment-disposition",
+                "a policyFragments rule names no disposition, so no selection site is ever equal "
+                f"to it. Name one of: {', '.join(_plan.FRAGMENT_DISPOSITIONS)}.",
+            )
+            continue
+        seen.add(disposition)
+    missing = [name for name in _plan.FRAGMENT_DISPOSITIONS if name not in seen]
+    if missing:
+        out.error(
+            "fragment-disposition",
+            f"no rule answers for {', '.join(missing)}, which `plan._policy_fragments` can "
+            "classify a fragment into. The item would carry no verdict and no rationale.",
+        )
+
+
+def check_policy_vocabulary(rules: dict[str, Any], out: Compilation) -> None:
+    """Every policy element the collector can name must be answered deliberately.
+
+    `policy.FAMILIES` is the vocabulary this tool classifies against: committed
+    data, so the question is decidable here, offline, with no APIM to ask. The
+    terminal rule answers for anything outside it, which is what keeps an
+    unrecognised policy out of silence -- but it would equally answer for an
+    element somebody simply never wrote a rule for, and then the safety net
+    becomes the mapping. Ten elements lived there, three of them carrying
+    backend credentials.
+
+    So the net is held to its purpose: a known element reaching it is an error,
+    and the fix is a rule of its own or a rule for its family.
+    """
+    policies = rules.get("policies") or []
+    out.cover(
+        f"{len(FAMILIES)} policy elements the collector classifies: each answered by a "
+        f"rule of its own or a family rule, none left to the terminal rule"
+    )
+
+    terminal = next((rule for rule in policies if POLICY_TERMINAL.governs(rule)), None)
+    if terminal is None:
+        out.error(
+            "policy-terminal",
+            "no rule matches `anyElement`, so an element outside the known vocabulary resolves "
+            "to nothing and is dropped where it is classified. Add the terminal rule.",
+        )
+        return
+
+    unanswered: dict[str, list[str]] = {}
+    for name in sorted(FAMILIES):
+        rule = resolve_policy_rule(policies, name, family=family_of(name), has_expression=False)
+        if rule is terminal:
+            unanswered.setdefault(family_of(name), []).append(name)
+
+    for family, names in sorted(unanswered.items()):
+        out.error(
+            "policy-vocabulary",
+            f"family {family!r}: {', '.join(names)} reach the terminal rule, which exists for "
+            f"policies this catalog has never heard of. Give the family a rule, or each element "
+            f"one of its own.",
+        )
+
+
 def _check_uniqueness(rules: dict[str, Any], out: Compilation) -> None:
     """Selection is first-match or last-write; either way a tie is a silent bug.
 
@@ -581,6 +670,8 @@ def compile_contract(
     check_capabilities(catalog, surface, out)
     check_pins(catalog, catalog_path, rules, surface, out)
     check_rules(catalog, rules, out)
+    check_policy_vocabulary(rules, out)
+    check_fragment_dispositions(rules, out)
     if newest_release:
         check_release_pin(catalog, newest_release, out)
     return out

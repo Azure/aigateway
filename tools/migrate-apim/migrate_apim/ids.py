@@ -35,8 +35,12 @@ def named_value(name: str, workspace: str | None = None) -> str:
     return f"namedValue:{scoped(workspace, name)}"
 
 
-def fragment(name: str) -> str:
-    return f"policyFragment:{_slug(name)}"
+def fragment(name: str, workspace: str | None = None) -> str:
+    # Scoped like every other shared asset. Unscoped, two workspaces with a
+    # same-named fragment collapsed onto one id, and the collector keeps the
+    # first document it sees under an id -- so one workspace's fragment silently
+    # became the other's.
+    return f"policyFragment:{scoped(workspace, name)}"
 
 
 def product(name: str, workspace: str | None = None) -> str:

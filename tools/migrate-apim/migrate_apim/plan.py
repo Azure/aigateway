@@ -19,6 +19,7 @@ import json
 from typing import Any
 
 from . import ids
+from . import policy as policy_mod
 from .capability import CapabilityMap
 from .detect import MCP_PATTERNS, dialect_target
 from .dispatch import selector
@@ -77,6 +78,17 @@ STRUCTURAL_COVERAGE_GAP = _structural_selector(
     "coverageGap",
     reads=("verdict", "itemKind", "rationale", "options", "blocking", "cannotAccept"),
 )
+# One kind, five cases, so this site dispatches on a second key. The gateway has
+# no policy composition at all -- no fragments, no includes, no inheritance -- so
+# every fragment has the same fate, dissolved into whatever includes it, and
+# what varies is only whether the dissolution can keep what the fragment meant.
+FRAGMENT_DISPOSITIONS = ("dissolved", "conditional", "splitSection", "unreferenced", "unresolved")
+STRUCTURAL_POLICY_FRAGMENTS = selector(
+    "structural", keys=("kind", "disposition"),
+    values={"kind": ("policyFragments",), "disposition": FRAGMENT_DISPOSITIONS},
+    site="plan._policy_fragments",
+    reads=(*_DECIDED, "blocking", "cannotAccept"),
+)
 
 READY = "ready"
 NEEDS_DECISION = "needs-decision"
@@ -122,6 +134,16 @@ class PlanBuilder:
         self.previous = previous or {}
         self.items: list[dict[str, Any]] = []
         self.prerequisites: list[dict[str, Any]] = []
+        # What became of every policy element walked, one bucket each.
+        self.policy_coverage: dict[str, int] = {}
+        self.unrecognised_policies: list[dict[str, Any]] = []
+        self._graph: policy_mod.PolicyGraph | None = None
+        self._policy_index: dict[str, dict[str, Any]] = {}
+        # `fragment-id`s the selected assets reach and nothing resolves, and
+        # what did resolve, by the route it arrived on.
+        self._unresolved_fragments: list[str] = []
+        self._unreadable_fragments: list[str] = []
+        self._fragment_arrivals: dict[str, list[dict[str, Any]]] = {}
         # A model API names the backend it routes to; the provider asset built
         # from that backend is what knows the protocol it speaks.
         self._provider_by_backend: dict[str, dict[str, Any]] = {
@@ -211,6 +233,15 @@ class PlanBuilder:
                 "plannerGaps": len(planner_gaps),
             },
             "prerequisites": self.prerequisites,
+            # What became of every policy element the inventory holds. The
+            # dispositions are exclusive and `walked` is their sum, so a reader
+            # can check the planner against the inventory instead of trusting
+            # that an element which raised no item was one that needed none.
+            "policyCoverage": {
+                "walked": sum(self.policy_coverage.values()),
+                "dispositions": dict(sorted(self.policy_coverage.items())),
+                "unrecognised": self.unrecognised_policies,
+            },
             "plannerGaps": planner_gaps,
             # Settled decisions whose item no longer exists. Dropping them quietly
             # would lose work across a tool change and re-ask as if never asked.
@@ -914,38 +945,106 @@ class PlanBuilder:
     # ----------------------------------------------------------- policies
 
     def _policies(self) -> None:
-        """One item per distinct policy treatment, batched across assets."""
+        """One item per distinct policy treatment, batched across what it governs.
+
+        Driven by what each asset's policy actually resolves to, rather than by
+        walking policy documents as though every scope were one that runs. A
+        fragment is not: read as a scope of its own it covered no API, so a
+        policy an operator had factored out of four APIs reached none of them.
+        Asking `policy.PolicyGraph` instead makes the fragment, the `<base />`
+        an API omits, the operation scope and the workspace one question with
+        one answer -- the same answer `collect` gets.
+
+        Every element in the inventory still leaves a count behind, in
+        `policyCoverage`, walked document by document. That walk is what keeps
+        the tally a sum over the inventory rather than over whatever this
+        happened to look at.
+        """
+        graph = self.graph()
+        terminal = self.caps.terminal_policy_rule()
+        # One entry per element per route it reaches an asset by. The route is
+        # part of the key because a fragment included plainly by one API and
+        # inside a `choose` by another is two different claims about the same
+        # element, and the conditional one is not `handled`.
+        governed: dict[tuple[int, bool], list[tuple[dict[str, Any], policy_mod.Occurrence]]] = {}
+        for asset, api, workspace in self._policy_assets():
+            reached = self._governing(graph, asset=asset, api=api, workspace=workspace)
+            self._record_arrivals(asset["id"], reached)
+            for occurrence in reached:
+                # Keyed on the element itself, not on where it is written: the
+                # graph hands back the record the inventory holds, so identity
+                # is exact where a document-and-path pair only almost is.
+                key = (id(occurrence.element), occurrence.under_conditional)
+                governed.setdefault(key, []).append((asset, occurrence))
+
         batches: dict[str, dict[str, Any]] = {}
-        for document in self.inventory.get("policies") or []:
-            for element in document.get("elements") or []:
-                if not _is_policy_statement(element):
-                    continue
-                has_expression = bool(element.get("expressionIds"))
-                rule = self.caps.policy_rule(
-                    element["name"], family=element.get("family", ""), has_expression=has_expression
-                )
-                if not rule or rule["verdict"] in {"notApplicable", "handled"}:
-                    continue
-                rule = _apply_partial_when(rule, element)
-                signature = _policy_signature(element, rule, has_expression)
-                batch = batches.setdefault(signature, {"rule": rule, "element": element,
-                                                        "hasExpression": has_expression, "members": []})
+        dispositions: dict[int, str] = {}
+        for (element_id, conditional), hits in governed.items():
+            element = hits[0][1].element
+            if not _is_policy_statement(element):
+                continue
+            has_expression = bool(element.get("expressionIds"))
+            rule = self.caps.policy_rule(
+                element["name"], family=element.get("family", ""), has_expression=has_expression
+            )
+            if not rule:
+                # Unreachable while rules.json carries a terminal rule, and
+                # counted rather than deleted because that is a property of
+                # the data, which `compile` enforces and this does not.
+                _note(dispositions, element_id, "unresolved")
+                continue
+            # Analysed before it is excluded, because `handled` is a claim
+            # about the element and not every element it covers makes it
+            # true. A backend chosen inside a `choose` was excluded on the
+            # strength of an alias pool that holds the backends and not the
+            # logic that picked among them, and left no trace in the plan.
+            rule = _apply_partial_when(rule, element, under_conditional=conditional)
+            if rule["verdict"] in {"notApplicable", "handled"}:
+                _note(dispositions, element_id, rule["verdict"])
+                continue
+            # An unrecognised element still becomes an item -- it is counted
+            # apart because reaching the terminal rule says the vocabulary
+            # has grown, which is not the same as having been mapped.
+            _note(dispositions, element_id,
+                  "unrecognised" if rule is terminal else "classified")
+            signature = _policy_signature(element, rule, has_expression)
+            batch = batches.setdefault(signature, {"rule": rule, "element": element,
+                                                    "hasExpression": has_expression, "members": []})
+            for asset, occurrence in hits:
                 batch["members"].append({
-                    "policyId": document["id"],
-                    "scope": document.get("scope", {}).get("level"),
-                    # The level alone cannot say which models a policy covers:
-                    # an api-scoped limit on one API is not a limit on the rest.
-                    "scopeName": document.get("scope", {}).get("name"),
-                    "path": element["path"],
+                    # Where the element is written, which is where an operator
+                    # reads it, and what it governs, which is what carries it.
+                    # Both, because a fragment is the first and never the second.
+                    "policyId": occurrence.policy_id,
+                    "scope": _level_of(self._policy_document(occurrence.policy_id)),
+                    "scopeName": _name_of(self._policy_document(occurrence.policy_id)),
+                    # The scope whose chain pulled this in, which is the asset's
+                    # own or something wider. A fragment is never either, so
+                    # asking the document the element is written in made
+                    # extracting a policy into a fragment change the answer.
+                    "governedAt": occurrence.site_level,
+                    "governedBy": occurrence.site_policy_id,
+                    # The includes traversed. Part of the member's identity,
+                    # because one API can include one fragment twice and those
+                    # are two members with everything else in common -- keyed
+                    # without it, one overwrote the other's digest and adding a
+                    # third include left the decision reading as unchanged.
+                    "arrival": list(occurrence.arrival),
+                    "path": occurrence.path,
+                    "assetId": asset["id"],
+                    "section": occurrence.section,
+                    "via": list(occurrence.via),
+                    "underConditional": occurrence.under_conditional,
                     "element": element["name"],
                     "attributes": element.get("attributes") or {},
                 })
+
+        self._count_policy_coverage(dispositions, {key for key, _ in governed})
 
         for signature, batch in sorted(batches.items()):
             rule = batch["rule"]
             element = batch["element"]
             members = batch["members"]
-            label = element["name"] + (" with expression" if batch["hasExpression"] else "")
             self._add(
                 item_id=ids.item("policy", signature),
                 source={"assetId": None, "assetKind": "policy", "aspect": element["name"]},
@@ -961,8 +1060,7 @@ class PlanBuilder:
                     if rule.get("target")
                     else f"`{element['name']}` is carried by another object."
                 ),
-                options=[_opt(value, "") for value in rule.get("options") or []]
-                or _loss_options(rule["verdict"]),
+                options=_options_of(rule) or _loss_options(rule["verdict"]),
                 evidence={
                     "element": element["name"],
                     "target": rule.get("target"),
@@ -975,11 +1073,244 @@ class PlanBuilder:
                 blocking=rule["verdict"] == "gap",
             )
 
+    def _policy_fragments(self, structural: list[dict[str, Any]]) -> None:
+        """What became of each policy fragment, said once per fragment.
+
+        AI Gateway has no policy composition: not fragments, not includes, not
+        inheritance. So a fragment has one fate -- dissolved into every scope
+        that includes it -- and the only question is whether the dissolution
+        keeps what the fragment meant. An item per fragment is what makes that
+        answerable without reading the policies it contributed and working
+        backwards.
+        """
+        graph = self.graph()
+        # A fragment that could not be read contributes no elements, so it
+        # arrives nowhere and would read as one nothing includes. What says
+        # otherwise is the forward walk, which records the name it could not
+        # resolve where it tried to resolve it.
+        unreadable = set(self._unreadable_fragments)
+        for document in graph.fragments():
+            name = (document.get("scope") or {}).get("name") or ""
+            sites = _unique_arrivals(self._fragment_arrivals.get(document["id"]) or [])
+            sections = {site["section"] for site in sites}
+            if document["id"] in unreadable:
+                # Collected, included, and unreadable. It has no elements to
+                # dissolve and nobody can say what it carried, so it is the
+                # same unknown as a `fragment-id` naming nothing -- and a
+                # dissolution reported as clean would be the stronger claim of
+                # the two that is false.
+                disposition = "unresolved"
+            elif not sites:
+                disposition = "unreferenced"
+            elif any(site["underConditional"] for site in sites):
+                disposition = "conditional"
+            elif len(sections) > 1:
+                disposition = "splitSection"
+            else:
+                disposition = "dissolved"
+            rule = STRUCTURAL_POLICY_FRAGMENTS.first(
+                structural, kind="policyFragments", disposition=disposition
+            ) or {}
+            self._add(
+                item_id=ids.item("fragment", document["id"]),
+                source={"assetId": document["id"], "assetKind": "policyFragment", "aspect": name},
+                kind=rule.get("itemKind"),
+                verdict=rule.get("verdict", "handled"),
+                proposal=rule.get("proposal"),
+                rationale=rule.get("rationale", ""),
+                options=_options_of(rule),
+                evidence={
+                    "fragment": name,
+                    "disposition": disposition,
+                    "elementCount": len(document.get("elements") or []),
+                    "parseError": document.get("parseError"),
+                    "sections": sorted(sections),
+                    # Whether operation policies were collected decides what
+                    # "nothing includes it" is worth: an operation can include a
+                    # fragment, and those documents are read only when asked for.
+                    "operationPoliciesCollected": self._operation_policies_collected(),
+                    "includedBy": sites,
+                },
+                blocking=rule.get("blocking", False),
+                cannot_accept=rule.get("cannotAccept", False),
+            )
+
+        # From what the selected assets actually resolve to, not from every
+        # include reference in the inventory. An unreferenced fragment naming a
+        # missing one governs nothing, and blocking a migration on it would be
+        # a decision about a workload nobody is moving.
+        # Every reference that resolved to no document at all. A fragment this
+        # inventory holds but could not read is reported on its own item,
+        # above, and is tracked by document rather than by name so that an `hr`
+        # API naming `limits` when only `finance/limits` exists is still
+        # reported here -- the two are not the same fragment, and matching them
+        # by name left the unknown policy unmentioned.
+        for missing in sorted(set(self._unresolved_fragments)):
+            rule = STRUCTURAL_POLICY_FRAGMENTS.first(
+                structural, kind="policyFragments", disposition="unresolved"
+            ) or {}
+            self._add(
+                item_id=ids.item("fragment", f"unresolved/{missing}"),
+                source={"assetId": None, "assetKind": "policyFragment", "aspect": missing},
+                kind=rule.get("itemKind", "enumerate"),
+                verdict=rule.get("verdict", "gap"),
+                rationale=rule.get("rationale", ""),
+                options=_options_of(rule),
+                evidence={"fragment": missing, "disposition": "unresolved"},
+                blocking=rule.get("blocking", True),
+                cannot_accept=rule.get("cannotAccept", True),
+            )
+
+    def _operation_policies_collected(self) -> bool:
+        options = (self.inventory.get("collection") or {}).get("options") or {}
+        return bool(options.get("operationPolicies"))
+
+    def graph(self) -> policy_mod.PolicyGraph:
+        """Which policy governs which API, asked the same way `collect` asks it.
+
+        Built from the inventory alone: inclusion and inheritance are already
+        elements in the documents, so this needs no field the collector does
+        not write and no second walk to re-derive them.
+        """
+        if self._graph is None:
+            self._graph = policy_mod.PolicyGraph(
+                self.inventory.get("policies") or [],
+                products=(self.inventory.get("shared") or {}).get("products") or [],
+            )
+        return self._graph
+
+    def _record_arrivals(self, asset_id: str, occurrences) -> None:
+        """What reached one asset through a fragment, and how.
+
+        Taken from the resolution rather than from the include references in
+        the documents, because a reference is not an arrival: one written in a
+        policy every migrated API overrides, or on an API this migration
+        excludes, names a fragment that governs nothing here. Reading them
+        syntactically raised decisions -- and blocking ones -- about workloads
+        nobody is moving.
+        """
+        for occurrence in occurrences:
+            for fragment_id in occurrence.via:
+                self._fragment_arrivals.setdefault(fragment_id, []).append({
+                    "assetId": asset_id,
+                    "policyId": occurrence.site_policy_id,
+                    "scopeLevel": occurrence.site_level,
+                    "section": occurrence.section,
+                    "via": list(occurrence.via),
+                    "underConditional": occurrence.under_conditional,
+                })
+
+    def _governing(self, graph, *, asset, api, workspace):
+        """Everything that runs for one API, its own operations included.
+
+        An operation is a scope of its own, and the chain only reaches it when
+        asked. Left out, an operation-scoped token limit raised no item at all
+        and was counted as governing nothing -- a quieter version of the
+        stranding this change exists to end.
+
+        Which resolution answers depends on whether the operations speak for
+        all of the API's traffic. When every operation carries a policy of its
+        own, each is resolved through the whole chain and the API's own
+        resolution is not added: an operation that omits `<base />` overrides
+        what is above it, and taking the API's resolution anyway would report a
+        limit on traffic nothing applies it to -- and could block a migration
+        on a fragment no request reaches. Otherwise some traffic arrives at an
+        operation with no policy, which inherits, so the API's resolution is
+        what governs it and the operations add only their own elements.
+        """
+        declared = [
+            operation.get("name")
+            for operation in ((asset.get("endpoints") or {}).get("operations") or [])
+            if operation.get("name")
+        ]
+        with_policy = graph.operations_of(api=api, workspace=workspace)
+        covered = bool(declared) and set(declared) <= set(with_policy)
+
+        occurrences: list[policy_mod.Occurrence] = []
+
+        def take(resolution: policy_mod.Resolution) -> None:
+            occurrences.extend(resolution.occurrences)
+            self._unresolved_fragments.extend(resolution.unresolved_fragments)
+            self._unreadable_fragments.extend(resolution.unreadable_fragments)
+
+        if not covered:
+            take(graph.governing(api=api, workspace=workspace))
+        for operation in with_policy:
+            take(graph.governing(
+                api=api, workspace=workspace, operation=operation,
+                levels=policy_mod.SCOPE_CHAIN if covered else ("operation",),
+            ))
+        # Several operations inherit the same scopes above them, and each
+        # resolution returns that inheritance in full. Without this the API's
+        # own elements would be one member per operation, and the policy would
+        # be applied -- and counted -- once for each.
+        return policy_mod.unique_occurrences(occurrences)
+
+    def _policy_assets(self):
+        """The assets a policy can govern, with the source API each came from."""
+        assets = self.inventory.get("assets") or {}
+        for kind in ("models", "mcpServers", "agents"):
+            for asset in assets.get(kind) or []:
+                yield asset, (asset.get("source") or {}).get("name") or "", asset.get("workspace")
+
+    def _policy_document(self, policy_id: str) -> dict[str, Any]:
+        if not self._policy_index:
+            self._policy_index = {
+                document["id"]: document for document in self.inventory.get("policies") or []
+            }
+        return self._policy_index.get(policy_id) or {}
+
+    def _count_policy_coverage(
+        self, dispositions: dict[int, str], reached: set[int]
+    ) -> None:
+        """Account for every element the inventory holds, under one disposition.
+
+        Walked over the documents rather than over what the asset pass looked
+        at, because the elements that reach no asset are the ones most worth
+        counting: a policy on an API this migration excludes, or in a fragment
+        nothing includes, raises nothing -- and uncounted it would be absent
+        from the plan rather than accounted for in it.
+        """
+        for document in self.inventory.get("policies") or []:
+            for element in document.get("elements") or []:
+                key = id(element)
+                if not _is_policy_statement(element):
+                    # Not a decision of its own: the configuration of the
+                    # statement above it, which is classified in its own right.
+                    disposition = "configuration"
+                elif key in dispositions:
+                    disposition = dispositions[key]
+                elif key in reached:
+                    disposition = "classified"
+                else:
+                    disposition = "governsNothing"
+                self._count_element(disposition, document, element)
+
+    def _count_element(
+        self, disposition: str, document: dict[str, Any], element: dict[str, Any]
+    ) -> None:
+        """Account for one policy element under exactly one disposition.
+
+        The ones nothing can be said about are listed as well as counted,
+        because a number alone cannot be acted on: knowing that one element was
+        not in the vocabulary is only useful alongside which element, and where
+        it is written.
+        """
+        self.policy_coverage[disposition] = self.policy_coverage.get(disposition, 0) + 1
+        if disposition in {"unrecognised", "unresolved"}:
+            self.unrecognised_policies.append({
+                "element": element["name"],
+                "family": element.get("family"),
+                "policyId": document["id"],
+                "path": element["path"],
+            })
+
     # --------------------------------------------------------- structural
 
     def _structural(self) -> None:
         shared = self.inventory.get("shared") or {}
         structural = self.caps.structural_rules()
+        self._policy_fragments(structural)
 
         for workspace in self.inventory.get("workspaces") or []:
             if workspace.get("name") == "default" or not workspace.get("collected"):
@@ -1272,7 +1603,14 @@ class PlanBuilder:
 
         Two shapes, because the gateway holds policy in two places: on a model
         registration, and as one baseline on the default workspace. Telemetry is
-        neither -- where it reports is its own decision, on its own item.
+        neither -- where it reports is its own decision, on its own item. Nor is
+        a target the gateway reaches some other way than by writing a policy:
+        `validate-jwt` becomes Entra auth and data-plane RBAC, which is a
+        decision about how callers authenticate and not an object this item
+        applies. Shaped as a baseline it produced one with no settings on it --
+        so it read as an object the plan could not finish configuring, and
+        preflight stopped a migration over a policy whose item was only ever a
+        decision.
         """
         target_type = rule.get("target")
         if not target_type or rule["verdict"] == "gap":
@@ -1280,8 +1618,10 @@ class PlanBuilder:
         capability_id = rule.get("capabilityId")
         if capability_id == "model.policy":
             objects = self._per_model_objects(target_type, members)
-        else:
+        elif target_type in _POLICY_FIELDS:
             objects = self._baseline_object(target_type, members)
+        else:
+            objects = []
         return _objects_or_none(capability_id, objects)
 
     def _telemetry_objects(self, item_id: str) -> list[dict[str, Any]]:
@@ -1320,14 +1660,30 @@ class PlanBuilder:
         the first API's ceiling and silently dropped the rest.
         """
         objects: list[dict[str, Any]] = []
+        carried = any(self._registrations_of(member.get("assetId")) for member in members)
         for member in members:
             settings = _policy_settings(target_type, member)
-            registrations = self._registrations_in_scope(member)
+            registrations = self._registrations_of(member.get("assetId"))
             scope = {"level": member.get("scope"), "name": member.get("scopeName")}
             if not registrations:
-                # Nothing to attach it to. Recorded as an object that cannot be
-                # applied rather than dropped, so the item still says the policy
-                # existed and what became of it.
+                if carried and member.get("governedAt") not in {"api", "operation"}:
+                    # Inherited from a wider scope that another member does
+                    # carry. A gateway-wide token limit governs the MCP APIs
+                    # too, and a tool server registers no model: reporting that
+                    # as a policy with nowhere to go would block a migration
+                    # over a scope the limit was never going to land on.
+                    #
+                    # A policy the asset's own API asked for is not that. It
+                    # was authored for this one thing, and this one thing
+                    # cannot carry it -- a loss, and said below. Asked of where
+                    # the element is written, a fragment the API includes
+                    # itself read as something wider and the loss went
+                    # unreported, so extracting a policy into a fragment hid
+                    # what writing it inline would have surfaced.
+                    continue
+                # Nothing anywhere to attach it to. Recorded as an object that
+                # cannot be applied rather than dropped, so the item still says
+                # the policy existed and what became of it.
                 objects.append({
                     "type": target_type, "settings": settings, "scope": scope,
                     "configurationComplete": False,
@@ -1418,42 +1774,25 @@ class PlanBuilder:
             )
         return [obj]
 
-    def _registrations_in_scope(self, member: dict[str, Any]) -> list[dict[str, Any]]:
-        """The model registrations this plan creates under a policy's scope."""
-        level, name = member.get("scope"), member.get("scopeName")
-        apis = self._apis_in_scope(level, name)
+    def _registrations_of(self, asset_id: str | None) -> list[dict[str, Any]]:
+        """The model registrations this plan creates for one source API.
+
+        Matched on the asset, which the member now carries, rather than
+        re-derived from a scope level and a bare name. The derivation could not
+        answer for a fragment or an operation at all, and answered for an API
+        by its unqualified name -- so `finance/shared` and `hr/shared` were one
+        API to it, and a limit on either reached the models of both.
+        """
         out: list[dict[str, Any]] = []
         for item in self.items:
             if item.get("capabilityId") != "model.create":
                 continue
-            asset_id = (item.get("source") or {}).get("assetId") or ""
-            if apis is not None and _api_of(asset_id) not in apis:
+            if (item.get("source") or {}).get("assetId") != asset_id:
                 continue
             for obj in (item.get("target") or {}).get("objects") or []:
                 if obj.get("name"):
                     out.append({"modelName": obj["name"], "providerName": obj.get("providerName")})
         return out
-
-    def _apis_in_scope(self, level: str | None, name: str | None) -> set[str] | None:
-        """Which source APIs a policy scope covers, or None for all of them."""
-        if level in {"global", "service", None}:
-            return None
-        if level == "api":
-            return {name or ""}
-        if level == "workspace":
-            return {
-                _api_of((item.get("source") or {}).get("assetId") or "")
-                for item in self.items
-                if item.get("capabilityId") == "model.create"
-                and ((item.get("source") or {}).get("assetId") or "").split(":", 1)[-1]
-                .startswith(f"{name}/")
-            }
-        if level == "product":
-            for product in (self.inventory.get("shared") or {}).get("products") or []:
-                if product.get("name") == name or product.get("id") == name:
-                    return {ids.arm_name(api_id) for api_id in product.get("apiIds") or []}
-            return set()
-        return set()
 
     def _address_ranges(self, member: dict[str, Any]) -> tuple[list[str], list[str]]:
         """The ip-filter's addresses, as CIDR, and whatever would not convert.
@@ -1686,6 +2025,16 @@ class PlanBuilder:
                 if key in item["memberDigests"] and item["memberDigests"][key] != value
             ]
             shape_changed = before.get("shapeDigest") != item["shapeDigest"]
+            # A settled decision that shares no member with the item it was
+            # settled against rested on facts none of which are still here, so
+            # `changed` finds nothing to compare and the decision would carry
+            # forward untouched. It is also what a change to how members are
+            # identified looks like -- this one gained the route an element
+            # arrives by, and a plan settled before that has keys none of these
+            # match -- and in both cases the honest answer is to ask again.
+            replaced = bool(before.get("memberDigests")) and not (
+                set(before["memberDigests"]) & set(item["memberDigests"])
+            )
             item["decision"] = before.get("decision")
             item["decidedAt"] = before.get("decidedAt")
             # Recorded by the generator, not by whoever adapts the item: adapting
@@ -1694,11 +2043,13 @@ class PlanBuilder:
                 "shape": before.get("shapeDigest"),
                 "members": before.get("memberDigests") or {},
             }
-            if changed or shape_changed:
+            if changed or shape_changed or replaced:
                 item["status"] = STALE
                 item["staleReason"] = (
                     "The options for this item changed." if shape_changed
-                    else f"Source facts changed for: {', '.join(sorted(changed))}."
+                    else f"Source facts changed for: {', '.join(sorted(changed))}." if changed
+                    else "Nothing this decision was settled against is still here: every source "
+                         "it covered has been replaced, or is now identified differently."
                 )
             else:
                 item["status"] = ADAPTED
@@ -1892,9 +2243,16 @@ def _namespace_endpoints(server: dict[str, Any], endpoints: list[dict[str, Any]]
         endpoint["namespace"] = base if index == 0 else f"{base}-{index + 1}"
 
 
-# Sections and control flow wrap policy statements; anything else that wraps an
-# element makes that element its configuration, not a policy of its own.
-_STATEMENT_WRAPPERS = {"inbound", "backend", "outbound", "on-error", "fragment", "choose", "when", "otherwise"}
+# Sections, control flow and the fragment root wrap policy statements; anything
+# else that wraps an element makes that element its configuration, not a policy
+# of its own. `retry` and `wait` are here because they hold real policies: their
+# children were read as configuration and never reached rule selection at all,
+# and once every element is counted that silence would have been counted as a
+# statement being configured.
+_STATEMENT_WRAPPERS = {
+    "inbound", "backend", "outbound", "on-error", "fragment", "retry", "wait",
+    *policy_mod.CONDITIONAL_WRAPPERS,
+}
 
 
 def _is_policy_statement(element: dict[str, Any]) -> bool:
@@ -1904,22 +2262,77 @@ def _is_policy_statement(element: dict[str, Any]) -> bool:
     ``<value>`` child is how the header is configured. Walking it separately
     produced phantom items named after configuration elements.
     """
-    ancestors = [segment.split("[", 1)[0] for segment in (element.get("path") or "").split("/")[:-1]]
-    return all(name in _STATEMENT_WRAPPERS for name in ancestors)
+    return all(name in _STATEMENT_WRAPPERS for name in policy_mod.ancestors(element))
 
 
-def _apply_partial_when(rule: dict[str, Any], element: dict[str, Any]) -> dict[str, Any]:
-    """Demote a native mapping to partial only when the rule's condition holds.
+# Dispositions ranked by how much they claim. An element reached by two routes
+# can be excluded on one and raise an item on the other -- a fragment included
+# plainly by one API and inside a `choose` by another -- and the stronger claim
+# is the one the tally should carry.
+_DISPOSITION_RANK = {
+    "notApplicable": 0, "handled": 1, "classified": 2, "unrecognised": 3, "unresolved": 4,
+}
+
+
+def _note(dispositions: dict[int, str], key: int, disposition: str) -> None:
+    current = dispositions.get(key)
+    if current is None or _DISPOSITION_RANK[disposition] > _DISPOSITION_RANK[current]:
+        dispositions[key] = disposition
+
+
+def _unique_arrivals(arrivals: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One entry per asset, scope and route, so a fragment reads once per way in."""
+    seen: set[tuple[Any, ...]] = set()
+    out: list[dict[str, Any]] = []
+    for arrival in arrivals:
+        key = (arrival["assetId"], arrival["policyId"], arrival["section"],
+               arrival["underConditional"], tuple(arrival["via"]))
+        if key not in seen:
+            seen.add(key)
+            out.append(arrival)
+    return out
+
+
+def _level_of(document: dict[str, Any]) -> str | None:
+    return (document.get("scope") or {}).get("level")
+
+
+def _name_of(document: dict[str, Any]) -> str | None:
+    return (document.get("scope") or {}).get("name")
+
+
+def _apply_partial_when(
+    rule: dict[str, Any], element: dict[str, Any], *, under_conditional: bool = False
+) -> dict[str, Any]:
+    """Demote a mapping to partial when one of the rule's conditions holds.
 
     A token limit maps natively; it becomes a decision only because its caller
-    partition is an expression APIM evaluates and the target cannot.
+    partition is an expression APIM evaluates and the target cannot. A backend
+    selection is carried by the alias pool; it becomes a decision when the
+    source picked the backend with an expression or inside a ``choose``,
+    because the pool holds the backends and not the rule that chose among them.
+
+    ``under_conditional`` is the caller's, not the element's, because a branch
+    can be at the site that included the element rather than around the element
+    itself: a fragment pulled in under a ``choose`` runs conditionally however
+    unconditionally its own body reads.
+
+    Any one condition demotes. Requiring all of them would let an element that
+    trips a single one read as cleanly mapped, which is the reading this exists
+    to prevent.
     """
     condition = rule.get("partialWhen")
     if not condition:
         return rule
     attribute = condition.get("attributeIsExpression")
     value = (element.get("attributes") or {}).get(attribute or "")
-    if not (isinstance(value, str) and value.lstrip().startswith("@")):
+    holds = (
+        (isinstance(value, str) and value.lstrip().startswith("@"))
+        or (condition.get("hasExpression") and bool(element.get("expressionIds")))
+        or (condition.get("underConditional")
+            and (under_conditional or policy_mod.under_conditional(element)))
+    )
+    if not holds:
         return rule
     return {**rule, "verdict": "partial", **(rule.get("partial") or {})}
 
@@ -1980,11 +2393,6 @@ def _key_objects(subscriptions: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def _objects_or_none(capability_id: str | None, objects: list[dict[str, Any]]) -> dict[str, Any]:
     """A target, or nothing at all when there is no object to apply."""
     return {"capability": capability_id, "objects": objects} if objects else {}
-
-
-def _api_of(asset_id: str) -> str:
-    """The source API name in a model asset id, workspace prefix removed."""
-    return (asset_id.split(":", 1)[-1]).rsplit("/", 1)[-1]
 
 
 # How strict one policy is against another of the same type, lowest first. Only
@@ -2060,12 +2468,26 @@ def _shape_digest(item: dict[str, Any]) -> str:
 def _member_key(member: dict[str, Any]) -> str:
     """A stable, readable name for one member of a batched item.
 
-    Batches identify their members differently -- a policy by id and path, a
-    model by name -- so the key comes from whichever identity the member
-    actually carries. Assuming the policy shape named every model member
-    `None#None`: they collapsed onto one key, each digest overwrote the last,
-    and a change to any member but the final one went unnoticed.
+    Batches identify their members differently -- a policy by what it governs
+    and where it is written, a model by name -- so the key comes from whichever
+    identity the member actually carries. Assuming the policy shape named every
+    model member `None#None`: they collapsed onto one key, each digest overwrote
+    the last, and a change to any member but the final one went unnoticed.
+
+    A policy member leads with the asset because one element now reaches
+    several: a fragment included by four APIs is written once and governs four
+    times, and keying on where it is written alone would collapse the four onto
+    one digest -- so adding a fifth API would leave a settled decision reading
+    as unchanged.
     """
+    if member.get("assetId") and member.get("policyId"):
+        # The route as well as the destination. One API can include one
+        # fragment twice, and those two members agree on everything else.
+        route = "+".join(member.get("arrival") or []) or "direct"
+        return "#".join([
+            str(member["assetId"]), str(member["policyId"]), str(member.get("path") or ""),
+            str(member.get("section") or ""), route,
+        ])
     for keys in (("policyId", "path"), ("modelName",), ("name",), ("id",)):
         values = [member.get(key) for key in keys]
         if all(value is not None for value in values):
