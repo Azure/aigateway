@@ -3,7 +3,7 @@
 `rules.json` is only worth maintaining if the planner reads what it says. Three
 things can go wrong quietly, and all three had:
 
-* a rule names a `match` key no selector examines, so it is never chosen;
+* a rule names a `where` key no selector examines, so it is never chosen;
 * a rule carries an extra key the selector ignores, so it matches more broadly
   than it reads;
 * a rule names a value no asset ever carries, so it matches nothing.
@@ -18,21 +18,24 @@ statement of what the match looks at. `migrate_apim.compile` reads `REGISTRY`,
 so the contract it checks is the one the planner actually runs; there is no
 second copy to fall out of step.
 
-A selector `governs` a rule when the rule's `match` keys are a subset of the
-keys the selector examines, and every value it constrains is one the selector
-accepts. Subset rather than equality: a rule may legitimately pin fewer keys.
-What it may not do is pin *more*, because the surplus would be silently ignored.
+A selector `governs` a rule when the rule decides the subject the selector
+selects, its `where` and `derived` keys are a subset of the ones the selector
+examines, and every value it constrains is one the selector accepts. Subset
+rather than equality: a rule may legitimately pin fewer keys. What it may not
+do is pin *more*, because the surplus would be silently ignored.
 
 A fourth thing can go wrong, one layer in: the rule is selected, and then a
-*field* of it is never looked at. That is the same defect as an unreadable match
-key -- something written expecting an effect it does not have -- so it is
-answered the same way. A selector also declares what it `reads`, and the site
-that reads a field is the site that declares it.
+*field* of it is never looked at. That is the same defect as an unreadable
+`where` key -- something written expecting an effect it does not have -- so it
+is answered the same way. A selector also declares what it `reads`, and the site
+that reads a field is the site that declares it. The declaration is worth no
+more than its narrowness: a site that claims to read `options` while writing its
+own list satisfies the check and keeps the decision in the code.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Mapping
 
 # Every selection site in the planner, in declaration order. Populated at import
@@ -44,9 +47,9 @@ Rule = dict[str, Any]
 
 
 # Keys every rule carries that are not a field of the rule's own vocabulary:
-# `match` is the selection criteria, and `note` is addressed to whoever reads the
-# file. Neither is expected to be consumed by a selection site.
-STRUCTURAL_KEYS = ("match", "note")
+# the four that say how the rule is selected, and `note`, which is addressed to
+# whoever reads the file. None is expected to be consumed by a selection site.
+STRUCTURAL_KEYS = ("selects", "where", "derived", "fallback", "note")
 
 
 # Hashing is off because `values` is a Mapping, so the hash a frozen dataclass
@@ -60,8 +63,21 @@ class Selector:
     section: str
     """Which top-level list of rules.json this reads: assets, structural, policies."""
 
+    selects: str
+    """The subject this site decides about: `policyElement`, `mcpServer`, `workspace`.
+
+    A rule's subject used to be implied by which array it sat in, which made
+    `family` name the subject in `assets[]` (`mcpServers`) and act as a
+    predicate on a field in `policies[]` (`authentication`). Naming the subject
+    lets `family` keep only the second job.
+    """
+
     keys: tuple[str, ...]
-    """The `match` keys this site examines. Anything else on a rule is ignored."""
+    """The `where` keys this site examines. Anything else on a rule is ignored.
+
+    Field predicates only. Each names a field of the subject's inventory record,
+    which is what lets `compile` check it against the schema.
+    """
 
     values: Mapping[str, tuple[str, ...]]
     """Accepted literals per key. A key absent here, or mapped to (), is unconstrained."""
@@ -79,23 +95,61 @@ class Selector:
     where the reading happens rather than in the checker.
     """
 
+    derived: tuple[str, ...] = ()
+    """Predicates computed from the record rather than read off it.
+
+    `hasExpression` is `bool(element["expressionIds"])`. No record carries it,
+    so holding it to the same schema check as a `where` key would reject it.
+    """
+
+    fallback: bool = False
+    """Whether this site chooses the rule that answers when nothing else did.
+
+    A fallback is not a predicate, and writing it as one -- `anyElement: true` --
+    made it look like a field of the subject. A site either selects fallbacks or
+    it does not, and the two never choose each other's rules.
+    """
+
+    fields: Mapping[str, str] = field(default_factory=dict)
+    """Per `where` key, the inventory path it is compared against.
+
+    The binding between `where.name` and `element["name"]` lived only inside the
+    resolver, so a rule could match on a field no record has and simply never
+    fire. Declared here, `compile` checks it the way it already checks a
+    declared CLI option against the surface snapshot.
+    """
+
     def governs(self, rule: Rule) -> bool:
         """Whether this site could ever choose `rule`."""
-        match = rule.get("match") or {}
-        if set(match) - set(self.keys):
+        if rule.get("selects") != self.selects:
+            return False
+        if bool(rule.get("fallback")) != self.fallback:
+            return False
+        where = rule.get("where") or {}
+        if set(where) - set(self.keys):
             return False
         for key, permitted in self.values.items():
-            if key in match and permitted and match[key] not in permitted:
+            if key in where and permitted and where[key] not in permitted:
                 return False
+        if set(rule.get("derived") or {}) - set(self.derived):
+            return False
         return True
 
     def first(self, rules: list[Rule], **criteria: Any) -> Rule | None:
-        """The first governed rule whose match equals `criteria`. First wins."""
+        """The first governed rule whose predicates equal `criteria`. First wins.
+
+        A criterion is looked up in whichever block declares it, so a caller
+        asks the same way whether the predicate is read off the record or
+        computed from it. The two vocabularies are disjoint by construction --
+        a key is declared in `keys` or in `derived`, never both.
+        """
         for rule in rules:
             if not self.governs(rule):
                 continue
-            match = rule.get("match") or {}
-            if all(match.get(key) == value for key, value in criteria.items()):
+            where = rule.get("where") or {}
+            derived = rule.get("derived") or {}
+            if all((where if key in self.keys else derived).get(key) == value
+                   for key, value in criteria.items()):
                 return rule
         return None
 
@@ -106,7 +160,7 @@ class Selector:
         `compile` requires the key to be unique across the section.
         """
         return {
-            (rule.get("match") or {}).get(key) or "": rule
+            (rule.get("where") or {}).get(key) or "": rule
             for rule in rules
             if self.governs(rule)
         }
@@ -115,14 +169,19 @@ class Selector:
 def selector(
     section: str,
     *,
-    keys: tuple[str, ...],
+    selects: str,
     site: str,
+    keys: tuple[str, ...] = (),
     values: Mapping[str, tuple[str, ...]] | None = None,
     reads: tuple[str, ...] = (),
+    derived: tuple[str, ...] = (),
+    fallback: bool = False,
+    fields: Mapping[str, str] | None = None,
 ) -> Selector:
     """Declare a selection site and register it."""
     entry = Selector(
-        section=section, keys=keys, values=values or {}, site=site, reads=reads,
+        section=section, selects=selects, keys=keys, values=values or {}, site=site,
+        reads=reads, derived=derived, fallback=fallback, fields=fields or {},
     )
     REGISTRY.append(entry)
     return entry

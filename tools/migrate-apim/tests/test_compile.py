@@ -8,6 +8,7 @@ sitting in rules.json. A compiler nobody has watched fail is not worth trusting,
 so each check is exercised against the defect it exists for.
 """
 
+import contextlib
 import copy
 import json
 
@@ -116,7 +117,7 @@ class TestRulesThatCannotBeApplied:
     def test_a_rule_no_site_selects_is_caught(self, compile_with, shipped):
         rules = copy.deepcopy(shipped[1])
         rules["assets"].append({
-            "match": {"family": "models", "modelsStatus": ["resolved"]},
+            "selects": "modelApi", "where": {"modelsStatus": ["resolved"]},
             "verdict": "native", "capabilityId": "model.create",
         })
         result = compile_with(rules=rules)
@@ -126,7 +127,7 @@ class TestRulesThatCannotBeApplied:
         # A key no collector emits. The rule looks plausible and selects nothing.
         rules = copy.deepcopy(shipped[1])
         rules["assets"].append({
-            "match": {"family": "mcpServers", "isPartOfBulkImportable": True},
+            "selects": "mcpServer", "where": {"isPartOfBulkImportable": True},
             "verdict": "native", "capabilityId": "mcp.create",
         })
         assert "rule-reachable" in codes(compile_with(rules=rules))
@@ -134,7 +135,7 @@ class TestRulesThatCannotBeApplied:
     def test_a_match_value_outside_the_vocabulary_is_caught(self, compile_with, shipped):
         rules = copy.deepcopy(shipped[1])
         rules["assets"].append({
-            "match": {"family": "mcpServers", "pattern": "notAPattern"},
+            "selects": "mcpServer", "where": {"pattern": "notAPattern"},
             "verdict": "native", "capabilityId": "mcp.create",
         })
         assert "match-value-known" in codes(compile_with(rules=rules))
@@ -146,13 +147,32 @@ class TestRulesThatCannotBeApplied:
 
     def test_two_rules_one_site_cannot_tell_apart_are_caught(self, compile_with, shipped):
         rules = copy.deepcopy(shipped[1])
-        first = next(r for r in rules["assets"] if (r["match"].get("pattern")))
+        first = next(r for r in rules["assets"] if (r.get("where") or {}).get("pattern"))
         rules["assets"].append(copy.deepcopy(first))
         assert "rule-unique" in codes(compile_with(rules=rules))
 
+    def test_two_rules_differing_only_in_what_is_computed_are_not_a_tie(self, compile_with):
+        """A site that dispatches on `derived` can tell them apart.
+
+        Judged on `where` alone, the two catalogue rules and the two identity
+        rules read as one rule written twice, and the shipped file could not
+        compile.
+        """
+        assert "rule-unique" not in codes(compile_with())
+
+    def test_a_tie_on_a_computed_predicate_says_which_one(self, compile_with, shipped):
+        rules = copy.deepcopy(shipped[1])
+        catalogued = next(r for r in rules["assets"]
+                          if (r.get("derived") or {}).get("hasCatalogue") is True)
+        rules["assets"].append(copy.deepcopy(catalogued))
+        [diagnostic] = [d for d in compile_with(rules=rules).errors if d.check == "rule-unique"]
+        # Reported over both blocks: a tie the site can only see once `derived`
+        # is included reads as a tie on nothing when the message leaves it out.
+        assert "'hasCatalogue': True" in diagnostic.message
+
     def test_a_partial_rule_without_options_is_caught(self, compile_with, shipped):
         rules = copy.deepcopy(shipped[1])
-        rules["structural"].append({"match": {"kind": "subscriptions"}, "verdict": "partial"})
+        rules["structural"].append({"selects": "subscriptions", "verdict": "partial"})
         assert "partial-needs-options" in codes(compile_with(rules=rules))
 
     def test_a_proposal_that_is_not_an_option_is_caught(self, compile_with, shipped):
@@ -217,7 +237,7 @@ class TestTheShapesAreClosed:
         # The same defect as test_an_invented_match_key_is_caught, one layer out:
         # the schema rejects it before reachability has to reason about it.
         rules = copy.deepcopy(shipped[1])
-        rules["assets"][0]["match"]["isPartOfBulkImportable"] = True
+        rules["assets"][0].setdefault("where", {})["isPartOfBulkImportable"] = True
         assert "schema" in codes(compile_with(rules=rules))
 
     def test_an_unknown_capability_field_is_rejected(self, compile_with, shipped):
@@ -234,7 +254,7 @@ class TestTheShapesAreClosed:
         # The telemetry rule carries {value, consequence} options rather than
         # bare strings; both shapes are legitimate.
         rules = copy.deepcopy(shipped[1])
-        rule = next(r for r in rules["structural"] if (r["match"]["kind"]) == "telemetry")
+        rule = next(r for r in rules["structural"] if r["selects"] == "telemetry")
         assert any(isinstance(option, dict) for option in rule["options"])
         assert "schema" not in codes(compile_with(rules=rules))
 
@@ -243,7 +263,7 @@ class TestTheShapesAreClosed:
         # every site's keys, so every site governs it -- and none ever selects
         # it, because selection compares values.
         rules = copy.deepcopy(shipped[1])
-        rules["assets"].append({"match": {}, "verdict": "gap"})
+        rules["assets"].append({"selects": "mcpServer", "where": {}, "verdict": "gap"})
         assert "schema" in codes(compile_with(rules=rules))
 
     def test_a_structural_rule_without_a_verdict_is_rejected(self, compile_with, shipped):
@@ -251,7 +271,7 @@ class TestTheShapesAreClosed:
         # hardcoding one per branch, so the exemption these had is gone.
         rules = copy.deepcopy(shipped[1])
         rules["structural"] = [
-            {k: v for k, v in r.items() if k != "verdict"} if r["match"]["kind"] == "telemetry"
+            {k: v for k, v in r.items() if k != "verdict"} if r["selects"] == "telemetry"
             else r
             for r in rules["structural"]
         ]
@@ -288,7 +308,7 @@ class TestEveryRuleFieldHasAReader:
     def test_a_field_no_site_reads_is_reported(self, compile_with, shipped):
         rules = copy.deepcopy(shipped[1])
         rules["structural"] = [
-            {**r, "prerequisiteWhen": ["flatten"]} if r["match"]["kind"] == "workspace" else r
+            {**r, "prerequisiteWhen": ["flatten"]} if r["selects"] == "workspace" else r
             for r in rules["structural"]
         ]
         result = compile_with(rules=rules)
@@ -315,16 +335,22 @@ class TestEveryRuleFieldHasAReader:
         `policyFragments` used to be the example here, which is the whole of
         what was wrong with it: the tool collected fragments and the one rule
         describing them was the suite's stock illustration of a rule nothing
-        asks for. It is selectable now, so the illustration needs a kind that
-        genuinely is not.
+        asks for. It is selectable now, so the illustration needs a subject
+        that genuinely is not.
+
+        The code is `rule-reachable` rather than `match-value-known` because a
+        rule now names its subject outright. Unreachability used to be inferred
+        from a value no site compares against; it is now read off the rule.
         """
         rules = copy.deepcopy(shipped[1])
         rules["structural"].append({
-            "match": {"kind": "loggers"}, "verdict": "handled",
+            "selects": "loggers", "verdict": "handled",
             "itemKind": "accept-loss", "rationale": "x", "proposal": "accept",
         })
         result = compile_with(rules=rules)
-        assert "match-value-known" in codes(result)
+        [reachability] = [d for d in result.errors
+                          if d.check == "rule-reachable" and "loggers" in d.message]
+        assert "no selection site decides about" in reachability.message
         assert not [d for d in result.warnings
                     if d.check == "rule-field-unread" and "loggers" in str(d)]
 
@@ -341,18 +367,18 @@ class TestEveryPolicyPassIsCheckedForTies:
 
     def test_two_rules_with_the_same_family_are_caught(self, compile_with, shipped):
         rules = copy.deepcopy(shipped[1])
-        rules["policies"].append({"match": {"family": "transform"}, "verdict": "gap"})
+        rules["policies"].append({"selects": "policyElement", "where": {"family": "transform"}, "verdict": "gap"})
         assert "rule-unique" in codes(compile_with(rules=rules))
 
     def test_two_expression_fallbacks_are_caught(self, compile_with, shipped):
         rules = copy.deepcopy(shipped[1])
-        rules["policies"].append({"match": {"hasExpression": True}, "verdict": "gap"})
+        rules["policies"].append({"selects": "policyElement", "derived": {"hasExpression": True}, "verdict": "gap"})
         assert "rule-unique" in codes(compile_with(rules=rules))
 
     def test_one_repeated_element_among_many_is_still_caught(self, compile_with, shipped):
         rules = copy.deepcopy(shipped[1])
         rules["policies"].append(
-            {"match": {"element": ["brand-new", "ip-filter"]}, "verdict": "gap"})
+            {"selects": "policyElement", "where": {"name": ["brand-new", "ip-filter"]}, "verdict": "gap"})
         result = compile_with(rules=rules)
         assert "rule-unique" in codes(result)
         assert any("ip-filter" in str(d) for d in result.errors)
@@ -451,14 +477,14 @@ class TestTheRegistryDescribesThePlanner:
 
     def test_a_selector_rejects_a_rule_pinning_a_key_it_ignores(self):
         site = next(s for s in dispatch.REGISTRY if s.site == "plan._agent")
-        assert site.governs({"match": {"family": "agents"}})
+        assert site.governs({"selects": "agent"})
         # An extra key would be silently ignored at selection time, so the rule
         # would match more broadly than it reads.
-        assert not site.governs({"match": {"family": "agents", "pattern": "passthrough"}})
+        assert not site.governs({"selects": "agent", "where": {"pattern": "passthrough"}})
 
     def test_a_selector_rejects_a_value_it_never_compares_against(self):
         site = next(s for s in dispatch.REGISTRY if s.site == "plan._agent")
-        assert not site.governs({"match": {"family": "models"}})
+        assert not site.governs({"selects": "modelApi"})
 
 
 class TestTheKnownPolicyVocabularyIsAnswered:
@@ -470,11 +496,16 @@ class TestTheKnownPolicyVocabularyIsAnswered:
     somebody never got round to -- so what it may answer for is held down here.
     """
 
+    def _trimmed_of_fallback(self, rules):
+        trimmed = copy.deepcopy(rules)
+        trimmed["policies"] = [r for r in trimmed["policies"] if not r.get("fallback")]
+        return trimmed
+
     def _without(self, rules, **match):
         trimmed = copy.deepcopy(rules)
         trimmed["policies"] = [
             rule for rule in trimmed["policies"]
-            if not all((rule.get("match") or {}).get(k) == v for k, v in match.items())
+            if not all((rule.get("where") or {}).get(k) == v for k, v in match.items())
         ]
         return trimmed
 
@@ -494,14 +525,14 @@ class TestTheKnownPolicyVocabularyIsAnswered:
         # Without it an unknown element resolves to nothing, and resolving to
         # nothing is what the planner used to drop in silence.
         _, rules, _ = shipped
-        result = compile_with(rules=self._without(rules, anyElement=True))
+        result = compile_with(rules=self._trimmed_of_fallback(rules))
         assert "policy-terminal" in codes(result)
 
     def test_a_second_terminal_rule_is_a_tie_and_rejected(self, compile_with, shipped):
         # Selection is first-match, so two of them means one is never reached.
         _, rules, _ = shipped
         doubled = copy.deepcopy(rules)
-        terminal = next(r for r in doubled["policies"] if (r.get("match") or {}).get("anyElement"))
+        terminal = next(r for r in doubled["policies"] if r.get("fallback"))
         doubled["policies"].append(copy.deepcopy(terminal))
         assert "rule-unique" in codes(compile_with(rules=doubled))
 
@@ -514,7 +545,7 @@ class TestACleanRunSaysWhatItChecked:
     def test_every_check_reports_what_it_covered(self, compile_with, shipped):
         documented = shipped[0]["cliEvidence"]["documentedVersion"]
         covered = compile_with(newest_release=f"cli-v{documented}").covered
-        assert len(covered) == 7, covered
+        assert len(covered) == 9, covered
 
     def test_the_counts_are_the_real_ones(self, compile_with, shipped):
         catalog, rules, surface = shipped
@@ -526,3 +557,56 @@ class TestACleanRunSaysWhatItChecked:
         """Nothing was compared, so claiming a check ran would be a lie."""
         covered = " ".join(compile_with().covered)
         assert "published release" not in covered
+
+
+class TestTheDecisionsStayInTheFile:
+    """Twelve decisions were written in `plan.py` while `ARCHITECTURE.md`
+    described them as data. These are what stops that reopening quietly."""
+
+    def test_a_site_with_no_rule_is_an_error(self, compile_with, shipped):
+        _, rules, _ = shipped
+        stripped = copy.deepcopy(rules)
+        stripped["assets"] = [r for r in stripped["assets"]
+                              if r.get("selects") != "sessionAffinity"]
+        result = compile_with(rules=stripped)
+        assert "subject-has-rule" in codes(result)
+        [diagnostic] = [d for d in result.errors if d.check == "subject-has-rule"]
+        # Named, with where the question is asked, because "something is
+        # unanswered" is not a fix.
+        assert "sessionAffinity" in diagnostic.message
+        assert "plan._pool_affinity" in diagnostic.message
+
+    def test_the_shipped_rules_answer_every_site(self, compile_with):
+        assert "subject-has-rule" not in codes(compile_with())
+
+    def test_a_where_key_reading_no_real_field_is_an_error(self):
+        """The failure `rule-reachable` cannot see: the key is one a site reads,
+        so the rule looks selectable and simply never fires."""
+        from migrate_apim import compile as compile_mod
+        from migrate_apim.dispatch import Selector
+
+        bogus = Selector(
+            section="assets", selects="publishedSurface", keys=("status",), values={},
+            site="test", fields={"status": "assets.models[].endpoints.surface.nope"},
+        )
+        out = compile_mod.Compilation()
+        with _only_site(bogus):
+            compile_mod.check_where_keys_are_fields({}, compile_mod._inventory_schema(), out)
+        [diagnostic] = [d for d in out.errors if d.check == "where-key-field"]
+        assert "surface.nope" in diagnostic.message
+
+    def test_the_shipped_paths_all_exist(self, compile_with):
+        assert "where-key-field" not in codes(compile_with())
+
+
+@contextlib.contextmanager
+def _only_site(site):
+    """Run a registry-wide check against one selector, without mutating the rest."""
+    from migrate_apim import dispatch
+
+    saved = list(dispatch.REGISTRY)
+    dispatch.REGISTRY[:] = [site]
+    try:
+        yield
+    finally:
+        dispatch.REGISTRY[:] = saved

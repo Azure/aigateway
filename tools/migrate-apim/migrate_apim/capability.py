@@ -36,16 +36,18 @@ _POLICY_FIELDS = (
     "options", "partial", "partialWhen", "batchOn",
 )
 POLICY_BY_ELEMENT = selector(
-    "policies", keys=("element",), site="capability.policy_rule element",
-    reads=_POLICY_FIELDS,
+    "policies", selects="policyElement", keys=("name",),
+    fields={"name": "policies[].elements[].name"},
+    site="capability.policy_rule element", reads=_POLICY_FIELDS,
 )
 POLICY_BY_FAMILY = selector(
-    "policies", keys=("family",), site="capability.policy_rule family",
-    reads=_POLICY_FIELDS,
+    "policies", selects="policyElement", keys=("family",),
+    fields={"family": "policies[].elements[].family"},
+    site="capability.policy_rule family", reads=_POLICY_FIELDS,
 )
 POLICY_BY_EXPRESSION = selector(
-    "policies", keys=("hasExpression",), site="capability.policy_rule expression",
-    reads=_POLICY_FIELDS,
+    "policies", selects="policyElement", derived=("hasExpression",),
+    site="capability.policy_rule expression", reads=_POLICY_FIELDS,
 )
 # The pass that makes "no rule" unreachable. Everything above it answers some
 # part of APIM's policy vocabulary; this answers the rest, including whatever
@@ -55,7 +57,7 @@ POLICY_BY_EXPRESSION = selector(
 # an expression at least fell into the pass above. The simpler the policy, the
 # more completely it vanished.
 POLICY_TERMINAL = selector(
-    "policies", keys=("anyElement",), values={"anyElement": (True,)},
+    "policies", selects="policyElement", fallback=True,
     site="capability.policy_rule terminal", reads=_POLICY_FIELDS,
 )
 
@@ -72,20 +74,20 @@ def resolve_policy_rule(
     for rule in rules:
         if not POLICY_BY_ELEMENT.governs(rule):
             continue
-        names = (rule.get("match") or {}).get("element")
+        names = (rule.get("where") or {}).get("name")
         if names and element_name in names:
             return rule
     for rule in rules:
         if not POLICY_BY_FAMILY.governs(rule):
             continue
-        match = rule.get("match") or {}
-        if match.get("family") and match["family"] == family:
+        where = rule.get("where") or {}
+        if where.get("family") and where["family"] == family:
             return rule
     if has_expression:
         for rule in rules:
             if not POLICY_BY_EXPRESSION.governs(rule):
                 continue
-            if (rule.get("match") or {}).get("hasExpression"):
+            if (rule.get("derived") or {}).get("hasExpression"):
                 return rule
     for rule in rules:
         if POLICY_TERMINAL.governs(rule):
