@@ -103,7 +103,7 @@
       "selects": "modelProvider",
       "verdict": "native",
       "capabilityId": "provider.create",
-      "rationale": "A backend that speaks a model protocol registers directly as a provider. What it authenticates with travels with it; the endpoint and the protocol are the whole of the mapping."
+      "note": "A backend that speaks a model protocol registers directly as a provider. What it authenticates with travels with it; the endpoint and the protocol are the whole of the mapping. Said as a note because the item's sentence names the provider, so it is composed where the inventory is read: a `rationale` here would reach no plan."
     },
     {
       "selects": "publishedSurface",
@@ -141,10 +141,7 @@
       "capabilityId": "alias.create",
       "proposal": "split",
       "options": [
-        {
-          "value": "split",
-          "consequence": "Inference moves; the operations with no target stay on APIM."
-        },
+        "split",
         {
           "value": "inference-only",
           "consequence": "Inference moves and the rest is dropped; those callers break."
@@ -159,7 +156,7 @@
         }
       ],
       "blocking": true,
-      "rationale": "Some of this API's operations map to the four publishable routes and some have no target on the gateway."
+      "note": "`split` is bare because what it costs is the number of operations that stay behind, which only this API's surface knows; the planner composes that sentence. The item's rationale is composed there too, for the same reason."
     },
     {
       "selects": "callerDialect",
@@ -171,10 +168,7 @@
       "capabilityId": "alias.create",
       "proposal": "move-callers",
       "options": [
-        {
-          "value": "move-callers",
-          "consequence": "Callers move to the dialect the backend speaks."
-        },
+        "move-callers",
         {
           "value": "retain-in-apim",
           "consequence": "Keep APIM in front so callers are unchanged."
@@ -185,7 +179,8 @@
         }
       ],
       "blocking": true,
-      "rationale": "APIM is translating between the dialect callers speak and the one the backend speaks. The gateway publishes the backend's dialect, so the translation does not travel."
+      "rationale": "APIM is translating between the dialect callers speak and the one the backend speaks. The gateway publishes the backend's dialect, so the translation does not travel.",
+      "note": "`move-callers` is bare because what it costs is the dialect this backend speaks, which the planner reads off the asset. The rationale is used only when the collector left no note of its own."
     },
     {
       "selects": "callerDialect",
@@ -228,7 +223,7 @@
           "consequence": "Stop the migration until it can be carried over."
         }
       ],
-      "rationale": "The source pins a session to the backend that served it. The gateway has the same idea on an alias, and this run cannot author it."
+      "note": "`block` is here because stopping the migration is the option an operator loses if nobody writes it down: this is a gap the target does not have, only the tooling. The item's sentence names which CLI gap it is, so it is composed in the planner rather than stated here."
     },
     {
       "selects": "modelCatalogue",
@@ -240,17 +235,14 @@
       "capabilityId": "model.create",
       "proposal": "list-models",
       "options": [
-        {
-          "value": "list-models",
-          "consequence": "Publish what the catalogue returned; drop any that cannot serve an inference route by editing `decision.models`."
-        },
+        "list-models",
         {
           "value": "retain-in-apim",
           "consequence": "Do not migrate this API."
         }
       ],
       "blocking": true,
-      "rationale": "The catalogue has been read. It lists what exists, not what each one can serve."
+      "note": "The catalogue has been read. It lists what exists, not what each one can serve, which is why this is still a decision. `list-models` is bare and the item's rationale is composed in the planner: both name how many models came back and where from."
     },
     {
       "selects": "modelCatalogue",
@@ -311,7 +303,7 @@
       "selects": "modelRegistration",
       "verdict": "native",
       "capabilityId": "model.create",
-      "rationale": "A model named in this API's catalogue decision registers directly."
+      "note": "A model registers directly, whether it was resolved from a deployment or named in this API's catalogue decision. Which of the two it was is what the item says, so that sentence is composed in the planner."
     },
     {
       "selects": "aliasNames",
@@ -329,7 +321,8 @@
           "consequence": "Supply names per model; set them in this item's members."
         }
       ],
-      "rationale": "An alias publishes the route, and its routingName is what clients send as `model`. APIM does not store it."
+      "rationale": "An alias publishes the route, and its routingName is what clients send as `model`. APIM does not store it.",
+      "note": "The planner follows this sentence with the names it proposes for this API's models, which is the only part of the item that is not the same for every API."
     },
     {
       "selects": "toolExposure",
@@ -353,7 +346,7 @@
           "consequence": "Do not migrate this server."
         }
       ],
-      "rationale": "The tool list came from the upstream with the API's policies bypassed, so it can be broader than what callers reach through the gateway."
+      "note": "The tool list came from the upstream with the API's policies bypassed, so it can be broader than what callers reach through the gateway. The item says how many tools that was, so its sentence is composed in the planner."
     }
   ],
   "policies": [
@@ -874,7 +867,6 @@
       "verdict": "partial",
       "itemKind": "translate",
       "capabilityId": "identity.assign",
-      "rationale": "The source authenticates to its backends as a user-assigned identity. The gateway can carry the same one or take a system-assigned identity of its own, and the grants differ.",
       "options": [
         {
           "value": "system-assigned",
@@ -882,7 +874,7 @@
         }
       ],
       "proposal": "system-assigned",
-      "note": "The reuse options are one per user-assigned identity the source carries, so they are built where the inventory is read. This is the choice that exists whether or not it carries any."
+      "note": "The source authenticates to its backends as a user-assigned identity, and the gateway can carry the same one or take a system-assigned identity of its own; the grants differ. `system-assigned` is the choice that exists whether or not the source carries any, so it is stated here; the reuse options are one per identity it does carry, so they are built where the inventory is read. The item's sentence counts the providers that need one, so it is composed there too."
     },
     {
       "selects": "gatewayIdentity",
@@ -892,7 +884,7 @@
       "verdict": "native",
       "capabilityId": "identity.assign",
       "proposal": "system-assigned",
-      "rationale": "A system-assigned identity is created with the gateway and granted on each provider."
+      "note": "A system-assigned identity is created with the gateway and granted on each provider. Nothing is offered because there is nothing to choose between: the verdict is what says so, rather than a planner branch emitting an empty option list."
     },
     {
       "selects": "backendReachability",
@@ -938,6 +930,10 @@
           "consequence": "Expose the gateway privately, matching the source's ingress."
         },
         {
+          "value": "new-delegated-subnet",
+          "consequence": "Provision a subnet delegated to Microsoft.App/environments and integrate the gateway."
+        },
+        {
           "value": "public-egress",
           "consequence": "Reach backends over public networking; only viable if they accept it."
         },
@@ -950,7 +946,8 @@
           "consequence": "Stop until the network design is agreed."
         }
       ],
-      "rationale": "The source restricts how it is reached, and the gateway expresses that differently."
+      "rationale": "The source restricts how it is reached, and the gateway expresses that differently.",
+      "note": "`private-ingress` is the proposal and was not among the options while this decision lived in `plan.py`: both cases were offered the subnet list, so the recommended value was one nobody could settle on. It is offered here, and the other four are kept, because which of them an operator can live with is theirs to say."
     }
   ]
 }

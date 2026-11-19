@@ -11,19 +11,37 @@ one, and the fixture's silence let it through.
 So every moved decision is pinned here instead, transcribed from the code that
 held it before the move. These are not assertions about what the rules *should*
 say; they are a copy of what they *did* say, and a diff is a decision changed.
+
+Pinning the rule is half of it. A decision is only in the file if the planner
+reads it from there, and seven sites kept writing their own option list beside a
+rule that carried one -- editing the file moved nothing, and `rule-field-unread`
+could not see it because each site declared it read `options`. So every site is
+asked the other question too: say something different in the rule, and the plan
+has to say it back.
 """
 
 from __future__ import annotations
 
+import copy
+
 import pytest
 
 from migrate_apim.capability import CapabilityMap
+from migrate_apim.collect import Collector, CollectOptions
+from migrate_apim.plan import build_plan
 from migrate_apim import plan as plan_mod
+from fake_arm import SERVICE, FakeArmClient
 
 
 @pytest.fixture(scope="module")
 def caps():
     return CapabilityMap.load()
+
+
+@pytest.fixture(scope="module")
+def inventory():
+    return Collector(FakeArmClient(), SERVICE,
+                     CollectOptions(cognitive_api_version="2025-06-01")).run()
 
 
 def decision(rule):
@@ -66,13 +84,13 @@ class TestTheDecisionsThatMovedAreTheOnesThatWereThere:
             ["split", "inference-only", "retain-in-apim", "block"], blocking=True)
 
     def test_a_translating_dialect_moves_callers(self, caps):
-        rule = plan_mod.DIALECT_BY_STATUS.first(caps.asset_rules(), status="translating")
+        rule = plan_mod.DIALECT_TRANSLATING.first(caps.asset_rules(), status="translating")
         assert decision(rule) == expected(
             "partial", "translate", "alias.create", "move-callers",
             ["move-callers", "retain-in-apim", "block"], blocking=True)
 
     def test_an_indeterminate_dialect_asks_and_proposes_nothing(self, caps):
-        rule = plan_mod.DIALECT_BY_STATUS.first(caps.asset_rules(), status="indeterminate")
+        rule = plan_mod.DIALECT_INDETERMINATE.first(caps.asset_rules(), status="indeterminate")
         assert decision(rule) == expected(
             "partial", "enumerate", "alias.create", None,
             ["confirm-dialect", "retain-in-apim"], blocking=True)
@@ -136,10 +154,145 @@ class TestTheDecisionsThatMovedAreTheOnesThatWereThere:
             ["new-delegated-subnet", "public-egress", "retain-in-apim", "block"])
 
     def test_backends_not_needing_one_propose_private_ingress(self, caps):
+        """The one case where moving a decision had to change it.
+
+        `plan.py` offered the same four options whichever way `needsSubnet`
+        went, and proposed `private-ingress` here -- a recommendation that was
+        not among the choices, so nobody could settle the item on it.
+        `proposal-is-an-option` says that cannot be written down, so the
+        proposal joins the options rather than the four being narrowed.
+        """
         rule = plan_mod.REACHABILITY_BY_SUBNET.first(caps.structural_rules(), needsSubnet=False)
         assert decision(rule) == expected(
             "partial", "translate", "network.update", "private-ingress",
-            ["private-ingress", "public-egress", "retain-in-apim", "block"])
+            ["private-ingress", "new-delegated-subnet", "public-egress",
+             "retain-in-apim", "block"])
+
+
+OFFERED = ["named-only-in-the-file"]
+
+
+def saying(caps, selects, overrides, **predicates):
+    """The shipped rules with one rule rewritten, as a map the planner can use.
+
+    Selection is left exactly as it ships: the question is whether the planner
+    reads the rule it already chooses, not whether a different one can be made
+    to win.
+    """
+    rules = copy.deepcopy(caps.rules)
+    for section in ("assets", "structural"):
+        for rule in rules[section]:
+            if rule.get("selects") != selects:
+                continue
+            pinned = {**(rule.get("where") or {}), **(rule.get("derived") or {})}
+            if all(pinned.get(key) == value for key, value in predicates.items()):
+                rule.update(overrides)
+                return CapabilityMap(caps.catalog, rules)
+    raise AssertionError(f"no {selects} rule matching {predicates}")
+
+
+def item_with(plan, aspect):
+    return next(item for item in plan["items"] if item["source"]["aspect"] == aspect)
+
+
+def offered(item):
+    return [option["value"] for option in item["options"]]
+
+
+class TestThePlannerOffersWhatTheFileSays:
+    """Change a rule, and the item it decides has to change with it."""
+
+    def test_a_provider_takes_its_verdict_from_the_rule(self, inventory, caps):
+        built = build_plan(inventory, saying(caps, "modelProvider", {"verdict": "handled"}))
+        item = next(i for i in built["items"] if i["source"]["assetKind"] == "modelProvider")
+        assert item["verdict"] == "handled"
+
+    def test_a_model_registration_takes_its_verdict_from_the_rule(self, inventory, caps):
+        built = build_plan(inventory, saying(caps, "modelRegistration", {"verdict": "handled"}))
+        item = next(i for i in built["items"] if i["source"]["aspect"].startswith("model:"))
+        assert item["verdict"] == "handled"
+
+    def test_an_unbounded_surface_offers_the_rules_choices(self, inventory, caps):
+        built = build_plan(inventory, saying(
+            caps, "publishedSurface", {"options": OFFERED}, status="unbounded"))
+        # Three APIs raise this question; the unbounded one is the API whose
+        # surface could not be read, which is the rule being changed here.
+        item = next(i for i in built["items"]
+                    if i["source"]["aspect"] == "publishedSurface"
+                    and i["proposal"] == "inference-only")
+        assert offered(item) == OFFERED
+
+    def test_a_partly_publishable_surface_offers_the_rules_choices(self, inventory, caps):
+        built = build_plan(inventory, saying(
+            caps, "publishedSurface", {"options": OFFERED}, hasUnpublishable=True))
+        item = next(i for i in built["items"]
+                    if i["source"]["aspect"] == "publishedSurface" and i["proposal"] == "split")
+        assert offered(item) == OFFERED
+
+    def test_what_splitting_costs_is_still_this_apis_number(self, inventory, caps):
+        """The half that stays in code: the choice is the rule's, the sentence
+        counts the operations this API leaves behind, which no rule can know."""
+        item = next(i for i in build_plan(inventory, caps)["items"]
+                    if i["source"]["aspect"] == "publishedSurface" and i["proposal"] == "split")
+        consequence = {o["value"]: o["consequence"] for o in item["options"]}["split"]
+        left_behind = item["evidence"]["surface"]["unpublishableCount"]
+        assert f"{left_behind} operations stay on APIM" in consequence
+
+    def test_a_translating_dialect_offers_the_rules_choices(self, inventory, caps):
+        built = build_plan(inventory, saying(
+            caps, "callerDialect", {"options": OFFERED}, status="translating"))
+        assert offered(item_with(built, "callerDialect")) == OFFERED
+
+    def test_an_indeterminate_dialect_offers_the_rules_choices(self, inventory, caps):
+        changed = copy.deepcopy(inventory)
+        asset = next(m for m in changed["assets"]["models"] if m["source"]["name"] == "model-api")
+        asset["endpoints"]["translation"]["status"] = "indeterminate"
+        built = build_plan(changed, saying(
+            caps, "callerDialect", {"options": OFFERED}, status="indeterminate"))
+        assert offered(item_with(built, "callerDialect")) == OFFERED
+
+    def test_session_affinity_offers_the_rules_choices(self, inventory, caps):
+        changed = copy.deepcopy(inventory)
+        asset = next(m for m in changed["assets"]["models"] if m["source"]["name"] == "aoai-api")
+        asset["routing"]["sessionAffinity"] = {"enabled": True}
+        built = build_plan(changed, saying(caps, "sessionAffinity", {"options": OFFERED}))
+        assert offered(item_with(built, "sessionAffinity")) == OFFERED
+
+    def test_an_unread_catalogue_offers_the_rules_choices(self, inventory, caps):
+        built = build_plan(inventory, saying(
+            caps, "modelCatalogue", {"options": OFFERED},
+            hasCatalogue=False, discoverySource="modelsEndpoint"))
+        assert offered(item_with(built, "modelCatalogue")) == OFFERED
+
+    def test_alias_naming_offers_the_rules_choices(self, inventory, caps):
+        built = build_plan(inventory, saying(caps, "aliasNames", {"options": OFFERED}))
+        assert offered(item_with(built, "aliasNames")) == OFFERED
+
+    def test_a_bypassed_tool_list_offers_the_rules_choices(self, inventory, caps):
+        changed = copy.deepcopy(inventory)
+        server = changed["assets"]["mcpServers"][0]
+        server["toolDiscovery"] = {"status": "complete", "policiesApplied": False,
+                                   "discoveredCount": 3}
+        built = build_plan(changed, saying(
+            caps, "toolExposure", {"options": OFFERED}, policiesBypassed=True))
+        assert offered(item_with(built, "toolExposure")) == OFFERED
+
+    def test_a_user_assigned_identity_offers_the_rules_choice_and_the_reuse(
+        self, inventory, caps
+    ):
+        changed = copy.deepcopy(inventory)
+        changed["service"]["identity"]["userAssignedIdentities"] = [{"resourceId": "/uai/one"}]
+        built = build_plan(changed, saying(
+            caps, "gatewayIdentity", {"options": OFFERED}, hasUserAssigned=True))
+        assert offered(item_with(built, "gatewayIdentity")) == [*OFFERED, "reuse:/uai/one"]
+
+    def test_backend_reachability_offers_the_rules_choices(self, inventory, caps):
+        changed = copy.deepcopy(inventory)
+        changed["service"]["networking"]["targetRequirement"] = {
+            "needsSubnet": True, "note": "Collected."}
+        built = build_plan(changed, saying(
+            caps, "backendReachability", {"options": OFFERED}, needsSubnet=True))
+        assert offered(item_with(built, "backendReachability")) == OFFERED
 
 
 class TestEveryMovedDecisionIsPinned:
