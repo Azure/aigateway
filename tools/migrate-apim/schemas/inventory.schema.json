@@ -84,7 +84,17 @@
           "properties": {
             "type": {"type": ["string", "null"]},
             "principalId": {"type": ["string", "null"]},
-            "userAssignedIdentities": {"type": "array"}
+            "tenantId": {"type": ["string", "null"]},
+            "userAssignedIdentities": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "resourceId": {"type": "string"},
+                  "clientId": {"type": ["string", "null"]}
+                }
+              }
+            }
           }
         },
         "networking": {
@@ -279,7 +289,18 @@
       "type": "object",
       "required": ["status", "discoverySource", "resolved"],
       "properties": {
-        "status": {"enum": ["resolved", "declared", "unresolved", "empty"]},
+        "status": {
+          "description": "catalogued is what `migrate-apim resolve` writes after reading a provider's own catalogue: the models exist, but the response states no modality, so which of them can serve an inference route is still a decision. It was missing here while `resolve.py` wrote it and `plan.py` branched on it, so validating a resolved inventory failed on a value the tool had just produced -- the same hole `auth.mode: undetermined` left.",
+          "enum": ["resolved", "declared", "unresolved", "empty", "catalogued"]
+        },
+        "resolvedFrom": {
+          "description": "The catalogue endpoint the models were read from. Null until a resolve run writes one.",
+          "type": ["string", "null"]
+        },
+        "catalogue": {
+          "description": "The model names the catalogue returned, which the planner samples into the question it asks.",
+          "type": "array", "items": {"type": "string"}
+        },
         "discoverySource": {
           "enum": ["armDeployments", "backendLanguageModel", "modelsEndpoint", "awsCli", "gcloudCli", "manual", "unknown"]
         },
