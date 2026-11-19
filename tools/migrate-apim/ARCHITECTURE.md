@@ -18,7 +18,9 @@ Declares what the `az aigateway` CLI extension can do. Paired to one CLI release
 
 Declares how APIM shapes map to target capabilities. Never versioned separately; versioned with the catalog it references. Contains:
 
-- **`assets[]`** — How to map each APIM asset family (models, mcpServers, agents, modelProviders). Each rule matches on asset properties (`family`, `modelsStatus`, `surfaceStatus`, etc.) and declares:
+Every rule says what it decides about in `selects`, narrows with `where` (field predicates), `derived` (predicates computed from a record rather than read off it) or `fallback` (the rule that answers when nothing above it did), and then declares the decision. A subject is a *question*, not an asset type: one model API raises six, and they are decided separately.
+
+- **`assets[]`** — The questions asked about one asset. `modelProvider` and `modelRegistration`, `publishedSurface`, `callerDialect`, `sessionAffinity`, `modelCatalogue` and `aliasNames` for a model API, `mcpServer`, `toolExposure` and `agent` for the rest. Each declares:
   - `verdict` — `native` (direct map), `partial` (decision needed), `gap` (no target), `handled` (carried elsewhere), `notApplicable` (skip it)
   - `capabilityId` — Which capability in the catalog handles this
   - `itemKind` — What type of plan item to raise (`reduce-surface`, `translate`, `accept-loss`, `enumerate`, `name`, `scope`, `collapse`)
@@ -62,13 +64,14 @@ Declares how APIM shapes map to target capabilities. Never versioned separately;
 │ For each asset: │          │ For each policy:     │
 │ .asset_rules()  │          │ .policy_rule()       │
 │    ↓            │          │    ↓                 │
-│ Match on        │          │ Match on element     │
-│ family,         │          │    ↓                 │
-│ modelsStatus,   │          │ Get capability id    │
-│ surfaceStatus   │          │    ↓                 │
-│    ↓            │          │ Build plan item      │
-│ Get capability  │          │                      │
-│ from catalog    │          │                      │
+│ selects: the    │          │ selects:             │
+│ question asked  │          │ policyElement        │
+│    ↓            │          │    ↓                 │
+│ where/derived:  │          │ where: name, family  │
+│ which answer    │          │    ↓                 │
+│    ↓            │          │ Get capability id    │
+│ Get capability  │          │    ↓                 │
+│ from catalog    │          │ Build plan item      │
 │    ↓            │          │                      │
 │ Build plan item │          │                      │
 │ with verdict    │          │                      │
@@ -130,6 +133,8 @@ The catalog says which release to install; nothing here reads `cli/` to find out
 ### The selector registry
 
 One question is answered in one place for the same reason. `migrate_apim/policy.py` owns which policy governs which API: the scope chain, `<base />` inheritance, fragment splicing and the workspace qualification of every name. `collect` asks it to decide what authenticates a backend and `plan` asks it to decide what a policy item covers, so the two cannot drift — which they had, the collector folding in the product and global policy but never the workspace, and the planner answering for neither a fragment nor an operation. Nothing is re-derived to answer it: `include-fragment` and `base` are already elements in the inventory, each with its section and path.
+
+`compile` holds two invariants that keep this true rather than aspirational: every selection site has at least one rule, so a question the planner asks cannot be answered in code instead of in the file; and every `where` key names a field `inventory.schema.json` declares, so a rule cannot match on something no record carries and simply never fire. Both are checked against the registry the planner itself uses.
 
 Reachability is checkable only because selection happens in one place. `migrate_apim/dispatch.py` defines `Selector`, which both performs a match and states what the match looks at; `plan.py` and `capability.py` declare one per selection site. `compile` imports those modules and reads `dispatch.REGISTRY`, so the contract it checks is the one the planner runs — not a second declaration that can drift from it.
 

@@ -78,7 +78,36 @@
         "virtualNetworkType": {"type": ["string", "null"]},
         "publicNetworkAccess": {"type": ["string", "null"]},
         "hostnameConfigurations": {"type": "array"},
-        "identity": {"type": ["object", "null"]},
+        "identity": {
+          "description": "The service's managed identities. `userAssignedIdentities` decides whether the gateway can carry one over with the grants it already holds, or needs a new principal granted from scratch.",
+          "type": ["object", "null"],
+          "properties": {
+            "type": {"type": ["string", "null"]},
+            "principalId": {"type": ["string", "null"]},
+            "userAssignedIdentities": {"type": "array"}
+          }
+        },
+        "networking": {
+          "description": "How the service reaches its backends and is reached. `targetRequirement` is the collector's reading of what the gateway would have to do to match it; null when nothing private is in play.",
+          "type": ["object", "null"],
+          "properties": {
+            "virtualNetworkType": {"type": ["string", "null"]},
+            "publicNetworkAccess": {"type": ["string", "null"]},
+            "vnetId": {"type": ["string", "null"]},
+            "vnetIntegrated": {"type": "boolean"},
+            "subnetResourceId": {"type": ["string", "null"]},
+            "natGatewayState": {"type": ["string", "null"]},
+            "outboundPublicIPAddresses": {"type": ["array", "null"]},
+            "privateEndpointConnections": {"type": ["array", "null"]},
+            "targetRequirement": {
+              "type": ["object", "null"],
+              "properties": {
+                "needsSubnet": {"type": "boolean"},
+                "note": {"type": "string"}
+              }
+            }
+          }
+        },
         "tags": {"type": "object"}
       }
     },
@@ -350,6 +379,21 @@
           "type": "array", "items": {"type": "string"}
         },
         "backendDialectsDeclared": {"type": "boolean"},
+        "surface": {
+          "description": "How much of what the API publishes can move. `unbounded` means a wildcard operation forwards every upstream path, so the exposed surface cannot be read from configuration at all -- which is not the same as publishing nothing.",
+          "type": "object",
+          "properties": {
+            "status": {"enum": ["bounded", "unbounded", "unknown"]},
+            "basis": {"type": "string"},
+            "operationCount": {"type": "integer"},
+            "publishable": {"type": "array"},
+            "unpublishable": {"type": "array"},
+            "publishableCount": {"type": "integer"},
+            "unpublishableCount": {"type": "integer"},
+            "targetRoutes": {"type": "array", "items": {"type": "string"}},
+            "note": {"type": "string"}
+          }
+        },
         "translation": {
           "description": "Null only when the backend declares no dialect to compare against.",
           "oneOf": [

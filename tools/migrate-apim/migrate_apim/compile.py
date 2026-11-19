@@ -531,6 +531,101 @@ def check_policy_vocabulary(rules: dict[str, Any], out: Compilation) -> None:
         )
 
 
+
+
+def _inventory_schema() -> dict[str, Any]:
+    path = Path(__file__).resolve().parent.parent / "schemas" / "inventory.schema.json"
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def check_subjects_have_rules(rules: dict[str, Any], out: Compilation) -> None:
+    """Every selection site has at least one rule, and every rule a site.
+
+    This is what keeps the decisions in the file. A site with no rule is a
+    question the planner asks and the data does not answer -- which is how
+    twelve of them came to be written in `plan.py` while `ARCHITECTURE.md`
+    described them as data. Declaring a site without writing its rule now fails
+    the build, so the gap cannot be reopened quietly.
+
+    The other direction is already covered: a rule no site selects is caught by
+    `check_rules`.
+    """
+    sites = {site.selects for site in dispatch.REGISTRY}
+    answered = {
+        rule.get("selects")
+        for section in _SELECTED_SECTIONS
+        for rule in rules.get(section) or []
+    }
+    out.cover(f"{len(sites)} selection sites: each answered by at least one rule")
+    for subject in sorted(sites - answered):
+        site_names = [s.site for s in dispatch.REGISTRY if s.selects == subject]
+        out.error(
+            "subject-has-rule",
+            f"{subject!r} is decided at {site_names} and no rule answers for it, so the "
+            "decision is either hardcoded or absent. Write the rule.",
+        )
+
+
+def check_where_keys_are_fields(rules: dict[str, Any], inventory_schema: dict[str, Any],
+                                out: Compilation) -> None:
+    """Every `where` key names a field some inventory record actually has.
+
+    The binding between a key and the field it is compared against used to live
+    inside the resolver, so a rule could match on a field no record carries and
+    simply never fire -- the failure `rule-reachable` cannot see, because the
+    key is one a site does read. Each site declares the path; this checks the
+    path against the schema, the way `check_capabilities` checks a declared CLI
+    option against the surface snapshot.
+    """
+    declared = _schema_paths(inventory_schema)
+    checked = sum(len(site.fields) for site in dispatch.REGISTRY)
+    out.cover(f"{checked} where-key field paths: each declared in inventory.schema.json")
+    for site in dispatch.REGISTRY:
+        for key, path in (site.fields or {}).items():
+            if _path_declared(path, declared):
+                continue
+            out.error(
+                "where-key-field",
+                f"{site.site}: {key!r} reads {path!r}, which inventory.schema.json does not "
+                "declare. Either the path is wrong or the schema has drifted from the collector.",
+            )
+
+
+def _schema_paths(schema: dict[str, Any]) -> set[str]:
+    """Every dotted property path the inventory schema declares."""
+    defs = schema.get("$defs") or {}
+
+    def walk(node: Any, seen: tuple[str, ...]) -> set[str]:
+        found: set[str] = set()
+        if not isinstance(node, dict):
+            return found
+        if "$ref" in node:
+            name = node["$ref"].rsplit("/", 1)[-1]
+            return set() if name in seen else walk(defs.get(name, {}), (*seen, name))
+        for key, sub in (node.get("properties") or {}).items():
+            found.add(key)
+            found.update(f"{key}.{nested}" for nested in walk(sub, seen))
+        if "items" in node:
+            found |= walk(node["items"], seen)
+        for combinator in ("oneOf", "anyOf", "allOf"):
+            for sub in node.get(combinator) or []:
+                found |= walk(sub, seen)
+        return found
+
+    return walk(schema, ())
+
+
+def _path_declared(path: str, declared: set[str]) -> bool:
+    """Whether a declared field path exists, ignoring the `[]` that mark arrays."""
+    probe = path.replace("[]", "")
+    if probe in declared:
+        return True
+    # A `$defs` shape is reached by several routes, so the schema knows the
+    # tail of the path without the root that got there.
+    return any(known.endswith("." + probe) or probe.endswith("." + known)
+               for known in declared if "." in known)
+
+
 def _check_uniqueness(rules: dict[str, Any], out: Compilation) -> None:
     """Selection is first-match or last-write; either way a tie is a silent bug.
 
@@ -693,6 +788,8 @@ def compile_contract(
     check_rules(catalog, rules, out)
     check_policy_vocabulary(rules, out)
     check_fragment_dispositions(rules, out)
+    check_subjects_have_rules(rules, out)
+    check_where_keys_are_fields(rules, _inventory_schema(), out)
     if newest_release:
         check_release_pin(catalog, newest_release, out)
     return out

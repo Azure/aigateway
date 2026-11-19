@@ -8,6 +8,7 @@ sitting in rules.json. A compiler nobody has watched fail is not worth trusting,
 so each check is exercised against the defect it exists for.
 """
 
+import contextlib
 import copy
 import json
 
@@ -525,7 +526,7 @@ class TestACleanRunSaysWhatItChecked:
     def test_every_check_reports_what_it_covered(self, compile_with, shipped):
         documented = shipped[0]["cliEvidence"]["documentedVersion"]
         covered = compile_with(newest_release=f"cli-v{documented}").covered
-        assert len(covered) == 7, covered
+        assert len(covered) == 9, covered
 
     def test_the_counts_are_the_real_ones(self, compile_with, shipped):
         catalog, rules, surface = shipped
@@ -537,3 +538,56 @@ class TestACleanRunSaysWhatItChecked:
         """Nothing was compared, so claiming a check ran would be a lie."""
         covered = " ".join(compile_with().covered)
         assert "published release" not in covered
+
+
+class TestTheDecisionsStayInTheFile:
+    """Twelve decisions were written in `plan.py` while `ARCHITECTURE.md`
+    described them as data. These are what stops that reopening quietly."""
+
+    def test_a_site_with_no_rule_is_an_error(self, compile_with, shipped):
+        _, rules, _ = shipped
+        stripped = copy.deepcopy(rules)
+        stripped["assets"] = [r for r in stripped["assets"]
+                              if r.get("selects") != "sessionAffinity"]
+        result = compile_with(rules=stripped)
+        assert "subject-has-rule" in codes(result)
+        [diagnostic] = [d for d in result.errors if d.check == "subject-has-rule"]
+        # Named, with where the question is asked, because "something is
+        # unanswered" is not a fix.
+        assert "sessionAffinity" in diagnostic.message
+        assert "plan._pool_affinity" in diagnostic.message
+
+    def test_the_shipped_rules_answer_every_site(self, compile_with):
+        assert "subject-has-rule" not in codes(compile_with())
+
+    def test_a_where_key_reading_no_real_field_is_an_error(self):
+        """The failure `rule-reachable` cannot see: the key is one a site reads,
+        so the rule looks selectable and simply never fires."""
+        from migrate_apim import compile as compile_mod
+        from migrate_apim.dispatch import Selector
+
+        bogus = Selector(
+            section="assets", selects="publishedSurface", keys=("status",), values={},
+            site="test", fields={"status": "assets.models[].endpoints.surface.nope"},
+        )
+        out = compile_mod.Compilation()
+        with _only_site(bogus):
+            compile_mod.check_where_keys_are_fields({}, compile_mod._inventory_schema(), out)
+        [diagnostic] = [d for d in out.errors if d.check == "where-key-field"]
+        assert "surface.nope" in diagnostic.message
+
+    def test_the_shipped_paths_all_exist(self, compile_with):
+        assert "where-key-field" not in codes(compile_with())
+
+
+@contextlib.contextmanager
+def _only_site(site):
+    """Run a registry-wide check against one selector, without mutating the rest."""
+    from migrate_apim import dispatch
+
+    saved = list(dispatch.REGISTRY)
+    dispatch.REGISTRY[:] = [site]
+    try:
+        yield
+    finally:
+        dispatch.REGISTRY[:] = saved
