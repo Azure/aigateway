@@ -33,7 +33,13 @@ from pathlib import Path
 from typing import Any
 
 from . import dispatch
-from .capability import CAPABILITIES_DIR, DEFAULT_CATALOG
+from .capability import (
+    CAPABILITIES_DIR,
+    DEFAULT_CATALOG,
+    POLICY_TERMINAL,
+    resolve_policy_rule,
+)
+from .policy import FAMILIES, family_of
 
 # Importing these registers every selection site in dispatch.REGISTRY. The
 # import is the point: the contract checked below is the one the planner runs.
@@ -427,6 +433,50 @@ def _explain_unreachable(rule: dict[str, Any], section: str, label: str, out: Co
     )
 
 
+def check_policy_vocabulary(rules: dict[str, Any], out: Compilation) -> None:
+    """Every policy element the collector can name must be answered deliberately.
+
+    `policy.FAMILIES` is the vocabulary this tool classifies against: committed
+    data, so the question is decidable here, offline, with no APIM to ask. The
+    terminal rule answers for anything outside it, which is what keeps an
+    unrecognised policy out of silence -- but it would equally answer for an
+    element somebody simply never wrote a rule for, and then the safety net
+    becomes the mapping. Eleven elements lived there, three of them carrying
+    backend credentials.
+
+    So the net is held to its purpose: a known element reaching it is an error,
+    and the fix is a rule of its own or a rule for its family.
+    """
+    policies = rules.get("policies") or []
+    out.cover(
+        f"{len(FAMILIES)} policy elements the collector classifies: each answered by a "
+        f"rule of its own or a family rule, none left to the terminal rule"
+    )
+
+    terminal = next((rule for rule in policies if POLICY_TERMINAL.governs(rule)), None)
+    if terminal is None:
+        out.error(
+            "policy-terminal",
+            "no rule matches `anyElement`, so an element outside the known vocabulary resolves "
+            "to nothing and is dropped where it is classified. Add the terminal rule.",
+        )
+        return
+
+    unanswered: dict[str, list[str]] = {}
+    for name in sorted(FAMILIES):
+        rule = resolve_policy_rule(policies, name, family=family_of(name), has_expression=False)
+        if rule is terminal:
+            unanswered.setdefault(family_of(name), []).append(name)
+
+    for family, names in sorted(unanswered.items()):
+        out.error(
+            "policy-vocabulary",
+            f"family {family!r}: {', '.join(names)} reach the terminal rule, which exists for "
+            f"policies this catalog has never heard of. Give the family a rule, or each element "
+            f"one of its own.",
+        )
+
+
 def _check_uniqueness(rules: dict[str, Any], out: Compilation) -> None:
     """Selection is first-match or last-write; either way a tie is a silent bug.
 
@@ -581,6 +631,7 @@ def compile_contract(
     check_capabilities(catalog, surface, out)
     check_pins(catalog, catalog_path, rules, surface, out)
     check_rules(catalog, rules, out)
+    check_policy_vocabulary(rules, out)
     if newest_release:
         check_release_pin(catalog, newest_release, out)
     return out

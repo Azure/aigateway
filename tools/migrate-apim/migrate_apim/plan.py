@@ -122,6 +122,9 @@ class PlanBuilder:
         self.previous = previous or {}
         self.items: list[dict[str, Any]] = []
         self.prerequisites: list[dict[str, Any]] = []
+        # What became of every policy element walked, one bucket each.
+        self.policy_coverage: dict[str, int] = {}
+        self.unrecognised_policies: list[dict[str, Any]] = []
         # A model API names the backend it routes to; the provider asset built
         # from that backend is what knows the protocol it speaks.
         self._provider_by_backend: dict[str, dict[str, Any]] = {
@@ -211,6 +214,15 @@ class PlanBuilder:
                 "plannerGaps": len(planner_gaps),
             },
             "prerequisites": self.prerequisites,
+            # What became of every policy element the inventory holds. The
+            # dispositions are exclusive and `walked` is their sum, so a reader
+            # can check the planner against the inventory instead of trusting
+            # that an element which raised no item was one that needed none.
+            "policyCoverage": {
+                "walked": sum(self.policy_coverage.values()),
+                "dispositions": dict(sorted(self.policy_coverage.items())),
+                "unrecognised": self.unrecognised_policies,
+            },
             "plannerGaps": planner_gaps,
             # Settled decisions whose item no longer exists. Dropping them quietly
             # would lose work across a tool change and re-ask as if never asked.
@@ -914,19 +926,49 @@ class PlanBuilder:
     # ----------------------------------------------------------- policies
 
     def _policies(self) -> None:
-        """One item per distinct policy treatment, batched across assets."""
+        """One item per distinct policy treatment, batched across assets.
+
+        Every element walked leaves a count behind, in `policyCoverage`. Three
+        of the dispositions here end the loop without raising anything, and for
+        as long as they were uncounted the plan could not be told apart from one
+        that had never seen the element at all. The tally is what makes "nothing
+        was dropped" a thing a reader can check rather than take on trust.
+        """
         batches: dict[str, dict[str, Any]] = {}
+        terminal = self.caps.terminal_policy_rule()
         for document in self.inventory.get("policies") or []:
             for element in document.get("elements") or []:
                 if not _is_policy_statement(element):
+                    # Not a decision of its own: the configuration of the
+                    # statement above it, which is classified in its own right.
+                    self._count_element("configuration", document, element)
                     continue
                 has_expression = bool(element.get("expressionIds"))
                 rule = self.caps.policy_rule(
                     element["name"], family=element.get("family", ""), has_expression=has_expression
                 )
-                if not rule or rule["verdict"] in {"notApplicable", "handled"}:
+                if not rule:
+                    # Unreachable while rules.json carries a terminal rule, and
+                    # counted rather than deleted because that is a property of
+                    # the data, which `compile` enforces and this does not.
+                    self._count_element("unresolved", document, element)
                     continue
+                # Analysed before it is excluded, because `handled` is a claim
+                # about the element and not every element it covers makes it
+                # true. A backend chosen inside a `choose` was excluded on the
+                # strength of an alias pool that holds the backends and not the
+                # logic that picked among them, and left no trace in the plan.
                 rule = _apply_partial_when(rule, element)
+                if rule["verdict"] in {"notApplicable", "handled"}:
+                    self._count_element(rule["verdict"], document, element)
+                    continue
+                # One bucket per element, so the counts sum to what was walked.
+                # An unrecognised element still becomes an item -- it is counted
+                # apart because reaching the terminal rule says the vocabulary
+                # has grown, which is not the same as having been mapped.
+                self._count_element(
+                    "unrecognised" if rule is terminal else "classified", document, element
+                )
                 signature = _policy_signature(element, rule, has_expression)
                 batch = batches.setdefault(signature, {"rule": rule, "element": element,
                                                         "hasExpression": has_expression, "members": []})
@@ -945,7 +987,6 @@ class PlanBuilder:
             rule = batch["rule"]
             element = batch["element"]
             members = batch["members"]
-            label = element["name"] + (" with expression" if batch["hasExpression"] else "")
             self._add(
                 item_id=ids.item("policy", signature),
                 source={"assetId": None, "assetKind": "policy", "aspect": element["name"]},
@@ -961,8 +1002,7 @@ class PlanBuilder:
                     if rule.get("target")
                     else f"`{element['name']}` is carried by another object."
                 ),
-                options=[_opt(value, "") for value in rule.get("options") or []]
-                or _loss_options(rule["verdict"]),
+                options=_options_of(rule) or _loss_options(rule["verdict"]),
                 evidence={
                     "element": element["name"],
                     "target": rule.get("target"),
@@ -974,6 +1014,25 @@ class PlanBuilder:
                     rule, members, item_id=ids.item("policy", signature)),
                 blocking=rule["verdict"] == "gap",
             )
+
+    def _count_element(
+        self, disposition: str, document: dict[str, Any], element: dict[str, Any]
+    ) -> None:
+        """Account for one policy element under exactly one disposition.
+
+        The unrecognised ones are listed as well as counted, because a number
+        alone cannot be acted on: knowing that one element was not in the
+        vocabulary is only useful alongside which element, and where it is
+        written.
+        """
+        self.policy_coverage[disposition] = self.policy_coverage.get(disposition, 0) + 1
+        if disposition in {"unrecognised", "unresolved"}:
+            self.unrecognised_policies.append({
+                "element": element["name"],
+                "family": element.get("family"),
+                "policyId": document["id"],
+                "path": element["path"],
+            })
 
     # --------------------------------------------------------- structural
 
@@ -1440,6 +1499,22 @@ class PlanBuilder:
             return None
         if level == "api":
             return {name or ""}
+        if level == "fragment":
+            # A fragment is not a scope anything runs at: it covers whatever
+            # includes it. Read as a scope of its own it covered no API, so a
+            # token limit factored into a shared fragment -- the way an operator
+            # is meant to share one -- reached no model registration and the
+            # policy stranded. Each including scope is resolved as itself, so a
+            # fragment included globally still covers everything.
+            covered: set[str] = set()
+            for include_level, include_name in _fragment_includers(
+                name or "", self.inventory.get("policies") or []
+            ):
+                apis = self._apis_in_scope(include_level, include_name)
+                if apis is None:
+                    return None
+                covered |= apis
+            return covered
         if level == "workspace":
             return {
                 _api_of((item.get("source") or {}).get("assetId") or "")
@@ -1892,9 +1967,22 @@ def _namespace_endpoints(server: dict[str, Any], endpoints: list[dict[str, Any]]
         endpoint["namespace"] = base if index == 0 else f"{base}-{index + 1}"
 
 
+# Control flow that wraps a statement without being its configuration. A
+# statement inside one of these runs on some requests and not others, and the
+# element itself records nothing about that: the path is the only place the
+# branch survives normalization.
+_CONDITIONAL_WRAPPERS = {"choose", "when", "otherwise"}
+
 # Sections and control flow wrap policy statements; anything else that wraps an
 # element makes that element its configuration, not a policy of its own.
-_STATEMENT_WRAPPERS = {"inbound", "backend", "outbound", "on-error", "fragment", "choose", "when", "otherwise"}
+_STATEMENT_WRAPPERS = {
+    "inbound", "backend", "outbound", "on-error", "fragment", *_CONDITIONAL_WRAPPERS,
+}
+
+
+def _ancestors(element: dict[str, Any]) -> list[str]:
+    """The elements enclosing this one, outermost first, occurrence index removed."""
+    return [segment.split("[", 1)[0] for segment in (element.get("path") or "").split("/")[:-1]]
 
 
 def _is_policy_statement(element: dict[str, Any]) -> bool:
@@ -1904,22 +1992,38 @@ def _is_policy_statement(element: dict[str, Any]) -> bool:
     ``<value>`` child is how the header is configured. Walking it separately
     produced phantom items named after configuration elements.
     """
-    ancestors = [segment.split("[", 1)[0] for segment in (element.get("path") or "").split("/")[:-1]]
-    return all(name in _STATEMENT_WRAPPERS for name in ancestors)
+    return all(name in _STATEMENT_WRAPPERS for name in _ancestors(element))
+
+
+def _under_conditional(element: dict[str, Any]) -> bool:
+    """Whether a branch of the source policy decides if this element runs at all."""
+    return any(name in _CONDITIONAL_WRAPPERS for name in _ancestors(element))
 
 
 def _apply_partial_when(rule: dict[str, Any], element: dict[str, Any]) -> dict[str, Any]:
-    """Demote a native mapping to partial only when the rule's condition holds.
+    """Demote a mapping to partial when one of the rule's conditions holds.
 
     A token limit maps natively; it becomes a decision only because its caller
-    partition is an expression APIM evaluates and the target cannot.
+    partition is an expression APIM evaluates and the target cannot. A backend
+    selection is carried by the alias pool; it becomes a decision when the
+    source picked the backend with an expression or inside a ``choose``,
+    because the pool holds the backends and not the rule that chose among them.
+
+    Any one condition demotes. Requiring all of them would let an element that
+    trips a single one read as cleanly mapped, which is the reading this exists
+    to prevent.
     """
     condition = rule.get("partialWhen")
     if not condition:
         return rule
     attribute = condition.get("attributeIsExpression")
     value = (element.get("attributes") or {}).get(attribute or "")
-    if not (isinstance(value, str) and value.lstrip().startswith("@")):
+    holds = (
+        (isinstance(value, str) and value.lstrip().startswith("@"))
+        or (condition.get("hasExpression") and bool(element.get("expressionIds")))
+        or (condition.get("underConditional") and _under_conditional(element))
+    )
+    if not holds:
         return rule
     return {**rule, "verdict": "partial", **(rule.get("partial") or {})}
 
@@ -1985,6 +2089,39 @@ def _objects_or_none(capability_id: str | None, objects: list[dict[str, Any]]) -
 def _api_of(asset_id: str) -> str:
     """The source API name in a model asset id, workspace prefix removed."""
     return (asset_id.split(":", 1)[-1]).rsplit("/", 1)[-1]
+
+
+def _fragment_includers(
+    fragment: str, documents: list[dict[str, Any]]
+) -> list[tuple[str | None, str | None]]:
+    """The scopes whose policy includes a fragment, as (level, name) pairs.
+
+    The inventory holds a fragment as a document of its own, and the only link
+    back to the policies that run it is the `fragmentRefs` the collector records
+    from `<include-fragment>`. A fragment included by a fragment is followed too,
+    so what comes back is always a scope something runs at. APIM accepts a cycle
+    of includes even though it cannot execute one, so the walk guards against
+    revisiting a fragment rather than trusting the source not to contain one.
+    """
+    by_fragment: dict[str, list[dict[str, Any]]] = {}
+    for document in documents:
+        for name in document.get("fragmentRefs") or []:
+            by_fragment.setdefault(name, []).append(document.get("scope") or {})
+
+    scopes: list[tuple[str | None, str | None]] = []
+    pending, seen = [fragment], {fragment}
+    while pending:
+        for scope in by_fragment.get(pending.pop(0), []):
+            if scope.get("level") == "fragment":
+                nested = scope.get("name") or ""
+                if nested not in seen:
+                    seen.add(nested)
+                    pending.append(nested)
+                continue
+            entry = (scope.get("level"), scope.get("name"))
+            if entry not in scopes:
+                scopes.append(entry)
+    return scopes
 
 
 # How strict one policy is against another of the same type, lowest first. Only
