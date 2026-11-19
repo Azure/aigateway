@@ -98,6 +98,262 @@
       ],
       "proposal": "retain-in-apim",
       "rationale": "AI Gateway exposes no A2A building block. A2A is listed outside the confirmed typed-gateway surface."
+    },
+    {
+      "selects": "modelProvider",
+      "verdict": "native",
+      "capabilityId": "provider.create",
+      "rationale": "A backend that speaks a model protocol registers directly as a provider. What it authenticates with travels with it; the endpoint and the protocol are the whole of the mapping."
+    },
+    {
+      "selects": "publishedSurface",
+      "where": {
+        "status": "unbounded"
+      },
+      "verdict": "partial",
+      "itemKind": "reduce-surface",
+      "capabilityId": "alias.create",
+      "proposal": "inference-only",
+      "options": [
+        {
+          "value": "inference-only",
+          "consequence": "Publish the four inference routes; any other path callers use breaks."
+        },
+        {
+          "value": "retain-in-apim",
+          "consequence": "Nothing moves for this API."
+        },
+        {
+          "value": "block",
+          "consequence": "Stop the migration until the used routes are established."
+        }
+      ],
+      "blocking": true,
+      "rationale": "The exposed surface cannot be read from configuration."
+    },
+    {
+      "selects": "publishedSurface",
+      "derived": {
+        "hasUnpublishable": true
+      },
+      "verdict": "partial",
+      "itemKind": "reduce-surface",
+      "capabilityId": "alias.create",
+      "proposal": "split",
+      "options": [
+        {
+          "value": "split",
+          "consequence": "Inference moves; the operations with no target stay on APIM."
+        },
+        {
+          "value": "inference-only",
+          "consequence": "Inference moves and the rest is dropped; those callers break."
+        },
+        {
+          "value": "retain-in-apim",
+          "consequence": "Nothing moves for this API."
+        },
+        {
+          "value": "block",
+          "consequence": "Stop the migration until resolved."
+        }
+      ],
+      "blocking": true,
+      "rationale": "Some of this API's operations map to the four publishable routes and some have no target on the gateway."
+    },
+    {
+      "selects": "callerDialect",
+      "where": {
+        "status": "translating"
+      },
+      "verdict": "partial",
+      "itemKind": "translate",
+      "capabilityId": "alias.create",
+      "proposal": "move-callers",
+      "options": [
+        {
+          "value": "move-callers",
+          "consequence": "Callers move to the dialect the backend speaks."
+        },
+        {
+          "value": "retain-in-apim",
+          "consequence": "Keep APIM in front so callers are unchanged."
+        },
+        {
+          "value": "block",
+          "consequence": "Stop until the caller impact is agreed."
+        }
+      ],
+      "blocking": true,
+      "rationale": "APIM is translating between the dialect callers speak and the one the backend speaks. The gateway publishes the backend's dialect, so the translation does not travel."
+    },
+    {
+      "selects": "callerDialect",
+      "where": {
+        "status": "indeterminate"
+      },
+      "verdict": "partial",
+      "itemKind": "enumerate",
+      "capabilityId": "alias.create",
+      "options": [
+        {
+          "value": "confirm-dialect",
+          "consequence": "State the dialect callers use."
+        },
+        {
+          "value": "retain-in-apim",
+          "consequence": "Do not migrate this API."
+        }
+      ],
+      "blocking": true,
+      "rationale": "Which dialect callers speak could not be established from configuration, so whether the gateway can publish it is unknown rather than settled."
+    },
+    {
+      "selects": "sessionAffinity",
+      "verdict": "gap",
+      "itemKind": "accept-loss",
+      "capabilityId": "alias.create",
+      "proposal": "accept-loss",
+      "options": [
+        {
+          "value": "accept-loss",
+          "consequence": "Migrate without affinity, and configure it afterwards by hand."
+        },
+        {
+          "value": "retain-in-apim",
+          "consequence": "Keep this API on APIM until affinity can be authored."
+        },
+        {
+          "value": "block",
+          "consequence": "Stop the migration until it can be carried over."
+        }
+      ],
+      "rationale": "The source pins a session to the backend that served it. The gateway has the same idea on an alias, and this run cannot author it."
+    },
+    {
+      "selects": "modelCatalogue",
+      "derived": {
+        "hasCatalogue": true
+      },
+      "verdict": "partial",
+      "itemKind": "enumerate",
+      "capabilityId": "model.create",
+      "proposal": "list-models",
+      "options": [
+        {
+          "value": "list-models",
+          "consequence": "Publish what the catalogue returned; drop any that cannot serve an inference route by editing `decision.models`."
+        },
+        {
+          "value": "retain-in-apim",
+          "consequence": "Do not migrate this API."
+        }
+      ],
+      "blocking": true,
+      "rationale": "The catalogue has been read. It lists what exists, not what each one can serve."
+    },
+    {
+      "selects": "modelCatalogue",
+      "derived": {
+        "hasCatalogue": false
+      },
+      "where": {
+        "discoverySource": "modelsEndpoint"
+      },
+      "verdict": "partial",
+      "itemKind": "enumerate",
+      "capabilityId": "model.create",
+      "proposal": "resolve-models",
+      "options": [
+        {
+          "value": "resolve-models",
+          "consequence": "Read the provider's catalogue with its credential."
+        },
+        {
+          "value": "list-models",
+          "consequence": "Name the models to register."
+        },
+        {
+          "value": "retain-in-apim",
+          "consequence": "Do not migrate this API."
+        }
+      ],
+      "blocking": true,
+      "rationale": "The model catalogue could not be resolved."
+    },
+    {
+      "selects": "modelCatalogue",
+      "derived": {
+        "hasCatalogue": false
+      },
+      "verdict": "partial",
+      "itemKind": "enumerate",
+      "capabilityId": "model.create",
+      "proposal": "list-models",
+      "options": [
+        {
+          "value": "resolve-models",
+          "consequence": "Read the provider's catalogue with its credential."
+        },
+        {
+          "value": "list-models",
+          "consequence": "Name the models to register."
+        },
+        {
+          "value": "retain-in-apim",
+          "consequence": "Do not migrate this API."
+        }
+      ],
+      "blocking": true,
+      "rationale": "The model catalogue could not be resolved."
+    },
+    {
+      "selects": "modelRegistration",
+      "verdict": "native",
+      "capabilityId": "model.create",
+      "rationale": "A model named in this API's catalogue decision registers directly."
+    },
+    {
+      "selects": "aliasNames",
+      "verdict": "partial",
+      "itemKind": "name",
+      "capabilityId": "alias.create",
+      "proposal": "use-model-names",
+      "options": [
+        {
+          "value": "use-model-names",
+          "consequence": "Publish each model under its own name."
+        },
+        {
+          "value": "override",
+          "consequence": "Supply names per model; set them in this item's members."
+        }
+      ],
+      "rationale": "An alias publishes the route, and its routingName is what clients send as `model`. APIM does not store it."
+    },
+    {
+      "selects": "toolExposure",
+      "derived": {
+        "policiesBypassed": true
+      },
+      "verdict": "partial",
+      "itemKind": "enumerate",
+      "proposal": "accept-as-listed",
+      "options": [
+        {
+          "value": "accept-as-listed",
+          "consequence": "Federate every tool the upstream exposes."
+        },
+        {
+          "value": "verify-through-gateway",
+          "consequence": "Re-list through APIM before deciding."
+        },
+        {
+          "value": "retain-in-apim",
+          "consequence": "Do not migrate this server."
+        }
+      ],
+      "rationale": "The tool list came from the upstream with the API's policies bypassed, so it can be broader than what callers reach through the gateway."
     }
   ],
   "policies": [
@@ -609,6 +865,92 @@
         "reuse-appinsights",
         "new-appinsights"
       ]
+    },
+    {
+      "selects": "gatewayIdentity",
+      "derived": {
+        "hasUserAssigned": true
+      },
+      "verdict": "partial",
+      "itemKind": "translate",
+      "capabilityId": "identity.assign",
+      "rationale": "The source authenticates to its backends as a user-assigned identity. The gateway can carry the same one or take a system-assigned identity of its own, and the grants differ.",
+      "options": [
+        {
+          "value": "system-assigned",
+          "consequence": "A new principal; every backend grant has to be made against it."
+        }
+      ],
+      "proposal": "system-assigned",
+      "note": "The reuse options are one per user-assigned identity the source carries, so they are built where the inventory is read. This is the choice that exists whether or not it carries any."
+    },
+    {
+      "selects": "gatewayIdentity",
+      "derived": {
+        "hasUserAssigned": false
+      },
+      "verdict": "native",
+      "capabilityId": "identity.assign",
+      "proposal": "system-assigned",
+      "rationale": "A system-assigned identity is created with the gateway and granted on each provider."
+    },
+    {
+      "selects": "backendReachability",
+      "where": {
+        "needsSubnet": true
+      },
+      "verdict": "partial",
+      "itemKind": "translate",
+      "capabilityId": "network.update",
+      "proposal": "new-delegated-subnet",
+      "options": [
+        {
+          "value": "new-delegated-subnet",
+          "consequence": "Provision a subnet delegated to Microsoft.App/environments and integrate the gateway."
+        },
+        {
+          "value": "public-egress",
+          "consequence": "Reach backends over public networking; only viable if they accept it."
+        },
+        {
+          "value": "retain-in-apim",
+          "consequence": "Keep workloads that need private backends on APIM."
+        },
+        {
+          "value": "block",
+          "consequence": "Stop until the network design is agreed."
+        }
+      ],
+      "rationale": "Backends are reachable only over private networking, which the gateway joins differently from APIM."
+    },
+    {
+      "selects": "backendReachability",
+      "where": {
+        "needsSubnet": false
+      },
+      "verdict": "partial",
+      "itemKind": "translate",
+      "capabilityId": "network.update",
+      "proposal": "private-ingress",
+      "options": [
+        {
+          "value": "private-ingress",
+          "consequence": "Expose the gateway privately, matching the source's ingress."
+        },
+        {
+          "value": "public-egress",
+          "consequence": "Reach backends over public networking; only viable if they accept it."
+        },
+        {
+          "value": "retain-in-apim",
+          "consequence": "Keep workloads that need private backends on APIM."
+        },
+        {
+          "value": "block",
+          "consequence": "Stop until the network design is agreed."
+        }
+      ],
+      "rationale": "The source restricts how it is reached, and the gateway expresses that differently."
     }
   ]
 }

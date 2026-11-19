@@ -54,6 +54,56 @@ AGENT_RULE = selector(
     reads=("verdict", "itemKind", "proposal", "rationale", "options"),
 )
 
+# The decisions that used to be written here rather than in the file. Each is a
+# question the planner asks about one asset, which is the same shape the
+# structural sites already have: a subject is a question, and `where` narrows
+# which answer applies. `ARCHITECTURE.md` has described `assets[]` as covering
+# models and modelProviders since before any of it existed -- the rules it named
+# (`modelsStatus`, `surfaceStatus`) appeared nowhere but the suite's example of
+# a rule nothing selects.
+_ASSET_DECIDED = ("verdict", "itemKind", "capabilityId", "proposal", "rationale", "options")
+
+PROVIDER_RULE = selector(
+    "assets", selects="modelProvider", site="plan._provider", reads=_ASSET_DECIDED,
+)
+SURFACE_BY_STATUS = selector(
+    "assets", selects="publishedSurface", keys=("status",),
+    values={"status": ("unbounded",)},
+    fields={"status": "assets.models[].endpoints.surface.status"},
+    site="plan._model surface", reads=(*_ASSET_DECIDED, "blocking"),
+)
+SURFACE_PARTIALLY_PUBLISHABLE = selector(
+    "assets", selects="publishedSurface", derived=("hasUnpublishable",),
+    site="plan._model surface partial", reads=(*_ASSET_DECIDED, "blocking"),
+)
+DIALECT_BY_STATUS = selector(
+    "assets", selects="callerDialect", keys=("status",),
+    values={"status": ("translating", "indeterminate")},
+    fields={"status": "assets.models[].endpoints.translation.status"},
+    site="plan._model dialect", reads=(*_ASSET_DECIDED, "blocking"),
+)
+SESSION_AFFINITY_RULE = selector(
+    "assets", selects="sessionAffinity", site="plan._pool_affinity", reads=_ASSET_DECIDED,
+)
+CATALOGUE_RULE = selector(
+    "assets", selects="modelCatalogue", keys=("discoverySource",),
+    values={"discoverySource": ("modelsEndpoint",)},
+    derived=("hasCatalogue",),
+    fields={"discoverySource": "assets.models[].models.discoverySource"},
+    site="plan._enumerate_models", reads=(*_ASSET_DECIDED, "blocking"),
+)
+MODEL_REGISTRATION_RULE = selector(
+    "assets", selects="modelRegistration", site="plan._model_registration",
+    reads=_ASSET_DECIDED,
+)
+ALIAS_NAMES_RULE = selector(
+    "assets", selects="aliasNames", site="plan._alias_naming", reads=_ASSET_DECIDED,
+)
+TOOL_EXPOSURE_BYPASSED = selector(
+    "assets", selects="toolExposure", derived=("policiesBypassed",),
+    site="plan._mcp tool exposure bypassed", reads=_ASSET_DECIDED,
+)
+
 # `_structural` is six branches, not one. They share a key and nothing else:
 # each raises a different item and takes a different set of fields off its rule.
 # One selector for all six would have to declare the union of what they read,
@@ -85,6 +135,17 @@ STRUCTURAL_COVERAGE_GAP = _structural_selector(
 # no policy composition at all -- no fragments, no includes, no inheritance -- so
 # every fragment has the same fate, dissolved into whatever includes it, and
 # what varies is only whether the dissolution can keep what the fragment meant.
+IDENTITY_RULE = selector(
+    "structural", selects="gatewayIdentity", derived=("hasUserAssigned",),
+    site="plan._identity", reads=(*_DECIDED, "capabilityId"),
+)
+REACHABILITY_BY_SUBNET = selector(
+    "structural", selects="backendReachability", keys=("needsSubnet",),
+    values={"needsSubnet": (True, False)},
+    fields={"needsSubnet": "service.networking.targetRequirement.needsSubnet"},
+    site="plan._structural backendReachability", reads=(*_DECIDED, "capabilityId"),
+)
+
 FRAGMENT_DISPOSITIONS = ("dissolved", "conditional", "splitSection", "unreferenced", "unresolved")
 STRUCTURAL_POLICY_FRAGMENTS = selector(
     "structural", selects="policyFragment", keys=("disposition",),
@@ -388,13 +449,17 @@ class PlanBuilder:
                 f"reuse:{entry['resourceId']}",
                 "Carries the grants this identity already holds on the backends.",
             ))
-        proposal = f"reuse:{assigned[0]['resourceId']}" if assigned else "system-assigned"
+        rule = IDENTITY_RULE.first(
+            self.caps.structural_rules(), hasUserAssigned=bool(assigned)
+        ) or {}
+        proposal = f"reuse:{assigned[0]['resourceId']}" if assigned else rule.get(
+            "proposal", "system-assigned")
         self._add(
             item_id=ids.item("identity", "assign"),
             source={"assetId": None, "assetKind": "identity", "aspect": "gatewayIdentity"},
-            kind="translate" if assigned else None,
-            verdict="partial" if assigned else "native",
-            capability_id="identity.assign",
+            kind=rule.get("itemKind"),
+            verdict=rule.get("verdict", "partial" if assigned else "native"),
+            capability_id=rule.get("capabilityId", "identity.assign"),
             proposal=proposal,
             rationale=(
                 f"{len(needed)} provider(s) authenticate as a managed identity, so the gateway needs "
@@ -439,13 +504,17 @@ class PlanBuilder:
                 "endpoint": provider.get("endpoint"),
                 "authentication": _custom_auth(auth),
             }
+        rule = PROVIDER_RULE.first(self.caps.asset_rules()) or {}
         self._add(
             item_id=ids.item("modelProvider", provider["id"]),
             source={"assetId": provider["id"], "assetKind": "modelProvider", "aspect": "registration"},
-            kind=None,
-            verdict="native",
-            capability_id="provider.create",
-            rationale=f"{provider.get('providerLabel') or provider.get('providerKind')} provider registers directly.",
+            kind=rule.get("itemKind"),
+            verdict=rule.get("verdict", "native"),
+            capability_id=rule.get("capabilityId", "provider.create"),
+            # The label is this provider's, so the sentence is built here; the
+            # rule carries the one that holds for every provider.
+            rationale=(f"{provider.get('providerLabel') or provider.get('providerKind')} provider "
+                       "registers directly.") or rule.get("rationale", ""),
             evidence={"endpoint": provider.get("endpoint"), "authMode": auth.get("mode")},
             target={"capability": "provider.create", "objects": [objects]},
         )
@@ -459,37 +528,41 @@ class PlanBuilder:
 
         # Scope: how much of what this API publishes can move at all.
         if surface.get("status") == "unbounded":
+            rule = SURFACE_BY_STATUS.first(self.caps.asset_rules(), status="unbounded") or {}
             self._add(
                 item_id=ids.item(asset_id, "surface"),
                 source={"assetId": asset_id, "assetKind": "modelApi", "aspect": "publishedSurface"},
-                kind="reduce-surface",
-                verdict="partial",
-                capability_id="alias.create",
-                proposal="inference-only",
-                rationale=surface.get("note") or "The exposed surface cannot be read from configuration.",
-                options=[
-                    _opt("inference-only", "Publish the four inference routes; any other path callers use breaks."),
-                    _opt("retain-in-apim", "Nothing moves for this API."),
-                    _opt("block", "Stop the migration until the used routes are established."),
-                ],
+                kind=rule.get("itemKind", "reduce-surface"),
+                verdict=rule.get("verdict", "partial"),
+                capability_id=rule.get("capabilityId"),
+                proposal=rule.get("proposal"),
+                # The collector's note says which wildcards made it unreadable;
+                # the rule's sentence is the one that holds without them.
+                rationale=surface.get("note") or rule.get("rationale", ""),
+                options=_options_of(rule),
                 evidence={"surface": surface},
-                blocking=True,
+                blocking=rule.get("blocking", True),
             )
         elif surface.get("unpublishableCount"):
             groups = ", ".join(
                 f"{entry['group']} x{entry['count']}" for entry in surface.get("unpublishable", [])
             )
+            rule = SURFACE_PARTIALLY_PUBLISHABLE.first(
+                self.caps.asset_rules(), hasUnpublishable=True
+            ) or {}
             self._add(
                 item_id=ids.item(asset_id, "surface"),
                 source={"assetId": asset_id, "assetKind": "modelApi", "aspect": "publishedSurface"},
-                kind="reduce-surface",
-                verdict="partial",
-                capability_id="alias.create",
-                proposal="split",
+                kind=rule.get("itemKind", "reduce-surface"),
+                verdict=rule.get("verdict", "partial"),
+                capability_id=rule.get("capabilityId"),
+                proposal=rule.get("proposal"),
                 rationale=(
                     f"{surface['publishableCount']} of {surface['operationCount']} operations map to the "
                     f"four publishable routes. No target for: {groups}."
                 ),
+                # `split` says how many operations stay behind, which is this
+                # API's number, so the consequences are composed here.
                 options=[
                     _opt("split", f"Inference moves; {surface['unpublishableCount']} operations stay on APIM."),
                     _opt("inference-only", "Inference moves and the rest is dropped; those callers break."),
@@ -513,14 +586,16 @@ class PlanBuilder:
         # Dialect translation.
         translation = endpoints.get("translation") or {}
         if translation.get("status") == "translating":
+            rule = DIALECT_BY_STATUS.first(self.caps.asset_rules(), status="translating") or {}
             self._add(
                 item_id=ids.item(asset_id, "dialect"),
                 source={"assetId": asset_id, "assetKind": "modelApi", "aspect": "callerDialect"},
-                kind="translate",
-                verdict="partial",
-                capability_id="alias.create",
-                proposal="move-callers",
-                rationale=translation.get("note") or "",
+                kind=rule.get("itemKind", "translate"),
+                verdict=rule.get("verdict", "partial"),
+                capability_id=rule.get("capabilityId"),
+                proposal=rule.get("proposal"),
+                rationale=translation.get("note") or rule.get("rationale", ""),
+                # `move-callers` names the dialect this backend speaks.
                 options=[
                     _opt("move-callers", f"Callers move to {', '.join(translation.get('backend') or [])}."),
                     _opt("retain-in-apim", "Keep APIM in front so callers are unchanged."),
@@ -530,17 +605,15 @@ class PlanBuilder:
                 blocking=True,
             )
         elif translation.get("status") == "indeterminate":
+            rule = DIALECT_BY_STATUS.first(self.caps.asset_rules(), status="indeterminate") or {}
             self._add(
                 item_id=ids.item(asset_id, "dialect"),
                 source={"assetId": asset_id, "assetKind": "modelApi", "aspect": "callerDialect"},
-                kind="enumerate",
-                verdict="partial",
-                capability_id="alias.create",
-                rationale=translation.get("note") or "",
-                options=[
-                    _opt("confirm-dialect", "State the dialect callers use."),
-                    _opt("retain-in-apim", "Do not migrate this API."),
-                ],
+                kind=rule.get("itemKind", "enumerate"),
+                verdict=rule.get("verdict", "partial"),
+                capability_id=rule.get("capabilityId"),
+                rationale=translation.get("note") or rule.get("rationale", ""),
+                options=_options_of(rule),
                 evidence={"translation": translation},
                 blocking=True,
             )
@@ -567,13 +640,14 @@ class PlanBuilder:
         # someone else's.
         gap = (entry.get("cliGap") or "the installed CLI cannot author it").rstrip(". ")
         gap = gap[0].lower() + gap[1:] if gap else gap
+        rule = SESSION_AFFINITY_RULE.first(self.caps.asset_rules()) or {}
         self._add(
             item_id=ids.item(asset_id, "sessionAffinity"),
             source={"assetId": asset_id, "assetKind": "modelApi", "aspect": "sessionAffinity"},
-            kind="accept-loss",
-            verdict="gap",
-            capability_id="alias.create",
-            proposal="accept-loss",
+            kind=rule.get("itemKind", "accept-loss"),
+            verdict=rule.get("verdict", "gap"),
+            capability_id=rule.get("capabilityId", "alias.create"),
+            proposal=rule.get("proposal", "accept-loss"),
             rationale=(
                 "This API's backend pool pins a session to the backend that served it. The gateway "
                 "supports the same idea on an alias (a `sessionBackendPreference` stage with a CEL "
@@ -581,11 +655,8 @@ class PlanBuilder:
                 "run cannot configure it. Without it, each request is routed independently and a "
                 "session can move between backends mid-conversation."
             ),
-            options=[
-                _opt("accept-loss", "Migrate without affinity, and configure it afterwards by hand."),
-                _opt("retain-in-apim", "Keep this API on APIM until affinity can be authored."),
-                _opt("block", "Stop the migration until it can be carried over."),
-            ],
+            options=_options_of(rule),
+
             evidence={
                 "apimSessionAffinity": affinity,
                 "targetProperty": entry.get("property"),
@@ -625,7 +696,8 @@ class PlanBuilder:
                      "serve an inference route by editing `decision.models`."),
                 _opt("retain-in-apim", "Do not migrate this API."),
             ]
-            proposal = "list-models"
+            rule = CATALOGUE_RULE.first(self.caps.asset_rules(), hasCatalogue=True) or {}
+            proposal = rule.get("proposal", "list-models")
             rationale = (
                 f"The catalogue at {models.get('resolvedFrom')} returned {len(catalogue)} model(s): "
                 f"{sample}{more}. It states no modality, so whether each one serves an inference "
@@ -639,18 +711,25 @@ class PlanBuilder:
                 _opt("retain-in-apim", "Do not migrate this API."),
             ]
             # A provider with a catalogue endpoint has an actionable default:
-            # fetch it rather than ask someone to type model names.
-            proposal = ("resolve-models"
-                        if models.get("discoverySource") == "modelsEndpoint" else "list-models")
-            rationale = (" ".join(models.get("notes") or [])
-                         or "The model catalogue could not be resolved.")
+            # fetch it rather than ask someone to type model names. Which is
+            # which is the rule's to say, so the two cases are two rules.
+            rule = CATALOGUE_RULE.first(
+                self.caps.asset_rules(), hasCatalogue=False,
+                discoverySource=models.get("discoverySource"),
+            ) or CATALOGUE_RULE.first(
+                # The rule that pins no source, which is the one that answers
+                # when this provider's is not one a rule names.
+                self.caps.asset_rules(), hasCatalogue=False, discoverySource=None,
+            ) or {}
+            proposal = rule.get("proposal", "list-models")
+            rationale = (" ".join(models.get("notes") or []) or rule.get("rationale", ""))
 
         item = self._add(
             item_id=ids.item(asset_id, "models"),
             source={"assetId": asset_id, "assetKind": "modelApi", "aspect": "modelCatalogue"},
-            kind="enumerate",
-            verdict="partial",
-            capability_id="model.create",
+            kind=rule.get("itemKind", "enumerate"),
+            verdict=rule.get("verdict", "partial"),
+            capability_id=rule.get("capabilityId", "model.create"),
             proposal=proposal,
             rationale=rationale,
             options=options,
@@ -738,13 +817,14 @@ class PlanBuilder:
         pooled = len({r.get("backendId")
                       for r in (model.get("models") or {}).get("resolved") or []}) > 1
         item_key = f"model/{name}@{provider_name}" if pooled else f"model/{name}"
+        registration_rule = MODEL_REGISTRATION_RULE.first(self.caps.asset_rules()) or {}
         self._add(
             item_id=ids.item(asset_id, item_key),
             source={"assetId": asset_id, "assetKind": "modelApi", "aspect": f"model:{name}"
                     + (f"@{provider_name}" if pooled else "")},
-            kind=None,
-            verdict="native",
-            capability_id="model.create",
+            kind=registration_rule.get("itemKind"),
+            verdict=registration_rule.get("verdict", "native"),
+            capability_id=registration_rule.get("capabilityId", "model.create"),
             rationale=(
                 f"Registers {resolved.get('modelName')} named in this API's model catalogue decision."
                 if resolved.get("enumerated")
@@ -828,22 +908,20 @@ class PlanBuilder:
                     f"{'...' if len(partial) > 3 else ''}), so those route to that member alone "
                     "instead of being split."
                 )
+        rule = ALIAS_NAMES_RULE.first(self.caps.asset_rules()) or {}
         self._add(
             item_id=ids.item(asset_id, "aliasNames"),
             source={"assetId": asset_id, "assetKind": "modelApi", "aspect": "aliasNames"},
-            kind="name",
-            verdict="partial",
-            capability_id="alias.create",
-            proposal="use-model-names",
+            kind=rule.get("itemKind", "name"),
+            verdict=rule.get("verdict", "partial"),
+            capability_id=rule.get("capabilityId", "alias.create"),
+            proposal=rule.get("proposal", "use-model-names"),
             rationale=(
                 f"An alias publishes the route, and its routingName is what clients send as `model`. "
                 f"APIM does not store it. Proposed for {len(members)} model(s): {sample}{more}."
                 + balance
             ),
-            options=[
-                _opt("use-model-names", "Publish each model under its own name."),
-                _opt("override", "Supply names per model; set them in this item's members."),
-            ],
+            options=_options_of(rule),
             evidence={"members": members, "count": len(members),
                       "pooled": pooled, "singleMemberModels": partial},
             target={
@@ -897,12 +975,15 @@ class PlanBuilder:
             # The list came from the upstream with the API's policies bypassed, so
             # it can be broader than what callers reach through the gateway.
             # Treating it as settled would publish tools APIM currently withholds.
+            bypass_rule = TOOL_EXPOSURE_BYPASSED.first(
+                self.caps.asset_rules(), policiesBypassed=True
+            ) or {}
             self._add(
                 item_id=ids.item(asset_id, "tools"),
                 source={"assetId": asset_id, "assetKind": "mcpServer", "aspect": "toolExposure"},
-                kind="enumerate",
-                verdict="partial",
-                proposal="accept-as-listed",
+                kind=bypass_rule.get("itemKind", "enumerate"),
+                verdict=bypass_rule.get("verdict", "partial"),
+                proposal=bypass_rule.get("proposal", "accept-as-listed"),
                 rationale=(
                     f"{discovery_record.get('discoveredCount')} tools were listed directly from the "
                     "upstream because the gateway route was unavailable, so the API's policies did "
@@ -1403,14 +1484,17 @@ class PlanBuilder:
         networking = (self.inventory.get("service") or {}).get("networking") or {}
         requirement = networking.get("targetRequirement")
         if requirement:
+            rule = REACHABILITY_BY_SUBNET.first(
+                structural, needsSubnet=bool(requirement.get("needsSubnet"))
+            ) or {}
             self._add(
                 item_id=ids.item("network", "reachability"),
                 source={"assetId": None, "assetKind": "networking", "aspect": "backendReachability"},
-                kind="translate",
-                verdict="partial",
-                capability_id="network.update",
-                proposal="new-delegated-subnet" if requirement.get("needsSubnet") else "private-ingress",
-                rationale=requirement.get("note", ""),
+                kind=rule.get("itemKind", "translate"),
+                verdict=rule.get("verdict", "partial"),
+                capability_id=rule.get("capabilityId", "network.update"),
+                proposal=rule.get("proposal"),
+                rationale=requirement.get("note", "") or rule.get("rationale", ""),
                 options=[
                     _opt("new-delegated-subnet",
                          "Provision a subnet delegated to Microsoft.App/environments and integrate the gateway."),

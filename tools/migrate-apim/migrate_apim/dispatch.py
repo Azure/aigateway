@@ -133,12 +133,20 @@ class Selector:
         return True
 
     def first(self, rules: list[Rule], **criteria: Any) -> Rule | None:
-        """The first governed rule whose match equals `criteria`. First wins."""
+        """The first governed rule whose predicates equal `criteria`. First wins.
+
+        A criterion is looked up in whichever block declares it, so a caller
+        asks the same way whether the predicate is read off the record or
+        computed from it. The two vocabularies are disjoint by construction --
+        a key is declared in `keys` or in `derived`, never both.
+        """
         for rule in rules:
             if not self.governs(rule):
                 continue
             where = rule.get("where") or {}
-            if all(where.get(key) == value for key, value in criteria.items()):
+            derived = rule.get("derived") or {}
+            if all((where if key in self.keys else derived).get(key) == value
+                   for key, value in criteria.items()):
                 return rule
         return None
 

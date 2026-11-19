@@ -550,7 +550,14 @@ def _check_uniqueness(rules: dict[str, Any], out: Compilation) -> None:
                 # A `where` value may itself be a list of alternatives -- a
                 # policy rule naming several elements. Each alternative is its
                 # own way to reach the rule, so each is its own chance of a tie.
-                for key in _where_keys(where, selector.keys):
+                #
+                # Derived predicates count too. Two rules alike in `where` and
+                # differing only in what is computed are two answers, and
+                # judging the tie on `where` alone called them one.
+                for key in _where_keys(
+                    {**where, **(rule.get("derived") or {})},
+                    (*selector.keys, *selector.derived),
+                ):
                     if key in seen:
                         out.error(
                             "rule-unique",

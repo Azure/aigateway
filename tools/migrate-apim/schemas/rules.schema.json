@@ -104,8 +104,10 @@
       "allOf": [{"$ref": "#/$defs/partialNeedsOptions"}],
       "properties": {
         "selects": {
-          "description": "What this rule decides about. Named rather than implied by which array the rule sits in, so that a predicate key means one thing everywhere.",
-          "enum": ["mcpServer", "agent"]
+          "description": "The question this rule answers. A subject is a question the planner asks about one asset, not the asset's type: an API raises six, and they are decided separately.",
+          "enum": ["mcpServer", "agent", "toolExposure", "modelProvider", "publishedSurface",
+                   "callerDialect", "sessionAffinity", "modelCatalogue", "modelRegistration",
+                   "aliasNames"]
         },
         "where": {
           "type": "object",
@@ -114,9 +116,23 @@
           "description": "Field predicates on the subject's inventory record. Every key is a field a selection site declares a path for, which is what lets `compile` check it against inventory.schema.json.",
           "properties": {
             "pattern": {"type": "string"},
-            "toolDiscovery": {"type": "string"}
+            "toolDiscovery": {"type": "string"},
+            "status": {"type": "string"},
+            "discoverySource": {"type": "string"}
           }
         },
+        "derived": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "description": "Predicates computed from the record rather than read off it, so they are not held to the field check `where` keys are.",
+          "properties": {
+            "hasUnpublishable": {"type": "boolean"},
+            "hasCatalogue": {"type": "boolean"},
+            "policiesBypassed": {"type": "boolean"}
+          }
+        },
+        "blocking": {"type": "boolean"},
         "verdict": {"$ref": "#/$defs/verdict"},
         "itemKind": {"$ref": "#/$defs/itemKind"},
         "capabilityId": {"type": "string"},
@@ -140,14 +156,22 @@
       ],
       "properties": {
         "selects": {
-          "description": "What this rule decides about. `kind` used to say this, which made it a subject declaration wearing a predicate's name.",
-          "enum": ["workspace", "subscriptions", "telemetry", "certificates", "credentialProviders", "coverageGap", "policyFragment"]
+          "description": "The question this rule answers. `kind` used to say this, which made it a subject declaration wearing a predicate's name.",
+          "enum": ["workspace", "subscriptions", "telemetry", "certificates", "credentialProviders",
+                   "coverageGap", "policyFragment", "gatewayIdentity", "backendReachability"]
+        },
+        "derived": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {"hasUserAssigned": {"type": "boolean"}}
         },
         "where": {
           "type": "object",
           "additionalProperties": false,
           "minProperties": 1,
           "properties": {
+            "needsSubnet": {"type": "boolean"},
             "disposition": {
               "type": "string",
               "description": "Which case of the subject this rule answers for, when one subject resolves to several. A fragment the target must dissolve is not a fragment nothing includes, and neither is an `include-fragment` naming one this inventory does not hold."
