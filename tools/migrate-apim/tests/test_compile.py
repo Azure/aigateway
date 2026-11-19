@@ -151,6 +151,25 @@ class TestRulesThatCannotBeApplied:
         rules["assets"].append(copy.deepcopy(first))
         assert "rule-unique" in codes(compile_with(rules=rules))
 
+    def test_two_rules_differing_only_in_what_is_computed_are_not_a_tie(self, compile_with):
+        """A site that dispatches on `derived` can tell them apart.
+
+        Judged on `where` alone, the two catalogue rules and the two identity
+        rules read as one rule written twice, and the shipped file could not
+        compile.
+        """
+        assert "rule-unique" not in codes(compile_with())
+
+    def test_a_tie_on_a_computed_predicate_says_which_one(self, compile_with, shipped):
+        rules = copy.deepcopy(shipped[1])
+        catalogued = next(r for r in rules["assets"]
+                          if (r.get("derived") or {}).get("hasCatalogue") is True)
+        rules["assets"].append(copy.deepcopy(catalogued))
+        [diagnostic] = [d for d in compile_with(rules=rules).errors if d.check == "rule-unique"]
+        # Reported over both blocks: a tie the site can only see once `derived`
+        # is included reads as a tie on nothing when the message leaves it out.
+        assert "'hasCatalogue': True" in diagnostic.message
+
     def test_a_partial_rule_without_options_is_caught(self, compile_with, shipped):
         rules = copy.deepcopy(shipped[1])
         rules["structural"].append({"selects": "subscriptions", "verdict": "partial"})

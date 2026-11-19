@@ -531,33 +531,31 @@ def check_policy_vocabulary(rules: dict[str, Any], out: Compilation) -> None:
         )
 
 
-
-
 def _inventory_schema() -> dict[str, Any]:
     path = Path(__file__).resolve().parent.parent / "schemas" / "inventory.schema.json"
     return json.loads(path.read_text(encoding="utf-8"))
 
 
 def check_subjects_have_rules(rules: dict[str, Any], out: Compilation) -> None:
-    """Every selection site has at least one rule, and every rule a site.
+    """Every subject a site selects on has at least one rule answering it.
 
-    This is what keeps the decisions in the file. A site with no rule is a
-    question the planner asks and the data does not answer -- which is how
-    twelve of them came to be written in `plan.py` while `ARCHITECTURE.md`
-    described them as data. Declaring a site without writing its rule now fails
-    the build, so the gap cannot be reopened quietly.
+    This is what keeps the decisions in the file. A subject with no rule is a
+    question the planner asks and the data does not answer -- which is how ten
+    of them came to be written in `plan.py` while `ARCHITECTURE.md` described
+    them as data. Declaring a site without writing its rule now fails the
+    build, so the gap cannot be reopened quietly.
 
     The other direction is already covered: a rule no site selects is caught by
     `check_rules`.
     """
-    sites = {site.selects for site in dispatch.REGISTRY}
+    subjects = {site.selects for site in dispatch.REGISTRY}
     answered = {
         rule.get("selects")
         for section in _SELECTED_SECTIONS
         for rule in rules.get(section) or []
     }
-    out.cover(f"{len(sites)} selection sites: each answered by at least one rule")
-    for subject in sorted(sites - answered):
+    out.cover(f"{len(subjects)} subjects the planner decides: each answered by at least one rule")
+    for subject in sorted(subjects - answered):
         site_names = [s.site for s in dispatch.REGISTRY if s.selects == subject]
         out.error(
             "subject-has-rule",
@@ -616,14 +614,15 @@ def _schema_paths(schema: dict[str, Any]) -> set[str]:
 
 
 def _path_declared(path: str, declared: set[str]) -> bool:
-    """Whether a declared field path exists, ignoring the `[]` that mark arrays."""
-    probe = path.replace("[]", "")
-    if probe in declared:
-        return True
-    # A `$defs` shape is reached by several routes, so the schema knows the
-    # tail of the path without the root that got there.
-    return any(known.endswith("." + probe) or probe.endswith("." + known)
-               for known in declared if "." in known)
+    """Whether the whole path exists, ignoring the `[]` that mark arrays.
+
+    Whole, not its tail: `_schema_paths` resolves `$ref`s, so every shape is
+    reachable by its full route from the root. Accepting a suffix would pass
+    `assets.models[].endpoints.surface.status` on the strength of some other
+    record having a `surface.status`, which is the drift this check exists to
+    find rather than something to tolerate.
+    """
+    return path.replace("[]", "") in declared
 
 
 def _check_uniqueness(rules: dict[str, Any], out: Compilation) -> None:
@@ -657,7 +656,11 @@ def _check_uniqueness(rules: dict[str, Any], out: Compilation) -> None:
                         out.error(
                             "rule-unique",
                             f"{section}: {selector.site} cannot tell two rules apart on "
-                            f"{dict(zip(selector.keys, key))}; only one of them is ever used",
+                            # Named over both blocks, because a tie the site can
+                            # only see once `derived` is included reads as a tie
+                            # on nothing at all when the message omits it.
+                            f"{dict(zip((*selector.keys, *selector.derived), key))}; "
+                            "only one of them is ever used",
                         )
                     seen.add(key)
 

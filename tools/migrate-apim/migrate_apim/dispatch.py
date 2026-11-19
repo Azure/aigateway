@@ -3,7 +3,7 @@
 `rules.json` is only worth maintaining if the planner reads what it says. Three
 things can go wrong quietly, and all three had:
 
-* a rule names a `match` key no selector examines, so it is never chosen;
+* a rule names a `where` key no selector examines, so it is never chosen;
 * a rule carries an extra key the selector ignores, so it matches more broadly
   than it reads;
 * a rule names a value no asset ever carries, so it matches nothing.
@@ -18,16 +18,19 @@ statement of what the match looks at. `migrate_apim.compile` reads `REGISTRY`,
 so the contract it checks is the one the planner actually runs; there is no
 second copy to fall out of step.
 
-A selector `governs` a rule when the rule's `match` keys are a subset of the
-keys the selector examines, and every value it constrains is one the selector
-accepts. Subset rather than equality: a rule may legitimately pin fewer keys.
-What it may not do is pin *more*, because the surplus would be silently ignored.
+A selector `governs` a rule when the rule decides the subject the selector
+selects, its `where` and `derived` keys are a subset of the ones the selector
+examines, and every value it constrains is one the selector accepts. Subset
+rather than equality: a rule may legitimately pin fewer keys. What it may not
+do is pin *more*, because the surplus would be silently ignored.
 
 A fourth thing can go wrong, one layer in: the rule is selected, and then a
-*field* of it is never looked at. That is the same defect as an unreadable match
-key -- something written expecting an effect it does not have -- so it is
-answered the same way. A selector also declares what it `reads`, and the site
-that reads a field is the site that declares it.
+*field* of it is never looked at. That is the same defect as an unreadable
+`where` key -- something written expecting an effect it does not have -- so it
+is answered the same way. A selector also declares what it `reads`, and the site
+that reads a field is the site that declares it. The declaration is worth no
+more than its narrowness: a site that claims to read `options` while writing its
+own list satisfies the check and keeps the decision in the code.
 """
 
 from __future__ import annotations
