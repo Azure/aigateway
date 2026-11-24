@@ -226,49 +226,21 @@ class Collector:
             raise ArmError(
                 f"Could not read the API Management service {self.service_id}: {entry.get('error')}"
             )
-        props = raw.get("properties") or {}
-        identity = raw.get("identity") or {}
-        user_assigned = identity.get("userAssignedIdentities") or {}
-        hostnames = [
-            {
-                "type": entry.get("type"),
-                "hostName": entry.get("hostName"),
-                "certificateSource": entry.get("certificateSource"),
-                "keyVaultId": entry.get("keyVaultId"),
-                "identityClientId": entry.get("identityClientId"),
-            }
-            for entry in (props.get("hostnameConfigurations") or [])
-        ]
+        networking = self._networking(raw.get("properties") or {})
         return {
-            "resourceId": raw.get("id"),
-            "name": raw.get("name"),
-            "location": raw.get("location"),
-            "subscriptionId": self.subscription_id,
-            "resourceGroup": ids.arm_segment(self.service_id, "resourceGroups"),
-            "sku": raw.get("sku"),
-            "provisioningState": props.get("provisioningState"),
-            "gatewayUrl": props.get("gatewayUrl"),
-            "managementApiUrl": props.get("managementApiUrl"),
-            "developerPortalUrl": props.get("developerPortalUrl"),
-            "virtualNetworkType": props.get("virtualNetworkType"),
-            "publicNetworkAccess": props.get("publicNetworkAccess"),
-            "publicIPAddresses": props.get("publicIPAddresses"),
-            "privateIPAddresses": props.get("privateIPAddresses"),
+            **_service_source(
+                raw,
+                subscription_id=self.subscription_id,
+                resource_group=ids.arm_segment(self.service_id, "resourceGroups"),
+            ),
             # Reaching a backend depends on how the source reaches it today, so the
             # target needs the same reachability -- not the same subnet, because the
             # two resource types require different delegations.
-            "networking": self._networking(props),
-            "hostnameConfigurations": hostnames,
-            "identity": {
-                "type": identity.get("type"),
-                "principalId": identity.get("principalId"),
-                "tenantId": identity.get("tenantId"),
-                "userAssignedIdentities": [
-                    {"resourceId": key, "clientId": (value or {}).get("clientId")}
-                    for key, value in user_assigned.items()
-                ],
-            },
-            "tags": raw.get("tags") or {},
+            "networking": networking,
+            # A reading of the service, for a rule to narrow on. How it was worked
+            # out is ours -- from `virtualNetworkType` and `publicNetworkAccess` --
+            # but what it is about is the service, which is APIM's.
+            "needsSubnet": (networking.get("targetRequirement") or {}).get("needsSubnet"),
         }
 
     def _networking(self, props: dict[str, Any]) -> dict[str, Any]:
@@ -1816,6 +1788,55 @@ def _merge_shared(target: dict[str, Any], scope: dict[str, Any]) -> None:
             target[key] = value
 
 
+def _service_source(raw: dict[str, Any], *, subscription_id: str = "",
+                    resource_group: str = "") -> dict[str, Any]:
+    """The APIM service as ARM returns it.
+
+    Split out for the reason `_api_source` is: it is the one place the service's
+    own fields are written down, so `compile` can ask it what APIM returns
+    rather than ask a schema we wrote and could have widened by hand.
+    """
+    props = raw.get("properties") or {}
+    identity = raw.get("identity") or {}
+    user_assigned = identity.get("userAssignedIdentities") or {}
+    return {
+        "resourceId": raw.get("id"),
+        "name": raw.get("name"),
+        "location": raw.get("location"),
+        "subscriptionId": subscription_id,
+        "resourceGroup": resource_group,
+        "sku": raw.get("sku"),
+        "provisioningState": props.get("provisioningState"),
+        "gatewayUrl": props.get("gatewayUrl"),
+        "managementApiUrl": props.get("managementApiUrl"),
+        "developerPortalUrl": props.get("developerPortalUrl"),
+        "virtualNetworkType": props.get("virtualNetworkType"),
+        "publicNetworkAccess": props.get("publicNetworkAccess"),
+        "publicIPAddresses": props.get("publicIPAddresses"),
+        "privateIPAddresses": props.get("privateIPAddresses"),
+        "hostnameConfigurations": [
+            {
+                "type": entry.get("type"),
+                "hostName": entry.get("hostName"),
+                "certificateSource": entry.get("certificateSource"),
+                "keyVaultId": entry.get("keyVaultId"),
+                "identityClientId": entry.get("identityClientId"),
+            }
+            for entry in (props.get("hostnameConfigurations") or [])
+        ],
+        "identity": {
+            "type": identity.get("type"),
+            "principalId": identity.get("principalId"),
+            "tenantId": identity.get("tenantId"),
+            "userAssignedIdentities": [
+                {"resourceId": key, "clientId": (value or {}).get("clientId")}
+                for key, value in user_assigned.items()
+            ],
+        },
+        "tags": raw.get("tags") or {},
+    }
+
+
 def _apim_apis(
     raw_apis: list[dict[str, Any]],
     workspace: str | None,
@@ -1900,6 +1921,7 @@ _ROLE_OF = {"modelApi": "modelApi", "mcpServer": "mcpServer", "agent": "agent"}
 # was not: `endpoints` is a decomposition of ours, and putting it in the path
 # made a whole structure of this tool's read as though APIM returned it.
 APIM_READINGS = {
+    "service": ("networking", "needsSubnet"),
     "apim.apis[]": ("role", "pattern", "catalogueFetched", "discoverySource", "translation",
                     "toolDiscovery", "toolsFromGateway"),
     "apim.apis[].operations[]": ("group", "publishable", "route", "subresource", "template"),

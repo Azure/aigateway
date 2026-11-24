@@ -172,7 +172,7 @@ IDENTITY_RULE = selector(
     reads=("verdict", "answer", "capabilityId", "proposal", "options"),
 )
 REACHABILITY_BY_SUBNET = selector(
-    "structural", selects="service.networking.targetRequirement", keys=("needsSubnet",),
+    "structural", selects="service", keys=("needsSubnet",),
     values={"needsSubnet": (True, False)},
     site="plan._structural backendReachability", reads=(*_DECIDED, "capabilityId"),
 )

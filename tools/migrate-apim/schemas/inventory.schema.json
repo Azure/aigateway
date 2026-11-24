@@ -116,7 +116,11 @@
             }
           }
         },
-        "tags": {"type": "object"}
+        "tags": {"type": "object"},
+        "needsSubnet": {
+          "description": "Whether the target needs a delegated subnet to reach backends the way the source does. Worked out from `virtualNetworkType` and `publicNetworkAccess`; what it is about is the service.",
+          "type": ["boolean", "null"]
+        }
       }
     },
     "assets": {

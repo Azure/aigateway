@@ -659,7 +659,7 @@
       "note": "A system-assigned identity is created with the gateway and granted on each provider. Nothing is offered because there is nothing to choose between: the verdict is what says so, rather than a planner branch emitting an empty option list."
     },
     {
-      "selects": "service.networking.targetRequirement",
+      "selects": "service",
       "where": {"needsSubnet": true},
       "verdict": "partial",
       "answer": "choose",
@@ -683,7 +683,7 @@
       "rationale": "Backends are reachable only over private networking, which the gateway joins differently from APIM."
     },
     {
-      "selects": "service.networking.targetRequirement",
+      "selects": "service",
       "where": {"needsSubnet": false},
       "verdict": "partial",
       "answer": "choose",

@@ -625,23 +625,31 @@ def check_apim_paths_are_apim(out: Compilation) -> None:
         "apim.apis[].operations[]": {
             "name", "displayName", "method", "urlTemplate", "description", "policyId",
         },
+        # The service is APIM's too, and was escaping this check only because its
+        # paths do not begin with `apim.`. That is how
+        # `service.networking.targetRequirement` survived: `networking` is
+        # synthesised and `targetRequirement` is a judgment about the gateway.
+        "service": set(collect_mod._service_source({})),
+        "service.identity": {"type", "principalId", "tenantId", "userAssignedIdentities"},
     }
     readings = {
         path: set(keys) for path, keys in collect_mod.APIM_READINGS.items()
     }
     # The join this tool adds to every API: which asset it became, or why none.
     readings.setdefault("apim.apis[]", set()).update({"assetId", "excludedReason"})
-    sites = [s for s in dispatch.REGISTRY if s.selects.startswith("apim.")]
+    sites = [s for s in dispatch.REGISTRY
+             if s.selects.startswith("apim.") or s.selects.split(".")[0] == "service"]
     out.cover(
-        f"{len(sites)} apim.* selection sites: each names APIM's objects the whole way down, "
+        f"{len(sites)} sites naming an APIM object: each is APIM's the whole way down, "
         f"with this tool's readings only ever as `where` keys"
     )
     every_reading = {key for keys in readings.values() for key in keys}
     for site in sites:
         # Walk the path a segment at a time. Each one has to be a field the
         # object before it got from ARM.
-        prefix = "apim"
-        for segment in site.selects.split(".")[1:]:
+        head, *rest = site.selects.split(".")
+        prefix = head
+        for segment in rest:
             known = from_arm.get(prefix + ("" if prefix.endswith("[]") else ""))
             bare = segment.replace("[]", "")
             if known is not None and bare not in known:

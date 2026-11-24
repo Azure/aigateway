@@ -170,7 +170,7 @@
             "collection.coverage[]",
             "apim.policies[]",
             "service.identity",
-            "service.networking.targetRequirement"
+            "service"
           ]
         },
         "where": {

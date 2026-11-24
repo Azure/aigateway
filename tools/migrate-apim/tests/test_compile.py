@@ -730,6 +730,23 @@ class TestAnApimPathIsApimAllTheWayDown:
         assert not self._errors("apim.apis[]", ("type", "pattern", "role"))
         assert not self._errors("apim.apis[].operations[]", ("group", "publishable"))
 
+    def test_the_service_is_held_to_the_same_standard(self):
+        """`service.*` escaped this check for a while, only because its paths do
+        not begin with `apim.`.
+
+        That is how `service.networking.targetRequirement` survived a pass that
+        caught `apim.apis[].endpoints.surface`: the same defect, a synthesised
+        block and a judgment about the gateway, under a root that happened to be
+        spelled differently. The service is APIM's resource, so its paths answer
+        to the same rule.
+        """
+        assert "apim-path-is-apim" in self._errors("service.networking.targetRequirement")
+        assert "apim-path-is-apim" in self._errors("service.networking")
+
+    def test_the_service_itself_and_its_arm_blocks_are_fine(self):
+        assert not self._errors("service", ("needsSubnet",))
+        assert not self._errors("service.identity", ("userAssignedIdentities",))
+
     def test_the_shipped_sites_all_hold(self, compile_with):
         assert [d for d in compile_with().errors] == []
 
