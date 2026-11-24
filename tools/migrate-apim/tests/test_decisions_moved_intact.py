@@ -187,7 +187,12 @@ def saying(caps, site, overrides, **predicates):
     rules = copy.deepcopy(caps.rules)
     for section in ("assets", "structural"):
         for rule in rules[section]:
-            if rule.get("selects") != site.selects:
+            # `selects` alone stopped identifying a site once several of them
+            # named the same APIM object -- an API is asked about by the MCP
+            # registration site, the agent site and the alias-naming site, which
+            # are told apart by what they narrow on. `governs` is what "this
+            # site reads this rule" means, so it is what this asks.
+            if not site.governs(rule):
                 continue
             if matches(rule.get("where") or {}, predicates):
                 rule.update(overrides)

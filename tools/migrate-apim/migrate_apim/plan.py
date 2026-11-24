@@ -33,8 +33,8 @@ GENERATOR_VERSION = "0.1.0"
 # list somewhere else.
 MCP_BY_PATTERN = selector(
     "assets",
-    selects="assets.mcpServers[]",
-    keys=("pattern",),
+    selects="apim.apis[]",
+    keys=("type", "pattern"),
     values={"pattern": MCP_PATTERNS},
     site="plan._mcp",
     reads=("verdict", "answer", "capabilityId", "proposal", "rationale", "options"),
@@ -45,14 +45,15 @@ MCP_BY_PATTERN = selector(
 # string; what it compares is the `status` inside it.
 MCP_BY_TOOL_DISCOVERY = selector(
     "assets",
-    selects="assets.mcpServers[].toolDiscovery",
+    selects="apim.apis[].toolDiscovery",
     keys=("status",),
     values={"status": ("runtimeOnly",)},
     site="plan._mcp tool exposure",
     reads=("verdict", "answer", "proposal", "rationale", "options"),
 )
 AGENT_RULE = selector(
-    "assets", selects="assets.agents[]", site="plan._agent",
+    "assets", selects="apim.apis[]", keys=("type",), values={"type": ("a2a",)},
+    site="plan._agent",
     reads=("verdict", "answer", "proposal", "rationale", "options"),
 )
 
@@ -73,54 +74,55 @@ PROVIDER_RULE = selector(
     reads=("verdict", "answer", "capabilityId"),
 )
 SURFACE_BY_STATUS = selector(
-    "assets", selects="assets.models[].endpoints.surface", keys=("status",),
+    "assets", selects="apim.apis[].endpoints.surface", keys=("status",),
     values={"status": ("unbounded",)},
     site="plan._model surface",
     reads=("verdict", "answer", "capabilityId", "proposal", "rationale", "options", "blocking"),
 )
 SURFACE_PARTIALLY_PUBLISHABLE = selector(
-    "assets", selects="assets.models[].endpoints.surface", keys=("unpublishableCount",),
+    "assets", selects="apim.apis[].endpoints.surface", keys=("unpublishableCount",),
     site="plan._model surface partial",
     reads=("verdict", "answer", "capabilityId", "proposal", "options", "blocking"),
 )
 # Two cases, two sites: the indeterminate one proposes nothing, and one selector
 # for both would have excused a `proposal` on it that the planner never reads.
 DIALECT_TRANSLATING = selector(
-    "assets", selects="assets.models[].endpoints.translation", keys=("status",),
+    "assets", selects="apim.apis[].endpoints.translation", keys=("status",),
     values={"status": ("translating",)},
     site="plan._model dialect translating",
     reads=("verdict", "answer", "capabilityId", "proposal", "rationale", "options", "blocking"),
 )
 DIALECT_INDETERMINATE = selector(
-    "assets", selects="assets.models[].endpoints.translation", keys=("status",),
+    "assets", selects="apim.apis[].endpoints.translation", keys=("status",),
     values={"status": ("indeterminate",)},
     site="plan._model dialect indeterminate",
     reads=("verdict", "answer", "capabilityId", "rationale", "options", "blocking"),
 )
 SESSION_AFFINITY_RULE = selector(
-    "assets", selects="assets.models[].routing.sessionAffinity", site="plan._pool_affinity",
+    "assets", selects="apim.apis[].routing.sessionAffinity", site="plan._pool_affinity",
     reads=("verdict", "answer", "capabilityId", "proposal", "options"),
 )
 CATALOGUE_RULE = selector(
-    "assets", selects="assets.models[].models", keys=("discoverySource", "catalogue"),
+    "assets", selects="apim.apis[].models", keys=("discoverySource", "catalogue"),
     values={"discoverySource": ("modelsEndpoint",)},
     site="plan._enumerate_models",
     reads=("verdict", "answer", "capabilityId", "proposal", "rationale", "options", "blocking"),
 )
 MODEL_REGISTRATION_RULE = selector(
-    "assets", selects="assets.models[].models.resolved[]", site="plan._model_registration",
+    "assets", selects="apim.apis[].models.resolved[]", site="plan._model_registration",
     reads=("verdict", "answer", "capabilityId"),
 )
 # The API itself, because an alias name is the one thing about it that APIM does
 # not hold anywhere: it arrives in the request body, so every model needs one.
 ALIAS_NAMES_RULE = selector(
-    "assets", selects="assets.models[]", site="plan._alias_naming",
+    "assets", selects="apim.apis[]", keys=("role",), values={"role": ("modelApi",)},
+    site="plan._alias_naming",
     reads=("verdict", "answer", "capabilityId", "proposal", "rationale", "options"),
 )
 # `policiesBypassed: true` used to say this, which a reader had to negate: what
 # it tested was `policiesApplied is False`, a plain equality on a real field.
 TOOL_EXPOSURE_BYPASSED = selector(
-    "assets", selects="assets.mcpServers[].toolDiscovery", keys=("policiesApplied",),
+    "assets", selects="apim.apis[].toolDiscovery", keys=("policiesApplied",),
     values={"policiesApplied": (False,)},
     site="plan._mcp tool exposure bypassed",
     reads=("verdict", "answer", "proposal", "options"),
@@ -939,7 +941,7 @@ class PlanBuilder:
                     f"{'...' if len(partial) > 3 else ''}), so those route to that member alone "
                     "instead of being split."
                 )
-        rule = ALIAS_NAMES_RULE.first(self.caps.asset_rules()) or {}
+        rule = ALIAS_NAMES_RULE.first(self.caps.asset_rules(), role="modelApi") or {}
         self._add(
             item_id=ids.item(asset_id, "aliasNames"),
             source={"assetId": asset_id, "assetKind": "modelApi", "aspect": "aliasNames"},
@@ -983,7 +985,7 @@ class PlanBuilder:
         asset_id = server["id"]
         pattern = server.get("pattern")
         rule = MCP_BY_PATTERN.first(
-            self.caps.asset_rules(), pattern=pattern
+            self.caps.asset_rules(), type="mcp", pattern=pattern
         )
         if rule:
             self._add(
@@ -1045,7 +1047,7 @@ class PlanBuilder:
             )
 
     def _agent(self, agent: dict[str, Any]) -> None:
-        rule = AGENT_RULE.first(self.caps.asset_rules()) or {}
+        rule = AGENT_RULE.first(self.caps.asset_rules(), type="a2a") or {}
         self._add(
             item_id=ids.item(agent["id"], "registration"),
             source={"assetId": agent["id"], "assetKind": "agent", "aspect": "registration"},

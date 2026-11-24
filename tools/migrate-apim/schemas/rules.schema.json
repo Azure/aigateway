@@ -114,16 +114,14 @@
         "selects": {
           "description": "Where the object this rule judges lives, as a path into the inventory, with `[]` for \"each of these\". One asset raises several questions and they are decided separately, so they are several paths: an API's published surface, the dialect it translates, its model catalogue and its alias names are four objects, not one.",
           "enum": [
-            "assets.mcpServers[]",
-            "assets.mcpServers[].toolDiscovery",
-            "assets.agents[]",
+            "apim.apis[]",
+            "apim.apis[].toolDiscovery",
             "assets.modelProviders[]",
-            "assets.models[]",
-            "assets.models[].endpoints.surface",
-            "assets.models[].endpoints.translation",
-            "assets.models[].routing.sessionAffinity",
-            "assets.models[].models",
-            "assets.models[].models.resolved[]"
+            "apim.apis[].endpoints.surface",
+            "apim.apis[].endpoints.translation",
+            "apim.apis[].routing.sessionAffinity",
+            "apim.apis[].models",
+            "apim.apis[].models.resolved[]"
           ]
         },
         "where": {
@@ -137,7 +135,9 @@
             "discoverySource": {"$ref": "#/$defs/predicate"},
             "catalogue": {"$ref": "#/$defs/predicate"},
             "unpublishableCount": {"$ref": "#/$defs/predicate"},
-            "policiesApplied": {"$ref": "#/$defs/predicate"}
+            "policiesApplied": {"$ref": "#/$defs/predicate"},
+            "type": {"$ref": "#/$defs/predicate"},
+            "role": {"$ref": "#/$defs/predicate"}
           }
         },
         "blocking": {"type": "boolean"},

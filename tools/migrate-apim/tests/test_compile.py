@@ -118,7 +118,7 @@ class TestRulesThatCannotBeApplied:
     def test_a_rule_no_site_selects_is_caught(self, compile_with, shipped):
         rules = copy.deepcopy(shipped[1])
         rules["assets"].append({
-            "selects": "assets.modelApis[]", "where": {"modelsStatus": ["resolved"]},
+            "selects": "apim.modelApis[]", "where": {"modelsStatus": ["resolved"]},
             "verdict": "native", "capabilityId": "model.create",
         })
         result = compile_with(rules=rules)
@@ -128,7 +128,7 @@ class TestRulesThatCannotBeApplied:
         # A key no collector emits. The rule looks plausible and selects nothing.
         rules = copy.deepcopy(shipped[1])
         rules["assets"].append({
-            "selects": "assets.mcpServers[]", "where": {"isPartOfBulkImportable": True},
+            "selects": "apim.apis[]", "where": {"isPartOfBulkImportable": True},
             "verdict": "native", "capabilityId": "mcp.create",
         })
         assert "rule-reachable" in codes(compile_with(rules=rules))
@@ -136,7 +136,7 @@ class TestRulesThatCannotBeApplied:
     def test_a_match_value_outside_the_vocabulary_is_caught(self, compile_with, shipped):
         rules = copy.deepcopy(shipped[1])
         rules["assets"].append({
-            "selects": "assets.mcpServers[]", "where": {"pattern": "notAPattern"},
+            "selects": "apim.apis[]", "where": {"type": "mcp", "pattern": "notAPattern"},
             "verdict": "native", "capabilityId": "mcp.create",
         })
         assert "match-value-known" in codes(compile_with(rules=rules))
@@ -266,7 +266,7 @@ class TestTheShapesAreClosed:
         # it, because selection compares values.
         rules = copy.deepcopy(shipped[1])
         rules["assets"].append(
-            {"selects": "assets.mcpServers[]", "where": {}, "verdict": "gap"})
+            {"selects": "apim.apis[]", "where": {}, "verdict": "gap"})
         assert "schema" in codes(compile_with(rules=rules))
 
     def test_a_structural_rule_without_a_verdict_is_rejected(self, compile_with, shipped):
@@ -511,15 +511,15 @@ class TestTheRegistryDescribesThePlanner:
 
     def test_a_selector_rejects_a_rule_pinning_a_key_it_ignores(self):
         site = next(s for s in dispatch.REGISTRY if s.site == "plan._agent")
-        assert site.governs({"selects": "assets.agents[]"})
+        assert site.governs({"selects": "apim.apis[]", "where": {"type": "a2a"}})
         # An extra key would be silently ignored at selection time, so the rule
         # would match more broadly than it reads.
         assert not site.governs(
-            {"selects": "assets.agents[]", "where": {"pattern": "passthrough"}})
+            {"selects": "apim.apis[]", "where": {"pattern": "passthrough"}})
 
     def test_a_selector_rejects_a_value_it_never_compares_against(self):
         site = next(s for s in dispatch.REGISTRY if s.site == "plan._agent")
-        assert not site.governs({"selects": "assets.models[]"})
+        assert not site.governs({"selects": "apim.backends[]"})
 
 
 class TestTheKnownPolicyVocabularyIsAnswered:

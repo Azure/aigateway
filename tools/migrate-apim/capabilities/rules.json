@@ -12,21 +12,21 @@
   "publishableRoutes": ["/openai/v1/chat/completions", "/openai/v1/responses", "/openai/v1/embeddings", "/v1/messages"],
   "assets": [
     {
-      "selects": "assets.mcpServers[]",
-      "where": {"pattern": "passthrough"},
+      "selects": "apim.apis[]",
+      "where": {"type": "mcp", "pattern": "passthrough"},
       "verdict": "native",
       "capabilityId": "mcp.create",
       "note": "The target takes streamableHttp or sse transports, and authorizationCode for OAuth2. Nothing checks a collected server against that here: a transport or grant type outside it is a gap the apply step surfaces, not a rule this file can select on. Recorded so the limit is written down where the mapping is."
     },
     {
-      "selects": "assets.mcpServers[]",
-      "where": {"pattern": "federationRouter"},
+      "selects": "apim.apis[]",
+      "where": {"type": "mcp", "pattern": "federationRouter"},
       "verdict": "native",
       "capabilityId": "mcp.create"
     },
     {
-      "selects": "assets.mcpServers[]",
-      "where": {"pattern": "toolProjection"},
+      "selects": "apim.apis[]",
+      "where": {"type": "mcp", "pattern": "toolProjection"},
       "verdict": "partial",
       "answer": "choose",
       "capabilityId": "mcp.create",
@@ -35,8 +35,8 @@
       "rationale": "The REST contract becomes an openApi tool-server source, but APIM's per-tool policies and tool name overrides do not survive."
     },
     {
-      "selects": "assets.mcpServers[]",
-      "where": {"pattern": "unconfigured"},
+      "selects": "apim.apis[]",
+      "where": {"type": "mcp", "pattern": "unconfigured"},
       "verdict": "gap",
       "answer": "supply",
       "rationale": "The MCP API declares no backend, service URL, MCP properties or tools, so there is nothing to register.",
@@ -44,7 +44,7 @@
       "proposal": "retain-in-apim"
     },
     {
-      "selects": "assets.mcpServers[].toolDiscovery",
+      "selects": "apim.apis[].toolDiscovery",
       "where": {"status": "runtimeOnly"},
       "verdict": "gap",
       "answer": "supply",
@@ -66,7 +66,8 @@
       "rationale": "APIM stores no tool names for a passthrough server, and the CLI cannot author allowList/blocked in this baseline regardless."
     },
     {
-      "selects": "assets.agents[]",
+      "selects": "apim.apis[]",
+      "where": {"type": "a2a"},
       "verdict": "gap",
       "answer": "choose",
       "options": ["retain-in-apim", "block"],
@@ -77,10 +78,10 @@
       "selects": "assets.modelProviders[]",
       "verdict": "native",
       "capabilityId": "provider.create",
-      "note": "A backend that speaks a model protocol registers directly as a provider. What it authenticates with travels with it; the endpoint and the protocol are the whole of the mapping. Said as a note because the item's sentence names the provider, so it is composed where the inventory is read: a `rationale` here would reach no plan."
+      "note": "Not an APIM path, and deliberately. A model provider is an upstream model endpoint, which APIM reaches either through a backend or through an API's serviceUrl -- so there is no single APIM object that is all of them. Selecting apim.backends[] would quietly drop every provider reached by a service URL, which is the kind of false tidiness this vocabulary exists to avoid."
     },
     {
-      "selects": "assets.models[].endpoints.surface",
+      "selects": "apim.apis[].endpoints.surface",
       "where": {"status": "unbounded"},
       "verdict": "partial",
       "answer": "choose",
@@ -101,7 +102,7 @@
       "rationale": "The exposed surface cannot be read from configuration."
     },
     {
-      "selects": "assets.models[].endpoints.surface",
+      "selects": "apim.apis[].endpoints.surface",
       "where": {"unpublishableCount": {"present": true}},
       "verdict": "partial",
       "answer": "choose",
@@ -120,7 +121,7 @@
       "note": "`split` is bare because what it costs is the number of operations that stay behind, which only this API's surface knows; the planner composes that sentence. The item's rationale is composed there too, for the same reason."
     },
     {
-      "selects": "assets.models[].endpoints.translation",
+      "selects": "apim.apis[].endpoints.translation",
       "where": {"status": "translating"},
       "verdict": "partial",
       "answer": "choose",
@@ -136,7 +137,7 @@
       "note": "`move-callers` is bare because what it costs is the dialect this backend speaks, which the planner reads off the asset. The rationale is used only when the collector left no note of its own."
     },
     {
-      "selects": "assets.models[].endpoints.translation",
+      "selects": "apim.apis[].endpoints.translation",
       "where": {"status": "indeterminate"},
       "verdict": "partial",
       "answer": "supply",
@@ -149,7 +150,7 @@
       "rationale": "Which dialect callers speak could not be established from configuration, so whether the gateway can publish it is unknown rather than settled."
     },
     {
-      "selects": "assets.models[].routing.sessionAffinity",
+      "selects": "apim.apis[].routing.sessionAffinity",
       "verdict": "gap",
       "answer": "choose",
       "capabilityId": "alias.create",
@@ -168,7 +169,7 @@
       "note": "`block` is here because stopping the migration is the option an operator loses if nobody writes it down: this is a gap the target does not have, only the tooling. The item's sentence names which CLI gap it is, so it is composed in the planner rather than stated here."
     },
     {
-      "selects": "assets.models[].models",
+      "selects": "apim.apis[].models",
       "where": {"catalogue": {"present": true}},
       "verdict": "partial",
       "answer": "supply",
@@ -179,7 +180,7 @@
       "note": "The catalogue has been read. It lists what exists, not what each one can serve, which is why this is still a decision. `list-models` is bare and the item's rationale is composed in the planner: both name how many models came back and where from."
     },
     {
-      "selects": "assets.models[].models",
+      "selects": "apim.apis[].models",
       "where": {"catalogue": {"present": false}, "discoverySource": "modelsEndpoint"},
       "verdict": "partial",
       "answer": "supply",
@@ -197,7 +198,7 @@
       "rationale": "The model catalogue could not be resolved."
     },
     {
-      "selects": "assets.models[].models",
+      "selects": "apim.apis[].models",
       "where": {"catalogue": {"present": false}},
       "verdict": "partial",
       "answer": "supply",
@@ -215,13 +216,14 @@
       "rationale": "The model catalogue could not be resolved."
     },
     {
-      "selects": "assets.models[].models.resolved[]",
+      "selects": "apim.apis[].models.resolved[]",
       "verdict": "native",
       "capabilityId": "model.create",
       "note": "A model registers directly, whether it was resolved from a deployment or named in this API's catalogue decision. Which of the two it was is what the item says, so that sentence is composed in the planner."
     },
     {
-      "selects": "assets.models[]",
+      "selects": "apim.apis[]",
+      "where": {"role": "modelApi"},
       "verdict": "partial",
       "answer": "supply",
       "capabilityId": "alias.create",
@@ -237,7 +239,7 @@
       "note": "The planner follows this sentence with the names it proposes for this API's models, which is the only part of the item that is not the same for every API."
     },
     {
-      "selects": "assets.mcpServers[].toolDiscovery",
+      "selects": "apim.apis[].toolDiscovery",
       "where": {"policiesApplied": false},
       "verdict": "partial",
       "answer": "supply",
@@ -602,7 +604,8 @@
         {"value": "re-collect", "consequence": "Fix access and collect again."},
         {"value": "supply-facts", "consequence": "State what is there."}
       ],
-      "rationale": "A control-plane read failed, so this is unknown rather than absent. Unknown coverage cannot be accepted as an acceptable loss."
+      "rationale": "A control-plane read failed, so this is unknown rather than absent. Unknown coverage cannot be accepted as an acceptable loss.",
+      "note": "Not an APIM path, and deliberately. This is a record of what the collection run managed to read, not a thing the service has. A failed read is unknown rather than absent, and only this tool can say so."
     },
     {
       "selects": "apim.loggers",

@@ -1832,7 +1832,7 @@ def _apim_apis(
     why it became none. Exactly one of the two is set.
     """
     became = {
-        (asset.get("source") or {}).get("apiId"): asset["id"]
+        (asset.get("source") or {}).get("apiId"): asset
         for family in assets.values()
         for asset in family
         if (asset.get("source") or {}).get("apiId")
@@ -1843,14 +1843,41 @@ def _apim_apis(
     rows = []
     for raw in raw_apis:
         source = _api_source(raw, workspace)
-        rows.append({
+        asset = became.get(source["apiId"])
+        row = {
             **source,
             "workspace": workspace or "default",
             "subscriptionRequired": (raw.get("properties") or {}).get("subscriptionRequired"),
-            "assetId": became.get(source["apiId"]),
+            "assetId": asset["id"] if asset else None,
+            "role": _ROLE_OF.get((asset or {}).get("kind"), "excluded"),
             "excludedReason": reasons.get(source["apiId"]),
-        })
+        }
+        # What this tool made of the API, carried on the API. A rule asks about
+        # an API -- "an mcp-typed one whose upstream is a passthrough", "one
+        # whose published surface is unbounded" -- and an API is what APIM has,
+        # so that is the object a rule should be able to name. Copied from the
+        # asset by this one function, the way the `_api_source` fields above
+        # already are, so there is no second reading to drift from the first.
+        for block in _DERIVED_ON_API:
+            if asset and block in asset:
+                row[block] = asset[block]
+        rows.append(row)
     return rows
+
+
+# APIM's `properties.type` says what kind of API it is; `role` is this tool's
+# word for the same thing after classification, because an http-typed API can
+# still be a model API and APIM has no field that says so.
+_ROLE_OF = {"modelApi": "modelApi", "mcpServer": "mcpServer", "agent": "agent"}
+
+# The blocks a rule narrows on. Deliberately not everything the asset carries:
+# `policyRefs` and `access` are links, and `source` is already spread above.
+_DERIVED_ON_API = (
+    "detection", "pattern", "endpoints", "routing", "models",
+    "toolDiscovery", "mcp", "tools", "toolCount", "upstream", "agent",
+    "agentCard", "hosting", "a2a", "sourceApiIds", "openApiSources",
+    "providerIds", "provider", "supportingBackends",
+)
 
 
 def _api_source(raw: dict[str, Any], workspace: str | None) -> dict[str, Any]:
