@@ -45,7 +45,7 @@ MCP_BY_PATTERN = selector(
 # string; what it compares is the `status` inside it.
 MCP_BY_TOOL_DISCOVERY = selector(
     "assets",
-    selects="apim.apis[].toolDiscovery",
+    selects="assets.mcpServers[].toolDiscovery",
     keys=("status",),
     values={"status": ("runtimeOnly",)},
     site="plan._mcp tool exposure",
@@ -74,42 +74,42 @@ PROVIDER_RULE = selector(
     reads=("verdict", "answer", "capabilityId"),
 )
 SURFACE_BY_STATUS = selector(
-    "assets", selects="apim.apis[].endpoints.surface", keys=("status",),
+    "assets", selects="apim.apis[].operations[]", keys=("group",),
     values={"status": ("unbounded",)},
     site="plan._model surface",
     reads=("verdict", "answer", "capabilityId", "proposal", "rationale", "options", "blocking"),
 )
 SURFACE_PARTIALLY_PUBLISHABLE = selector(
-    "assets", selects="apim.apis[].endpoints.surface", keys=("unpublishableCount",),
+    "assets", selects="apim.apis[].operations[]", keys=("publishable",),
     site="plan._model surface partial",
     reads=("verdict", "answer", "capabilityId", "proposal", "options", "blocking"),
 )
 # Two cases, two sites: the indeterminate one proposes nothing, and one selector
 # for both would have excused a `proposal` on it that the planner never reads.
 DIALECT_TRANSLATING = selector(
-    "assets", selects="apim.apis[].endpoints.translation", keys=("status",),
+    "assets", selects="assets.models[].endpoints.translation", keys=("status",),
     values={"status": ("translating",)},
     site="plan._model dialect translating",
     reads=("verdict", "answer", "capabilityId", "proposal", "rationale", "options", "blocking"),
 )
 DIALECT_INDETERMINATE = selector(
-    "assets", selects="apim.apis[].endpoints.translation", keys=("status",),
+    "assets", selects="assets.models[].endpoints.translation", keys=("status",),
     values={"status": ("indeterminate",)},
     site="plan._model dialect indeterminate",
     reads=("verdict", "answer", "capabilityId", "rationale", "options", "blocking"),
 )
 SESSION_AFFINITY_RULE = selector(
-    "assets", selects="apim.apis[].routing.sessionAffinity", site="plan._pool_affinity",
+    "assets", selects="apim.backends[].pool.sessionAffinity", site="plan._pool_affinity",
     reads=("verdict", "answer", "capabilityId", "proposal", "options"),
 )
 CATALOGUE_RULE = selector(
-    "assets", selects="apim.apis[].models", keys=("discoverySource", "catalogue"),
+    "assets", selects="assets.models[].models", keys=("discoverySource", "catalogue"),
     values={"discoverySource": ("modelsEndpoint",)},
     site="plan._enumerate_models",
     reads=("verdict", "answer", "capabilityId", "proposal", "rationale", "options", "blocking"),
 )
 MODEL_REGISTRATION_RULE = selector(
-    "assets", selects="apim.apis[].models.resolved[]", site="plan._model_registration",
+    "assets", selects="assets.models[].models.resolved[]", site="plan._model_registration",
     reads=("verdict", "answer", "capabilityId"),
 )
 # The API itself, because an alias name is the one thing about it that APIM does
@@ -122,7 +122,7 @@ ALIAS_NAMES_RULE = selector(
 # `policiesBypassed: true` used to say this, which a reader had to negate: what
 # it tested was `policiesApplied is False`, a plain equality on a real field.
 TOOL_EXPOSURE_BYPASSED = selector(
-    "assets", selects="apim.apis[].toolDiscovery", keys=("policiesApplied",),
+    "assets", selects="assets.mcpServers[].toolDiscovery", keys=("policiesApplied",),
     values={"policiesApplied": (False,)},
     site="plan._mcp tool exposure bypassed",
     reads=("verdict", "answer", "proposal", "options"),
@@ -567,7 +567,7 @@ class PlanBuilder:
 
         # Scope: how much of what this API publishes can move at all.
         if surface.get("status") == "unbounded":
-            rule = SURFACE_BY_STATUS.first(self.caps.asset_rules(), status="unbounded") or {}
+            rule = SURFACE_BY_STATUS.first(self.caps.asset_rules(), group="wildcard") or {}
             self._add(
                 item_id=ids.item(asset_id, "surface"),
                 source={"assetId": asset_id, "assetKind": "modelApi", "aspect": "publishedSurface"},
@@ -587,8 +587,7 @@ class PlanBuilder:
                 f"{entry['group']} x{entry['count']}" for entry in surface.get("unpublishable", [])
             )
             rule = SURFACE_PARTIALLY_PUBLISHABLE.first(
-                self.caps.asset_rules(),
-                unpublishableCount=surface.get("unpublishableCount"),
+                self.caps.asset_rules(), publishable=False,
             ) or {}
             self._add(
                 item_id=ids.item(asset_id, "surface"),

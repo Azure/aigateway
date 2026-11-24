@@ -32,6 +32,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from . import collect as collect_mod
 from . import dispatch
 from .capability import (
     CAPABILITIES_DIR,
@@ -566,6 +567,74 @@ def check_subjects_have_rules(rules: dict[str, Any], out: Compilation) -> None:
         )
 
 
+def check_apim_paths_are_apim(out: Compilation) -> None:
+    """An `apim.*` path has to be APIM's objects the whole way down.
+
+    `check_paths_are_fields` asks whether a path is declared in
+    inventory.schema.json, and that is not the same question: the schema is a
+    file we write, so widening it by hand makes the checker certify whatever was
+    widened. That is exactly what happened to
+    `apim.apis[].endpoints.surface` -- `endpoints` is a decomposition of this
+    tool's and `surface` is a judgment about the *target*, and declaring them on
+    `apim.apis[]` made both look like properties of an APIM API.
+
+    The rule is narrower than "no derived data on an APIM object", because that
+    would be too strict to be useful: `apim.apis[]` narrowed on `pattern` is
+    honest and reads well. What a reading may not be is a *path segment*, since
+    a path is the claim about whose object this is.
+    """
+    # What ARM returned, asked of the function that builds it rather than of a
+    # list kept here. `_api_source` is the one place an APIM API's fields are
+    # written down, so calling it is the narrowest true statement of them; a
+    # list would be a second declaration, and the whole defect this check exists
+    # for was a second declaration -- the schema -- being widened by hand until
+    # it certified a path APIM has nothing to do with.
+    from_arm = {
+        "apim.apis[]": set(collect_mod._api_source({}, None))
+        | {"workspace", "subscriptionRequired", "operations"},
+        "apim.apis[].operations[]": {
+            "name", "displayName", "method", "urlTemplate", "description", "policyId",
+        },
+    }
+    readings = {
+        path: set(keys) for path, keys in collect_mod.APIM_READINGS.items()
+    }
+    # The join this tool adds to every API: which asset it became, or why none.
+    readings.setdefault("apim.apis[]", set()).update({"assetId", "excludedReason"})
+    sites = [s for s in dispatch.REGISTRY if s.selects.startswith("apim.")]
+    out.cover(
+        f"{len(sites)} apim.* selection sites: each names APIM's objects the whole way down, "
+        f"with this tool's readings only ever as `where` keys"
+    )
+    every_reading = {key for keys in readings.values() for key in keys}
+    for site in sites:
+        # Walk the path a segment at a time. Each one has to be a field the
+        # object before it got from ARM.
+        prefix = "apim"
+        for segment in site.selects.split(".")[1:]:
+            known = from_arm.get(prefix + ("" if prefix.endswith("[]") else ""))
+            bare = segment.replace("[]", "")
+            if known is not None and bare not in known:
+                why = ("is something this tool worked out" if bare in every_reading
+                       else "is not a field APIM returns for that object")
+                out.error(
+                    "apim-path-is-apim",
+                    f"{site.site}: selects {site.selects!r}, but {bare!r} {why}. A reading "
+                    f"belongs in `where`, not in the path -- the path is the claim about whose "
+                    f"object it is. APIM returns {sorted(known)}.",
+                )
+                break
+            prefix = f"{prefix}.{segment}"
+        allowed = readings.get(site.selects, set())
+        for key in site.keys:
+            if key in every_reading and key not in allowed:
+                out.error(
+                    "apim-path-is-apim",
+                    f"{site.site}: narrows {site.selects!r} on {key!r}, which is a reading of a "
+                    f"different object. Readings of this one: {sorted(allowed) or 'none declared'}.",
+                )
+
+
 def check_paths_are_fields(rules: dict[str, Any], inventory_schema: dict[str, Any],
                            out: Compilation) -> None:
     """What a rule selects, and every key it narrows with, has to exist.
@@ -853,6 +922,7 @@ def compile_contract(
     check_fragment_dispositions(rules, out)
     check_subjects_have_rules(rules, out)
     check_paths_are_fields(rules, _inventory_schema(), out)
+    check_apim_paths_are_apim(out)
     if newest_release:
         check_release_pin(catalog, newest_release, out)
     return out

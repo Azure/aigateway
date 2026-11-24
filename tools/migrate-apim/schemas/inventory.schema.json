@@ -172,53 +172,29 @@
                 "enum": ["modelApi", "mcpServer", "agent", "excluded"]
               },
               "pattern": {"type": ["string", "null"]},
-              "detection": {"$ref": "#/$defs/detection"},
-              "endpoints": {"$ref": "#/$defs/endpoints"},
-              "routing": {
-                "type": "object",
-                "required": ["mode", "targets"],
-                "properties": {
-                  "mode": {"enum": ["single", "pool", "policy"]},
-                  "targets": {"type": "array"},
-                  "circuitBreaker": {"type": ["array", "null"]},
-                  "sessionAffinity": {
-                    "description": "The APIM pool's session affinity, read verbatim. Null unless the pool pins a session to the backend that served it.",
-                    "type": ["object", "null"]
-                  },
-                  "evidence": {"type": ["string", "null"]}
+              "operations": {
+                "description": "APIM's operations for this API, each with two readings of its urlTemplate named as readings: `group` is which inference route it looks like, `publishable` whether the target publishes that route.",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {"type": "string"},
+                    "displayName": {"type": ["string", "null"]},
+                    "method": {"type": ["string", "null"]},
+                    "urlTemplate": {"type": "string"},
+                    "description": {"type": ["string", "null"]},
+                    "policyId": {"type": ["string", "null"]},
+                    "group": {"type": "string"},
+                    "publishable": {
+                      "description": "Whether the target publishes this route. Null for a wildcard, where it genuinely cannot be read -- which is not the same as false, and is why the two surface rules do not overlap.",
+                      "type": ["boolean", "null"]
+                    },
+                    "route": {"type": ["string", "null"]},
+                    "subresource": {"type": ["boolean", "null"]},
+                    "template": {"type": ["string", "null"]}
+                  }
                 }
-              },
-              "models": {"$ref": "#/$defs/modelCatalogue"},
-              "toolDiscovery": {
-                "type": "object",
-                "required": ["status", "source"],
-                "properties": {
-                  "status": {"enum": ["complete", "runtimeOnly"]},
-                  "source": {
-                    "enum": ["apimControlPlane", "upstreamMcpServer", "gatewayRuntime", "upstreamRuntime"]
-                  },
-                  "url": {"type": ["string", "null"]},
-                  "policiesApplied": {
-                    "description": "Whether the API's policies ran while the tools were listed. False means the list came straight from the upstream and can be broader than what callers reach.",
-                    "type": "boolean"
-                  },
-                  "note": {"type": "string"},
-                  "discoveredCount": {"type": "integer"}
-                }
-              },
-              "mcp": {"type": "object"},
-              "agent": {"type": "object"},
-              "agentCard": {"type": "object"},
-              "hosting": {"type": "object"},
-              "a2a": {"type": "object"},
-              "provider": {"type": "object"},
-              "tools": {"type": ["array", "null"]},
-              "upstream": {"type": ["array", "null"]},
-              "sourceApiIds": {"type": ["array", "null"]},
-              "openApiSources": {"type": ["array", "null"]},
-              "providerIds": {"type": ["array", "null"]},
-              "supportingBackends": {"type": ["array", "null"]},
-              "toolCount": {"type": "integer"}
+              }
             }
           }
         },
@@ -236,7 +212,24 @@
             }
           }
         },
-        "backends": {"type": "array"},
+        "backends": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {"type": "string"},
+              "name": {"type": "string"},
+              "pool": {
+                "type": ["object", "null"],
+                "properties": {
+                  "services": {"type": "array"},
+                  "failureResponse": {"type": ["object", "null"]},
+                  "sessionAffinity": {"type": ["object", "string", "null"]}
+                }
+              }
+            }
+          }
+        },
         "namedValues": {"type": "array", "items": {"$ref": "#/$defs/namedValue"}},
         "products": {"type": "array"},
         "subscriptions": {"type": "array"},

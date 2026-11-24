@@ -580,7 +580,7 @@ class TestACleanRunSaysWhatItChecked:
     def test_every_check_reports_what_it_covered(self, compile_with, shipped):
         documented = shipped[0]["cliEvidence"]["documentedVersion"]
         covered = compile_with(newest_release=f"cli-v{documented}").covered
-        assert len(covered) == 10, covered
+        assert len(covered) == 11, covered
 
     def test_the_counts_are_the_real_ones(self, compile_with, shipped):
         catalog, rules, surface = shipped
@@ -673,3 +673,60 @@ def _only_site(site):
         yield
     finally:
         dispatch.REGISTRY[:] = saved
+
+
+class TestAnApimPathIsApimAllTheWayDown:
+    """The defect that got past `check_paths_are_fields`, and why it did.
+
+    `apim.apis[].endpoints.surface` compiled clean. Both halves were declared in
+    inventory.schema.json, so the path check was satisfied -- but the schema is
+    a file we write, and widening it by hand is what made it certify a path APIM
+    has nothing to do with. `endpoints` is this tool's decomposition and
+    `surface` is a judgment about the *target*, measured against AI Gateway's
+    four publishable routes.
+
+    So this check asks the collector rather than the schema: the fields come
+    from `_api_source`, the one place an APIM API's fields are written down.
+
+    The rule is narrower than "no derived data on an APIM object", which would
+    be too strict to be useful. `apim.apis[]` narrowed on `pattern` is honest --
+    an APIM object, this tool's reading of it, and a reader can tell which is
+    which. What a reading may not be is a path *segment*, because the path is
+    the claim about whose object it is.
+    """
+
+    def _errors(self, selects, keys=()):
+        saved = list(dispatch.REGISTRY)
+        dispatch.REGISTRY.clear()
+        dispatch.REGISTRY.append(dispatch.Selector(
+            section="assets", selects=selects, keys=keys, values={}, site="test.site"))
+        try:
+            out = compile.Compilation()
+            compile.check_apim_paths_are_apim(out)
+            return {d.check for d in out.errors}
+        finally:
+            dispatch.REGISTRY.clear()
+            dispatch.REGISTRY.extend(saved)
+
+    def test_a_decomposition_of_ours_in_the_path_is_caught(self):
+        """The exact path that shipped before this check existed."""
+        assert "apim-path-is-apim" in self._errors("apim.apis[].endpoints.surface")
+
+    def test_another_invented_block_is_caught_too(self):
+        # Not by name: by asking what APIM returns, so one nobody thought of is
+        # caught the same way as one that already happened.
+        assert "apim-path-is-apim" in self._errors("apim.apis[].models")
+
+    def test_a_reading_used_as_a_path_segment_is_caught(self):
+        assert "apim-path-is-apim" in self._errors("apim.apis[].pattern")
+
+    def test_a_reading_of_a_different_object_is_caught(self):
+        # `group` reads an operation's urlTemplate; an API does not have one.
+        assert "apim-path-is-apim" in self._errors("apim.apis[]", ("group",))
+
+    def test_a_reading_as_a_where_key_is_fine(self):
+        assert not self._errors("apim.apis[]", ("type", "pattern", "role"))
+        assert not self._errors("apim.apis[].operations[]", ("group", "publishable"))
+
+    def test_the_shipped_sites_all_hold(self, compile_with):
+        assert [d for d in compile_with().errors] == []

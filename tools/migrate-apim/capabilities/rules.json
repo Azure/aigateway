@@ -44,7 +44,7 @@
       "proposal": "retain-in-apim"
     },
     {
-      "selects": "apim.apis[].toolDiscovery",
+      "selects": "assets.mcpServers[].toolDiscovery",
       "where": {"status": "runtimeOnly"},
       "verdict": "gap",
       "answer": "supply",
@@ -81,8 +81,8 @@
       "note": "Not an APIM path, and deliberately. A model provider is an upstream model endpoint, which APIM reaches either through a backend or through an API's serviceUrl -- so there is no single APIM object that is all of them. Selecting apim.backends[] would quietly drop every provider reached by a service URL, which is the kind of false tidiness this vocabulary exists to avoid."
     },
     {
-      "selects": "apim.apis[].endpoints.surface",
-      "where": {"status": "unbounded"},
+      "selects": "apim.apis[].operations[]",
+      "where": {"group": "wildcard"},
       "verdict": "partial",
       "answer": "choose",
       "capabilityId": "alias.create",
@@ -102,8 +102,8 @@
       "rationale": "The exposed surface cannot be read from configuration."
     },
     {
-      "selects": "apim.apis[].endpoints.surface",
-      "where": {"unpublishableCount": {"present": true}},
+      "selects": "apim.apis[].operations[]",
+      "where": {"publishable": false},
       "verdict": "partial",
       "answer": "choose",
       "capabilityId": "alias.create",
@@ -121,7 +121,7 @@
       "note": "`split` is bare because what it costs is the number of operations that stay behind, which only this API's surface knows; the planner composes that sentence. The item's rationale is composed there too, for the same reason."
     },
     {
-      "selects": "apim.apis[].endpoints.translation",
+      "selects": "assets.models[].endpoints.translation",
       "where": {"status": "translating"},
       "verdict": "partial",
       "answer": "choose",
@@ -137,7 +137,7 @@
       "note": "`move-callers` is bare because what it costs is the dialect this backend speaks, which the planner reads off the asset. The rationale is used only when the collector left no note of its own."
     },
     {
-      "selects": "apim.apis[].endpoints.translation",
+      "selects": "assets.models[].endpoints.translation",
       "where": {"status": "indeterminate"},
       "verdict": "partial",
       "answer": "supply",
@@ -150,7 +150,7 @@
       "rationale": "Which dialect callers speak could not be established from configuration, so whether the gateway can publish it is unknown rather than settled."
     },
     {
-      "selects": "apim.apis[].routing.sessionAffinity",
+      "selects": "apim.backends[].pool.sessionAffinity",
       "verdict": "gap",
       "answer": "choose",
       "capabilityId": "alias.create",
@@ -169,7 +169,7 @@
       "note": "`block` is here because stopping the migration is the option an operator loses if nobody writes it down: this is a gap the target does not have, only the tooling. The item's sentence names which CLI gap it is, so it is composed in the planner rather than stated here."
     },
     {
-      "selects": "apim.apis[].models",
+      "selects": "assets.models[].models",
       "where": {"catalogue": {"present": true}},
       "verdict": "partial",
       "answer": "supply",
@@ -180,7 +180,7 @@
       "note": "The catalogue has been read. It lists what exists, not what each one can serve, which is why this is still a decision. `list-models` is bare and the item's rationale is composed in the planner: both name how many models came back and where from."
     },
     {
-      "selects": "apim.apis[].models",
+      "selects": "assets.models[].models",
       "where": {"catalogue": {"present": false}, "discoverySource": "modelsEndpoint"},
       "verdict": "partial",
       "answer": "supply",
@@ -198,7 +198,7 @@
       "rationale": "The model catalogue could not be resolved."
     },
     {
-      "selects": "apim.apis[].models",
+      "selects": "assets.models[].models",
       "where": {"catalogue": {"present": false}},
       "verdict": "partial",
       "answer": "supply",
@@ -216,7 +216,7 @@
       "rationale": "The model catalogue could not be resolved."
     },
     {
-      "selects": "apim.apis[].models.resolved[]",
+      "selects": "assets.models[].models.resolved[]",
       "verdict": "native",
       "capabilityId": "model.create",
       "note": "A model registers directly, whether it was resolved from a deployment or named in this API's catalogue decision. Which of the two it was is what the item says, so that sentence is composed in the planner."
@@ -239,7 +239,7 @@
       "note": "The planner follows this sentence with the names it proposes for this API's models, which is the only part of the item that is not the same for every API."
     },
     {
-      "selects": "apim.apis[].toolDiscovery",
+      "selects": "assets.mcpServers[].toolDiscovery",
       "where": {"policiesApplied": false},
       "verdict": "partial",
       "answer": "supply",

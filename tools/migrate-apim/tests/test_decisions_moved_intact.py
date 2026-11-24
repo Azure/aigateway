@@ -72,14 +72,14 @@ class TestTheDecisionsThatMovedAreTheOnesThatWereThere:
         assert decision(rule) == expected("native", capabilityId="model.create")
 
     def test_an_unbounded_surface_publishes_inference_only(self, caps):
-        rule = plan_mod.SURFACE_BY_STATUS.first(caps.asset_rules(), status="unbounded")
+        rule = plan_mod.SURFACE_BY_STATUS.first(caps.asset_rules(), group="wildcard")
         assert decision(rule) == expected(
             "partial", "choose", "alias.create", "inference-only",
             ["inference-only", "retain-in-apim", "block"], blocking=True)
 
     def test_a_partly_publishable_surface_splits(self, caps):
         rule = plan_mod.SURFACE_PARTIALLY_PUBLISHABLE.first(
-            caps.asset_rules(), unpublishableCount=43)
+            caps.asset_rules(), publishable=False)
         assert decision(rule) == expected(
             "partial", "choose", "alias.create", "split",
             ["split", "inference-only", "retain-in-apim", "block"], blocking=True)
@@ -224,7 +224,7 @@ class TestThePlannerOffersWhatTheFileSays:
 
     def test_an_unbounded_surface_offers_the_rules_choices(self, inventory, caps):
         built = build_plan(inventory, saying(
-            caps, plan_mod.SURFACE_BY_STATUS, {"options": OFFERED}, status="unbounded"))
+            caps, plan_mod.SURFACE_BY_STATUS, {"options": OFFERED}, group="wildcard"))
         # Three APIs raise this question; the unbounded one is the API whose
         # surface could not be read, which is the rule being changed here.
         item = next(i for i in built["items"]
@@ -235,7 +235,7 @@ class TestThePlannerOffersWhatTheFileSays:
     def test_a_partly_publishable_surface_offers_the_rules_choices(self, inventory, caps):
         built = build_plan(inventory, saying(
             caps, plan_mod.SURFACE_PARTIALLY_PUBLISHABLE, {"options": OFFERED},
-            unpublishableCount=43))
+            publishable=False))
         item = next(i for i in built["items"]
                     if i["source"]["aspect"] == "publishedSurface" and i["proposal"] == "split")
         assert offered(item) == OFFERED

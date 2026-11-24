@@ -96,6 +96,7 @@ class Collector:
         # returned, because it is one flat answer to "what APIs are there" and
         # the scope loop is an implementation detail of finding them.
         self.apim_apis: list[dict[str, Any]] = []
+        self._operations_by_api: dict[str, list[dict[str, Any]]] = {}
 
     # ------------------------------------------------------------------ run
 
@@ -849,6 +850,8 @@ class Collector:
             if api_type not in {"mcp", "a2a"} and not self.options.fast:
                 operations = self._collect_operations(api_url, name, workspace, scope_label)
 
+            self._operations_by_api[ids.api(name, workspace)] = operations
+
             classification = detect.classify_api(
                 raw,
                 backend=_raw_backend(backend_record),
@@ -909,7 +912,8 @@ class Collector:
         if "models" in self.options.families:
             assets["modelProviders"] = self._model_providers(workspace, shared, assets, api_index)
         _mark_referenced(excluded, assets)
-        self.apim_apis.extend(_apim_apis(raw_apis, workspace, assets, excluded))
+        self.apim_apis.extend(
+            _apim_apis(raw_apis, workspace, assets, excluded, self._operations_by_api))
         return assets, excluded
 
     # ------------------------------------------------------- model providers
@@ -1817,6 +1821,7 @@ def _apim_apis(
     workspace: str | None,
     assets: dict[str, list[dict[str, Any]]],
     excluded: list[dict[str, Any]],
+    operations_by_api: dict[str, list[dict[str, Any]]],
 ) -> list[dict[str, Any]]:
     """Every API APIM has in this scope, and what this tool made of each.
 
@@ -1850,17 +1855,17 @@ def _apim_apis(
             "subscriptionRequired": (raw.get("properties") or {}).get("subscriptionRequired"),
             "assetId": asset["id"] if asset else None,
             "role": _ROLE_OF.get((asset or {}).get("kind"), "excluded"),
+            "pattern": (asset or {}).get("pattern"),
             "excludedReason": reasons.get(source["apiId"]),
         }
-        # What this tool made of the API, carried on the API. A rule asks about
-        # an API -- "an mcp-typed one whose upstream is a passthrough", "one
-        # whose published surface is unbounded" -- and an API is what APIM has,
-        # so that is the object a rule should be able to name. Copied from the
-        # asset by this one function, the way the `_api_source` fields above
-        # already are, so there is no second reading to drift from the first.
-        for block in _DERIVED_ON_API:
-            if asset and block in asset:
-                row[block] = asset[block]
+        # APIM returns operations, so the spine carries them. Each is APIM's
+        # record plus two readings of its `urlTemplate`, named as readings:
+        # `group` is which inference route it looks like, `publishable` whether
+        # the target has that route at all.
+        row["operations"] = [
+            {**operation, **_operation_reading(operation.get("urlTemplate") or "")}
+            for operation in operations_by_api.get(source["apiId"]) or []
+        ]
         rows.append(row)
     return rows
 
@@ -1870,14 +1875,32 @@ def _apim_apis(
 # still be a model API and APIM has no field that says so.
 _ROLE_OF = {"modelApi": "modelApi", "mcpServer": "mcpServer", "agent": "agent"}
 
-# The blocks a rule narrows on. Deliberately not everything the asset carries:
-# `policyRefs` and `access` are links, and `source` is already spread above.
-_DERIVED_ON_API = (
-    "detection", "pattern", "endpoints", "routing", "models",
-    "toolDiscovery", "mcp", "tools", "toolCount", "upstream", "agent",
-    "agentCard", "hosting", "a2a", "sourceApiIds", "openApiSources",
-    "providerIds", "provider", "supportingBackends",
-)
+# Which keys on an `apim.*` object this tool worked out rather than read from
+# ARM. Declared here, beside the code that produces them, because the checker
+# that uses it must not be a second list that can drift.
+#
+# The rule it encodes: a reading may be a `where` key, never a path segment.
+# `apim.apis[]` narrowed on `pattern` is honest -- an APIM object, this tool's
+# reading of it, and a reader can tell which is which. `apim.apis[].endpoints`
+# was not: `endpoints` is a decomposition of ours, and putting it in the path
+# made a whole structure of this tool's read as though APIM returned it.
+APIM_READINGS = {
+    "apim.apis[]": ("role", "pattern"),
+    "apim.apis[].operations[]": ("group", "publishable", "route", "subresource", "template"),
+}
+
+
+def _operation_reading(url_template: str) -> dict[str, Any]:
+    """This tool's reading of an operation's template, on APIM's own record.
+
+    A reading is allowed to sit on an APIM object as long as it is named as one
+    -- `type` is APIM's, `group` and `publishable` are ours, and a rule can
+    narrow on either. What is not allowed is a whole decomposition of ours
+    hanging off an APIM path: `apim.apis[].endpoints.surface` read as though
+    APIM had an `endpoints` property, which it does not.
+    """
+    classified = detect.classify_operation(url_template)
+    return {"group": classified["group"], "publishable": classified["publishable"]}
 
 
 def _api_source(raw: dict[str, Any], workspace: str | None) -> dict[str, Any]:
