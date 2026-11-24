@@ -1,0 +1,2361 @@
+{
+ "plan": {
+  "$schema": "https://github.com/Azure/aigateway/tools/migrate-apim/schemas/plan.schema.json",
+  "generator": {
+   "command": "plan",
+   "name": "migrate-apim",
+   "version": "0.1.0"
+  },
+  "items": [
+   {
+    "blocking": false,
+    "cannotAccept": false,
+    "capabilityId": "identity.assign",
+    "capabilityLimitations": [
+     "Assignment does not copy source principal IDs or grant backend RBAC. An absent identity on a successfully read gateway is normalized to an empty object."
+    ],
+    "decidedAgainst": null,
+    "decision": null,
+    "evidence": {
+     "audiences": [
+      "https://cognitiveservices.azure.com/"
+     ],
+     "providers": [
+      "modelProvider:aoai-east"
+     ],
+     "sourceIdentity": {
+      "principalId": "p-1",
+      "tenantId": "t-1",
+      "type": "SystemAssigned",
+      "userAssignedIdentities": []
+     }
+    },
+    "id": "item:identity/assign",
+    "kind": null,
+    "memberDigests": {
+     "item:identity/assign": "sha256:c96447348b9dc37dd5ea95e12192020710adc1664fa3ae3d0cb1028e754caff2"
+    },
+    "options": [],
+    "proposal": "system-assigned",
+    "rationale": "1 provider(s) authenticate as a managed identity, so the gateway needs one. The source uses a system-assigned identity, whose principal cannot be carried over, so the target gets its own and the backend grants must be made against it.",
+    "shapeDigest": "sha256:decc47869967de1ee9e5e878d0ae318e3d0522715c6a27326cbcc099b620a5d0",
+    "source": {
+     "aspect": "gatewayIdentity",
+     "assetId": null,
+     "assetKind": "identity"
+    },
+    "status": "ready",
+    "target": {
+     "capability": "identity.assign",
+     "objects": [
+      {
+       "systemAssigned": true,
+       "userAssigned": null
+      }
+     ]
+    },
+    "verdict": "native"
+   },
+   {
+    "blocking": false,
+    "cannotAccept": false,
+    "capabilityId": "provider.create",
+    "capabilityLimitations": [
+     "Low-level registration only; no automatic model import or RBAC unless --import-models is passed. Create is not guaranteed create-only. The --import-models flag with Foundry imports all deployments; equivalent to running model-provider import separately."
+    ],
+    "decidedAgainst": null,
+    "decision": null,
+    "evidence": {
+     "authMode": "managedIdentity",
+     "endpoint": "https://aif.openai.azure.com/"
+    },
+    "id": "item:modelProvider/modelProvider-aoai-east",
+    "kind": null,
+    "memberDigests": {
+     "modelProvider:aoai-east": "sha256:1b9cf55b08608c654f3035aceeef7d588082cab5b7837337a45fb4d0e8909bb6"
+    },
+    "options": [],
+    "proposal": null,
+    "rationale": "Microsoft Foundry / Azure OpenAI provider registers directly.",
+    "shapeDigest": "sha256:0a5d33b94bb18e7ce5a0cd5754eb04da5a4b76921a96b31e00615d1e3a685cf6",
+    "source": {
+     "aspect": "registration",
+     "assetId": "modelProvider:aoai-east",
+     "assetKind": "modelProvider"
+    },
+    "status": "ready",
+    "target": {
+     "capability": "provider.create",
+     "objects": [
+      {
+       "foundry": {
+        "authentication": {
+         "kind": "ManagedIdentity",
+         "managedIdentity": {
+          "resource": "https://cognitiveservices.azure.com/"
+         }
+        },
+        "endpoint": "https://aif.openai.azure.com/",
+        "resourceIds": [
+         "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-demo/providers/Microsoft.CognitiveServices/accounts/aif"
+        ]
+       },
+       "kind": "Foundry",
+       "name": "aoai-east"
+      }
+     ]
+    },
+    "verdict": "native"
+   },
+   {
+    "blocking": false,
+    "cannotAccept": false,
+    "capabilityId": "provider.create",
+    "capabilityLimitations": [
+     "Low-level registration only; no automatic model import or RBAC unless --import-models is passed. Create is not guaranteed create-only. The --import-models flag with Foundry imports all deployments; equivalent to running model-provider import separately."
+    ],
+    "decidedAgainst": null,
+    "decision": null,
+    "evidence": {
+     "authMode": "apiKey",
+     "endpoint": "https://aif-west.openai.azure.com/"
+    },
+    "id": "item:modelProvider/modelProvider-aoai-west",
+    "kind": null,
+    "memberDigests": {
+     "modelProvider:aoai-west": "sha256:998814ec8b516d853248ddcd5a24224357b41598da5dd28949ee99cecf1d1829"
+    },
+    "options": [],
+    "proposal": null,
+    "rationale": "Microsoft Foundry / Azure OpenAI provider registers directly.",
+    "shapeDigest": "sha256:0a5d33b94bb18e7ce5a0cd5754eb04da5a4b76921a96b31e00615d1e3a685cf6",
+    "source": {
+     "aspect": "registration",
+     "assetId": "modelProvider:aoai-west",
+     "assetKind": "modelProvider"
+    },
+    "status": "ready",
+    "target": {
+     "capability": "provider.create",
+     "objects": [
+      {
+       "foundry": {
+        "authentication": {
+         "kind": "ManagedIdentity",
+         "managedIdentity": {
+          "resource": "https://cognitiveservices.azure.com/"
+         }
+        },
+        "endpoint": "https://aif-west.openai.azure.com/",
+        "resourceIds": [
+         "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-demo/providers/Microsoft.CognitiveServices/accounts/aif-west"
+        ]
+       },
+       "kind": "Foundry",
+       "name": "aoai-west"
+      }
+     ]
+    },
+    "verdict": "native"
+   },
+   {
+    "blocking": false,
+    "cannotAccept": false,
+    "capabilityId": "provider.create",
+    "capabilityLimitations": [
+     "Low-level registration only; no automatic model import or RBAC unless --import-models is passed. Create is not guaranteed create-only. The --import-models flag with Foundry imports all deployments; equivalent to running model-provider import separately."
+    ],
+    "decidedAgainst": null,
+    "decision": null,
+    "evidence": {
+     "authMode": "apiKey",
+     "endpoint": "https://api.meta.ai"
+    },
+    "id": "item:modelProvider/modelProvider-meta-ai-openai-endpoint",
+    "kind": null,
+    "memberDigests": {
+     "modelProvider:meta-ai-openai-endpoint": "sha256:940ea3e9c3675f11df3878a29e5a6178c0291c21ee5b5492d8380fa455c96834"
+    },
+    "options": [],
+    "proposal": null,
+    "rationale": "openAiCompatible provider registers directly.",
+    "shapeDigest": "sha256:0a5d33b94bb18e7ce5a0cd5754eb04da5a4b76921a96b31e00615d1e3a685cf6",
+    "source": {
+     "aspect": "registration",
+     "assetId": "modelProvider:meta-ai-openai-endpoint",
+     "assetKind": "modelProvider"
+    },
+    "status": "ready",
+    "target": {
+     "capability": "provider.create",
+     "objects": [
+      {
+       "custom": {
+        "authentication": {
+         "apiKey": {
+          "headerName": "Authorization",
+          "value": {
+           "$secretRef": "secret:namedValue/meta-ai-Authorization-LLM"
+          }
+         },
+         "kind": "ApiKey"
+        },
+        "endpoint": "https://api.meta.ai"
+       },
+       "kind": "Custom",
+       "name": "meta-ai-openai-endpoint"
+      }
+     ]
+    },
+    "verdict": "native"
+   },
+   {
+    "blocking": false,
+    "cannotAccept": false,
+    "capabilityId": "provider.create",
+    "capabilityLimitations": [
+     "Low-level registration only; no automatic model import or RBAC unless --import-models is passed. Create is not guaranteed create-only. The --import-models flag with Foundry imports all deployments; equivalent to running model-provider import separately."
+    ],
+    "decidedAgainst": null,
+    "decision": null,
+    "evidence": {
+     "authMode": "apiKey",
+     "endpoint": "https://demo.services.ai.azure.com/anthropic"
+    },
+    "id": "item:modelProvider/modelProvider-finance/claude-backend",
+    "kind": null,
+    "memberDigests": {
+     "modelProvider:finance/claude-backend": "sha256:e08460167b47b40d80ae2f4e0e4073563fb03507390f73daed74021d0ab85c1a"
+    },
+    "options": [],
+    "proposal": null,
+    "rationale": "Microsoft Foundry / Azure OpenAI provider registers directly.",
+    "shapeDigest": "sha256:0a5d33b94bb18e7ce5a0cd5754eb04da5a4b76921a96b31e00615d1e3a685cf6",
+    "source": {
+     "aspect": "registration",
+     "assetId": "modelProvider:finance/claude-backend",
+     "assetKind": "modelProvider"
+    },
+    "status": "ready",
+    "target": {
+     "capability": "provider.create",
+     "objects": [
+      {
+       "custom": {
+        "authentication": {
+         "apiKey": {
+          "headerName": "api-key",
+          "value": {
+           "$secretRef": "secret:namedValue/finance/claude-key"
+          }
+         },
+         "kind": "ApiKey"
+        },
+        "endpoint": "https://demo.services.ai.azure.com/anthropic"
+       },
+       "kind": "Custom",
+       "name": "finance-claude-backend"
+      }
+     ]
+    },
+    "verdict": "native"
+   },
+   {
+    "blocking": true,
+    "cannotAccept": false,
+    "capabilityId": "alias.create",
+    "capabilityLimitations": [
+     "Creates an explicit callable model name. GET-before-PUT is not atomic; no implicit piped/batch alias creation."
+    ],
+    "decidedAgainst": null,
+    "decision": null,
+    "evidence": {
+     "surface": {
+      "basis": "operationTemplates",
+      "operationCount": 6,
+      "publishable": [
+       {
+        "count": 1,
+        "group": "chatCompletions",
+        "publishable": true,
+        "route": "/openai/v1/chat/completions",
+        "samples": [
+         "/deployments/{deployment-id}/chat/completions"
+        ],
+        "subresources": 0
+       },
+       {
+        "count": 1,
+        "group": "embeddings",
+        "publishable": true,
+        "route": "/openai/v1/embeddings",
+        "samples": [
+         "/deployments/{deployment-id}/embeddings"
+        ],
+        "subresources": 0
+       }
+      ],
+      "publishableCount": 2,
+      "status": "bounded",
+      "targetRoutes": [
+       "/openai/v1/chat/completions",
+       "/openai/v1/embeddings",
+       "/openai/v1/responses",
+       "/v1/messages"
+      ],
+      "unpublishable": [
+       {
+        "count": 2,
+        "group": "threads",
+        "publishable": false,
+        "route": null,
+        "samples": [
+         "/threads?api-version={api-version}",
+         "/threads/{thread_id}/runs?api-version={api-version}"
+        ],
+        "subresources": 0
+       },
+       {
+        "count": 1,
+        "group": "assistants",
+        "publishable": false,
+        "route": null,
+        "samples": [
+         "/assistants?api-version={api-version}"
+        ],
+        "subresources": 0
+       },
+       {
+        "count": 1,
+        "group": "vectorStores",
+        "publishable": false,
+        "route": null,
+        "samples": [
+         "/vector_stores?api-version={api-version}"
+        ],
+        "subresources": 0
+       }
+      ],
+      "unpublishableCount": 4
+     }
+    },
+    "id": "item:model/aoai-api/surface",
+    "kind": "choose",
+    "memberDigests": {
+     "model:aoai-api": "sha256:603ff058414ef31983635204fa479a763de6a8c08dae13e80112b8e1fdbbf9b9"
+    },
+    "options": [
+     {
+      "consequence": "Inference moves; 4 operations stay on APIM.",
+      "value": "split"
+     },
+     {
+      "consequence": "Inference moves and the rest is dropped; those callers break.",
+      "value": "inference-only"
+     },
+     {
+      "consequence": "Nothing moves for this API.",
+      "value": "retain-in-apim"
+     },
+     {
+      "consequence": "Stop the migration until resolved.",
+      "value": "block"
+     }
+    ],
+    "proposal": "split",
+    "rationale": "2 of 6 operations map to the four publishable routes. No target for: threads x2, assistants x1, vectorStores x1.",
+    "shapeDigest": "sha256:90385b59949f7d9ebc5051d510f8f5d24884a4874c9f01330ea206ac460cb6d7",
+    "source": {
+     "aspect": "publishedSurface",
+     "assetId": "model:aoai-api",
+     "assetKind": "modelApi"
+    },
+    "status": "needs-decision",
+    "target": {},
+    "verdict": "partial"
+   },
+   {
+    "blocking": false,
+    "cannotAccept": false,
+    "capabilityId": "model.create",
+    "capabilityLimitations": [
+     "Explicit selected models/operations only. No Foundry onboarding side effects or implicit aliases; callable routes require separate alias nodes."
+    ],
+    "decidedAgainst": null,
+    "decision": null,
+    "evidence": {
+     "modelName": "gpt-5.2",
+     "modelVersion": "2025-12-11"
+    },
+    "id": "item:model/aoai-api/model/gpt-5-aoai-east",
+    "kind": null,
+    "memberDigests": {
+     "model:aoai-api": "sha256:62d3f8ecb3430d4af1f0cf4f2e8de3faff23fee51d4454bb401010f732121f11"
+    },
+    "options": [],
+    "proposal": null,
+    "rationale": "Registers gpt-5.2 from a resolved deployment.",
+    "shapeDigest": "sha256:a30245f530761bfb155104f1da33dc94558d0e2acc39a1f051425b3695ce4fa1",
+    "source": {
+     "aspect": "model:gpt-5@aoai-east",
+     "assetId": "model:aoai-api",
+     "assetKind": "modelApi"
+    },
+    "status": "ready",
+    "target": {
+     "capability": "model.create",
+     "objects": [
+      {
+       "apiFormat": "OpenAIChatCompletions",
+       "deploymentConfig": {
+        "modelName": "gpt-5.2",
+        "modelVersion": "2025-12-11",
+        "resourceId": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-demo/providers/Microsoft.CognitiveServices/accounts/aif/deployments/gpt-5"
+       },
+       "name": "gpt-5",
+       "providerName": "aoai-east",
+       "supportedEndpoints": [
+        "/openai/v1/chat/completions",
+        "/openai/v1/responses"
+       ]
+      }
+     ]
+    },
+    "verdict": "native"
+   },
+   {
+    "blocking": false,
+    "cannotAccept": false,
+    "capabilityId": "model.create",
+    "capabilityLimitations": [
+     "Explicit selected models/operations only. No Foundry onboarding side effects or implicit aliases; callable routes require separate alias nodes."
+    ],
+    "decidedAgainst": null,
+    "decision": null,
+    "evidence": {
+     "modelName": "text-embedding-3-large",
+     "modelVersion": "1"
+    },
+    "id": "item:model/aoai-api/model/text-embedding-3-large-aoai-east",
+    "kind": null,
+    "memberDigests": {
+     "model:aoai-api": "sha256:809bd1a871d6523eb298711fc8fef8a983c30fcacd07072df61de49c0cb760ed"
+    },
+    "options": [],
+    "proposal": null,
+    "rationale": "Registers text-embedding-3-large from a resolved deployment.",
+    "shapeDigest": "sha256:a30245f530761bfb155104f1da33dc94558d0e2acc39a1f051425b3695ce4fa1",
+    "source": {
+     "aspect": "model:text-embedding-3-large@aoai-east",
+     "assetId": "model:aoai-api",
+     "assetKind": "modelApi"
+    },
+    "status": "ready",
+    "target": {
+     "capability": "model.create",
+     "objects": [
+      {
+       "apiFormat": "OpenAIChatCompletions",
+       "deploymentConfig": {
+        "modelName": "text-embedding-3-large",
+        "modelVersion": "1",
+        "resourceId": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-demo/providers/Microsoft.CognitiveServices/accounts/aif/deployments/text-embedding-3-large"
+       },
+       "name": "text-embedding-3-large",
+       "providerName": "aoai-east",
+       "supportedEndpoints": [
+        "/openai/v1/embeddings"
+       ]
+      }
+     ]
+    },
+    "verdict": "native"
+   },
+   {
+    "blocking": false,
+    "cannotAccept": false,
+    "capabilityId": "model.create",
+    "capabilityLimitations": [
+     "Explicit selected models/operations only. No Foundry onboarding side effects or implicit aliases; callable routes require separate alias nodes."
+    ],
+    "decidedAgainst": null,
+    "decision": null,
+    "evidence": {
+     "modelName": "gpt-5.2",
+     "modelVersion": "2025-12-11"
+    },
+    "id": "item:model/aoai-api/model/gpt-5-aoai-west",
+    "kind": null,
+    "memberDigests": {
+     "model:aoai-api": "sha256:62d3f8ecb3430d4af1f0cf4f2e8de3faff23fee51d4454bb401010f732121f11"
+    },
+    "options": [],
+    "proposal": null,
+    "rationale": "Registers gpt-5.2 from a resolved deployment.",
+    "shapeDigest": "sha256:a30245f530761bfb155104f1da33dc94558d0e2acc39a1f051425b3695ce4fa1",
+    "source": {
+     "aspect": "model:gpt-5@aoai-west",
+     "assetId": "model:aoai-api",
+     "assetKind": "modelApi"
+    },
+    "status": "ready",
+    "target": {
+     "capability": "model.create",
+     "objects": [
+      {
+       "apiFormat": "OpenAIChatCompletions",
+       "deploymentConfig": {
+        "modelName": "gpt-5.2",
+        "modelVersion": "2025-12-11",
+        "resourceId": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-demo/providers/Microsoft.CognitiveServices/accounts/aif-west/deployments/gpt-5"
+       },
+       "name": "gpt-5",
+       "providerName": "aoai-west",
+       "supportedEndpoints": [
+        "/openai/v1/chat/completions",
+        "/openai/v1/responses"
+       ]
+      }
+     ]
+    },
+    "verdict": "native"
+   },
+   {
+    "blocking": false,
+    "cannotAccept": false,
+    "capabilityId": "alias.create",
+    "capabilityLimitations": [
+     "Creates an explicit callable model name. GET-before-PUT is not atomic; no implicit piped/batch alias creation."
+    ],
+    "decidedAgainst": null,
+    "decision": null,
+    "evidence": {
+     "count": 2,
+     "members": [
+      {
+       "backends": [
+        {
+         "priority": 1,
+         "providerName": "aoai-east",
+         "weight": 80
+        },
+        {
+         "priority": 2,
+         "providerName": "aoai-west",
+         "weight": 20
+        }
+       ],
+       "modelName": "gpt-5.2",
+       "proposedAliasName": "gpt-5",
+       "supportedEndpoints": [
+        "/openai/v1/chat/completions",
+        "/openai/v1/responses"
+       ]
+      },
+      {
+       "backends": [
+        {
+         "priority": 1,
+         "providerName": "aoai-east",
+         "weight": 80
+        }
+       ],
+       "modelName": "text-embedding-3-large",
+       "proposedAliasName": "text-embedding-3-large",
+       "supportedEndpoints": [
+        "/openai/v1/embeddings"
+       ]
+      }
+     ],
+     "pooled": true,
+     "singleMemberModels": [
+      "text-embedding-3-large"
+     ]
+    },
+    "id": "item:model/aoai-api/aliasNames",
+    "kind": "supply",
+    "memberDigests": {
+     "gpt-5.2": "sha256:8722b822bee2d6bd8c8d1fdd25c267646436ed2eba3929aa35356f9255251c7d",
+     "text-embedding-3-large": "sha256:e86f2572e76bbc9c98f418cc96a700b62ce67f2f9c4cf36d5d6c4860f9586284"
+    },
+    "options": [
+     {
+      "consequence": "Publish each model under its own name.",
+      "value": "use-model-names"
+     },
+     {
+      "consequence": "Supply names per model; set them in this item's members.",
+      "value": "override"
+     }
+    ],
+    "proposal": "use-model-names",
+    "rationale": "An alias publishes the route, and its routingName is what clients send as `model`. APIM does not store it. Proposed for 2 model(s): gpt-5, text-embedding-3-large. This API load-balances across 2 backends; each alias carries the pool's priority and weight. 1 of them are deployed in only one member (text-embedding-3-large), so those route to that member alone instead of being split.",
+    "shapeDigest": "sha256:c38a8a146c1e64afc7969f5aebe8f5474eca1797df68eab2d1e0509c3d6e63ba",
+    "source": {
+     "aspect": "aliasNames",
+     "assetId": "model:aoai-api",
+     "assetKind": "modelApi"
+    },
+    "status": "needs-decision",
+    "target": {
+     "capability": "alias.create",
+     "objects": [
+      {
+       "backendModels": [
+        {
+         "modelName": "gpt-5",
+         "priority": 1,
+         "providerName": "aoai-east",
+         "resourceId": null,
+         "weight": 80
+        },
+        {
+         "modelName": "gpt-5",
+         "priority": 2,
+         "providerName": "aoai-west",
+         "resourceId": null,
+         "weight": 20
+        }
+       ],
+       "routingName": "gpt-5",
+       "supportedEndpoints": [
+        "/openai/v1/chat/completions",
+        "/openai/v1/responses"
+       ]
+      },
+      {
+       "backendModels": [
+        {
+         "modelName": "text-embedding-3-large",
+         "priority": 1,
+         "providerName": "aoai-east",
+         "resourceId": null,
+         "weight": 80
+        }
+       ],
+       "routingName": "text-embedding-3-large",
+       "supportedEndpoints": [
+        "/openai/v1/embeddings"
+       ]
+      }
+     ]
+    },
+    "verdict": "partial"
+   },
+   {
+    "blocking": true,
+    "cannotAccept": false,
+    "capabilityId": "alias.create",
+    "capabilityLimitations": [
+     "Creates an explicit callable model name. GET-before-PUT is not atomic; no implicit piped/batch alias creation."
+    ],
+    "decidedAgainst": null,
+    "decision": null,
+    "evidence": {
+     "surface": {
+      "basis": "operationTemplates",
+      "note": "1 wildcard operation(s) forward every upstream path, so the exposed surface cannot be read from configuration. The routes callers actually use have to be established with the operator or from traffic.",
+      "operationCount": 1,
+      "publishable": [],
+      "publishableCount": 0,
+      "status": "unbounded",
+      "targetRoutes": [
+       "/openai/v1/chat/completions",
+       "/openai/v1/embeddings",
+       "/openai/v1/responses",
+       "/v1/messages"
+      ],
+      "unpublishable": [],
+      "unpublishableCount": 0
+     }
+    },
+    "id": "item:model/meta-ai/surface",
+    "kind": "choose",
+    "memberDigests": {
+     "model:meta-ai": "sha256:ab8be6db208aa5234e8ba24b2607047d3ea35d0066afa3ffced6aad155e3137e"
+    },
+    "options": [
+     {
+      "consequence": "Publish the four inference routes; any other path callers use breaks.",
+      "value": "inference-only"
+     },
+     {
+      "consequence": "Nothing moves for this API.",
+      "value": "retain-in-apim"
+     },
+     {
+      "consequence": "Stop the migration until the used routes are established.",
+      "value": "block"
+     }
+    ],
+    "proposal": "inference-only",
+    "rationale": "1 wildcard operation(s) forward every upstream path, so the exposed surface cannot be read from configuration. The routes callers actually use have to be established with the operator or from traffic.",
+    "shapeDigest": "sha256:81f6e930973657b9da285a4d4be7febe01e4b31b14bd0305af72e6abde03fc78",
+    "source": {
+     "aspect": "publishedSurface",
+     "assetId": "model:meta-ai",
+     "assetKind": "modelApi"
+    },
+    "status": "needs-decision",
+    "target": {},
+    "verdict": "partial"
+   },
+   {
+    "blocking": true,
+    "cannotAccept": false,
+    "capabilityId": "model.create",
+    "capabilityLimitations": [
+     "Explicit selected models/operations only. No Foundry onboarding side effects or implicit aliases; callable routes require separate alias nodes."
+    ],
+    "decidedAgainst": null,
+    "decision": null,
+    "evidence": {
+     "catalogue": [],
+     "discoverySource": "modelsEndpoint",
+     "notes": [
+      "openAiCompatible speaks the OpenAI protocol, so its model list is one GET away at https://api.meta.ai/v1/models with the backend credential. Run 'migrate-apim resolve-models' to fetch it without persisting the key."
+     ]
+    },
+    "id": "item:model/meta-ai/models",
+    "kind": "supply",
+    "memberDigests": {
+     "model:meta-ai": "sha256:045cccb86a3c9ac13a677c0c540cedd6718a58c1e8a04f6aa0a14b61131227c9"
+    },
+    "options": [
+     {
+      "consequence": "Read the provider's catalogue with its credential.",
+      "value": "resolve-models"
+     },
+     {
+      "consequence": "Name the models to register.",
+      "value": "list-models"
+     },
+     {
+      "consequence": "Do not migrate this API.",
+      "value": "retain-in-apim"
+     }
+    ],
+    "proposal": "resolve-models",
+    "rationale": "openAiCompatible speaks the OpenAI protocol, so its model list is one GET away at https://api.meta.ai/v1/models with the backend credential. Run 'migrate-apim resolve-models' to fetch it without persisting the key.",
+    "shapeDigest": "sha256:e393fd19e2a00e3619312e8da0b512f2c59be7e3d5236e9feefac987edba6932",
+    "source": {
+     "aspect": "modelCatalogue",
+     "assetId": "model:meta-ai",
+     "assetKind": "modelApi"
+    },
+    "status": "needs-decision",
+    "target": {},
+    "verdict": "partial"
+   },
+   {
+    "blocking": true,
+    "cannotAccept": false,
+    "capabilityId": "alias.create",
+    "capabilityLimitations": [
+     "Creates an explicit callable model name. GET-before-PUT is not atomic; no implicit piped/batch alias creation."
+    ],
+    "decidedAgainst": null,
+    "decision": null,
+    "evidence": {
+     "surface": {
+      "basis": "operationTemplates",
+      "operationCount": 2,
+      "publishable": [
+       {
+        "count": 1,
+        "group": "chatCompletions",
+        "publishable": true,
+        "route": "/openai/v1/chat/completions",
+        "samples": [
+         "/chat/completions"
+        ],
+        "subresources": 0
+       }
+      ],
+      "publishableCount": 1,
+      "status": "bounded",
+      "targetRoutes": [
+       "/openai/v1/chat/completions",
+       "/openai/v1/embeddings",
+       "/openai/v1/responses",
+       "/v1/messages"
+      ],
+      "unpublishable": [
+       {
+        "count": 1,
+        "group": "modelCatalogue",
+        "publishable": false,
+        "route": null,
+        "samples": [
+         "/models"
+        ],
+        "subresources": 0
+       }
+      ],
+      "unpublishableCount": 1
+     }
+    },
+    "id": "item:model/finance/model-api/surface",
+    "kind": "choose",
+    "memberDigests": {
+     "model:finance/model-api": "sha256:f0460375fc9b1169a3692ea83ee5f0fdc05479786a1ee77ba912c9a0e2299464"
+    },
+    "options": [
+     {
+      "consequence": "Inference moves; 1 operations stay on APIM.",
+      "value": "split"
+     },
+     {
+      "consequence": "Inference moves and the rest is dropped; those callers break.",
+      "value": "inference-only"
+     },
+     {
+      "consequence": "Nothing moves for this API.",
+      "value": "retain-in-apim"
+     },
+     {
+      "consequence": "Stop the migration until resolved.",
+      "value": "block"
+     }
+    ],
+    "proposal": "split",
+    "rationale": "1 of 2 operations map to the four publishable routes. No target for: modelCatalogue x1.",
+    "shapeDigest": "sha256:90385b59949f7d9ebc5051d510f8f5d24884a4874c9f01330ea206ac460cb6d7",
+    "source": {
+     "aspect": "publishedSurface",
+     "assetId": "model:finance/model-api",
+     "assetKind": "modelApi"
+    },
+    "status": "needs-decision",
+    "target": {},
+    "verdict": "partial"
+   },
+   {
+    "blocking": false,
+    "cannotAccept": false,
+    "capabilityId": "model.create",
+    "capabilityLimitations": [
+     "Explicit selected models/operations only. No Foundry onboarding side effects or implicit aliases; callable routes require separate alias nodes."
+    ],
+    "decidedAgainst": null,
+    "decision": null,
+    "evidence": {
+     "modelName": "claude-opus-5",
+     "modelVersion": null
+    },
+    "id": "item:model/finance/model-api/model/claude-opus-5",
+    "kind": null,
+    "memberDigests": {
+     "model:finance/model-api": "sha256:9c2f3352b9b3cb176de3495e41bdfa74ca71cc30558e625362714e2ad171db8a"
+    },
+    "options": [],
+    "proposal": null,
+    "rationale": "Registers claude-opus-5 from a resolved deployment.",
+    "shapeDigest": "sha256:a30245f530761bfb155104f1da33dc94558d0e2acc39a1f051425b3695ce4fa1",
+    "source": {
+     "aspect": "model:claude-opus-5",
+     "assetId": "model:finance/model-api",
+     "assetKind": "modelApi"
+    },
+    "status": "ready",
+    "target": {
+     "capability": "model.create",
+     "objects": [
+      {
+       "apiFormat": "AnthropicMessages",
+       "deploymentConfig": {
+        "modelName": "claude-opus-5"
+       },
+       "name": "claude-opus-5",
+       "providerName": "finance-claude-backend",
+       "supportedEndpoints": [
+        "/v1/messages"
+       ]
+      }
+     ]
+    },
+    "verdict": "native"
+   },
+   {
+    "blocking": false,
+    "cannotAccept": false,
+    "capabilityId": "alias.create",
+    "capabilityLimitations": [
+     "Creates an explicit callable model name. GET-before-PUT is not atomic; no implicit piped/batch alias creation."
+    ],
+    "decidedAgainst": null,
+    "decision": null,
+    "evidence": {
+     "count": 1,
+     "members": [
+      {
+       "backends": [
+        {
+         "priority": 0,
+         "providerName": "finance-claude-backend",
+         "weight": 100
+        }
+       ],
+       "modelName": "claude-opus-5",
+       "proposedAliasName": "claude-opus-5",
+       "supportedEndpoints": [
+        "/v1/messages"
+       ]
+      }
+     ],
+     "pooled": false,
+     "singleMemberModels": []
+    },
+    "id": "item:model/finance/model-api/aliasNames",
+    "kind": "supply",
+    "memberDigests": {
+     "claude-opus-5": "sha256:59f6b52ef3f09e1243ef6543c1db175ec2fbce577672adfe97e9f805f3f7b50f"
+    },
+    "options": [
+     {
+      "consequence": "Publish each model under its own name.",
+      "value": "use-model-names"
+     },
+     {
+      "consequence": "Supply names per model; set them in this item's members.",
+      "value": "override"
+     }
+    ],
+    "proposal": "use-model-names",
+    "rationale": "An alias publishes the route, and its routingName is what clients send as `model`. APIM does not store it. Proposed for 1 model(s): claude-opus-5.",
+    "shapeDigest": "sha256:c38a8a146c1e64afc7969f5aebe8f5474eca1797df68eab2d1e0509c3d6e63ba",
+    "source": {
+     "aspect": "aliasNames",
+     "assetId": "model:finance/model-api",
+     "assetKind": "modelApi"
+    },
+    "status": "needs-decision",
+    "target": {
+     "capability": "alias.create",
+     "objects": [
+      {
+       "backendModels": [
+        {
+         "modelName": "claude-opus-5",
+         "priority": 0,
+         "providerName": "finance-claude-backend",
+         "resourceId": null,
+         "weight": 100
+        }
+       ],
+       "routingName": "claude-opus-5",
+       "supportedEndpoints": [
+        "/v1/messages"
+       ]
+      }
+     ]
+    },
+    "verdict": "partial"
+   },
+   {
+    "blocking": true,
+    "cannotAccept": false,
+    "capabilityId": "alias.create",
+    "capabilityLimitations": [
+     "Creates an explicit callable model name. GET-before-PUT is not atomic; no implicit piped/batch alias creation."
+    ],
+    "decidedAgainst": null,
+    "decision": null,
+    "evidence": {
+     "translation": {
+      "backend": [
+       "anthropicMessages"
+      ],
+      "basis": {
+       "caveat": "Inbound dialect is inferred from operation URL templates, which are operator-configured. It is evidence, not a declaration.",
+       "inboundFrom": "operationTemplates",
+       "operationCount": 2
+      },
+      "inbound": [
+       "openAIChatCompletions"
+      ],
+      "note": "This API accepts one dialect and calls another, so APIM is translating formats. AI Gateway publishes a model at its native endpoint instead, so callers would have to move to the backend dialect or keep a translation layer in front of the gateway.",
+      "status": "translating"
+     }
+    },
+    "id": "item:model/finance/model-api/dialect",
+    "kind": "choose",
+    "memberDigests": {
+     "model:finance/model-api": "sha256:f83aa392586b99907c42384d86fa0c98d1ffecd917e4866c84a7d32f92ecd488"
+    },
+    "options": [
+     {
+      "consequence": "Callers move to anthropicMessages.",
+      "value": "move-callers"
+     },
+     {
+      "consequence": "Keep APIM in front so callers are unchanged.",
+      "value": "retain-in-apim"
+     },
+     {
+      "consequence": "Stop until the caller impact is agreed.",
+      "value": "block"
+     }
+    ],
+    "proposal": "move-callers",
+    "rationale": "This API accepts one dialect and calls another, so APIM is translating formats. AI Gateway publishes a model at its native endpoint instead, so callers would have to move to the backend dialect or keep a translation layer in front of the gateway.",
+    "shapeDigest": "sha256:e51ff0b11be8ac6a0705b4fc887163ad8fae415b049714ac4a1b380e74fe2eff",
+    "source": {
+     "aspect": "callerDialect",
+     "assetId": "model:finance/model-api",
+     "assetKind": "modelApi"
+    },
+    "status": "needs-decision",
+    "target": {},
+    "verdict": "partial"
+   },
+   {
+    "blocking": false,
+    "cannotAccept": false,
+    "capabilityId": "mcp.create",
+    "capabilityLimitations": [
+     "Explicit source contracts, finite versions, selection and behavior verification required; endpoint kind alone is not equivalence."
+    ],
+    "decidedAgainst": null,
+    "decision": null,
+    "evidence": {
+     "pattern": "passthrough",
+     "upstream": [
+      {
+       "backendId": "backend:support-backend",
+       "circuitBreaker": null,
+       "languageModel": null,
+       "mcpPath": "/mcp",
+       "priority": null,
+       "provider": null,
+       "resourceIdRef": null,
+       "secretRefs": [
+        "secret:backendInline/support-backend/credentials.header.x-api-key-0"
+       ],
+       "transport": "streamableHttp",
+       "transportBasis": {
+        "basis": "transportType",
+        "status": "declared"
+       },
+       "url": "https://support.contoso.com:8000",
+       "weight": null
+      }
+     ]
+    },
+    "id": "item:mcp/support-mcp/registration",
+    "kind": null,
+    "memberDigests": {
+     "mcp:support-mcp": "sha256:f1bb491e6f8565c9162b5296a4b51e718422a683d6959fcb7e87d281d0376bf4"
+    },
+    "options": [],
+    "proposal": null,
+    "rationale": "A passthrough MCP server registers as a tool server with its upstream endpoints.",
+    "shapeDigest": "sha256:e34b54f5c3a49c6fbd3c67a4a0f6fac01fb65f5d3f72694068d7d3b6a6485957",
+    "source": {
+     "aspect": "registration",
+     "assetId": "mcp:support-mcp",
+     "assetKind": "mcpServer"
+    },
+    "status": "ready",
+    "target": {
+     "capability": "mcp.create",
+     "objects": [
+      {
+       "endpoints": [
+        {
+         "kind": "mcp",
+         "mcp": {
+          "transport": "streamableHttp",
+          "url": "https://support.contoso.com:8000/mcp"
+         },
+         "namespace": "support-mcp",
+         "required": true
+        }
+       ],
+       "name": "support-mcp"
+      }
+     ]
+    },
+    "verdict": "native"
+   },
+   {
+    "blocking": false,
+    "cannotAccept": false,
+    "capabilityId": null,
+    "decidedAgainst": null,
+    "decision": null,
+    "evidence": {
+     "toolDiscovery": {
+      "discoveredCount": 0,
+      "note": "APIM proxies tools/list to the upstream server and stores no tool names. Call tools/list against the gateway or the upstream to enumerate them before writing an AI Gateway allowList or blocked list.",
+      "source": "upstreamMcpServer",
+      "status": "runtimeOnly"
+     }
+    },
+    "id": "item:mcp/support-mcp/tools",
+    "kind": "supply",
+    "memberDigests": {
+     "mcp:support-mcp": "sha256:3228c57de83b7d4250bc8c5cd6a34088f3056ab72e8e4e269a16ecf223a120c9"
+    },
+    "options": [
+     {
+      "consequence": "Federate whatever the server exposes at runtime. If the tool list was read from the upstream rather than through APIM, the API's policies did not run, so this can widen what callers reach beyond what APIM serves today.",
+      "value": "accept-all"
+     },
+     {
+      "consequence": "List the tools through the gateway before deciding. That list is authoritative for what the gateway will serve, because it is what callers see with APIM's policies applied.",
+      "value": "discover-at-runtime"
+     },
+     {
+      "consequence": "Keep this server on APIM, where the current tool exposure already holds.",
+      "value": "retain-in-apim"
+     }
+    ],
+    "proposal": "accept-all",
+    "rationale": "APIM stores no tool names for a passthrough server, and the CLI cannot author allowList/blocked in this baseline regardless.",
+    "shapeDigest": "sha256:b2ff0532c032b9c2760440058ade60e81b2c686ea1a6f40ce056425b2883335c",
+    "source": {
+     "aspect": "toolExposure",
+     "assetId": "mcp:support-mcp",
+     "assetKind": "mcpServer"
+    },
+    "status": "needs-decision",
+    "target": {},
+    "verdict": "gap"
+   },
+   {
+    "blocking": false,
+    "cannotAccept": false,
+    "capabilityId": "mcp.create",
+    "capabilityLimitations": [
+     "Explicit source contracts, finite versions, selection and behavior verification required; endpoint kind alone is not equivalence."
+    ],
+    "decidedAgainst": null,
+    "decision": null,
+    "evidence": {
+     "pattern": "toolProjection",
+     "upstream": [
+      {
+       "backendId": null,
+       "priority": null,
+       "transport": "http",
+       "url": "https://orders.contoso.com",
+       "viaApi": "api:orders-rest",
+       "weight": null
+      }
+     ]
+    },
+    "id": "item:mcp/orders-mcp/registration",
+    "kind": "choose",
+    "memberDigests": {
+     "mcp:orders-mcp": "sha256:1ac520a88ff484e6299212cf62ab33909a121a8ceabd101a5f5d80e82cd0879a"
+    },
+    "options": [
+     {
+      "consequence": "",
+      "value": "accept"
+     },
+     {
+      "consequence": "",
+      "value": "retain-in-apim"
+     },
+     {
+      "consequence": "",
+      "value": "block"
+     }
+    ],
+    "proposal": "accept",
+    "rationale": "The REST contract becomes an openApi tool-server source, but APIM's per-tool policies and tool name overrides do not survive.",
+    "shapeDigest": "sha256:f5e894334f9a790b769b7613b64dacefab193fe53f9bad8afa4f60cd0210b683",
+    "source": {
+     "aspect": "registration",
+     "assetId": "mcp:orders-mcp",
+     "assetKind": "mcpServer"
+    },
+    "status": "needs-decision",
+    "target": {
+     "capability": "mcp.create",
+     "objects": [
+      {
+       "endpoints": [
+        {
+         "kind": "mcp",
+         "mcp": {
+          "transport": "http",
+          "url": "https://orders.contoso.com/mcp"
+         },
+         "namespace": "orders-mcp",
+         "required": true
+        },
+        {
+         "kind": "openApi",
+         "namespace": "orders-mcp-2",
+         "openApi": {
+          "specSource": {
+           "$fromExport": "orders-rest",
+           "type": "url"
+          }
+         },
+         "required": true
+        }
+       ],
+       "name": "orders-mcp"
+      }
+     ]
+    },
+    "verdict": "partial"
+   },
+   {
+    "blocking": false,
+    "cannotAccept": false,
+    "capabilityId": null,
+    "decidedAgainst": null,
+    "decision": null,
+    "evidence": {
+     "agent": {
+      "id": "support-bot",
+      "managementPortalUrl": null,
+      "name": null,
+      "providerName": null
+     },
+     "hosting": {
+      "agentId": "support-bot",
+      "azure": {
+       "accountName": "aif",
+       "accountResourceId": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-demo/providers/Microsoft.CognitiveServices/accounts/aif",
+       "kind": "AIServices",
+       "location": "westus3",
+       "resourceGroup": "rg-demo",
+       "subscriptionId": "00000000-0000-0000-0000-000000000000"
+      },
+      "endpoint": "https://aif.services.ai.azure.com/api/projects/default-project/agents/support-bot/endpoint/protocols/a2a/",
+      "kind": "foundry",
+      "project": "default-project"
+     }
+    },
+    "id": "item:agent/support-agent/registration",
+    "kind": "choose",
+    "memberDigests": {
+     "agent:support-agent": "sha256:f8f383b95262ceef01c33d4e99d3673b746df3a7637c4657c7107a7717c9755e"
+    },
+    "options": [
+     {
+      "consequence": "",
+      "value": "retain-in-apim"
+     },
+     {
+      "consequence": "",
+      "value": "block"
+     }
+    ],
+    "proposal": "retain-in-apim",
+    "rationale": "AI Gateway exposes no A2A building block. A2A is listed outside the confirmed typed-gateway surface.",
+    "shapeDigest": "sha256:2a41d017b3eae8611cc61514afe33d12634ad69984c50374a4c64367c0eecc7e",
+    "source": {
+     "aspect": "registration",
+     "assetId": "agent:support-agent",
+     "assetKind": "agent"
+    },
+    "status": "needs-decision",
+    "target": {},
+    "verdict": "gap"
+   },
+   {
+    "blocking": false,
+    "cannotAccept": false,
+    "capabilityId": "policy.update",
+    "capabilityLimitations": [
+     "Default-workspace scope, not per-API/product access. Sibling types are preserved. Missing workspace ETag permits an unconditional write; freshness/read-back are not atomic concurrency protection."
+    ],
+    "decidedAgainst": null,
+    "decision": null,
+    "evidence": {
+     "element": "ip-filter",
+     "hasExpression": false,
+     "members": [
+      {
+       "arrival": [],
+       "assetId": "mcp:support-mcp",
+       "attributes": {
+        "action": "allow"
+       },
+       "element": "ip-filter",
+       "governedAt": "api",
+       "governedBy": "policy:api/support-mcp",
+       "path": "inbound/ip-filter[1]",
+       "policyId": "policy:api/support-mcp",
+       "scope": "api",
+       "scopeName": "support-mcp",
+       "section": "inbound",
+       "underConditional": false,
+       "via": []
+      },
+      {
+       "arrival": [],
+       "assetId": "mcp:orders-mcp",
+       "attributes": {
+        "action": "allow"
+       },
+       "element": "ip-filter",
+       "governedAt": "api",
+       "governedBy": "policy:api/orders-mcp",
+       "path": "inbound/ip-filter[1]",
+       "policyId": "policy:api/orders-mcp",
+       "scope": "api",
+       "scopeName": "orders-mcp",
+       "section": "inbound",
+       "underConditional": false,
+       "via": []
+      }
+     ],
+     "occurrences": 2,
+     "target": "ipFilter"
+    },
+    "id": "item:policy/0b290daf6f5b",
+    "kind": "choose",
+    "memberDigests": {
+     "mcp:orders-mcp#policy:api/orders-mcp#inbound/ip-filter[1]#inbound#direct": "sha256:57ed02f468a2cbee06a9aa8af323ae0753248652f8001d52bdeeaf0945dae56b",
+     "mcp:support-mcp#policy:api/support-mcp#inbound/ip-filter[1]#inbound#direct": "sha256:8d6a2cf2495721400242d4af3d8c9c6386882d3e1f6bd7ef011fa8bb4b9669ae"
+    },
+    "options": [],
+    "proposal": null,
+    "rationale": "`ip-filter` maps to the target's `ipFilter` policy.",
+    "shapeDigest": "sha256:25b914892beed12d208cdd5086c0a6ce06e65d0f84767854b1550aec6f69b236",
+    "source": {
+     "aspect": "ip-filter",
+     "assetId": null,
+     "assetKind": "policy"
+    },
+    "status": "ready",
+    "target": {
+     "capability": "policy.update",
+     "objects": [
+      {
+       "configurationComplete": true,
+       "fullConfigurationAt": {
+        "path": "inbound/ip-filter[1]",
+        "policyId": "policy:api/support-mcp"
+       },
+       "scope": {
+        "level": "gateway",
+        "name": "default"
+       },
+       "settings": {
+        "action": "allow",
+        "ranges": [
+         "10.0.0.0/24"
+        ]
+       },
+       "type": "ipFilter",
+       "unmappedAttributes": {}
+      }
+     ]
+    },
+    "verdict": "native"
+   },
+   {
+    "blocking": false,
+    "cannotAccept": false,
+    "capabilityId": "model.policy",
+    "capabilityLimitations": [
+     "Requires model ETag and sends If-Match; service enforcement requires authorized verification. Counters are identity/ipAddress arrays. Preserve siblings and inherited scope explicitly; cost limits are optional governance, not APIM quota equivalence."
+    ],
+    "decidedAgainst": null,
+    "decision": null,
+    "evidence": {
+     "element": "azure-openai-token-limit",
+     "hasExpression": true,
+     "members": [
+      {
+       "arrival": [],
+       "assetId": "model:aoai-api",
+       "attributes": {
+        "counter-key": "@(context.Subscription.Id)",
+        "estimate-prompt-tokens": "false",
+        "tokens-per-minute": "30000"
+       },
+       "element": "azure-openai-token-limit",
+       "governedAt": "api",
+       "governedBy": "policy:api/aoai-api",
+       "path": "inbound/azure-openai-token-limit[1]",
+       "policyId": "policy:api/aoai-api",
+       "scope": "api",
+       "scopeName": "aoai-api",
+       "section": "inbound",
+       "underConditional": false,
+       "via": []
+      }
+     ],
+     "occurrences": 1,
+     "target": "tokenLimit"
+    },
+    "id": "item:policy/29d05c2b843a",
+    "kind": "choose",
+    "memberDigests": {
+     "model:aoai-api#policy:api/aoai-api#inbound/azure-openai-token-limit[1]#inbound#direct": "sha256:549f258c3c20722883fe944cf5372ddf07c8d4b0d259c35c3d7e8b7770b7c9e6"
+    },
+    "options": [
+     {
+      "consequence": "",
+      "value": "identity"
+     },
+     {
+      "consequence": "",
+      "value": "ipAddress"
+     },
+     {
+      "consequence": "",
+      "value": "identity+ipAddress"
+     },
+     {
+      "consequence": "",
+      "value": "pooled"
+     }
+    ],
+    "proposal": "identity",
+    "rationale": "The counter partitions by an arbitrary expression in APIM; the target partitions by identity, IP, both, or one pooled counter. @(context.Subscription.Id) is close to identity but not identical. The source also sets estimate-prompt-tokens, which the target has no field for: applying this carries the rest and leaves those behind.",
+    "shapeDigest": "sha256:bac14873a92c62bf6007d4b5a6ea87535a0c725734a12d4a206ea118dff6b309",
+    "source": {
+     "aspect": "azure-openai-token-limit",
+     "assetId": null,
+     "assetKind": "policy"
+    },
+    "status": "needs-decision",
+    "target": {
+     "capability": "model.policy",
+     "objects": [
+      {
+       "configurationComplete": true,
+       "fullConfigurationAt": {
+        "path": "inbound/azure-openai-token-limit[1]",
+        "policyId": "policy:api/aoai-api"
+       },
+       "modelName": "gpt-5",
+       "providerName": "aoai-east",
+       "scope": {
+        "level": "api",
+        "name": "aoai-api"
+       },
+       "settings": {
+        "count": "30000",
+        "counterKey": "@(context.Subscription.Id)"
+       },
+       "type": "tokenLimit",
+       "unmappedAttributes": {
+        "estimate-prompt-tokens": "false"
+       }
+      },
+      {
+       "configurationComplete": true,
+       "fullConfigurationAt": {
+        "path": "inbound/azure-openai-token-limit[1]",
+        "policyId": "policy:api/aoai-api"
+       },
+       "modelName": "text-embedding-3-large",
+       "providerName": "aoai-east",
+       "scope": {
+        "level": "api",
+        "name": "aoai-api"
+       },
+       "settings": {
+        "count": "30000",
+        "counterKey": "@(context.Subscription.Id)"
+       },
+       "type": "tokenLimit",
+       "unmappedAttributes": {
+        "estimate-prompt-tokens": "false"
+       }
+      },
+      {
+       "configurationComplete": true,
+       "fullConfigurationAt": {
+        "path": "inbound/azure-openai-token-limit[1]",
+        "policyId": "policy:api/aoai-api"
+       },
+       "modelName": "gpt-5",
+       "providerName": "aoai-west",
+       "scope": {
+        "level": "api",
+        "name": "aoai-api"
+       },
+       "settings": {
+        "count": "30000",
+        "counterKey": "@(context.Subscription.Id)"
+       },
+       "type": "tokenLimit",
+       "unmappedAttributes": {
+        "estimate-prompt-tokens": "false"
+       }
+      }
+     ]
+    },
+    "unmappedAttributes": [
+     "estimate-prompt-tokens"
+    ],
+    "verdict": "partial"
+   },
+   {
+    "blocking": true,
+    "cannotAccept": false,
+    "capabilityId": null,
+    "decidedAgainst": null,
+    "decision": null,
+    "evidence": {
+     "element": "llm-content-safety",
+     "hasExpression": false,
+     "members": [
+      {
+       "arrival": [],
+       "assetId": "model:aoai-api",
+       "attributes": {
+        "backend-id": "AI-CS-demo",
+        "shield-prompt": "true"
+       },
+       "element": "llm-content-safety",
+       "governedAt": "api",
+       "governedBy": "policy:api/aoai-api",
+       "path": "inbound/llm-content-safety[1]",
+       "policyId": "policy:api/aoai-api",
+       "scope": "api",
+       "scopeName": "aoai-api",
+       "section": "inbound",
+       "underConditional": false,
+       "via": []
+      }
+     ],
+     "occurrences": 1,
+     "target": null
+    },
+    "id": "item:policy/af191747445b",
+    "kind": "choose",
+    "memberDigests": {
+     "model:aoai-api#policy:api/aoai-api#inbound/llm-content-safety[1]#inbound#direct": "sha256:e1d61e4ed9e5cf312548163ccdd1851f42d5883c4395473fd839bfbc1a789fba"
+    },
+    "options": [
+     {
+      "consequence": "Migrate without it and accept the reduced posture.",
+      "value": "accept"
+     },
+     {
+      "consequence": "Replace it with a different control on the target.",
+      "value": "compensate"
+     },
+     {
+      "consequence": "Keep this workload on APIM.",
+      "value": "retain-in-apim"
+     },
+     {
+      "consequence": "Stop the migration until resolved.",
+      "value": "block"
+     }
+    ],
+    "proposal": "retain-in-apim",
+    "rationale": "Content-safety flags are visible in the CLI but are not supported on typed aigateways. The policy also pulls in a separate Content Safety backend.",
+    "shapeDigest": "sha256:326adaaa8aac1623abfd06a07fc77e9a631d537155d5e625e723c1d073121e1c",
+    "source": {
+     "aspect": "llm-content-safety",
+     "assetId": null,
+     "assetKind": "policy"
+    },
+    "status": "needs-decision",
+    "target": {},
+    "verdict": "gap"
+   },
+   {
+    "blocking": false,
+    "cannotAccept": false,
+    "capabilityId": "policy.update",
+    "capabilityLimitations": [
+     "Default-workspace scope, not per-API/product access. Sibling types are preserved. Missing workspace ETag permits an unconditional write; freshness/read-back are not atomic concurrency protection."
+    ],
+    "decidedAgainst": null,
+    "decision": null,
+    "evidence": {
+     "element": "rate-limit-by-key",
+     "hasExpression": true,
+     "members": [
+      {
+       "arrival": [],
+       "assetId": "mcp:support-mcp",
+       "attributes": {
+        "calls": "60",
+        "counter-key": "@(context.Subscription.Id)",
+        "renewal-period": "60"
+       },
+       "element": "rate-limit-by-key",
+       "governedAt": "api",
+       "governedBy": "policy:api/support-mcp",
+       "path": "inbound/rate-limit-by-key[1]",
+       "policyId": "policy:api/support-mcp",
+       "scope": "api",
+       "scopeName": "support-mcp",
+       "section": "inbound",
+       "underConditional": false,
+       "via": []
+      },
+      {
+       "arrival": [],
+       "assetId": "mcp:orders-mcp",
+       "attributes": {
+        "calls": "60",
+        "counter-key": "@(context.Subscription.Id)",
+        "renewal-period": "60"
+       },
+       "element": "rate-limit-by-key",
+       "governedAt": "api",
+       "governedBy": "policy:api/orders-mcp",
+       "path": "inbound/rate-limit-by-key[1]",
+       "policyId": "policy:api/orders-mcp",
+       "scope": "api",
+       "scopeName": "orders-mcp",
+       "section": "inbound",
+       "underConditional": false,
+       "via": []
+      }
+     ],
+     "occurrences": 2,
+     "target": "requestRateLimit"
+    },
+    "id": "item:policy/d11d036260fb",
+    "kind": "choose",
+    "memberDigests": {
+     "mcp:orders-mcp#policy:api/orders-mcp#inbound/rate-limit-by-key[1]#inbound#direct": "sha256:93180bc637aebcc525539a99d1477ed1cb04ef81723c98bb2dd9182c1070cdd7",
+     "mcp:support-mcp#policy:api/support-mcp#inbound/rate-limit-by-key[1]#inbound#direct": "sha256:a7045e5ec362e11bee5b59354db976d45c9883775324e341ed9618ad683048a7"
+    },
+    "options": [
+     {
+      "consequence": "",
+      "value": "identity"
+     },
+     {
+      "consequence": "",
+      "value": "ipAddress"
+     },
+     {
+      "consequence": "",
+      "value": "identity+ipAddress"
+     },
+     {
+      "consequence": "",
+      "value": "pooled"
+     }
+    ],
+    "proposal": "identity",
+    "rationale": "APIM counter-key is an arbitrary expression; AI Gateway partitions by identity, IP, both, or a single pooled counter. @(context.Subscription.Id) is close to identity but not identical.",
+    "shapeDigest": "sha256:2037f8c707aeb679e7152421051915155d91b1d0ebfab18d9225e5fa2f884b66",
+    "source": {
+     "aspect": "rate-limit-by-key",
+     "assetId": null,
+     "assetKind": "policy"
+    },
+    "status": "needs-decision",
+    "target": {
+     "capability": "policy.update",
+     "objects": [
+      {
+       "configurationComplete": true,
+       "fullConfigurationAt": {
+        "path": "inbound/rate-limit-by-key[1]",
+        "policyId": "policy:api/support-mcp"
+       },
+       "scope": {
+        "level": "gateway",
+        "name": "default"
+       },
+       "settings": {
+        "callsPerPeriod": "60",
+        "counterKey": "@(context.Subscription.Id)",
+        "periodSeconds": "60"
+       },
+       "type": "requestRateLimit",
+       "unmappedAttributes": {}
+      }
+     ]
+    },
+    "verdict": "partial"
+   },
+   {
+    "blocking": true,
+    "cannotAccept": false,
+    "capabilityId": null,
+    "decidedAgainst": null,
+    "decision": null,
+    "evidence": {
+     "element": "set-header",
+     "hasExpression": false,
+     "members": [
+      {
+       "arrival": [],
+       "assetId": "mcp:support-mcp",
+       "attributes": {
+        "exists-action": "override",
+        "name": "x-mcp-caller"
+       },
+       "element": "set-header",
+       "governedAt": "api",
+       "governedBy": "policy:api/support-mcp",
+       "path": "inbound/set-header[1]",
+       "policyId": "policy:api/support-mcp",
+       "scope": "api",
+       "scopeName": "support-mcp",
+       "section": "inbound",
+       "underConditional": false,
+       "via": []
+      },
+      {
+       "arrival": [],
+       "assetId": "mcp:orders-mcp",
+       "attributes": {
+        "exists-action": "override",
+        "name": "x-mcp-caller"
+       },
+       "element": "set-header",
+       "governedAt": "api",
+       "governedBy": "policy:api/orders-mcp",
+       "path": "inbound/set-header[1]",
+       "policyId": "policy:api/orders-mcp",
+       "scope": "api",
+       "scopeName": "orders-mcp",
+       "section": "inbound",
+       "underConditional": false,
+       "via": []
+      }
+     ],
+     "occurrences": 2,
+     "target": null
+    },
+    "id": "item:policy/da79943af481",
+    "kind": "choose",
+    "memberDigests": {
+     "mcp:orders-mcp#policy:api/orders-mcp#inbound/set-header[1]#inbound#direct": "sha256:e9b76db8a16bd08987d82f31d24c4d1ab0ee74e1e97dbd29cfa61df57ea3a066",
+     "mcp:support-mcp#policy:api/support-mcp#inbound/set-header[1]#inbound#direct": "sha256:a027c322e818f45d954371c9242dc825288c0f796cb5911fb6387a18b9643ade"
+    },
+    "options": [
+     {
+      "consequence": "Migrate without it and accept the reduced posture.",
+      "value": "accept"
+     },
+     {
+      "consequence": "Replace it with a different control on the target.",
+      "value": "compensate"
+     },
+     {
+      "consequence": "Keep this workload on APIM.",
+      "value": "retain-in-apim"
+     },
+     {
+      "consequence": "Stop the migration until resolved.",
+      "value": "block"
+     }
+    ],
+    "proposal": "accept",
+    "rationale": "No request or response rewriting on the target.",
+    "shapeDigest": "sha256:326adaaa8aac1623abfd06a07fc77e9a631d537155d5e625e723c1d073121e1c",
+    "source": {
+     "aspect": "set-header",
+     "assetId": null,
+     "assetKind": "policy"
+    },
+    "status": "needs-decision",
+    "target": {},
+    "verdict": "gap"
+   },
+   {
+    "blocking": false,
+    "cannotAccept": false,
+    "capabilityId": null,
+    "decidedAgainst": null,
+    "decision": null,
+    "evidence": {
+     "element": "azure-openai-emit-token-metric",
+     "hasExpression": false,
+     "members": [
+      {
+       "arrival": [],
+       "assetId": "model:aoai-api",
+       "attributes": {
+        "namespace": "llm"
+       },
+       "element": "azure-openai-emit-token-metric",
+       "governedAt": "api",
+       "governedBy": "policy:api/aoai-api",
+       "path": "inbound/azure-openai-emit-token-metric[1]",
+       "policyId": "policy:api/aoai-api",
+       "scope": "api",
+       "scopeName": "aoai-api",
+       "section": "inbound",
+       "underConditional": false,
+       "via": []
+      }
+     ],
+     "occurrences": 1,
+     "target": null
+    },
+    "id": "item:policy/efa2571a0bb2",
+    "kind": "choose",
+    "memberDigests": {
+     "model:aoai-api#policy:api/aoai-api#inbound/azure-openai-emit-token-metric[1]#inbound#direct": "sha256:20d40c54d2614c6881179f0463e2b890f07187de9329f693cf5b4cdf73a52fca"
+    },
+    "options": [
+     {
+      "consequence": "",
+      "value": "accept"
+     },
+     {
+      "consequence": "",
+      "value": "compensate"
+     },
+     {
+      "consequence": "",
+      "value": "retain-in-apim"
+     }
+    ],
+    "proposal": "accept",
+    "rationale": "Token metrics are emitted by the gateway, but custom dimensions do not carry over one for one. Where the telemetry goes is a separate decision, on the telemetry destination item.",
+    "shapeDigest": "sha256:5ffb725614bb2498c8de4f03f0888190ea82d5b45e12dc7dced42b2eba4d16c1",
+    "source": {
+     "aspect": "azure-openai-emit-token-metric",
+     "assetId": null,
+     "assetKind": "policy"
+    },
+    "status": "needs-decision",
+    "target": {},
+    "verdict": "partial"
+   },
+   {
+    "blocking": true,
+    "cannotAccept": false,
+    "capabilityId": null,
+    "decidedAgainst": null,
+    "decision": null,
+    "evidence": {
+     "element": "llm-semantic-cache-lookup",
+     "hasExpression": false,
+     "members": [
+      {
+       "arrival": [],
+       "assetId": "model:aoai-api",
+       "attributes": {
+        "embeddings-backend-id": "embed",
+        "score-threshold": "0.9"
+       },
+       "element": "llm-semantic-cache-lookup",
+       "governedAt": "api",
+       "governedBy": "policy:api/aoai-api",
+       "path": "inbound/llm-semantic-cache-lookup[1]",
+       "policyId": "policy:api/aoai-api",
+       "scope": "api",
+       "scopeName": "aoai-api",
+       "section": "inbound",
+       "underConditional": false,
+       "via": []
+      }
+     ],
+     "occurrences": 1,
+     "target": null
+    },
+    "id": "item:policy/fe9e3da76299",
+    "kind": "choose",
+    "memberDigests": {
+     "model:aoai-api#policy:api/aoai-api#inbound/llm-semantic-cache-lookup[1]#inbound#direct": "sha256:8b61e39f1e9a3e770856eaf588cf4998424a13d4ca11b10f66009adde9391330"
+    },
+    "options": [
+     {
+      "consequence": "Migrate without it and accept the reduced posture.",
+      "value": "accept"
+     },
+     {
+      "consequence": "Replace it with a different control on the target.",
+      "value": "compensate"
+     },
+     {
+      "consequence": "Keep this workload on APIM.",
+      "value": "retain-in-apim"
+     },
+     {
+      "consequence": "Stop the migration until resolved.",
+      "value": "block"
+     }
+    ],
+    "proposal": "accept",
+    "rationale": "No caching of any kind on the typed gateway.",
+    "shapeDigest": "sha256:326adaaa8aac1623abfd06a07fc77e9a631d537155d5e625e723c1d073121e1c",
+    "source": {
+     "aspect": "llm-semantic-cache-lookup",
+     "assetId": null,
+     "assetKind": "policy"
+    },
+    "status": "needs-decision",
+    "target": {},
+    "verdict": "gap"
+   },
+   {
+    "blocking": false,
+    "cannotAccept": false,
+    "capabilityId": null,
+    "decidedAgainst": null,
+    "decision": null,
+    "evidence": {
+     "disposition": "dissolved",
+     "elementCount": 1,
+     "fragment": "killswitch",
+     "includedBy": [
+      {
+       "assetId": "mcp:support-mcp",
+       "policyId": "policy:api/support-mcp",
+       "scopeLevel": "api",
+       "section": "inbound",
+       "underConditional": false,
+       "via": [
+        "policy:fragment/killswitch"
+       ]
+      },
+      {
+       "assetId": "mcp:orders-mcp",
+       "policyId": "policy:api/orders-mcp",
+       "scopeLevel": "api",
+       "section": "inbound",
+       "underConditional": false,
+       "via": [
+        "policy:fragment/killswitch"
+       ]
+      }
+     ],
+     "operationPoliciesCollected": false,
+     "parseError": null,
+     "sections": [
+      "inbound"
+     ]
+    },
+    "id": "item:fragment/policy-fragment/killswitch",
+    "kind": null,
+    "memberDigests": {
+     "policy:fragment/killswitch": "sha256:03676cf8baf2457d683dd14353e818a85f4f279518221f3cc7e3d02e4e1bfed4"
+    },
+    "options": [],
+    "proposal": null,
+    "rationale": "AI Gateway has no policy composition: no fragments, no includes, no inheritance. A fragment is therefore dissolved into every scope that includes it, and what it carries is assessed as the elements of that scope. Listed so a reader can see the fragment reached the plan rather than having to infer it from the policies it contributed.",
+    "shapeDigest": "sha256:985bba75ef3e9492c6d88e228bbc97fcf8fa98938a61ee297df2e630eaa1b791",
+    "source": {
+     "aspect": "killswitch",
+     "assetId": "policy:fragment/killswitch",
+     "assetKind": "policyFragment"
+    },
+    "status": "excluded",
+    "target": {},
+    "verdict": "handled"
+   },
+   {
+    "blocking": true,
+    "cannotAccept": false,
+    "capabilityId": null,
+    "decidedAgainst": null,
+    "decision": null,
+    "evidence": {
+     "workspace": {
+      "collected": true,
+      "description": "",
+      "displayName": "finance",
+      "name": "finance",
+      "serveOn": "workspaceAndDefault"
+     }
+    },
+    "id": "item:workspace/finance",
+    "kind": "choose",
+    "memberDigests": {
+     "item:workspace/finance": "sha256:108d6d342392ed0ed72fd4c838a0777c13e73bfbca52214ad4c9a4f77ae60b9a"
+    },
+    "options": [
+     {
+      "consequence": "",
+      "value": "flatten"
+     },
+     {
+      "consequence": "",
+      "value": "retain-in-apim"
+     },
+     {
+      "consequence": "",
+      "value": "block"
+     }
+    ],
+    "proposal": "flatten",
+    "rationale": "AI Gateway configures the implicit default workspace only. Flattening can collide with same-named assets in other workspaces.",
+    "shapeDigest": "sha256:21d136c9c124b9884725b30b6f0a77a5d2ccde8840f9ebff689094c911461c56",
+    "source": {
+     "aspect": "finance",
+     "assetId": null,
+     "assetKind": "workspace"
+    },
+    "status": "needs-decision",
+    "target": {},
+    "verdict": "partial"
+   },
+   {
+    "blocking": true,
+    "cannotAccept": false,
+    "capabilityId": "key.create",
+    "capabilityLimitations": [
+     "Creates new gateway-wide key metadata, not imported APIM secrets or per-API access. Does not read key values."
+    ],
+    "decidedAgainst": null,
+    "decision": null,
+    "evidence": {
+     "count": 2,
+     "scopeLevels": [
+      "product",
+      "service"
+     ]
+    },
+    "id": "item:access/subscriptions",
+    "kind": "choose",
+    "memberDigests": {
+     "item:access/subscriptions": "sha256:a4375c884d07f3bc9be51e144ad785efaf1743eb5a2cd8156e05185146bfc7ea"
+    },
+    "options": [
+     {
+      "consequence": "",
+      "value": "gateway-key-per-consumer"
+     },
+     {
+      "consequence": "",
+      "value": "entra-rbac"
+     },
+     {
+      "consequence": "",
+      "value": "retain-in-apim"
+     }
+    ],
+    "proposal": "entra-rbac",
+    "rationale": "APIM subscription keys are scoped per product, per API, or service-wide. AI Gateway keys are gateway-wide and no key value can be imported, so every caller is re-keyed.",
+    "shapeDigest": "sha256:8f827c3aa469742d9e2aaba848f579dae5aa9daa81cb9de7c5f9d2fe6990b31d",
+    "source": {
+     "aspect": "subscriptions",
+     "assetId": null,
+     "assetKind": "access"
+    },
+    "status": "needs-decision",
+    "target": {},
+    "verdict": "partial"
+   },
+   {
+    "blocking": false,
+    "cannotAccept": false,
+    "capabilityId": "telemetry.create",
+    "capabilityLimitations": [
+     "Reviewed ApplicationInsights connectionString input only; OpenTelemetry/free-form telemetry fields lack a reviewed child schema. Runtime-only credentials, explicit payload capture, and existing external telemetry resources."
+    ],
+    "decidedAgainst": null,
+    "decision": null,
+    "evidence": {
+     "apimLoggers": []
+    },
+    "id": "item:telemetry/destination",
+    "kind": "choose",
+    "memberDigests": {
+     "item:telemetry/destination": "sha256:44a76fab9f244e58d38ac8c4e3594b470748a2047f93320859ed42b7dc0626f0"
+    },
+    "options": [
+     {
+      "consequence": "Enable the OTLP endpoint on the Application Insights resource APIM already reports to. Both products' telemetry stays in one place, and enabling it changes a resource other workloads may share.",
+      "value": "reuse-appinsights"
+     },
+     {
+      "consequence": "Create an Application Insights resource with the OTLP endpoint enabled, for the gateway alone. Nothing shared changes; existing dashboards and alerts do not cover the gateway until they are rebuilt.",
+      "value": "new-appinsights"
+     },
+     {
+      "consequence": "No exporter. The gateway's own metrics are the only telemetry, and nothing reports into Application Insights.",
+      "value": "gateway-metrics-only"
+     },
+     {
+      "consequence": "Keep this workload on APIM, reporting as it does now.",
+      "value": "retain-in-apim"
+     }
+    ],
+    "proposal": "reuse-appinsights",
+    "rationale": "APIM reports to Azure Application Insights and the gateway exports OpenTelemetry. The only surface both support is the OTLP endpoint on an Application Insights resource. This question asks where that is: reuse the resource APIM already reports to, create a new one for the gateway alone, configure the gateway only, or keep both separate.",
+    "shapeDigest": "sha256:854c72016c08b472de7d7001c715feb13e9ba64c50b9308bc40d14e398f00f07",
+    "source": {
+     "aspect": "destination",
+     "assetId": null,
+     "assetKind": "telemetry"
+    },
+    "status": "needs-decision",
+    "target": {},
+    "verdict": "partial"
+   }
+  ],
+  "kind": "apimMigrationPlan",
+  "orphanedDecisions": [],
+  "plannerGaps": [],
+  "policyCoverage": {
+   "dispositions": {
+    "classified": 10,
+    "configuration": 8,
+    "handled": 1,
+    "notApplicable": 15
+   },
+   "unrecognised": [],
+   "walked": 34
+  },
+  "prerequisites": [
+   {
+    "commands": [
+     {
+      "command": "az role assignment create --role 'Foundry User' --assignee-object-id <gateway-principal-id> --assignee-principal-type ServicePrincipal --scope /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-demo/providers/Microsoft.CognitiveServices/accounts/aif",
+      "principalFrom": "az aigateway show ... --query identity.principalId -o tsv, after the identity phase",
+      "roleDefinitionId": "53ca6127-db72-4b80-b1b0-d745d6d5456d",
+      "scope": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-demo/providers/Microsoft.CognitiveServices/accounts/aif"
+     }
+    ],
+    "detail": "A provider using ManagedIdentity needs a role assignment on the backend account, and role assignments are outside the gateway resource provider. The target's system-assigned identity is a new principal, so the source's existing grants do not apply to it.",
+    "id": "prereq:foundry-rbac",
+    "owner": "azure-administrator",
+    "summary": "Grant the gateway identity data-plane access on each Foundry account"
+   },
+   {
+    "commands": [],
+    "detail": "APIM sends telemetry to Azure Application Insights; AI Gateway sends it through an OpenTelemetry exporter. The only surface both support is the OTLP endpoint on the Application Insights resource, which is off until someone turns it on. Enable it on the existing resource, or create one with it enabled, then settle the telemetry item on an OpenTelemetry exporter pointed at it. Without that endpoint there is no path at all, and the gateway's own metrics are the only telemetry the migration produces.",
+    "id": "prereq:appinsights-otlp",
+    "owner": "azure-administrator",
+    "summary": "Enable the OTLP endpoint on the Application Insights resource APIM reports to"
+   },
+   {
+    "commands": [
+     {
+      "command": "az role assignment create --role 'AI Gateway Models User' --assignee <caller-principal> --scope <gateway-resource-id>",
+      "note": "Use 'AI Gateway Tools User' for MCP callers, or 'AI Gateway User' for both.",
+      "roleDefinitionId": "a6b68e3d-a1f0-4c60-8678-237c050cf4ea"
+     }
+    ],
+    "detail": "A management role such as Contributor does not imply runtime invocation access.",
+    "id": "prereq:caller-rbac",
+    "owner": "azure-administrator",
+    "summary": "Assign callers AI Gateway Models User / Tools User at the right scope"
+   },
+   {
+    "detail": "Several CLI commands dispatch by name without --ids, and in a migration the source APIM and the target gateway plausibly share a name.",
+    "id": "prereq:name-collision",
+    "owner": "migrate-apim",
+    "summary": "Preflight the target name against Microsoft.ApiManagement/service"
+   }
+  ],
+  "schemaVersion": "1.0",
+  "source": {
+   "name": "apim-demo",
+   "resourceId": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-demo/providers/Microsoft.ApiManagement/service/apim-demo"
+  },
+  "summary": {
+   "blocking": 10,
+   "byKind": {
+    "choose": 15,
+    "supply": 4
+   },
+   "byStatus": {
+    "excluded": 1,
+    "needs-decision": 19,
+    "ready": 11
+   },
+   "orphanedDecisions": 0,
+   "plannerGaps": 0,
+   "total": 31,
+   "unsettled": 19
+  },
+  "target": {
+   "capabilities": {
+    "capabilities": {
+     "alias.create": "declared",
+     "alias.update": "declared",
+     "alias.verify": "declared",
+     "connection.update": "declared",
+     "connection.verify": "declared",
+     "gateway.create": "declared",
+     "gateway.verify": "declared",
+     "identity.assign": "declared",
+     "key.create": "declared",
+     "key.update": "declared",
+     "key.verify": "declared",
+     "mcp.create": "declared",
+     "mcp.source.add": "declared",
+     "mcp.update": "declared",
+     "mcp.verify": "declared",
+     "model-policy.verify": "declared",
+     "model.create": "declared",
+     "model.policy": "declared",
+     "model.update": "declared",
+     "model.verify": "declared",
+     "network.update": "declared",
+     "network.verify": "declared",
+     "policy.update": "declared",
+     "policy.verify": "declared",
+     "provider.create": "declared",
+     "provider.import": "declared",
+     "provider.update": "declared",
+     "provider.verify": "declared",
+     "telemetry.create": "declared",
+     "telemetry.update": "declared",
+     "telemetry.verify": "declared"
+    },
+    "catalog": "aigateway-1.0.0b31",
+    "cliVersion": "1.0.0b31",
+    "probed": false,
+    "serviceOnly": [
+     "alias-selection-order",
+     "alias-session-affinity",
+     "alias-auto-model-selection"
+    ],
+    "unsupported": [
+     "subscription-key-copy",
+     "products",
+     "arbitrary-policy-xml",
+     "workspace-creation",
+     "bulk-provider-sync-apply",
+     "source-sku-conversion",
+     "client-cutover",
+     "external-resource-provisioning",
+     "automatic-foundry-rbac",
+     "api-key-rename",
+     "opaque-cost-overrides"
+    ]
+   },
+   "publishableRoutes": [
+    "/openai/v1/chat/completions",
+    "/openai/v1/responses",
+    "/openai/v1/embeddings",
+    "/v1/messages"
+   ],
+   "resourceId": null
+  }
+ },
+ "resolution": {
+  "authentication-basic|expr=False": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"A model provider authenticates with a managed identity or an API key. `model-provider create` and `model-provider update` expose no basic credential, no client certificate, and nothing equivalent to an APIM credential manager, so a backend secured any other way has no target. `authentication-managed-identity` is the one member of this family that does map, and it has a rule of its own.\", \"verdict\": \"gap\"}",
+  "authentication-basic|expr=True": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"A model provider authenticates with a managed identity or an API key. `model-provider create` and `model-provider update` expose no basic credential, no client certificate, and nothing equivalent to an APIM credential manager, so a backend secured any other way has no target. `authentication-managed-identity` is the one member of this family that does map, and it has a rule of its own.\", \"verdict\": \"gap\"}",
+  "authentication-certificate|expr=False": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"A model provider authenticates with a managed identity or an API key. `model-provider create` and `model-provider update` expose no basic credential, no client certificate, and nothing equivalent to an APIM credential manager, so a backend secured any other way has no target. `authentication-managed-identity` is the one member of this family that does map, and it has a rule of its own.\", \"verdict\": \"gap\"}",
+  "authentication-certificate|expr=True": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"A model provider authenticates with a managed identity or an API key. `model-provider create` and `model-provider update` expose no basic credential, no client certificate, and nothing equivalent to an APIM credential manager, so a backend secured any other way has no target. `authentication-managed-identity` is the one member of this family that does map, and it has a rule of its own.\", \"verdict\": \"gap\"}",
+  "authentication-managed-identity|expr=False": "{\"capabilityId\": \"provider.create\", \"rationale\": \"Becomes provider authentication configuration. Carried by the model provider item rather than raised again here.\", \"target\": \"provider.authentication.ManagedIdentity\", \"verdict\": \"handled\"}",
+  "authentication-managed-identity|expr=True": "{\"capabilityId\": \"provider.create\", \"rationale\": \"Becomes provider authentication configuration. Carried by the model provider item rather than raised again here.\", \"target\": \"provider.authentication.ManagedIdentity\", \"verdict\": \"handled\"}",
+  "azure-openai-content-safety|expr=False": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"Content-safety flags are visible in the CLI but are not supported on typed aigateways. The policy also pulls in a separate Content Safety backend.\", \"verdict\": \"gap\"}",
+  "azure-openai-content-safety|expr=True": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"Content-safety flags are visible in the CLI but are not supported on typed aigateways. The policy also pulls in a separate Content Safety backend.\", \"verdict\": \"gap\"}",
+  "azure-openai-emit-token-metric|expr=False": "{\"answer\": \"choose\", \"options\": [\"accept\", \"compensate\", \"retain-in-apim\"], \"proposal\": \"accept\", \"rationale\": \"Token metrics are emitted by the gateway, but custom dimensions do not carry over one for one. Where the telemetry goes is a separate decision, on the telemetry destination item.\", \"verdict\": \"partial\"}",
+  "azure-openai-emit-token-metric|expr=True": "{\"answer\": \"choose\", \"options\": [\"accept\", \"compensate\", \"retain-in-apim\"], \"proposal\": \"accept\", \"rationale\": \"Token metrics are emitted by the gateway, but custom dimensions do not carry over one for one. Where the telemetry goes is a separate decision, on the telemetry destination item.\", \"verdict\": \"partial\"}",
+  "azure-openai-semantic-cache-lookup|expr=False": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No caching of any kind on the typed gateway.\", \"verdict\": \"gap\"}",
+  "azure-openai-semantic-cache-lookup|expr=True": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No caching of any kind on the typed gateway.\", \"verdict\": \"gap\"}",
+  "azure-openai-semantic-cache-store|expr=False": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No caching of any kind on the typed gateway.\", \"verdict\": \"gap\"}",
+  "azure-openai-semantic-cache-store|expr=True": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No caching of any kind on the typed gateway.\", \"verdict\": \"gap\"}",
+  "azure-openai-token-limit|expr=False": "{\"batchOn\": [\"counter-key\"], \"capabilityId\": \"model.policy\", \"partial\": {\"answer\": \"choose\", \"options\": [\"identity\", \"ipAddress\", \"identity+ipAddress\", \"pooled\"], \"proposal\": \"identity\", \"rationale\": \"The counter partitions by an arbitrary expression in APIM; the target partitions by identity, IP, both, or one pooled counter. @(context.Subscription.Id) is close to identity but not identical.\"}, \"partialWhen\": {\"attributeIsExpression\": \"counter-key\"}, \"target\": \"tokenLimit\", \"verdict\": \"native\"}",
+  "azure-openai-token-limit|expr=True": "{\"batchOn\": [\"counter-key\"], \"capabilityId\": \"model.policy\", \"partial\": {\"answer\": \"choose\", \"options\": [\"identity\", \"ipAddress\", \"identity+ipAddress\", \"pooled\"], \"proposal\": \"identity\", \"rationale\": \"The counter partitions by an arbitrary expression in APIM; the target partitions by identity, IP, both, or one pooled counter. @(context.Subscription.Id) is close to identity but not identical.\"}, \"partialWhen\": {\"attributeIsExpression\": \"counter-key\"}, \"target\": \"tokenLimit\", \"verdict\": \"native\"}",
+  "base|expr=False": "{\"rationale\": \"Composition, control flow, and gateway plumbing with no target object.\", \"verdict\": \"notApplicable\"}",
+  "base|expr=True": "{\"rationale\": \"Composition, control flow, and gateway plumbing with no target object.\", \"verdict\": \"notApplicable\"}",
+  "cache-lookup-value|expr=False": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No caching of any kind on the typed gateway.\", \"verdict\": \"gap\"}",
+  "cache-lookup-value|expr=True": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No caching of any kind on the typed gateway.\", \"verdict\": \"gap\"}",
+  "cache-lookup|expr=False": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No caching of any kind on the typed gateway.\", \"verdict\": \"gap\"}",
+  "cache-lookup|expr=True": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No caching of any kind on the typed gateway.\", \"verdict\": \"gap\"}",
+  "cache-store-value|expr=False": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No caching of any kind on the typed gateway.\", \"verdict\": \"gap\"}",
+  "cache-store-value|expr=True": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No caching of any kind on the typed gateway.\", \"verdict\": \"gap\"}",
+  "cache-store|expr=False": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No caching of any kind on the typed gateway.\", \"verdict\": \"gap\"}",
+  "cache-store|expr=True": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No caching of any kind on the typed gateway.\", \"verdict\": \"gap\"}",
+  "check-header|expr=False": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"Caller authentication on the gateway is Entra auth plus data-plane RBAC, or an API key. A gate on a shared secret in a header, or on a client certificate, is neither. `validate-jwt` and `validate-azure-ad-token` are the members of this family that do map, and they have a rule of their own.\", \"verdict\": \"gap\"}",
+  "check-header|expr=True": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"Caller authentication on the gateway is Entra auth plus data-plane RBAC, or an API key. A gate on a shared secret in a header, or on a client certificate, is neither. `validate-jwt` and `validate-azure-ad-token` are the members of this family that do map, and they have a rule of their own.\", \"verdict\": \"gap\"}",
+  "choose|expr=False": "{\"rationale\": \"Composition, control flow, and gateway plumbing with no target object.\", \"verdict\": \"notApplicable\"}",
+  "choose|expr=True": "{\"rationale\": \"Composition, control flow, and gateway plumbing with no target object.\", \"verdict\": \"notApplicable\"}",
+  "cors|expr=False": "{\"rationale\": \"Composition, control flow, and gateway plumbing with no target object.\", \"verdict\": \"notApplicable\"}",
+  "cors|expr=True": "{\"rationale\": \"Composition, control flow, and gateway plumbing with no target object.\", \"verdict\": \"notApplicable\"}",
+  "emit-metric|expr=False": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"The gateway reports through a telemetry exporter it owns: `telemetry-exporter create` takes a kind and an endpoint, not a metric to emit or a sink to write to. There is no Event Hub destination and no way to author a custom metric. Where the gateway's own telemetry reports is a separate decision, on the telemetry destination item.\", \"verdict\": \"gap\"}",
+  "emit-metric|expr=True": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"The gateway reports through a telemetry exporter it owns: `telemetry-exporter create` takes a kind and an endpoint, not a metric to emit or a sink to write to. There is no Event Hub destination and no way to author a custom metric. Where the gateway's own telemetry reports is a separate decision, on the telemetry destination item.\", \"verdict\": \"gap\"}",
+  "find-and-replace|expr=False": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No request or response rewriting on the target.\", \"verdict\": \"gap\"}",
+  "find-and-replace|expr=True": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No request or response rewriting on the target.\", \"verdict\": \"gap\"}",
+  "forward-request|expr=False": "{\"capabilityId\": \"alias.create\", \"partial\": {\"answer\": \"choose\", \"options\": [{\"consequence\": \"Every call takes the alias backend pool in its own order, whatever the source would have chosen for it.\", \"value\": \"accept\"}, {\"consequence\": \"Say what the condition was for in the priority and weight of the alias backend models, as far as it can be said that way.\", \"value\": \"compensate\"}, {\"consequence\": \"Keep this workload on APIM, where the routing logic still runs.\", \"value\": \"retain-in-apim\"}], \"proposal\": \"compensate\", \"rationale\": \"The source decides where the request goes with logic the target has no place for: a policy expression, a branch of a `choose`, or both. The alias backend pool carries the set of backends and their priority and weight, not the rule that picked among them.\"}, \"partialWhen\": {\"hasExpression\": true, \"underConditional\": true}, \"rationale\": \"Backend selection becomes the alias backend pool.\", \"verdict\": \"handled\"}",
+  "forward-request|expr=True": "{\"capabilityId\": \"alias.create\", \"partial\": {\"answer\": \"choose\", \"options\": [{\"consequence\": \"Every call takes the alias backend pool in its own order, whatever the source would have chosen for it.\", \"value\": \"accept\"}, {\"consequence\": \"Say what the condition was for in the priority and weight of the alias backend models, as far as it can be said that way.\", \"value\": \"compensate\"}, {\"consequence\": \"Keep this workload on APIM, where the routing logic still runs.\", \"value\": \"retain-in-apim\"}], \"proposal\": \"compensate\", \"rationale\": \"The source decides where the request goes with logic the target has no place for: a policy expression, a branch of a `choose`, or both. The alias backend pool carries the set of backends and their priority and weight, not the rule that picked among them.\"}, \"partialWhen\": {\"hasExpression\": true, \"underConditional\": true}, \"rationale\": \"Backend selection becomes the alias backend pool.\", \"verdict\": \"handled\"}",
+  "get-authorization-context|expr=False": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"A model provider authenticates with a managed identity or an API key. `model-provider create` and `model-provider update` expose no basic credential, no client certificate, and nothing equivalent to an APIM credential manager, so a backend secured any other way has no target. `authentication-managed-identity` is the one member of this family that does map, and it has a rule of its own.\", \"verdict\": \"gap\"}",
+  "get-authorization-context|expr=True": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"A model provider authenticates with a managed identity or an API key. `model-provider create` and `model-provider update` expose no basic credential, no client certificate, and nothing equivalent to an APIM credential manager, so a backend secured any other way has no target. `authentication-managed-identity` is the one member of this family that does map, and it has a rule of its own.\", \"verdict\": \"gap\"}",
+  "include-fragment|expr=False": "{\"rationale\": \"Composition, control flow, and gateway plumbing with no target object.\", \"verdict\": \"notApplicable\"}",
+  "include-fragment|expr=True": "{\"rationale\": \"Composition, control flow, and gateway plumbing with no target object.\", \"verdict\": \"notApplicable\"}",
+  "ip-filter|expr=False": "{\"batchOn\": [\"action\"], \"capabilityId\": \"policy.update\", \"target\": \"ipFilter\", \"verdict\": \"native\"}",
+  "ip-filter|expr=True": "{\"batchOn\": [\"action\"], \"capabilityId\": \"policy.update\", \"target\": \"ipFilter\", \"verdict\": \"native\"}",
+  "json-to-xml|expr=False": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No request or response rewriting on the target.\", \"verdict\": \"gap\"}",
+  "json-to-xml|expr=True": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No request or response rewriting on the target.\", \"verdict\": \"gap\"}",
+  "limit-concurrency|expr=False": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"costLimit is a dollar budget, not a call quota or a concurrency ceiling.\", \"verdict\": \"gap\"}",
+  "limit-concurrency|expr=True": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"costLimit is a dollar budget, not a call quota or a concurrency ceiling.\", \"verdict\": \"gap\"}",
+  "llm-content-safety|expr=False": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"Content-safety flags are visible in the CLI but are not supported on typed aigateways. The policy also pulls in a separate Content Safety backend.\", \"verdict\": \"gap\"}",
+  "llm-content-safety|expr=True": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"Content-safety flags are visible in the CLI but are not supported on typed aigateways. The policy also pulls in a separate Content Safety backend.\", \"verdict\": \"gap\"}",
+  "llm-emit-token-metric|expr=False": "{\"answer\": \"choose\", \"options\": [\"accept\", \"compensate\", \"retain-in-apim\"], \"proposal\": \"accept\", \"rationale\": \"Token metrics are emitted by the gateway, but custom dimensions do not carry over one for one. Where the telemetry goes is a separate decision, on the telemetry destination item.\", \"verdict\": \"partial\"}",
+  "llm-emit-token-metric|expr=True": "{\"answer\": \"choose\", \"options\": [\"accept\", \"compensate\", \"retain-in-apim\"], \"proposal\": \"accept\", \"rationale\": \"Token metrics are emitted by the gateway, but custom dimensions do not carry over one for one. Where the telemetry goes is a separate decision, on the telemetry destination item.\", \"verdict\": \"partial\"}",
+  "llm-semantic-cache-lookup|expr=False": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No caching of any kind on the typed gateway.\", \"verdict\": \"gap\"}",
+  "llm-semantic-cache-lookup|expr=True": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No caching of any kind on the typed gateway.\", \"verdict\": \"gap\"}",
+  "llm-semantic-cache-store|expr=False": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No caching of any kind on the typed gateway.\", \"verdict\": \"gap\"}",
+  "llm-semantic-cache-store|expr=True": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No caching of any kind on the typed gateway.\", \"verdict\": \"gap\"}",
+  "llm-token-limit|expr=False": "{\"batchOn\": [\"counter-key\"], \"capabilityId\": \"model.policy\", \"partial\": {\"answer\": \"choose\", \"options\": [\"identity\", \"ipAddress\", \"identity+ipAddress\", \"pooled\"], \"proposal\": \"identity\", \"rationale\": \"The counter partitions by an arbitrary expression in APIM; the target partitions by identity, IP, both, or one pooled counter. @(context.Subscription.Id) is close to identity but not identical.\"}, \"partialWhen\": {\"attributeIsExpression\": \"counter-key\"}, \"target\": \"tokenLimit\", \"verdict\": \"native\"}",
+  "llm-token-limit|expr=True": "{\"batchOn\": [\"counter-key\"], \"capabilityId\": \"model.policy\", \"partial\": {\"answer\": \"choose\", \"options\": [\"identity\", \"ipAddress\", \"identity+ipAddress\", \"pooled\"], \"proposal\": \"identity\", \"rationale\": \"The counter partitions by an arbitrary expression in APIM; the target partitions by identity, IP, both, or one pooled counter. @(context.Subscription.Id) is close to identity but not identical.\"}, \"partialWhen\": {\"attributeIsExpression\": \"counter-key\"}, \"target\": \"tokenLimit\", \"verdict\": \"native\"}",
+  "log-to-eventhub|expr=False": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"The gateway reports through a telemetry exporter it owns: `telemetry-exporter create` takes a kind and an endpoint, not a metric to emit or a sink to write to. There is no Event Hub destination and no way to author a custom metric. Where the gateway's own telemetry reports is a separate decision, on the telemetry destination item.\", \"verdict\": \"gap\"}",
+  "log-to-eventhub|expr=True": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"The gateway reports through a telemetry exporter it owns: `telemetry-exporter create` takes a kind and an endpoint, not a metric to emit or a sink to write to. There is no Event Hub destination and no way to author a custom metric. Where the gateway's own telemetry reports is a separate decision, on the telemetry destination item.\", \"verdict\": \"gap\"}",
+  "mcp-server|expr=False": "{\"capabilityId\": \"mcp.create\", \"rationale\": \"The tool server this policy exposes is collected as an MCP asset from the API that carries it, and registered by the MCP server item rather than raised again here.\", \"verdict\": \"handled\"}",
+  "mcp-server|expr=True": "{\"capabilityId\": \"mcp.create\", \"rationale\": \"The tool server this policy exposes is collected as an MCP asset from the API that carries it, and registered by the MCP server item rather than raised again here.\", \"verdict\": \"handled\"}",
+  "otherwise|expr=False": "{\"rationale\": \"Composition, control flow, and gateway plumbing with no target object.\", \"verdict\": \"notApplicable\"}",
+  "otherwise|expr=True": "{\"rationale\": \"Composition, control flow, and gateway plumbing with no target object.\", \"verdict\": \"notApplicable\"}",
+  "quantum-shield|expr=False": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"This policy is not in the vocabulary this catalog was written against, so nothing can be said about what it does or whether the target has an equivalent. It is reported rather than assumed harmless.\", \"verdict\": \"gap\"}",
+  "quantum-shield|expr=True": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"A policy expression doing more than reading a well-known context property has no equivalent. The target's policy surface is six declarative types.\", \"verdict\": \"gap\"}",
+  "quota-by-key|expr=False": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"costLimit is a dollar budget, not a call quota or a concurrency ceiling.\", \"verdict\": \"gap\"}",
+  "quota-by-key|expr=True": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"costLimit is a dollar budget, not a call quota or a concurrency ceiling.\", \"verdict\": \"gap\"}",
+  "quota|expr=False": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"costLimit is a dollar budget, not a call quota or a concurrency ceiling.\", \"verdict\": \"gap\"}",
+  "quota|expr=True": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"costLimit is a dollar budget, not a call quota or a concurrency ceiling.\", \"verdict\": \"gap\"}",
+  "rate-limit-by-key|expr=False": "{\"answer\": \"choose\", \"batchOn\": [\"counter-key\"], \"capabilityId\": \"policy.update\", \"options\": [\"identity\", \"ipAddress\", \"identity+ipAddress\", \"pooled\"], \"proposal\": \"identity\", \"rationale\": \"APIM counter-key is an arbitrary expression; AI Gateway partitions by identity, IP, both, or a single pooled counter. @(context.Subscription.Id) is close to identity but not identical.\", \"target\": \"requestRateLimit\", \"verdict\": \"partial\"}",
+  "rate-limit-by-key|expr=True": "{\"answer\": \"choose\", \"batchOn\": [\"counter-key\"], \"capabilityId\": \"policy.update\", \"options\": [\"identity\", \"ipAddress\", \"identity+ipAddress\", \"pooled\"], \"proposal\": \"identity\", \"rationale\": \"APIM counter-key is an arbitrary expression; AI Gateway partitions by identity, IP, both, or a single pooled counter. @(context.Subscription.Id) is close to identity but not identical.\", \"target\": \"requestRateLimit\", \"verdict\": \"partial\"}",
+  "rate-limit|expr=False": "{\"answer\": \"choose\", \"batchOn\": [\"counter-key\"], \"capabilityId\": \"policy.update\", \"options\": [\"identity\", \"ipAddress\", \"identity+ipAddress\", \"pooled\"], \"proposal\": \"identity\", \"rationale\": \"APIM counter-key is an arbitrary expression; AI Gateway partitions by identity, IP, both, or a single pooled counter. @(context.Subscription.Id) is close to identity but not identical.\", \"target\": \"requestRateLimit\", \"verdict\": \"partial\"}",
+  "rate-limit|expr=True": "{\"answer\": \"choose\", \"batchOn\": [\"counter-key\"], \"capabilityId\": \"policy.update\", \"options\": [\"identity\", \"ipAddress\", \"identity+ipAddress\", \"pooled\"], \"proposal\": \"identity\", \"rationale\": \"APIM counter-key is an arbitrary expression; AI Gateway partitions by identity, IP, both, or a single pooled counter. @(context.Subscription.Id) is close to identity but not identical.\", \"target\": \"requestRateLimit\", \"verdict\": \"partial\"}",
+  "redirect-content-urls|expr=False": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No request or response rewriting on the target.\", \"verdict\": \"gap\"}",
+  "redirect-content-urls|expr=True": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No request or response rewriting on the target.\", \"verdict\": \"gap\"}",
+  "retry|expr=False": "{\"rationale\": \"Composition, control flow, and gateway plumbing with no target object.\", \"verdict\": \"notApplicable\"}",
+  "retry|expr=True": "{\"rationale\": \"Composition, control flow, and gateway plumbing with no target object.\", \"verdict\": \"notApplicable\"}",
+  "return-response|expr=False": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No side-effecting call-outs. agentHooks is the nearest mechanism and applies to tool traffic only.\", \"verdict\": \"gap\"}",
+  "return-response|expr=True": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No side-effecting call-outs. agentHooks is the nearest mechanism and applies to tool traffic only.\", \"verdict\": \"gap\"}",
+  "rewrite-uri|expr=False": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No request or response rewriting on the target.\", \"verdict\": \"gap\"}",
+  "rewrite-uri|expr=True": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No request or response rewriting on the target.\", \"verdict\": \"gap\"}",
+  "send-one-way-request|expr=False": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No side-effecting call-outs. agentHooks is the nearest mechanism and applies to tool traffic only.\", \"verdict\": \"gap\"}",
+  "send-one-way-request|expr=True": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No side-effecting call-outs. agentHooks is the nearest mechanism and applies to tool traffic only.\", \"verdict\": \"gap\"}",
+  "send-request|expr=False": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No side-effecting call-outs. agentHooks is the nearest mechanism and applies to tool traffic only.\", \"verdict\": \"gap\"}",
+  "send-request|expr=True": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No side-effecting call-outs. agentHooks is the nearest mechanism and applies to tool traffic only.\", \"verdict\": \"gap\"}",
+  "set-backend-service|expr=False": "{\"capabilityId\": \"alias.create\", \"partial\": {\"answer\": \"choose\", \"options\": [{\"consequence\": \"Every call takes the alias backend pool in its own order, whatever the source would have chosen for it.\", \"value\": \"accept\"}, {\"consequence\": \"Say what the condition was for in the priority and weight of the alias backend models, as far as it can be said that way.\", \"value\": \"compensate\"}, {\"consequence\": \"Keep this workload on APIM, where the routing logic still runs.\", \"value\": \"retain-in-apim\"}], \"proposal\": \"compensate\", \"rationale\": \"The source decides where the request goes with logic the target has no place for: a policy expression, a branch of a `choose`, or both. The alias backend pool carries the set of backends and their priority and weight, not the rule that picked among them.\"}, \"partialWhen\": {\"hasExpression\": true, \"underConditional\": true}, \"rationale\": \"Backend selection becomes the alias backend pool.\", \"verdict\": \"handled\"}",
+  "set-backend-service|expr=True": "{\"capabilityId\": \"alias.create\", \"partial\": {\"answer\": \"choose\", \"options\": [{\"consequence\": \"Every call takes the alias backend pool in its own order, whatever the source would have chosen for it.\", \"value\": \"accept\"}, {\"consequence\": \"Say what the condition was for in the priority and weight of the alias backend models, as far as it can be said that way.\", \"value\": \"compensate\"}, {\"consequence\": \"Keep this workload on APIM, where the routing logic still runs.\", \"value\": \"retain-in-apim\"}], \"proposal\": \"compensate\", \"rationale\": \"The source decides where the request goes with logic the target has no place for: a policy expression, a branch of a `choose`, or both. The alias backend pool carries the set of backends and their priority and weight, not the rule that picked among them.\"}, \"partialWhen\": {\"hasExpression\": true, \"underConditional\": true}, \"rationale\": \"Backend selection becomes the alias backend pool.\", \"verdict\": \"handled\"}",
+  "set-body|expr=False": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No request or response rewriting on the target.\", \"verdict\": \"gap\"}",
+  "set-body|expr=True": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No request or response rewriting on the target.\", \"verdict\": \"gap\"}",
+  "set-header|expr=False": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No request or response rewriting on the target.\", \"verdict\": \"gap\"}",
+  "set-header|expr=True": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No request or response rewriting on the target.\", \"verdict\": \"gap\"}",
+  "set-query-parameter|expr=False": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No request or response rewriting on the target.\", \"verdict\": \"gap\"}",
+  "set-query-parameter|expr=True": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No request or response rewriting on the target.\", \"verdict\": \"gap\"}",
+  "set-service-url|expr=False": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"An alias backend pool holds backends the gateway knows, with a priority and a weight each. Overriding the destination URL outright names no backend, so there is nothing for the pool to hold. `set-backend-service` and `forward-request` choose among backends and have a rule of their own.\", \"verdict\": \"gap\"}",
+  "set-service-url|expr=True": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"An alias backend pool holds backends the gateway knows, with a priority and a weight each. Overriding the destination URL outright names no backend, so there is nothing for the pool to hold. `set-backend-service` and `forward-request` choose among backends and have a rule of their own.\", \"verdict\": \"gap\"}",
+  "set-variable|expr=False": "{\"rationale\": \"Composition, control flow, and gateway plumbing with no target object.\", \"verdict\": \"notApplicable\"}",
+  "set-variable|expr=True": "{\"rationale\": \"Composition, control flow, and gateway plumbing with no target object.\", \"verdict\": \"notApplicable\"}",
+  "some-future-policy|expr=False": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"This policy is not in the vocabulary this catalog was written against, so nothing can be said about what it does or whether the target has an equivalent. It is reported rather than assumed harmless.\", \"verdict\": \"gap\"}",
+  "some-future-policy|expr=True": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"A policy expression doing more than reading a well-known context property has no equivalent. The target's policy surface is six declarative types.\", \"verdict\": \"gap\"}",
+  "trace|expr=False": "{\"rationale\": \"Composition, control flow, and gateway plumbing with no target object.\", \"verdict\": \"notApplicable\"}",
+  "trace|expr=True": "{\"rationale\": \"Composition, control flow, and gateway plumbing with no target object.\", \"verdict\": \"notApplicable\"}",
+  "validate-azure-ad-token|expr=False": "{\"answer\": \"choose\", \"batchOn\": [], \"capabilityId\": \"key.create\", \"options\": [\"entra-rbac\", \"compensate\", \"retain-in-apim\", \"block\"], \"proposal\": \"entra-rbac\", \"rationale\": \"Issuer and audience validation is covered by gateway Entra auth plus data-plane RBAC. Gating on custom claims or app roles is not.\", \"target\": \"entraAuth\", \"verdict\": \"partial\"}",
+  "validate-azure-ad-token|expr=True": "{\"answer\": \"choose\", \"batchOn\": [], \"capabilityId\": \"key.create\", \"options\": [\"entra-rbac\", \"compensate\", \"retain-in-apim\", \"block\"], \"proposal\": \"entra-rbac\", \"rationale\": \"Issuer and audience validation is covered by gateway Entra auth plus data-plane RBAC. Gating on custom claims or app roles is not.\", \"target\": \"entraAuth\", \"verdict\": \"partial\"}",
+  "validate-client-certificate|expr=False": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"Caller authentication on the gateway is Entra auth plus data-plane RBAC, or an API key. A gate on a shared secret in a header, or on a client certificate, is neither. `validate-jwt` and `validate-azure-ad-token` are the members of this family that do map, and they have a rule of their own.\", \"verdict\": \"gap\"}",
+  "validate-client-certificate|expr=True": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"Caller authentication on the gateway is Entra auth plus data-plane RBAC, or an API key. A gate on a shared secret in a header, or on a client certificate, is neither. `validate-jwt` and `validate-azure-ad-token` are the members of this family that do map, and they have a rule of their own.\", \"verdict\": \"gap\"}",
+  "validate-content|expr=False": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"No schema, header, or status validation on the target.\", \"verdict\": \"gap\"}",
+  "validate-content|expr=True": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"No schema, header, or status validation on the target.\", \"verdict\": \"gap\"}",
+  "validate-graphql-request|expr=False": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"No schema, header, or status validation on the target.\", \"verdict\": \"gap\"}",
+  "validate-graphql-request|expr=True": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"No schema, header, or status validation on the target.\", \"verdict\": \"gap\"}",
+  "validate-headers|expr=False": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"No schema, header, or status validation on the target.\", \"verdict\": \"gap\"}",
+  "validate-headers|expr=True": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"No schema, header, or status validation on the target.\", \"verdict\": \"gap\"}",
+  "validate-jwt|expr=False": "{\"answer\": \"choose\", \"batchOn\": [], \"capabilityId\": \"key.create\", \"options\": [\"entra-rbac\", \"compensate\", \"retain-in-apim\", \"block\"], \"proposal\": \"entra-rbac\", \"rationale\": \"Issuer and audience validation is covered by gateway Entra auth plus data-plane RBAC. Gating on custom claims or app roles is not.\", \"target\": \"entraAuth\", \"verdict\": \"partial\"}",
+  "validate-jwt|expr=True": "{\"answer\": \"choose\", \"batchOn\": [], \"capabilityId\": \"key.create\", \"options\": [\"entra-rbac\", \"compensate\", \"retain-in-apim\", \"block\"], \"proposal\": \"entra-rbac\", \"rationale\": \"Issuer and audience validation is covered by gateway Entra auth plus data-plane RBAC. Gating on custom claims or app roles is not.\", \"target\": \"entraAuth\", \"verdict\": \"partial\"}",
+  "validate-mcp-request|expr=False": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"`mcp create` registers a tool server, its endpoints and its supported versions. Guarding a tool call on the way through is not part of that surface. `mcp-server`, which declares the server itself, is carried by the MCP server item and has a rule of its own.\", \"verdict\": \"gap\"}",
+  "validate-mcp-request|expr=True": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"`mcp create` registers a tool server, its endpoints and its supported versions. Guarding a tool call on the way through is not part of that surface. `mcp-server`, which declares the server itself, is carried by the MCP server item and has a rule of its own.\", \"verdict\": \"gap\"}",
+  "validate-odata-request|expr=False": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"No schema, header, or status validation on the target.\", \"verdict\": \"gap\"}",
+  "validate-odata-request|expr=True": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"No schema, header, or status validation on the target.\", \"verdict\": \"gap\"}",
+  "validate-parameters|expr=False": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"No schema, header, or status validation on the target.\", \"verdict\": \"gap\"}",
+  "validate-parameters|expr=True": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"No schema, header, or status validation on the target.\", \"verdict\": \"gap\"}",
+  "validate-status-code|expr=False": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"No schema, header, or status validation on the target.\", \"verdict\": \"gap\"}",
+  "validate-status-code|expr=True": "{\"answer\": \"choose\", \"proposal\": \"retain-in-apim\", \"rationale\": \"No schema, header, or status validation on the target.\", \"verdict\": \"gap\"}",
+  "wait|expr=False": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No side-effecting call-outs. agentHooks is the nearest mechanism and applies to tool traffic only.\", \"verdict\": \"gap\"}",
+  "wait|expr=True": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No side-effecting call-outs. agentHooks is the nearest mechanism and applies to tool traffic only.\", \"verdict\": \"gap\"}",
+  "when|expr=False": "{\"rationale\": \"Composition, control flow, and gateway plumbing with no target object.\", \"verdict\": \"notApplicable\"}",
+  "when|expr=True": "{\"rationale\": \"Composition, control flow, and gateway plumbing with no target object.\", \"verdict\": \"notApplicable\"}",
+  "xml-to-json|expr=False": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No request or response rewriting on the target.\", \"verdict\": \"gap\"}",
+  "xml-to-json|expr=True": "{\"answer\": \"choose\", \"proposal\": \"accept\", \"rationale\": \"No request or response rewriting on the target.\", \"verdict\": \"gap\"}"
+ }
+}

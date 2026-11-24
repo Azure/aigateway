@@ -78,7 +78,46 @@
         "virtualNetworkType": {"type": ["string", "null"]},
         "publicNetworkAccess": {"type": ["string", "null"]},
         "hostnameConfigurations": {"type": "array"},
-        "identity": {"type": ["object", "null"]},
+        "identity": {
+          "description": "The service's managed identities. `userAssignedIdentities` decides whether the gateway can carry one over with the grants it already holds, or needs a new principal granted from scratch.",
+          "type": ["object", "null"],
+          "properties": {
+            "type": {"type": ["string", "null"]},
+            "principalId": {"type": ["string", "null"]},
+            "tenantId": {"type": ["string", "null"]},
+            "userAssignedIdentities": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "resourceId": {"type": "string"},
+                  "clientId": {"type": ["string", "null"]}
+                }
+              }
+            }
+          }
+        },
+        "networking": {
+          "description": "How the service reaches its backends and is reached. `targetRequirement` is the collector's reading of what the gateway would have to do to match it; null when nothing private is in play.",
+          "type": ["object", "null"],
+          "properties": {
+            "virtualNetworkType": {"type": ["string", "null"]},
+            "publicNetworkAccess": {"type": ["string", "null"]},
+            "vnetId": {"type": ["string", "null"]},
+            "vnetIntegrated": {"type": "boolean"},
+            "subnetResourceId": {"type": ["string", "null"]},
+            "natGatewayState": {"type": ["string", "null"]},
+            "outboundPublicIPAddresses": {"type": ["array", "null"]},
+            "privateEndpointConnections": {"type": ["array", "null"]},
+            "targetRequirement": {
+              "type": ["object", "null"],
+              "properties": {
+                "needsSubnet": {"type": "boolean"},
+                "note": {"type": "string"}
+              }
+            }
+          }
+        },
         "tags": {"type": "object"}
       }
     },
@@ -288,7 +327,18 @@
       "type": "object",
       "required": ["status", "discoverySource", "resolved"],
       "properties": {
-        "status": {"enum": ["resolved", "declared", "unresolved", "empty"]},
+        "status": {
+          "description": "catalogued is what `migrate-apim resolve` writes after reading a provider's own catalogue: the models exist, but the response states no modality, so which of them can serve an inference route is still a decision. It was missing here while `resolve.py` wrote it and `plan.py` branched on it, so validating a resolved inventory failed on a value the tool had just produced -- the same hole `auth.mode: undetermined` left.",
+          "enum": ["resolved", "declared", "unresolved", "empty", "catalogued"]
+        },
+        "resolvedFrom": {
+          "description": "The catalogue endpoint the models were read from. Null until a resolve run writes one.",
+          "type": ["string", "null"]
+        },
+        "catalogue": {
+          "description": "The model names the catalogue returned, which the planner samples into the question it asks.",
+          "type": "array", "items": {"type": "string"}
+        },
         "discoverySource": {
           "enum": ["armDeployments", "backendLanguageModel", "modelsEndpoint", "awsCli", "gcloudCli", "manual", "unknown"]
         },
@@ -319,12 +369,29 @@
       "required": ["mode", "secretRefs"],
       "properties": {
         "mode": {
-          "enum": ["none", "apiKey", "authorizationHeader", "clientCertificate", "managedIdentity", "credentialManager"]
+          "description": "undetermined is not a mode the backend has; it says the question could not be answered -- a fragment that would not resolve, or no policy read at all. It is listed because the collector emits it, and a value the code produces and the schema rejects is a contract that only holds while nobody hits the case.",
+          "enum": ["none", "apiKey", "authorizationHeader", "clientCertificate", "managedIdentity", "credentialManager", "undetermined"]
         },
         "secretRefs": {"type": "array", "items": {"type": "string"}},
         "evidence": {"type": "array", "items": {"type": "string"}},
+        "modes": {"type": "array", "items": {"type": "string"}},
         "parameters": {"type": "object"},
-        "scheme": {"type": ["string", "null"]}
+        "scheme": {"type": ["string", "null"]},
+        "note": {"type": "string"},
+        "identity": {"type": ["object", "null"]},
+        "identityCandidates": {
+          "description": "Set when alternative request contexts authenticate differently -- two products each setting their own managed identity, say. One provider cannot authenticate two ways, so the first is proposed and the rest are recorded rather than silently discarded.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "clientId": {"type": ["string", "null"]},
+              "audience": {"type": ["string", "null"]}
+            }
+          }
+        },
+        "identityNote": {"type": "string"},
+        "basis": {"type": "object"}
       }
     },
 
@@ -348,6 +415,10 @@
             "mode": {"enum": ["single", "pool", "policy"]},
             "targets": {"type": "array"},
             "circuitBreaker": {"type": ["array", "null"]},
+            "sessionAffinity": {
+              "description": "The APIM pool's session affinity, read verbatim. Null unless the pool pins a session to the backend that served it.",
+              "type": ["object", "null"]
+            },
             "evidence": {"type": ["string", "null"]}
           }
         },
@@ -371,6 +442,21 @@
           "type": "array", "items": {"type": "string"}
         },
         "backendDialectsDeclared": {"type": "boolean"},
+        "surface": {
+          "description": "How much of what the API publishes can move. `unbounded` means a wildcard operation forwards every upstream path, so the exposed surface cannot be read from configuration at all -- which is not the same as publishing nothing.",
+          "type": "object",
+          "properties": {
+            "status": {"enum": ["bounded", "unbounded", "unknown"]},
+            "basis": {"type": "string"},
+            "operationCount": {"type": "integer"},
+            "publishable": {"type": "array"},
+            "unpublishable": {"type": "array"},
+            "publishableCount": {"type": "integer"},
+            "unpublishableCount": {"type": "integer"},
+            "targetRoutes": {"type": "array", "items": {"type": "string"}},
+            "note": {"type": "string"}
+          }
+        },
         "translation": {
           "description": "Null only when the backend declares no dialect to compare against.",
           "oneOf": [
@@ -436,7 +522,13 @@
           "required": ["status", "source"],
           "properties": {
             "status": {"enum": ["complete", "runtimeOnly"]},
-            "source": {"enum": ["apimControlPlane", "upstreamMcpServer"]},
+            "source": {"enum": ["apimControlPlane", "upstreamMcpServer", "gatewayRuntime",
+                                "upstreamRuntime"]},
+            "url": {"type": ["string", "null"]},
+            "policiesApplied": {
+              "description": "Whether the API's policies ran while the tools were listed. False means the list came straight from the upstream and can be broader than what callers reach.",
+              "type": "boolean"
+            },
             "note": {"type": "string"},
             "discoveredCount": {"type": "integer"}
           }
@@ -546,6 +638,10 @@
             "level": {"enum": ["global", "workspace", "product", "api", "operation", "fragment"]},
             "name": {"type": ["string", "null"]},
             "apiName": {"type": "string"},
+            "workspace": {
+              "description": "The workspace this scope belongs to, `default` for the implicit one. Declared because a name alone does not identify a scope: two workspaces can hold a fragment, a product or an API of the same name, and resolving an `include-fragment` against the wrong one applies a policy to traffic it never governed.",
+              "type": "string"
+            },
             "resourceId": {"type": ["string", "null"]}
           }
         },

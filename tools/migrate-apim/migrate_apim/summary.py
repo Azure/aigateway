@@ -140,11 +140,23 @@ def render_plan(document: dict[str, Any], *, fmt: str = "text") -> str:
     for item in unsettled:
         flag = "!" if item.get("blocking") else " "
         src = item.get("source") or {}
-        asset = src.get("assetId") or f"{src.get('assetKind')}:{src.get('aspect')}"
+        # The asset and the question asked about it. One API raises six, and
+        # the line used to name only the asset -- which was readable only
+        # because `kind` was a label per question (`reduce-surface` was the
+        # published surface and nothing else). `kind` now says how the item is
+        # answered, so the question has to be named where it is asked.
+        asset = "/".join(filter(None, [src.get("assetId") or src.get("assetKind"),
+                                       src.get("aspect")]))
         options = "/".join(option["value"] for option in item.get("options") or [])
+        # Some items deliberately propose nothing: a read that failed, or a
+        # fragment nobody could open, offers no recommended choice because
+        # nothing is known about what choosing would cost. Printing
+        # `proposal=None` made that read as a defect in the plan.
+        proposal = (f" -> proposal={item['proposal']}" if item.get("proposal")
+                    else " -> no proposal")
         lines.append(
             f"{'  - ' if fmt == 'markdown' else '    '}{flag} [{item.get('kind')}] {asset}"
-            f" -> proposal={item.get('proposal')}"
+            + proposal
             + (f" of {options}" if options else "")
         )
         if item.get("status") == "stale":

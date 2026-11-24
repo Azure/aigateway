@@ -796,6 +796,283 @@ class TestAServiceThatCouldNotBeRead:
         assert "--subscription" in str(excinfo.value)
 
 
+class TestFragmentsAreCollectedAsAssetsOfTheirOwn:
+    """A fragment is a shared asset, and was the one that was not scoped like
+    one: two workspaces holding a same-named fragment collapsed onto one id,
+    and the collector keeps whichever document it saw first."""
+
+    def _with_workspace_fragment(self, body="<fragment><set-variable name='w' value='1' /></fragment>"):
+        import fake_arm
+
+        key = f"{SERVICE}/workspaces/finance/policyFragments"
+        original = fake_arm.ROUTES[key]
+        fake_arm.ROUTES[key] = [{
+            "id": f"{SERVICE}/workspaces/finance/policyFragments/killswitch",
+            "name": "killswitch",
+            "properties": {"description": "finance kill switch", "value": body},
+        }]
+        try:
+            return Collector(FakeArmClient(), SERVICE, options()).run()
+        finally:
+            fake_arm.ROUTES[key] = original
+
+    def test_a_same_named_fragment_in_a_workspace_is_a_second_fragment(self):
+        document = self._with_workspace_fragment()
+        ids = {d["id"] for d in document["policies"]
+               if (d.get("scope") or {}).get("level") == "fragment"}
+        assert ids == {"policy:fragment/killswitch", "policy:fragment/finance/killswitch"}
+
+    def test_each_one_keeps_its_own_contents(self):
+        document = self._with_workspace_fragment()
+        bodies = {
+            d["id"]: [e["name"] for e in d["elements"]]
+            for d in document["policies"] if (d.get("scope") or {}).get("level") == "fragment"
+        }
+        assert bodies["policy:fragment/killswitch"] == ["set-variable"]
+        assert bodies["policy:fragment/finance/killswitch"] == ["set-variable"]
+        service = next(d for d in document["policies"] if d["id"] == "policy:fragment/killswitch")
+        finance = next(d for d in document["policies"]
+                       if d["id"] == "policy:fragment/finance/killswitch")
+        assert service["elements"][0]["attributes"] != finance["elements"][0]["attributes"]
+
+    def test_the_asset_record_says_which_workspace_it_is_in(self):
+        document = self._with_workspace_fragment()
+        by_id = {f["id"]: f for f in document["shared"]["policyFragments"]}
+        assert by_id["policyFragment:killswitch"]["workspace"] == "default"
+        assert by_id["policyFragment:finance/killswitch"]["workspace"] == "finance"
+
+    def test_a_fragment_whose_body_could_not_be_read_is_not_an_empty_fragment(self):
+        """Parsed as the empty string it registered as a fragment that resolves
+        and contains nothing, so whatever it carried migrated as if absent."""
+        import fake_arm
+
+        key = f"{SERVICE}/policyFragments"
+        original = fake_arm.ROUTES[key]
+        fake_arm.ROUTES[key] = [{
+            "id": f"{SERVICE}/policyFragments/killswitch", "name": "killswitch",
+            "properties": {"description": "kill switch"},  # no value, and the GET 404s
+        }]
+        try:
+            document = Collector(FakeArmClient(), SERVICE, options()).run()
+        finally:
+            fake_arm.ROUTES[key] = original
+        fragment = next(d for d in document["policies"] if d["id"] == "policy:fragment/killswitch")
+        assert fragment["parseError"], "unknown is not empty"
+        assert "not evidence" in fragment["parseError"]
+        asset = next(f for f in document["shared"]["policyFragments"] if f["name"] == "killswitch")
+        assert asset["parseError"]
+
+    def test_the_fragment_list_is_read_as_authored(self):
+        """Every other policy read forces `format=rawxml` so expression text is
+        kept as written. The fragment list did not, so the same expression
+        hashed to a different `expr:` id than it did at API scope."""
+        seen = {}
+
+        class Recording(FakeArmClient):
+            def list(self, url, api_version, **params):
+                seen[url] = params
+                return super().list(url, api_version, **params)
+
+        Collector(Recording(), SERVICE, options()).run()
+        assert seen[f"{SERVICE}/policyFragments"] == {"format": "rawxml"}
+
+
+def _find_auth(value):
+    """The first `auth` record anywhere in an asset, however it is nested."""
+    if isinstance(value, dict):
+        if "mode" in value and "evidence" in value:
+            return value
+        for nested in value.values():
+            found = _find_auth(nested)
+            if found:
+                return found
+    elif isinstance(value, list):
+        for nested in value:
+            found = _find_auth(nested)
+            if found:
+                return found
+    return None
+
+
+class TestBackendAuthReadsAnOrderAndNotAUnion:
+    """The last `authentication-managed-identity` to run is the one that
+    applies, and a union of alternative request contexts has no last."""
+
+    def _collected(self, product_identity):
+        import fake_arm
+
+        api_policy = (
+            "<policies><inbound><base />"
+            "<authentication-managed-identity resource='https://api' />"
+            "</inbound><backend><base /></backend>"
+            "<outbound><base /></outbound><on-error><base /></on-error></policies>"
+        )
+        product_policy = (
+            "<policies><inbound>"
+            f"<authentication-managed-identity resource='{product_identity}' />"
+            "</inbound><backend><base /></backend>"
+            "<outbound><base /></outbound><on-error><base /></on-error></policies>"
+        )
+        originals = {
+            "policies": dict(fake_arm.POLICIES),
+            "product_apis": fake_arm.ROUTES[f"{SERVICE}/products/ai/apis"],
+        }
+        fake_arm.POLICIES[f"{SERVICE}/apis/aoai-api"] = api_policy
+        fake_arm.POLICIES[f"{SERVICE}/products/ai"] = product_policy
+        try:
+            return Collector(FakeArmClient(), SERVICE, options()).run()
+        finally:
+            fake_arm.POLICIES.clear()
+            fake_arm.POLICIES.update(originals["policies"])
+
+    def _auth(self, document):
+        """The authentication the policy decided, not one a backend declared."""
+        for group in document["assets"].values():
+            for asset in group:
+                auth = _find_auth(asset)
+                if auth and "policy:authentication-managed-identity" in (
+                    auth.get("evidence") or []
+                ):
+                    return auth
+        raise AssertionError("no asset took its identity from policy")
+
+    def test_the_apis_own_identity_wins_over_an_inherited_one(self):
+        auth = self._auth(self._collected("https://product"))
+        assert auth["identity"]["audience"] == "https://api"
+
+    def test_two_identities_that_cannot_both_apply_are_named_not_chosen(self):
+        auth = self._auth(self._collected("https://product"))
+        assert "identityCandidates" not in auth, (
+            "the API overrides the product in both contexts, so there is one answer")
+
+    def test_an_unambiguous_identity_carries_no_note(self):
+        auth = self._auth(self._collected("https://api"))
+        assert "identityNote" not in auth
+
+    def test_two_products_setting_different_identities_are_named_not_picked(self):
+        """Which one applies depends on the product a call arrives through,
+        and one provider cannot authenticate two ways."""
+        from migrate_apim import collect as collect_mod
+        from migrate_apim import policy as policy_mod
+        from migrate_apim import secrets as secrets_mod
+
+        def doc(policy_id, scope, xml):
+            return policy_mod.parse(xml, policy_id=policy_id, scope=scope, scope_url="/x")
+
+        def product(name, resource):
+            return doc(
+                f"policy:product/{name}",
+                {"level": "product", "name": name, "workspace": "default"},
+                "<policies><inbound>"
+                f"<authentication-managed-identity resource='{resource}' />"
+                "</inbound><backend><base /></backend><outbound><base /></outbound>"
+                "<on-error><base /></on-error></policies>",
+            )
+
+        graph = policy_mod.PolicyGraph(
+            [
+                product("a", "https://a"),
+                product("b", "https://b"),
+                doc("policy:api/aoai", {"level": "api", "name": "aoai", "workspace": "default"},
+                    "<policies><inbound><base /></inbound><backend><base /></backend>"
+                    "<outbound><base /></outbound><on-error><base /></on-error></policies>"),
+            ],
+            products=[{"policyId": "policy:product/a", "apiIds": ["api:aoai"]},
+                      {"policyId": "policy:product/b", "apiIds": ["api:aoai"]}],
+        )
+        auth = collect_mod._backend_auth(
+            None, graph.governing(api="aoai"),
+            secrets_mod.SecretRegistry(service_id=SERVICE, api_version="2025-09-01-preview"),
+        )
+        assert auth["mode"] == "managedIdentity"
+        assert {c["audience"] for c in auth["identityCandidates"]} == {"https://a", "https://b"}
+        assert "depending on which product" in auth["identityNote"]
+
+
+class TestAnUnreadableFragmentCannotBeCalledUnauthenticated:
+    """`mode: none` is a claim the backend is called without credentials. A
+    fragment whose body would not load is a place one could have been set."""
+
+    def _resolved(self):
+        from migrate_apim import policy as policy_mod
+
+        def doc(policy_id, scope, xml):
+            return policy_mod.parse(xml, policy_id=policy_id, scope=scope, scope_url="/x")
+
+        broken = doc("policy:fragment/creds",
+                     {"level": "fragment", "name": "creds", "workspace": "default"},
+                     "<fragment />")
+        broken["parseError"] = "the body could not be read"
+        graph = policy_mod.PolicyGraph([
+            doc("policy:api/aoai", {"level": "api", "name": "aoai", "workspace": "default"},
+                "<policies><inbound><include-fragment fragment-id='creds' /></inbound>"
+                "<backend><base /></backend><outbound><base /></outbound>"
+                "<on-error><base /></on-error></policies>"),
+            broken,
+        ])
+        return graph.governing(api="aoai")
+
+    def _auth(self):
+        from migrate_apim import collect as collect_mod
+        from migrate_apim import secrets as secrets_mod
+
+        return collect_mod._backend_auth(
+            None, self._resolved(),
+            secrets_mod.SecretRegistry(service_id=SERVICE, api_version="2025-09-01-preview"),
+        )
+
+    def test_it_is_undetermined_rather_than_none(self):
+        assert self._auth()["mode"] == "undetermined"
+
+    def test_the_basis_names_the_fragment_nobody_could_read(self):
+        assert "policy:fragment/creds" in self._auth()["basis"]["unresolvedFragments"]
+
+    def test_the_asset_keeps_its_link_to_the_document_that_failed(self):
+        """It contributes no elements, so it is on no route -- and dropping it
+        cut the only pointer to the document explaining the failure."""
+        from migrate_apim import collect as collect_mod
+
+        assert collect_mod._fragments_reaching(self._resolved(), None) == [
+            "policy:fragment/creds"
+        ]
+
+    def test_an_identity_inherited_through_a_products_fragment_still_loses_to_the_api(self):
+        """The reported shape: `<base />` then identity A on the API, and a
+        product that *includes a fragment* setting B. A overrides B in both
+        request contexts, and the flattened union says otherwise."""
+        from migrate_apim import collect as collect_mod
+        from migrate_apim import policy as policy_mod
+        from migrate_apim import secrets as secrets_mod
+
+        def doc(policy_id, scope, xml):
+            return policy_mod.parse(xml, policy_id=policy_id, scope=scope, scope_url="/x")
+
+        def wrap(inner):
+            return (f"<policies><inbound>{inner}</inbound><backend><base /></backend>"
+                    "<outbound><base /></outbound><on-error><base /></on-error></policies>")
+
+        graph = policy_mod.PolicyGraph(
+            [
+                doc("policy:product/ai", {"level": "product", "name": "ai",
+                                          "workspace": "default"},
+                    wrap("<include-fragment fragment-id='creds' />")),
+                doc("policy:api/aoai", {"level": "api", "name": "aoai", "workspace": "default"},
+                    wrap("<base /><authentication-managed-identity resource='https://a' />")),
+                doc("policy:fragment/creds", {"level": "fragment", "name": "creds",
+                                              "workspace": "default"},
+                    "<fragment><authentication-managed-identity resource='https://b' />"
+                    "</fragment>"),
+            ],
+            products=[{"policyId": "policy:product/ai", "apiIds": ["api:aoai"]}],
+        )
+        auth = collect_mod._backend_auth(
+            None, graph.governing(api="aoai"),
+            secrets_mod.SecretRegistry(service_id=SERVICE, api_version="2025-09-01-preview"),
+        )
+        assert auth["identity"]["audience"] == "https://a"
+        assert "identityCandidates" not in auth, "both chains end on A, so there is one answer"
+
+
 class TestEveryApiIsInOnePlace:
     """`apim.apis` answers "what APIs are on this service" in one read.
 

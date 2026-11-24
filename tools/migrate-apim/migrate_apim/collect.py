@@ -85,9 +85,12 @@ class Collector:
         self.warnings: list[dict[str, Any]] = []
         self.policies: list[dict[str, Any]] = []
         self._policy_index: dict[str, dict[str, Any]] = {}
+        # One graph for the run, kept current by `_add_policy`. Which policy
+        # governs which API is asked here and in the planner, and asking it two
+        # ways is how the two answers drift.
+        self._graph = policy_mod.PolicyGraph([])
         self.foundry: FoundryResolver | None = None
         self.subscription_id = ids.arm_segment(self.service_id, "subscriptions") or ""
-        self._products_by_scope: dict[str, list[dict[str, Any]]] = {}
         self.excluded_backends: list[dict[str, Any]] = []
         # Every API seen, in every scope walked. Accumulated here rather than
         # returned, because it is one flat answer to "what APIs are there" and
@@ -325,7 +328,8 @@ class Collector:
     def _collect_service_wide(self) -> None:
         """Scopes that exist only on the service, never inside a workspace."""
         self._capture_policy(
-            scope={"level": "global", "name": None, "resourceId": self.service_id},
+            scope={"level": "global", "name": None, "workspace": "default",
+                   "resourceId": self.service_id},
             scope_url=self.service_id,
             policy_id=ids.policy("global"),
         )
@@ -343,9 +347,9 @@ class Collector:
 
         backends = self._collect_backends(base, workspace, scope_label)
         named_values = self._collect_named_values(base, workspace, scope_label)
-        fragments = self._collect_fragments(base, scope_label)
+        fragments = self._collect_fragments(base, workspace, scope_label)
         products = self._collect_products(base, workspace, scope_label)
-        self._products_by_scope[workspace or "default"] = products
+        self._graph.add_products(products)
         subscriptions = self._collect_subscriptions(base, workspace, scope_label)
         certificates = self._collect_certificates(base, scope_label) if not workspace else []
         auth_servers = self._collect_auth_servers(base, scope_label) if not workspace else []
@@ -355,7 +359,8 @@ class Collector:
 
         if workspace and workspace != "default":
             self._capture_policy(
-                scope={"level": "workspace", "name": workspace, "resourceId": base},
+                scope={"level": "workspace", "name": workspace, "workspace": workspace,
+                       "resourceId": base},
                 scope_url=base,
                 policy_id=ids.policy("workspace", workspace),
             )
@@ -507,33 +512,59 @@ class Collector:
             results.append(record)
         return results
 
-    def _collect_fragments(self, base: str, scope: str) -> list[dict[str, Any]]:
-        raw = self._list(f"{base}/policyFragments", "policyFragments", scope)
+    def _collect_fragments(
+        self, base: str, workspace: str | None, scope: str
+    ) -> list[dict[str, Any]]:
+        # `format=rawxml` on the list, not only on the per-fragment fallback:
+        # every other policy read goes through `get_policy`, which forces it so
+        # expression text is kept as authored. Without it a fragment's
+        # expressions come back XML-encoded and hash to different `expr:` ids
+        # than the same expression captured at API scope.
+        raw = self._list(
+            f"{base}/policyFragments", "policyFragments", scope, params={"format": "rawxml"}
+        )
         results = []
         for entry in raw:
             name = entry.get("name") or ""
             props = entry.get("properties") or {}
             value = props.get("value")
+            unreadable = False
             if value is None:
                 detail = self._get(
                     f"{base}/policyFragments/{name}", "policyFragment", scope, params={"format": "rawxml"}
                 )
                 value = ((detail or {}).get("properties") or {}).get("value")
-            policy_id = ids.policy("fragment", name)
+                unreadable = value is None
+            policy_id = ids.policy("fragment", ids.scoped(workspace, name))
             document = policy_mod.parse(
                 value or "",
                 policy_id=policy_id,
-                scope={"level": "fragment", "name": name, "resourceId": entry.get("id")},
+                scope={
+                    "level": "fragment", "name": name,
+                    "workspace": workspace or "default", "resourceId": entry.get("id"),
+                },
                 scope_url=f"{base}/policyFragments/{name}",
                 registry=self.registry,
             )
+            if unreadable:
+                # An empty parse is a fragment that says nothing; a fragment
+                # whose body could not be read says nothing about what is in
+                # it. Left alike, the second reads as the first, and whatever
+                # the fragment carried migrates as though it were not there.
+                document["parseError"] = (
+                    "The body could not be read, so what this fragment contains is unknown. "
+                    "It is not evidence that the fragment is empty."
+                )
             self._add_policy(document)
             results.append(
                 {
-                    "id": ids.fragment(name),
+                    "id": ids.fragment(name, workspace),
                     "name": name,
+                    "workspace": workspace or "default",
                     "description": props.get("description"),
                     "policyId": policy_id,
+                    "elementCount": len(document.get("elements") or []),
+                    "parseError": document.get("parseError"),
                 }
             )
         return results
@@ -546,7 +577,8 @@ class Collector:
             props = entry.get("properties") or {}
             policy_id = ids.policy("product", ids.scoped(workspace, name))
             self._capture_policy(
-                scope={"level": "product", "name": name, "resourceId": entry.get("id")},
+                scope={"level": "product", "name": name, "workspace": workspace or "default",
+                       "resourceId": entry.get("id")},
                 scope_url=f"{base}/products/{name}",
                 policy_id=policy_id,
             )
@@ -760,7 +792,8 @@ class Collector:
             api_url = f"{base}/apis/{name}"
             policy_id = ids.policy("api", ids.scoped(workspace, name))
             document = self._capture_policy(
-                scope={"level": "api", "name": name, "resourceId": raw.get("id")},
+                scope={"level": "api", "name": name, "workspace": workspace or "default",
+                       "resourceId": raw.get("id")},
                 scope_url=api_url,
                 policy_id=policy_id,
             )
@@ -773,13 +806,15 @@ class Collector:
             # only: a global llm-token-limit applies to every API and would make all
             # of them look like model APIs. Backend auth uses every scope, because
             # any of them can set it.
-            api_scoped = self._effective_elements(document, include_shared=False, api_name=name, workspace=workspace)
-            effective = self._effective_elements(document, include_shared=True, api_name=name, workspace=workspace)
-            element_names = {element["name"] for element in api_scoped["elements"]}
-            families = {element["family"] for element in api_scoped["elements"]}
+            api_scoped = self._graph.governing(
+                api=name, workspace=workspace, levels=("api",)
+            )
+            effective = self._graph.governing(api=name, workspace=workspace)
+            element_names = {element["name"] for element in api_scoped.elements}
+            families = {element["family"] for element in api_scoped.elements}
 
             backend_record, routing_candidates = _resolve_backend(
-                props, backends_by_name, backends_by_id, workspace, api_scoped["elements"]
+                props, backends_by_name, backends_by_id, workspace, api_scoped.elements
             )
             backend_urls = _backend_urls(backend_record, backends_by_id)
 
@@ -814,6 +849,7 @@ class Collector:
                 "policyRefs": _policy_refs(
                     policy_id, document, workspace, shared, name, operations,
                     operation_policies_collected=self.options.operation_policies,
+                    effective=effective,
                 ),
                 "access": self._access(raw, name, workspace, shared),
             }
@@ -1185,6 +1221,7 @@ class Collector:
                         "level": "operation",
                         "name": operation_name,
                         "apiName": name,
+                        "workspace": workspace or "default",
                         "resourceId": entry.get("id"),
                     },
                     scope_url=f"{api_url}/operations/{operation_name}",
@@ -1213,7 +1250,7 @@ class Collector:
         backend_record: dict[str, Any] | None,
         backends_by_id: dict[str, dict[str, Any]],
         classification: detect.Classification,
-        effective: dict[str, Any],
+        effective: policy_mod.Resolution,
         routing_candidates: list[str] | None = None,
     ) -> dict[str, Any]:
         props = raw.get("properties") or {}
@@ -1245,7 +1282,7 @@ class Collector:
             "status": "unresolved",
             "discoverySource": catalog or "unknown",
             "resolved": [],
-            "declared": sorted(_declared_models(operations, effective.get("elements") or [])),
+            "declared": sorted(_declared_models(operations, effective.elements)),
             "notes": [],
         }
 
@@ -1641,56 +1678,6 @@ class Collector:
             "subscriptions": subscriptions,
         }
 
-    def _effective_elements(
-        self,
-        document: dict[str, Any] | None,
-        *,
-        include_shared: bool,
-        api_name: str,
-        workspace: str | None,
-    ) -> dict[str, Any]:
-        """Flatten the policy elements that actually govern one API.
-
-        Resolves ``include-fragment`` references (guarding against cycles) and,
-        when ``include_shared``, folds in the product and global documents. The
-        scopes consulted are returned so a reader can tell "found nothing" apart
-        from "did not look".
-        """
-        elements: list[dict[str, Any]] = []
-        scopes: list[str] = []
-        unresolved: list[str] = []
-
-        def add(doc: dict[str, Any] | None) -> None:
-            if doc:
-                # Tag each element with the document it came from, so anything built
-                # from this flattened view can point back at the full configuration.
-                elements.extend({**element, "policyId": doc["id"]} for element in doc.get("elements") or [])
-                if doc["id"] not in scopes:
-                    scopes.append(doc["id"])
-
-        add(document)
-        pending = list((document or {}).get("fragmentRefs") or [])
-        seen: set[str] = set()
-        while pending:
-            fragment_name = pending.pop(0)
-            if fragment_name in seen:
-                continue
-            seen.add(fragment_name)
-            fragment_doc = self._policy_index.get(ids.policy("fragment", fragment_name))
-            if fragment_doc is None:
-                unresolved.append(fragment_name)
-                continue
-            add(fragment_doc)
-            pending.extend(fragment_doc.get("fragmentRefs") or [])
-
-        if include_shared:
-            api_id = ids.api(api_name, workspace)
-            for product in self._products_by_scope.get(workspace or "default", []):
-                if api_id in product["apiIds"] and product.get("policyId"):
-                    add(self._policy_index.get(product["policyId"]))
-            add(self._policy_index.get(ids.policy("global")))
-
-        return {"elements": elements, "scopesExamined": scopes, "unresolvedFragments": unresolved}
 
     def _capture_policy(
         self,
@@ -1725,6 +1712,7 @@ class Collector:
             return
         self._policy_index[document["id"]] = document
         self.policies.append(document)
+        self._graph.add(document)
 
     def _get(
         self, url: str, collection: str, scope: str, *, params: dict[str, str] | None = None
@@ -1745,9 +1733,12 @@ class Collector:
         self.coverage.append(_coverage(collection, scope, "complete", 1, None))
         return resp.body if isinstance(resp.body, dict) else None
 
-    def _list(self, url: str, collection: str, scope: str, *, quiet: bool = False) -> list[dict[str, Any]]:
+    def _list(
+        self, url: str, collection: str, scope: str, *, quiet: bool = False,
+        params: dict[str, str] | None = None,
+    ) -> list[dict[str, Any]]:
         try:
-            items = self.client.list(url, self.api_version)
+            items = self.client.list(url, self.api_version, **(params or {}))
         except ArmAuthError:
             raise
         except ArmError as exc:
@@ -1986,7 +1977,8 @@ _AUTH_PRECEDENCE = (
 
 
 def _backend_auth(
-    record: dict[str, Any] | None, effective: dict[str, Any] | None, registry: secrets.SecretRegistry
+    record: dict[str, Any] | None, effective: policy_mod.Resolution | None,
+    registry: secrets.SecretRegistry
 ) -> dict[str, Any]:
     auth: dict[str, Any] = {"mode": "none", "modes": [], "secretRefs": [], "evidence": []}
     credentials = (record or {}).get("credentials") or {}
@@ -2036,17 +2028,43 @@ def _backend_auth(
     for ref in (record or {}).get("secretRefs") or []:
         add_secret(ref)
 
-    for element in (effective or {}).get("elements", []):
-        if element["name"] == "authentication-managed-identity":
-            add_identity(
-                element["attributes"].get("client-id"),
-                element["attributes"].get("resource"),
-                "policy:authentication-managed-identity",
-            )
-        elif element["name"] == "authentication-certificate":
+    for element in (effective.elements if effective else []):
+        if element["name"] == "authentication-certificate":
             note("clientCertificate", "policy:authentication-certificate")
         elif element["name"] == "get-authorization-context":
             note("credentialManager", "policy:get-authorization-context")
+
+    # Per request context, because the last `authentication-managed-identity`
+    # to run is the one that applies and a union of alternatives is not an
+    # order. A product is one alternative and no product is another: flattened
+    # together, an identity set on the API after `<base />` could be dropped as
+    # a duplicate and a product's identity read as the later of the two, when
+    # the API's overrides it in both contexts.
+    candidates: list[tuple[str | None, str | None]] = []
+    for chain in (effective.chains if effective else ()):
+        last = None
+        for occurrence in chain:
+            if occurrence.name == "authentication-managed-identity":
+                last = occurrence.element
+        if last is not None:
+            attributes = last.get("attributes") or {}
+            candidate = (attributes.get("client-id"), attributes.get("resource"))
+            if candidate not in candidates:
+                candidates.append(candidate)
+    if candidates:
+        client_id, audience = candidates[0]
+        add_identity(client_id, audience, "policy:authentication-managed-identity")
+        if len(candidates) > 1:
+            # Which one applies depends on the product a call arrives through,
+            # and one provider cannot authenticate two ways. Named rather than
+            # resolved: picking silently would be a guess reported as a fact.
+            auth["identityCandidates"] = [
+                {"clientId": cid, "audience": aud} for cid, aud in candidates
+            ]
+            auth["identityNote"] = (
+                f"{len(candidates)} managed identities apply, depending on which product a call "
+                "arrives through. The first is proposed; the alternatives are recorded here."
+            )
 
     for mode in _AUTH_PRECEDENCE:
         if mode in auth["modes"]:
@@ -2058,8 +2076,14 @@ def _backend_auth(
     # outright when a fragment could not be resolved.
     auth["basis"] = {
         "backendCredentials": bool(credentials),
-        "policyScopesExamined": (effective or {}).get("scopesExamined") or [],
-        "unresolvedFragments": (effective or {}).get("unresolvedFragments") or [],
+        "policyScopesExamined": list(effective.scopes_examined) if effective else [],
+        # Both kinds of "could not be read", because for this question they
+        # cost the same: a fragment naming nothing and one whose body would not
+        # load are each a place the credential could have been set.
+        "unresolvedFragments": sorted(
+            {*(effective.unresolved_fragments if effective else ()),
+             *(effective.unreadable_fragments if effective else ())}
+        ),
     }
     if auth["mode"] == "none":
         if auth["basis"]["unresolvedFragments"]:
@@ -2083,7 +2107,7 @@ def _backend_auth(
     return auth
 
 
-def _supporting_backends(effective: dict[str, Any], *, workspace: str) -> list[dict[str, Any]]:
+def _supporting_backends(effective: policy_mod.Resolution, *, workspace: str) -> list[dict[str, Any]]:
     """Backends this API depends on for something other than serving the model.
 
     A content-safety or embeddings backend is a migration dependency in its own
@@ -2091,7 +2115,7 @@ def _supporting_backends(effective: dict[str, Any], *, workspace: str) -> list[d
     dependency is also a gap rather than a thing to recreate.
     """
     found: dict[str, dict[str, Any]] = {}
-    for element in effective.get("elements") or []:
+    for element in effective.elements:
         mapping = detect.backend_roles_from_element(element)
         if not mapping:
             continue
@@ -2287,6 +2311,33 @@ def _mcp_path(mcp_props: dict[str, Any]) -> str | None:
     return None
 
 
+
+def _fragments_reaching(
+    effective: policy_mod.Resolution | None, workspace: str | None
+) -> list[str]:
+    """Every fragment an API's policy reaches, resolved or not.
+
+    A reference naming no collected fragment is listed too, under the id it
+    would have had, and so is one whose body would not load -- that one
+    contributes no elements, so it is in no occurrence's route, and dropping it
+    would cut the asset's only link to the document explaining the failure.
+    `auth.basis.unresolvedFragments` says which of these could not be read.
+    """
+    seen: list[str] = []
+    for occurrence in (effective.occurrences if effective else ()):
+        for policy_id in occurrence.via:
+            if policy_id not in seen:
+                seen.append(policy_id)
+    for policy_id in (effective.unreadable_fragments if effective else ()):
+        if policy_id not in seen:
+            seen.append(policy_id)
+    for name in (effective.unresolved_fragments if effective else ()):
+        missing = ids.policy("fragment", ids.scoped(workspace, name))
+        if missing not in seen:
+            seen.append(missing)
+    return seen
+
+
 def _policy_refs(
     policy_id: str,
     document: dict[str, Any] | None,
@@ -2295,12 +2346,17 @@ def _policy_refs(
     api_name: str,
     operations: list[dict[str, Any]] | None = None,
     operation_policies_collected: bool = False,
+    effective: policy_mod.Resolution | None = None,
 ) -> dict[str, Any]:
     refs: dict[str, Any] = {
         "global": ids.policy("global"),
         "api": policy_id if document else None,
         "operationPoliciesCollected": operation_policies_collected,
-        "fragments": [ids.policy("fragment", name) for name in (document or {}).get("fragmentRefs", [])],
+        # Every fragment that reaches this API, not only the ones its own
+        # document names: a fragment included by another fragment, or by the
+        # product or global policy, governs it just as much. Taken from the
+        # resolution rather than re-walked, so this cannot disagree with it.
+        "fragments": _fragments_reaching(effective, workspace),
         "products": [],
         "operations": [
             operation["policyId"] for operation in (operations or []) if operation.get("policyId")

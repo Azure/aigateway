@@ -6,6 +6,7 @@ import pytest
 from migrate_apim.capability import CapabilityMap
 from migrate_apim.cli import validate_document
 from migrate_apim.collect import Collector, CollectOptions
+from migrate_apim import plan as plan_mod
 from migrate_apim.plan import build_plan
 from fake_arm import SERVICE, FakeArmClient
 
@@ -30,8 +31,15 @@ def plan(inventory, capabilities):
     return build_plan(inventory, capabilities)
 
 
-def items_of(plan, kind):
-    return [item for item in plan["items"] if item.get("kind") == kind]
+def items_of(plan, aspect):
+    """Every item raised about one question, which is what `source.aspect` names.
+
+    It used to be every item of one `kind`, back when `kind` was a per-question
+    label -- `collapse` named the workspace question and nothing else. `kind`
+    now says only whether the answer is a pick or a form, so it identifies
+    nothing.
+    """
+    return [item for item in plan["items"] if item["source"]["aspect"] == aspect]
 
 
 def item_for(plan, asset_id, aspect=None):
@@ -137,7 +145,7 @@ class TestDocument:
 class TestScopeIsTheDominantDecision:
     def test_an_api_with_unpublishable_operations_raises_reduce_surface(self, plan):
         item = item_for(plan, "model:aoai-api", "publishedSurface")
-        assert item["kind"] == "reduce-surface"
+        assert item["kind"] == "choose"
         assert item["proposal"] == "split"
         assert item["blocking"] is True
         assert {option["value"] for option in item["options"]} == {
@@ -152,7 +160,7 @@ class TestScopeIsTheDominantDecision:
 
     def test_a_wildcard_api_cannot_be_split_only_scoped(self, plan):
         item = item_for(plan, "model:meta-ai", "publishedSurface")
-        assert item["kind"] == "reduce-surface"
+        assert item["kind"] == "choose"
         # Nothing can be split when the surface is unreadable.
         assert "split" not in {option["value"] for option in item["options"]}
         assert item["proposal"] == "inference-only"
@@ -178,7 +186,7 @@ class TestGoverningRule:
         assert not any("provider" in aspect.lower() for aspect in aspects)
 
     def test_alias_name_is_asked_because_apim_does_not_store_it(self, plan):
-        names = items_of(plan, "name")
+        names = items_of(plan, "aliasNames")
         assert names
         for item in names:
             # Asked, but never blank: the deployment name is the default.
@@ -194,7 +202,7 @@ class TestPolicyMapping:
             i for i in plan["items"]
             if i["source"]["assetKind"] == "policy" and i["evidence"]["element"] == "azure-openai-token-limit"
         )
-        assert item["kind"] == "translate"
+        assert item["kind"] == "choose"
         assert item["verdict"] == "partial"
         assert item["proposal"] == "identity"
         assert {o["value"] for o in item["options"]} == {
@@ -204,10 +212,34 @@ class TestPolicyMapping:
     def test_policies_with_no_target_become_an_accepted_loss(self, plan):
         elements = {
             i["evidence"]["element"] for i in plan["items"]
-            if i["source"]["assetKind"] == "policy" and i["kind"] == "accept-loss"
+            if i["source"]["assetKind"] == "policy" and i["verdict"] == "gap"
         }
         assert "llm-content-safety" in elements
         assert "llm-semantic-cache-lookup" in elements
+
+    def test_a_policy_item_id_does_not_depend_on_how_it_is_answered(
+        self, inventory, capabilities, plan
+    ):
+        """A policy item's id is derived from its batching signature, so every
+        field in that signature is a field that orphans settled decisions when
+        it moves. `answer` was one, and it separated nothing: the element name
+        is already in the digest, and no element's answer varies while the rest
+        of the signature holds. Rewriting every answer must not move an id."""
+        rules = copy.deepcopy(capabilities.rules)
+        for rule in rules["policies"]:
+            for holder in (rule, rule.get("partial") or {}):
+                if holder.get("answer"):
+                    holder["answer"] = "supply" if holder["answer"] == "choose" else "choose"
+        rewritten = build_plan(inventory, CapabilityMap(capabilities.catalog, rules))
+
+        def policy_ids(document):
+            return sorted(i["id"] for i in document["items"]
+                          if i["source"]["assetKind"] == "policy")
+
+        assert policy_ids(rewritten) == policy_ids(plan)
+        # And the answers really did change, or the assertion above is vacuous.
+        assert ({i["kind"] for i in rewritten["items"] if i["source"]["assetKind"] == "policy"}
+                != {i["kind"] for i in plan["items"] if i["source"]["assetKind"] == "policy"})
 
     def test_identical_policies_batch_into_one_decision(self, plan):
         # The prior attempt asked once per occurrence; that is what made it unusable.
@@ -236,15 +268,113 @@ class TestPolicyMapping:
         assert not elements & {"base", "include-fragment", "choose", "when", "set-variable"}
 
 
+def _routed(inventory, *, path, attributes, expressions=(), name="set-backend-service",
+            api="aoai-api"):
+    """A copy of the inventory with one routing element added to an API policy."""
+    changed = copy.deepcopy(inventory)
+    document = next(d for d in changed["policies"]
+                    if (d.get("scope") or {}).get("level") == "api"
+                    and (d.get("scope") or {}).get("name") == api)
+    document["elements"].append({
+        "section": "inbound", "path": path, "name": name,
+        "family": "routing", "depth": path.count("/") + 1, "attributes": attributes,
+        "text": None, "expressionIds": list(expressions), "namedValueRefs": [], "childNames": [],
+    })
+    return changed
+
+
+def _routing_items(plan):
+    return [i for i in plan["items"]
+            if i["source"]["assetKind"] == "policy"
+            and i["evidence"]["element"] in {"set-backend-service", "forward-request"}]
+
+
+class TestRoutingLogicLeavesATrace:
+    """`handled` claims another object carries the element, and for a backend
+    picked by an expression or inside a `choose` no object does: the alias pool
+    is built from the APIM backend pool, which holds none of that logic. The
+    element was excluded before anything looked at it, so a routing decision
+    the target cannot make produced no item, no gap and no mention."""
+
+    def test_a_plain_backend_selection_is_still_carried_by_the_alias(
+            self, inventory, capabilities):
+        routed = _routed(inventory, path="inbound/set-backend-service[1]",
+                         attributes={"backend-id": "aoai-pool"})
+        assert _routing_items(build_plan(routed, capabilities)) == []
+
+    def test_a_backend_chosen_by_an_expression_becomes_a_decision(
+            self, inventory, capabilities):
+        routed = _routed(inventory, path="inbound/set-backend-service[1]",
+                         attributes={"backend-id": "@(context.Variables[\"region\"])"},
+                         expressions=["expr:route"])
+        [item] = _routing_items(build_plan(routed, capabilities))
+        assert item["verdict"] == "partial"
+        assert item["kind"] == "choose"
+        assert item["status"] == "needs-decision"
+        assert item["proposal"] == "compensate"
+        assert {o["value"] for o in item["options"]} == {
+            "accept", "compensate", "retain-in-apim"
+        }
+
+    def test_a_backend_chosen_inside_a_choose_becomes_a_decision(
+            self, inventory, capabilities):
+        # No expression on the element itself: the branch that selects it is
+        # the whole of what will not travel.
+        routed = _routed(inventory, path="inbound/choose[1]/when[1]/set-backend-service[1]",
+                         attributes={"backend-id": "aoai-east"})
+        [item] = _routing_items(build_plan(routed, capabilities))
+        assert item["verdict"] == "partial"
+        assert item["evidence"]["hasExpression"] is False
+        assert item["evidence"]["members"][0]["path"].startswith("inbound/choose[1]/when[1]/")
+
+    def test_the_decision_says_what_became_of_the_routing(self, inventory, capabilities):
+        routed = _routed(inventory, path="inbound/choose[1]/otherwise[1]/set-backend-service[1]",
+                         attributes={"backend-id": "aoai-west"})
+        plan = build_plan(routed, capabilities)
+        [item] = _routing_items(plan)
+        # The alias is what carries the part that does travel, so the item
+        # points at it rather than reading as a loss with no destination.
+        assert item["capabilityId"] == "alias.create"
+        assert "alias backend pool" in item["rationale"]
+        assert all(option["consequence"] for option in item["options"])
+        assert validate_document(plan) == []
+
+    def test_it_asks_once_however_many_occurrences(self, inventory, capabilities):
+        routed = _routed(inventory, path="inbound/choose[1]/when[1]/set-backend-service[1]",
+                         attributes={"backend-id": "aoai-east"})
+        routed = _routed(routed, api="support-mcp",
+                         path="inbound/choose[1]/when[1]/set-backend-service[1]",
+                         attributes={"backend-id": "support-backend"})
+        [item] = _routing_items(build_plan(routed, capabilities))
+        assert {m["policyId"] for m in item["evidence"]["members"]} == {
+            "policy:api/aoai-api", "policy:api/support-mcp"
+        }
+
+    def test_a_sound_handled_element_is_left_alone(self, inventory, capabilities):
+        # authentication-managed-identity really is carried by the provider
+        # item, expression or no expression. Raising it here would put an item
+        # in every plan for something nothing was lost to.
+        routed = _routed(
+            inventory, name="authentication-managed-identity",
+            path="inbound/choose[1]/when[1]/authentication-managed-identity[1]",
+            attributes={"resource": "@(context.Variables[\"scope\"])"},
+            expressions=["expr:scope"],
+        )
+        plan = build_plan(routed, capabilities)
+        assert not [i for i in plan["items"]
+                    if i["source"]["assetKind"] == "policy"
+                    and i["evidence"]["element"] == "authentication-managed-identity"]
+
+
 class TestStructural:
     def test_a_non_default_workspace_must_be_collapsed(self, plan):
-        [item] = items_of(plan, "collapse")
+        [item] = items_of(plan, "finance")
         assert item["evidence"]["workspace"]["name"] == "finance"
         assert item["proposal"] == "flatten"
         assert item["blocking"] is True
 
     def test_subscriptions_raise_one_access_decision(self, plan):
-        [item] = items_of(plan, "scope")
+        [item] = items_of(plan, "subscriptions")
         assert item["evidence"]["count"] == 2
         assert sorted(item["evidence"]["scopeLevels"]) == ["product", "service"]
 
@@ -261,9 +391,9 @@ class TestTheRulesDecideAndTheBuilderReads:
 
     def test_the_verdict_and_kind_come_from_the_rule(self, plan, capabilities):
         rule = next(r for r in capabilities.structural_rules()
-                    if r["match"]["kind"] == "workspace")
-        [item] = items_of(plan, "collapse")
-        assert (item["verdict"], item["kind"]) == (rule["verdict"], rule["itemKind"])
+                    if r["selects"] == plan_mod.STRUCTURAL_WORKSPACE.selects)
+        [item] = items_of(plan, "finance")
+        assert (item["verdict"], item["kind"]) == (rule["verdict"], rule["answer"])
 
     def test_a_reprovisioning_loss_carries_the_proposal_its_rule_names(
         self, inventory, capabilities
@@ -275,10 +405,11 @@ class TestTheRulesDecideAndTheBuilderReads:
         enriched["shared"]["certificates"] = [{"name": "client-cert"}]
         enriched["shared"]["credentialProviders"] = [{"name": "github-connection"}]
         built = build_plan(enriched, capabilities)
-        for kind in ("certificates", "credentialProviders"):
+        for kind, site in (("certificates", plan_mod.STRUCTURAL_CERTIFICATES),
+                           ("credentialProviders", plan_mod.STRUCTURAL_CREDENTIAL_PROVIDERS)):
             item = next(i for i in built["items"] if i["source"]["assetKind"] == kind)
             rule = next(r for r in capabilities.structural_rules()
-                        if r["match"]["kind"] == kind)
+                        if r["selects"] == site.selects)
             assert item["proposal"] == rule["proposal"], kind
             assert item["proposal"] in {o["value"] for o in item["options"]}, kind
 
@@ -512,7 +643,7 @@ class TestGatewayIdentity:
         # Reusing an identity that already holds its grants makes the RBAC
         # prerequisite a no-op, which is a materially different outcome.
         assert item["proposal"] == "reuse:/subscriptions/s/uami/one"
-        assert item["kind"] == "translate"
+        assert item["kind"] == "choose"
         prereq = next(p for p in document["prerequisites"] if p["id"] == "prereq:foundry-rbac")
         assert "already cover this" in prereq["detail"]
 
@@ -829,7 +960,8 @@ class TestLoadBalancedPool:
 
     def test_an_unpooled_api_is_unchanged(self, plan):
         for item in plan["items"]:
-            if item.get("kind") != "name" or item["source"]["assetId"] == "model:aoai-api":
+            if (item["source"]["aspect"] != "aliasNames"
+                    or item["source"]["assetId"] == "model:aoai-api"):
                 continue
             for obj in item["target"]["objects"]:
                 assert len(obj["backendModels"]) == 1
@@ -910,7 +1042,7 @@ class TestPoolSessionAffinity:
         changed = self._with_affinity(inventory, {"enabled": True})
         built = build_plan(changed, capabilities)
         item = next(i for i in built["items"] if i["source"]["aspect"] == "sessionAffinity")
-        assert item["kind"] == "accept-loss"
+        assert item["kind"] == "choose"
         assert item["blocking"] is True
         assert {o["value"] for o in item["options"]} == {"accept-loss", "retain-in-apim", "block"}
 
@@ -1065,12 +1197,18 @@ class TestPolicyTargetsAreApplied:
         assert {"1000", "2000"} <= counts, counts
 
     def test_a_scope_with_no_models_says_so_instead_of_vanishing(self, inventory, capabilities):
+        """A token limit on an API that registers no model has nowhere to go.
+
+        The scope is the MCP API's own, which is a real one that carries no
+        model registration -- a scope is now identified by its document rather
+        than by a name the test can rewrite, so orphaning one means finding one
+        that genuinely is.
+        """
         import copy
 
         orphaned = copy.deepcopy(inventory)
         document = next(d for d in orphaned["policies"]
-                        if (d.get("scope") or {}).get("level") == "api")
-        document["scope"] = {"level": "api", "name": "an-api-that-registers-no-model"}
+                        if d["id"] == "policy:api/support-mcp")
         document["elements"].append({
             "section": "inbound", "path": "inbound/azure-openai-token-limit[9]",
             "name": "azure-openai-token-limit", "family": "tokenLimit", "depth": 1,
@@ -1078,11 +1216,72 @@ class TestPolicyTargetsAreApplied:
             "text": None, "expressionIds": ["expr:1"], "namedValueRefs": [], "childNames": [],
         })
         plan = build_plan(orphaned, capabilities)
-        item = next(i for i in plan["items"] if i.get("capabilityId") == "model.policy")
-        stranded = [o for o in (item["target"] or {})["objects"] if not o.get("modelName")]
+        # Two token limits now, so two items: the one being asked about is the
+        # one covering the scope with no model, not whichever sorts first.
+        stranded = [o for i in plan["items"] if i.get("capabilityId") == "model.policy"
+                    for o in (i["target"] or {})["objects"] if not o.get("modelName")]
         assert stranded, "a policy covering nothing should still be in the plan"
         assert stranded[0]["configurationComplete"] is False
         assert "nothing to carry" in stranded[0]["incompleteReason"]
+
+
+class TestEveryPolicyElementIsAccountedFor:
+    """A plan that classified an element and discarded it used to be
+    indistinguishable from one that had never seen it.
+
+    Three dispositions end the walk without raising an item, and a fourth --
+    matching no rule at all -- ended it without raising anything anywhere. The
+    tally is what turns "nothing was dropped" from a claim into a sum.
+    """
+
+    def _unknown(self, inventory, name="quantum-shield", family="other"):
+        document = copy.deepcopy(inventory)
+        target = next(d for d in document["policies"] if d["id"] == "policy:api/aoai-api")
+        target["elements"].append({
+            "section": "inbound", "path": f"inbound/{name}[1]", "name": name,
+            "family": family, "depth": 1, "attributes": {"mode": "strict"},
+            "text": None, "expressionIds": [], "namedValueRefs": [], "childNames": [],
+        })
+        return document
+
+    def test_the_dispositions_sum_to_the_elements_the_inventory_holds(
+        self, inventory, capabilities
+    ):
+        coverage = build_plan(copy.deepcopy(inventory), capabilities)["policyCoverage"]
+        walked = sum(len(d.get("elements") or []) for d in inventory["policies"])
+        assert coverage["walked"] == walked
+        # Exclusive buckets, or the sum says nothing.
+        assert sum(coverage["dispositions"].values()) == walked
+
+    def test_an_element_outside_the_vocabulary_is_named_and_located(
+        self, inventory, capabilities
+    ):
+        document = self._unknown(inventory)
+        coverage = build_plan(document, capabilities)["policyCoverage"]
+        assert coverage["dispositions"]["unrecognised"] == 1
+        [found] = coverage["unrecognised"]
+        assert found["element"] == "quantum-shield"
+        assert found["policyId"] == "policy:api/aoai-api"
+        assert found["path"] == "inbound/quantum-shield[1]"
+
+    def test_it_reaches_the_plan_as_a_decision_rather_than_a_silence(
+        self, inventory, capabilities
+    ):
+        document = self._unknown(inventory)
+        plan = build_plan(document, capabilities)
+        item = next(
+            i for i in plan["items"] if (i.get("source") or {}).get("aspect") == "quantum-shield"
+        )
+        assert item["verdict"] == "gap"
+        assert item["blocking"] is True
+        assert item["status"] == "needs-decision"
+
+    def test_a_recognised_element_is_not_counted_as_unrecognised(self, inventory, capabilities):
+        # The net must not quietly become the mapping: `set-header` has a family
+        # rule, so it is classified even though it raises an accept-loss item.
+        document = self._unknown(inventory, name="set-header", family="transform")
+        coverage = build_plan(document, capabilities)["policyCoverage"]
+        assert coverage["unrecognised"] == []
 
 
 class TestTheGatewayWideBaseline:
@@ -1200,8 +1399,8 @@ class TestAttributesWithNoTargetField:
             "text": None, "expressionIds": ["expr:1"], "namedValueRefs": [], "childNames": [],
         })
         plan = build_plan(quota, capabilities)
-        item = next(i for i in plan["items"] if i.get("capabilityId") == "model.policy")
-        obj = next(o for o in item["target"]["objects"]
+        obj = next(o for i in plan["items"] if i.get("capabilityId") == "model.policy"
+                   for o in i["target"]["objects"]
                    if (o.get("unmappedAttributes") or {}).get("token-quota"))
         assert obj["unmappedAttributes"]["token-quota"] == "5000"
         assert obj["unmappedAttributes"]["token-quota-period"] == "Hourly"
@@ -1292,7 +1491,7 @@ class TestWhichApplicationInsightsIsAQuestion:
     def test_the_plan_asks_which_resource(self, plan):
         item = next(i for i in plan["items"] if i["id"] == self.ITEM)
         assert item["status"] == "needs-decision"
-        assert item["kind"] == "translate"
+        assert item["kind"] == "choose"
         assert item["proposal"] == "reuse-appinsights"
         assert {o["value"] for o in item["options"]} == {
             "reuse-appinsights", "new-appinsights", "gateway-metrics-only", "retain-in-apim"}
@@ -1389,7 +1588,7 @@ class TestWhichApplicationInsightsIsAQuestion:
 
     def test_which_destinations_need_it_is_the_rule_s_to_say(self, capabilities):
         rule = next(r for r in capabilities.structural_rules()
-                    if r["match"]["kind"] == "telemetry")
+                    if r["selects"] == plan_mod.STRUCTURAL_TELEMETRY.selects)
         assert set(rule["prerequisiteWhen"]) == {"reuse-appinsights", "new-appinsights"}
         assert set(rule["prerequisiteWhen"]) <= {o["value"] for o in rule["options"]}
 
@@ -1411,7 +1610,8 @@ class TestWhatWillNotTravelIsSaidWhileItIsStillAQuestion:
             "text": None, "expressionIds": ["expr:1"], "namedValueRefs": [], "childNames": [],
         })
         plan = build_plan(quota, capabilities)
-        item = next(i for i in plan["items"] if i.get("capabilityId") == "model.policy")
+        item = next(i for i in plan["items"] if i.get("capabilityId") == "model.policy"
+                    and "token-quota" in (i.get("unmappedAttributes") or {}))
         assert "token-quota" in item["unmappedAttributes"]
         assert "token-quota-period" in item["unmappedAttributes"]
         assert "no field for" in item["rationale"], item["rationale"]
@@ -1445,3 +1645,650 @@ class TestAPlanWithNowhereToGoSaysSo:
               "--target", "/subscriptions/s/resourceGroups/rg/providers"
                           "/Microsoft.ApiManagement/aigateways/gw"])
         assert "says nothing about where it deploys" not in capsys.readouterr().err
+
+
+# ------------------------------------------------------- policy resolution
+
+
+def element(name, path, *, section="inbound", family="other", attributes=None,
+            expressions=(), fragment_id=None):
+    record = {
+        "section": section, "path": path, "name": name, "family": family,
+        "depth": path.count("/") + 1, "attributes": dict(attributes or {}),
+        "text": None, "expressionIds": list(expressions), "namedValueRefs": [],
+        "childNames": [],
+    }
+    if fragment_id:
+        record["fragmentId"] = fragment_id
+    return record
+
+
+def policy_document(document, policy_id, scope):
+    """The inventory's document for one scope, created if the fixture has none."""
+    found = next((d for d in document["policies"] if d["id"] == policy_id), None)
+    if found is None:
+        found = {"id": policy_id, "scope": scope, "elements": [], "fragmentRefs": [],
+                 "stats": {"sections": ["inbound"]}}
+        document["policies"].append(found)
+    return found
+
+
+def includes(document, policy_id, scope, fragment_name, *, conditional=False, section="inbound"):
+    """Make one scope's policy include a fragment, the way APIM records it."""
+    found = policy_document(document, policy_id, scope)
+    path = (f"{section}/choose[1]/when[1]/include-fragment[1]" if conditional
+            else f"{section}/include-fragment[1]")
+    found["elements"].append(
+        element("include-fragment", path, section=section, family="composition",
+                fragment_id=fragment_name)
+    )
+    found["fragmentRefs"] = [*(found.get("fragmentRefs") or []), fragment_name]
+    sections = found.setdefault("stats", {}).setdefault("sections", [])
+    if section not in sections:
+        sections.append(section)
+    return found
+
+
+def token_limit_fragment(document, name, *, workspace="default", counter_key="shared", tpm="7000"):
+    """A fragment carrying one `llm-token-limit`, the way an operator shares one."""
+    scoped = name if workspace == "default" else f"{workspace}/{name}"
+    found = policy_document(
+        document, f"policy:fragment/{scoped}",
+        {"level": "fragment", "name": name, "workspace": workspace},
+    )
+    found["stats"] = {"sections": ["fragment"]}
+    found["elements"].append(element(
+        "llm-token-limit", "fragment/llm-token-limit[1]", section="fragment",
+        family="tokenLimit",
+        attributes={"tokens-per-minute": tpm, "counter-key": counter_key},
+    ))
+    return found
+
+
+def fragment_item(plan, name):
+    return next(item for item in plan["items"]
+                if item["source"]["assetKind"] == "policyFragment"
+                and item["source"]["aspect"] == name)
+
+
+def limit_item(plan, policy_id):
+    return next(item for item in plan["items"]
+                if item.get("capabilityId") == "model.policy"
+                and any(m["policyId"] == policy_id for m in item["evidence"]["members"]))
+
+
+def settle(plan):
+    for item in plan["items"]:
+        if item["status"] == "needs-decision":
+            item["status"] = "adapted"
+            item["decision"] = item.get("proposal") or "accept"
+    return plan
+
+
+class TestAPolicyFactoredIntoAFragment:
+    """A fragment is how APIM shares one policy across several APIs.
+
+    Read as a scope of its own it covered no API, so the policy an operator
+    had factored out of several reached none of them: the item said ready,
+    carried an object with no model on it, and stopped the policies phase for
+    every policy queued behind it.
+    """
+
+    def _shared(self, inventory, *, conditional=False, second_api=True, counter_key="shared"):
+        document = copy.deepcopy(inventory)
+        token_limit_fragment(document, "shared-limits", counter_key=counter_key)
+        includes(document, "policy:api/aoai-api",
+                 {"level": "api", "name": "aoai-api", "workspace": "default"},
+                 "shared-limits", conditional=conditional)
+        if second_api:
+            includes(document, "policy:api/meta-ai",
+                     {"level": "api", "name": "meta-ai", "workspace": "default"},
+                     "shared-limits")
+        return document
+
+    def test_its_limit_lands_on_the_models_of_every_including_api(
+        self, inventory, capabilities
+    ):
+        document = self._shared(inventory)
+        item = limit_item(build_plan(document, capabilities), "policy:fragment/shared-limits")
+        assert item["status"] == "ready", "a literal counter key maps natively"
+        objects = item["target"]["objects"]
+        carried = [obj for obj in objects if obj.get("modelName")]
+        assert carried, "the fragment's limit has to land somewhere"
+        assert all(obj["configurationComplete"] for obj in carried), carried
+        assert {obj["modelName"] for obj in carried} >= {"gpt-5", "text-embedding-3-large"}
+
+    def test_an_including_api_that_registers_nothing_is_reported_not_dropped(
+        self, inventory, capabilities
+    ):
+        """`meta-ai` includes the fragment and resolves no model catalogue, so
+        the limit it asked for has nowhere to land. Said, because the API asked
+        for it itself -- see the inline comparison below."""
+        document = self._shared(inventory)
+        item = limit_item(build_plan(document, capabilities), "policy:fragment/shared-limits")
+        stranded = [obj for obj in item["target"]["objects"] if not obj.get("modelName")]
+        assert stranded, "a policy an API asked for and cannot carry is a loss"
+        assert "nothing to carry" in stranded[0]["incompleteReason"]
+
+    def test_extracting_a_policy_into_a_fragment_does_not_hide_the_loss(
+        self, inventory, capabilities
+    ):
+        """The question "is this the asset's own policy" has to be asked of the
+        include site. Asked of the document the element is written in, a
+        fragment was never an API's own -- so moving a policy into one turned a
+        reported loss into a silent drop."""
+        inline = copy.deepcopy(inventory)
+        meta = policy_document(inline, "policy:api/meta-ai",
+                               {"level": "api", "name": "meta-ai", "workspace": "default"})
+        meta["elements"].append(element(
+            "llm-token-limit", "inbound/llm-token-limit[1]", family="tokenLimit",
+            attributes={"tokens-per-minute": "7000", "counter-key": "shared"},
+        ))
+        inline_item = limit_item(build_plan(inline, capabilities), "policy:api/meta-ai")
+        extracted = limit_item(
+            build_plan(self._shared(inventory), capabilities), "policy:fragment/shared-limits"
+        )
+
+        def stranded(item):
+            return [o for o in item["target"]["objects"] if not o.get("modelName")]
+
+        assert stranded(inline_item), "writing it inline reports the loss"
+        assert stranded(extracted), "and so must factoring it into a fragment"
+
+    def test_it_asks_once_however_many_apis_include_it(self, inventory, capabilities):
+        document = self._shared(inventory)
+        plan = build_plan(document, capabilities)
+        matching = [i for i in plan["items"]
+                    if i.get("capabilityId") == "model.policy"
+                    and any(m["policyId"] == "policy:fragment/shared-limits"
+                            for m in i["evidence"]["members"])]
+        assert len(matching) == 1, "one policy, one decision"
+        assert {m["assetId"] for m in matching[0]["evidence"]["members"]} == {
+            "model:aoai-api", "model:meta-ai"}
+
+    def test_a_conditional_include_is_not_a_clean_mapping(self, inventory, capabilities):
+        # Nothing in the fragment's own body says it is conditional: the branch
+        # is at the site that pulled it in, which is why reading the element's
+        # own path could never have seen it.
+        document = self._shared(inventory, conditional=True, second_api=False)
+        plan = build_plan(document, capabilities)
+        item = fragment_item(plan, "shared-limits")
+        assert item["verdict"] == "partial"
+        assert item["status"] == "needs-decision"
+        assert item["evidence"]["disposition"] == "conditional"
+
+    def test_a_fragment_nothing_includes_is_reported_and_strands_nothing(
+        self, inventory, capabilities
+    ):
+        """Unreferenced it governs no traffic, which is a fact about the
+        fragment rather than a policy object the plan cannot build."""
+        document = copy.deepcopy(inventory)
+        token_limit_fragment(document, "shared-limits")
+        plan = build_plan(document, capabilities)
+        item = fragment_item(plan, "shared-limits")
+        assert item["verdict"] == "notApplicable"
+        assert item["evidence"]["includedBy"] == []
+        # Whether anyone looked at operation scope changes what this is worth.
+        assert item["evidence"]["operationPoliciesCollected"] is False
+        incomplete = [obj for i in plan["items"]
+                      for obj in (i.get("target") or {}).get("objects") or []
+                      if obj.get("configurationComplete") is False]
+        assert incomplete == [], "nothing to block preflight over"
+
+    def test_an_include_naming_no_collected_fragment_blocks(self, inventory, capabilities):
+        document = copy.deepcopy(inventory)
+        includes(document, "policy:api/aoai-api",
+                 {"level": "api", "name": "aoai-api", "workspace": "default"}, "not-collected")
+        item = fragment_item(build_plan(document, capabilities), "not-collected")
+        assert item["verdict"] == "gap"
+        assert item["blocking"] is True
+        assert item["cannotAccept"] is True, "nobody read it, so nobody can price accepting it"
+
+    def test_adding_an_api_unsettles_the_decision_it_widens(self, inventory, capabilities):
+        """The members are what a settled decision was settled against.
+
+        An expression counter key, so the limit is a decision at all: APIM
+        partitions by arbitrary C# and the gateway by identity or address, and
+        choosing between those is the question this item asks.
+        """
+        key = "@(context.Subscription.Id)"
+        before = build_plan(
+            self._shared(inventory, second_api=False, counter_key=key), capabilities
+        )
+        settled = settle(copy.deepcopy(before))
+        after = build_plan(
+            self._shared(inventory, counter_key=key), capabilities, previous=settled
+        )
+        item = limit_item(after, "policy:fragment/shared-limits")
+        # Joining a settled batch inherits its decision; the widening is
+        # flagged, not re-opened. Keyed on where the element is written, the
+        # fragment was one member however many APIs included it, so adding one
+        # left the decision reading as though nothing had changed.
+        assert item["status"] == "adapted"
+        assert any("model:meta-ai" in name for name in item["newMembers"]), item["newMembers"]
+
+    def test_the_plan_still_validates(self, inventory, capabilities):
+        assert validate_document(build_plan(self._shared(inventory), capabilities)) == []
+
+
+class TestInheritanceDecidesWhatAGlobalPolicyReaches:
+    def _global_limit(self, inventory, *, api_inherits):
+        document = copy.deepcopy(inventory)
+        token_limit_fragment(document, "shared-limits")
+        includes(document, "policy:global", {"level": "global", "name": None,
+                                             "workspace": "default"}, "shared-limits")
+        aoai = next(d for d in document["policies"] if d["id"] == "policy:api/aoai-api")
+        if not api_inherits:
+            aoai["elements"] = [e for e in aoai["elements"]
+                                if not (e["name"] == "base" and e["section"] == "inbound")]
+        return document
+
+    def test_an_api_that_asks_for_base_gets_it(self, inventory, capabilities):
+        document = self._global_limit(inventory, api_inherits=True)
+        item = limit_item(build_plan(document, capabilities), "policy:fragment/shared-limits")
+        assert "model:aoai-api" in {m["assetId"] for m in item["evidence"]["members"]}
+
+    def test_an_api_that_overrides_its_section_does_not(self, inventory, capabilities):
+        # APIM runs a parent's section only where the child carries `<base />`.
+        # Treating a global policy as covering everything applied a limit to
+        # traffic it never governed.
+        document = self._global_limit(inventory, api_inherits=False)
+        item = limit_item(build_plan(document, capabilities), "policy:fragment/shared-limits")
+        assert "model:aoai-api" not in {m["assetId"] for m in item["evidence"]["members"]}
+
+
+class TestWhatGovernsNothingIsCountedRatherThanAbsent:
+    def test_the_dispositions_sum_to_the_elements_the_inventory_holds(
+        self, inventory, capabilities
+    ):
+        coverage = build_plan(copy.deepcopy(inventory), capabilities)["policyCoverage"]
+        walked = sum(len(d.get("elements") or []) for d in inventory["policies"])
+        assert coverage["walked"] == walked
+        assert sum(coverage["dispositions"].values()) == walked
+
+    def test_a_policy_on_an_excluded_api_raises_nothing_and_is_still_counted(
+        self, inventory, capabilities
+    ):
+        """Policies are captured before an API is classified, so an API nobody
+        is migrating still has its policy in the inventory."""
+        document = copy.deepcopy(inventory)
+        excluded = policy_document(
+            document, "policy:api/legacy-soap",
+            {"level": "api", "name": "legacy-soap", "workspace": "default"},
+        )
+        excluded["elements"].append(element(
+            "check-header", "inbound/check-header[1]", family="authentication",
+            attributes={"name": "x-shared-secret"},
+        ))
+        plan = build_plan(document, capabilities)
+        assert not [i for i in plan["items"]
+                    if (i.get("evidence") or {}).get("element") == "check-header"]
+        assert plan["policyCoverage"]["dispositions"].get("governsNothing")
+
+    def test_a_statement_inside_retry_reaches_rule_selection(self, inventory, capabilities):
+        # `retry` holds real policies. Its children failed the statement test,
+        # never reached a rule, and would now have been counted as a statement
+        # being configured -- which is the one thing the tally must not say.
+        document = copy.deepcopy(inventory)
+        aoai = next(d for d in document["policies"] if d["id"] == "policy:api/aoai-api")
+        aoai["elements"].append(element(
+            "set-header", "inbound/retry[1]/choose[1]/when[1]/set-header[1]",
+            family="transform", attributes={"name": "x-retry"},
+        ))
+        plan = build_plan(document, capabilities)
+        members = [m for i in plan["items"]
+                   for m in (i.get("evidence") or {}).get("members") or []
+                   if m.get("path", "").startswith("inbound/retry[1]")]
+        assert members, "a policy inside a retry is a policy"
+
+
+class TestAnOperationIsAScopeOfItsOwn:
+    """`--operation-policies` is off by default, so an operation policy is rare
+    and easy to leave out of a walk. Left out it raised no item at all, which
+    is a quieter version of the stranding this resolution exists to end."""
+
+    def _with_operation(self, inventory, **attributes):
+        document = copy.deepcopy(inventory)
+        operation = policy_document(
+            document, "policy:operation/aoai-api/chat",
+            {"level": "operation", "name": "chat", "apiName": "aoai-api",
+             "workspace": "default"},
+        )
+        operation["elements"].append(element(
+            "llm-token-limit", "inbound/llm-token-limit[1]", family="tokenLimit",
+            attributes={"tokens-per-minute": "500", "counter-key": "op", **attributes},
+        ))
+        return document
+
+    def test_its_policy_reaches_the_models_of_its_api(self, inventory, capabilities):
+        document = self._with_operation(inventory)
+        item = limit_item(build_plan(document, capabilities), "policy:operation/aoai-api/chat")
+        assert {m["assetId"] for m in item["evidence"]["members"]} == {"model:aoai-api"}
+        assert all(obj["modelName"] for obj in item["target"]["objects"])
+
+    def test_it_is_not_counted_as_governing_nothing(self, inventory, capabilities):
+        document = self._with_operation(inventory)
+        coverage = build_plan(document, capabilities)["policyCoverage"]
+        assert coverage["dispositions"].get("classified")
+        # The operation's own element is the only one added, so the count of
+        # what governs nothing must not have moved.
+        before = build_plan(copy.deepcopy(inventory), capabilities)["policyCoverage"]
+        assert (coverage["dispositions"].get("governsNothing", 0)
+                == before["dispositions"].get("governsNothing", 0))
+
+    def test_the_apis_own_policy_is_not_counted_twice_because_of_it(
+        self, inventory, capabilities
+    ):
+        document = self._with_operation(inventory)
+        coverage = build_plan(document, capabilities)["policyCoverage"]
+        walked = sum(len(d.get("elements") or []) for d in document["policies"])
+        assert coverage["walked"] == walked
+        assert sum(coverage["dispositions"].values()) == walked
+
+
+class TestAFragmentNobodyCouldReadIsNotADissolvedOne:
+    def _unreadable(self, inventory, *, included):
+        document = copy.deepcopy(inventory)
+        broken = policy_document(
+            document, "policy:fragment/broken",
+            {"level": "fragment", "name": "broken", "workspace": "default"},
+        )
+        broken["stats"] = {"sections": []}
+        broken["parseError"] = (
+            "The body could not be read, so what this fragment contains is unknown."
+        )
+        if included:
+            includes(document, "policy:api/aoai-api",
+                     {"level": "api", "name": "aoai-api", "workspace": "default"}, "broken")
+        return document
+
+    def test_an_included_one_blocks_rather_than_reading_as_handled(
+        self, inventory, capabilities
+    ):
+        # It has no elements to dissolve and nobody can say what it carried, so
+        # a clean dissolution is the stronger of the two claims and the false one.
+        item = fragment_item(build_plan(self._unreadable(inventory, included=True),
+                                        capabilities), "broken")
+        assert item["verdict"] == "gap"
+        assert item["blocking"] is True
+        assert item["evidence"]["parseError"]
+
+    def test_the_include_resolves_to_nothing_rather_than_to_no_elements(
+        self, inventory, capabilities
+    ):
+        plan = build_plan(self._unreadable(inventory, included=True), capabilities)
+        assert [i for i in plan["items"] if i["source"]["aspect"] == "broken"
+                and i["blocking"]]
+
+
+class TestBlockingIsScopedToWhatIsBeingMigrated:
+    def test_an_unused_fragment_naming_a_missing_one_does_not_block(
+        self, inventory, capabilities
+    ):
+        """It governs no traffic, so a decision about it is a decision about a
+        workload nobody is moving."""
+        document = copy.deepcopy(inventory)
+        orphan = policy_document(
+            document, "policy:fragment/orphan",
+            {"level": "fragment", "name": "orphan", "workspace": "default"},
+        )
+        orphan["stats"] = {"sections": ["fragment"]}
+        orphan["elements"].append(element(
+            "include-fragment", "fragment/include-fragment[1]", section="fragment",
+            family="composition", fragment_id="gone",
+        ))
+        plan = build_plan(document, capabilities)
+        assert not [i for i in plan["items"] if i["source"]["aspect"] == "gone"]
+        assert fragment_item(plan, "orphan")["verdict"] == "notApplicable"
+
+    def test_one_a_migrated_api_reaches_still_does(self, inventory, capabilities):
+        document = copy.deepcopy(inventory)
+        includes(document, "policy:api/aoai-api",
+                 {"level": "api", "name": "aoai-api", "workspace": "default"}, "gone")
+        item = fragment_item(build_plan(document, capabilities), "gone")
+        assert item["blocking"] is True
+
+
+class TestOperationsThatSpeakForAllOfAnApi:
+    """An operation that omits `<base />` overrides what is above it. When
+    every operation carries a policy, the API's own resolution governs no
+    traffic -- and taking it anyway could block a migration on a fragment no
+    request reaches."""
+
+    def _api_with_operations(self, inventory, *, inherits, operations=("chat",)):
+        document = copy.deepcopy(inventory)
+        asset = next(a for a in document["assets"]["models"] if a["id"] == "model:aoai-api")
+        asset["endpoints"]["operations"] = [{"name": name} for name in operations]
+        for name in operations:
+            operation = policy_document(
+                document, f"policy:operation/aoai-api/{name}",
+                {"level": "operation", "name": name, "apiName": "aoai-api",
+                 "workspace": "default"},
+            )
+            if inherits:
+                operation["elements"].append(
+                    element("base", "inbound/base[1]", family="composition")
+                )
+            operation["elements"].append(element(
+                "llm-token-limit", "inbound/llm-token-limit[1]", family="tokenLimit",
+                attributes={"tokens-per-minute": "500", "counter-key": "op"},
+            ))
+        return document
+
+    def _reaches(self, plan, policy_id):
+        return any(m.get("policyId") == policy_id
+                   for i in plan["items"]
+                   for m in (i.get("evidence") or {}).get("members") or [])
+
+    def test_the_operations_own_policy_always_reaches_the_plan(self, inventory, capabilities):
+        for inherits in (True, False):
+            plan = build_plan(self._api_with_operations(inventory, inherits=inherits),
+                              capabilities)
+            assert self._reaches(plan, "policy:operation/aoai-api/chat"), inherits
+
+    def test_an_overriding_operation_drops_what_it_overrides(self, inventory, capabilities):
+        plan = build_plan(self._api_with_operations(inventory, inherits=False), capabilities)
+        assert not self._reaches(plan, "policy:api/aoai-api"), (
+            "the only operation overrides inbound, so the API's own policy runs for nothing")
+
+    def test_an_inheriting_operation_keeps_it(self, inventory, capabilities):
+        plan = build_plan(self._api_with_operations(inventory, inherits=True), capabilities)
+        assert self._reaches(plan, "policy:api/aoai-api")
+
+    def test_an_operation_without_a_policy_leaves_the_api_governing(
+        self, inventory, capabilities
+    ):
+        # Only one of the two operations speaks for itself; the other inherits,
+        # so the API's policy still governs the traffic arriving there.
+        document = self._api_with_operations(inventory, inherits=False,
+                                             operations=("chat",))
+        asset = next(a for a in document["assets"]["models"] if a["id"] == "model:aoai-api")
+        asset["endpoints"]["operations"] = [{"name": "chat"}, {"name": "embeddings"}]
+        plan = build_plan(document, capabilities)
+        assert self._reaches(plan, "policy:api/aoai-api")
+
+    def test_an_inherited_element_is_not_counted_once_per_operation(
+        self, inventory, capabilities
+    ):
+        document = self._api_with_operations(inventory, inherits=True,
+                                             operations=("chat", "embeddings"))
+        plan = build_plan(document, capabilities)
+        members = [m for i in plan["items"]
+                   for m in (i.get("evidence") or {}).get("members") or []
+                   if m.get("policyId") == "policy:api/aoai-api"
+                   and m.get("element") == "azure-openai-token-limit"]
+        assert len(members) == 1, members
+
+
+class TestAFragmentIsJudgedByWhereItArrives:
+    """A reference is not an arrival. One written in a policy every migrated
+    API overrides, or on an API this migration excludes, names a fragment that
+    governs nothing here."""
+
+    def test_a_fragment_only_an_excluded_api_includes_governs_nothing(
+        self, inventory, capabilities
+    ):
+        document = copy.deepcopy(inventory)
+        token_limit_fragment(document, "shared-limits")
+        includes(document, "policy:api/legacy-soap",
+                 {"level": "api", "name": "legacy-soap", "workspace": "default"},
+                 "shared-limits", conditional=True)
+        item = fragment_item(build_plan(document, capabilities), "shared-limits")
+        assert item["verdict"] == "notApplicable", "nothing being migrated includes it"
+        assert item["status"] == "excluded"
+
+    def test_a_conditional_include_on_a_path_nothing_reaches_raises_no_decision(
+        self, inventory, capabilities
+    ):
+        document = copy.deepcopy(inventory)
+        token_limit_fragment(document, "shared-limits")
+        includes(document, "policy:api/legacy-soap",
+                 {"level": "api", "name": "legacy-soap", "workspace": "default"},
+                 "shared-limits", conditional=True)
+        plan = build_plan(document, capabilities)
+        assert fragment_item(plan, "shared-limits")["status"] != "needs-decision"
+
+    def test_a_global_include_every_migrated_api_overrides_governs_nothing(
+        self, inventory, capabilities
+    ):
+        """It is written, and no request reaches it."""
+        document = copy.deepcopy(inventory)
+        token_limit_fragment(document, "shared-limits")
+        includes(document, "policy:global",
+                 {"level": "global", "name": None, "workspace": "default"}, "shared-limits")
+        # Every API gets a document, and none of them asks for `<base />`. An
+        # API with no document of its own inherits, which is APIM's default
+        # template, so leaving one out would leave the fragment arriving there.
+        for kind in ("models", "mcpServers", "agents"):
+            for asset in document["assets"][kind]:
+                name = asset["source"]["name"]
+                workspace = asset["workspace"]
+                scoped = name if workspace == "default" else f"{workspace}/{name}"
+                api = policy_document(
+                    document, f"policy:api/{scoped}",
+                    {"level": "api", "name": name, "workspace": workspace},
+                )
+                api["elements"] = [e for e in api["elements"]
+                                   if not (e["name"] == "base" and e["section"] == "inbound")]
+                api["stats"] = {"sections": ["inbound"]}
+        item = fragment_item(build_plan(document, capabilities), "shared-limits")
+        assert item["verdict"] == "notApplicable"
+
+    def test_and_does_when_one_of_them_inherits(self, inventory, capabilities):
+        document = copy.deepcopy(inventory)
+        token_limit_fragment(document, "shared-limits")
+        includes(document, "policy:global",
+                 {"level": "global", "name": None, "workspace": "default"}, "shared-limits")
+        item = fragment_item(build_plan(document, capabilities), "shared-limits")
+        assert item["verdict"] == "handled"
+        assert {site["scopeLevel"] for site in item["evidence"]["includedBy"]} == {"global"}
+
+    def test_two_routes_into_one_fragment_report_the_weaker_of_them(
+        self, inventory, capabilities
+    ):
+        # Included plainly by one API and under a `choose` by another: the
+        # condition is lost either way, so the decision has to be raised.
+        document = copy.deepcopy(inventory)
+        token_limit_fragment(document, "shared-limits")
+        includes(document, "policy:api/aoai-api",
+                 {"level": "api", "name": "aoai-api", "workspace": "default"}, "shared-limits")
+        includes(document, "policy:api/meta-ai",
+                 {"level": "api", "name": "meta-ai", "workspace": "default"},
+                 "shared-limits", conditional=True)
+        item = fragment_item(build_plan(document, capabilities), "shared-limits")
+        assert item["evidence"]["disposition"] == "conditional"
+        assert item["status"] == "needs-decision"
+
+
+class TestANameIsNotAnIdentity:
+    def test_an_include_naming_another_workspaces_fragment_is_still_unresolved(
+        self, inventory, capabilities
+    ):
+        """Only `finance/limits` exists, and an `hr` API names `limits`.
+        Matched by name, the reference looked answered and the unknown policy
+        went unmentioned while the finance fragment reported as unused."""
+        document = copy.deepcopy(inventory)
+        token_limit_fragment(document, "limits", workspace="finance")
+        asset = next(a for a in document["assets"]["models"] if a["id"] == "model:aoai-api")
+        asset["workspace"] = "hr"
+        asset["source"]["name"] = "hr-api"
+        includes(document, "policy:api/hr/hr-api",
+                 {"level": "api", "name": "hr-api", "workspace": "hr"}, "limits")
+        plan = build_plan(document, capabilities)
+        missing = [i for i in plan["items"] if i["source"]["aspect"] == "limits"
+                   and i["source"]["assetId"] is None]
+        assert missing, "the hr include resolves to nothing and has to say so"
+        assert missing[0]["blocking"] is True
+
+
+class TestOneApiIncludingOneFragmentTwice:
+    """Two includes are two members with everything else in common."""
+
+    def _twice(self, inventory, *, second_section="inbound"):
+        document = copy.deepcopy(inventory)
+        token_limit_fragment(document, "shared-limits",
+                             counter_key="@(context.Subscription.Id)")
+        aoai = policy_document(document, "policy:api/aoai-api",
+                               {"level": "api", "name": "aoai-api", "workspace": "default"})
+        for index, section in enumerate(("inbound", second_section), start=1):
+            aoai["elements"].append(element(
+                "include-fragment", f"{section}/include-fragment[{index}]",
+                section=section, family="composition", fragment_id="shared-limits",
+            ))
+            sections = aoai.setdefault("stats", {}).setdefault("sections", [])
+            if section not in sections:
+                sections.append(section)
+        return document
+
+    def test_each_include_is_its_own_member(self, inventory, capabilities):
+        item = limit_item(build_plan(self._twice(inventory), capabilities),
+                          "policy:fragment/shared-limits")
+        members = [m for m in item["evidence"]["members"]
+                   if m["policyId"] == "policy:fragment/shared-limits"]
+        assert len(members) == 2, members
+        assert len({tuple(m["arrival"]) for m in members}) == 2, "two routes, two identities"
+
+    def test_moving_one_of_them_unsettles_the_decision(self, inventory, capabilities):
+        """Keyed on the destination, the two members shared one digest and one
+        overwrote the other -- so moving the earlier include left a settled
+        decision reading as unchanged."""
+        before = build_plan(self._twice(inventory), capabilities)
+        settled = settle(copy.deepcopy(before))
+        after = build_plan(self._twice(inventory, second_section="outbound"), capabilities,
+                           previous=settled)
+        item = limit_item(after, "policy:fragment/shared-limits")
+        assert item["status"] == "stale" or item.get("newMembers"), item["status"]
+
+
+class TestADecisionRestsOnFactsThatAreStillThere:
+    def test_one_whose_members_were_all_replaced_is_stale(self, inventory, capabilities):
+        """`changed` compares the members the two plans have in common. With
+        none in common it finds nothing, and the decision carried forward
+        untouched -- including across a change to how members are identified,
+        which is what a plan settled by an older build looks like."""
+        document = copy.deepcopy(inventory)
+        token_limit_fragment(document, "shared-limits",
+                             counter_key="@(context.Subscription.Id)")
+        includes(document, "policy:api/aoai-api",
+                 {"level": "api", "name": "aoai-api", "workspace": "default"}, "shared-limits")
+        settled = settle(build_plan(document, capabilities))
+        item = limit_item(settled, "policy:fragment/shared-limits")
+        # A plan written before members carried the route they arrive by.
+        item["memberDigests"] = {"policy:fragment/shared-limits#fragment/llm-token-limit[1]":
+                                 next(iter(item["memberDigests"].values()))}
+
+        after = limit_item(build_plan(document, capabilities, previous=settled),
+                           "policy:fragment/shared-limits")
+        assert after["status"] == "stale"
+        assert "still here" in after["staleReason"]
+
+    def test_an_unchanged_plan_keeps_its_decision(self, inventory, capabilities):
+        document = copy.deepcopy(inventory)
+        token_limit_fragment(document, "shared-limits",
+                             counter_key="@(context.Subscription.Id)")
+        includes(document, "policy:api/aoai-api",
+                 {"level": "api", "name": "aoai-api", "workspace": "default"}, "shared-limits")
+        settled = settle(build_plan(document, capabilities))
+        after = limit_item(build_plan(document, capabilities, previous=settled),
+                           "policy:fragment/shared-limits")
+        assert after["status"] == "adapted", "nothing moved, so nothing is re-asked"

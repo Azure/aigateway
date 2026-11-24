@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Azure/aigateway/tools/migrate-apim/schemas/rules.schema.json",
   "title": "APIM to AI Gateway mapping rules",
-  "description": "Source shape to target capability, with the verdict and the plan-item kind to raise when the mapping is not direct. Whether a rule can ever be selected is a question for `migrate-apim compile`, which checks each one against the planner's registered selection sites; this schema only decides whether the rule is well formed. `additionalProperties` is false throughout on purpose: an invented key is how a rule comes to match nothing while reading as though it matches something.",
+  "description": "Source shape to target capability, with the verdict and how the question is answered when the mapping is not direct. Whether a rule can ever be selected is a question for `migrate-apim compile`, which checks each one against the planner's registered selection sites; this schema only decides whether the rule is well formed. `additionalProperties` is false throughout on purpose: an invented key is how a rule comes to match nothing while reading as though it matches something.",
   "type": "object",
   "required": ["schemaVersion", "targetCapabilities", "assets", "structural", "policies"],
   "additionalProperties": false,
@@ -26,8 +26,22 @@
       "enum": ["native", "partial", "gap", "handled", "notApplicable"],
       "description": "native: direct equivalent. partial: a decision is needed. gap: no target. handled: carried by another object. notApplicable: nothing to carry."
     },
-    "itemKind": {
-      "enum": ["reduce-surface", "translate", "accept-loss", "enumerate", "name", "scope", "collapse"]
+    "answer": {
+      "enum": ["choose", "supply"],
+      "description": "How the question this rule raises is answered: `choose` one of `options`, or `supply` the data the decision carries -- a model list, a name per member. It replaces `itemKind`, whose seven values conflated that mechanical distinction with a presentation label: six of them meant \"pick one of options\" and differed only in what they were called, while the planner reads `decision.models` off exactly one kind of answer."
+    },
+    "predicate": {
+      "description": "One `where` predicate, in one of exactly three forms: a value is equals, an array is one of, and {\"present\": bool} is non-empty or empty. Closed on purpose. `derived` was a second block of predicates and all five of its keys turned out to be tests on a real field -- `policiesBypassed: true` was `policiesApplied is False` misfiled and inverted in the name -- so folding them in is only an improvement while `where` stays small. A predicate needing `contains`, `gt` or `matches` belongs in code, where it can say why.",
+      "oneOf": [
+        {"type": ["string", "boolean", "number", "null"]},
+        {"type": "array", "minItems": 1, "items": {"type": ["string", "boolean", "number"]}},
+        {
+          "type": "object",
+          "required": ["present"],
+          "additionalProperties": false,
+          "properties": {"present": {"type": "boolean"}}
+        }
+      ]
     },
     "options": {
       "type": "array",
@@ -51,12 +65,46 @@
     "common": {
       "properties": {
         "verdict": {"$ref": "#/$defs/verdict"},
-        "itemKind": {"$ref": "#/$defs/itemKind"},
+        "answer": {"$ref": "#/$defs/answer"},
         "capabilityId": {"type": "string"},
         "options": {"$ref": "#/$defs/options"},
         "proposal": {"type": "string"},
         "rationale": {"type": "string"},
         "note": {"type": "string"}
+      }
+    },
+    "partialWhen": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "description": "What makes this mapping lossy for one element. Any one condition that holds demotes the rule to partial and overlays `partial` on it; requiring all of them would let an element that trips a single condition read as cleanly mapped. Each condition is named by `plan._apply_partial_when`, and a key it does not know would never fire while reading as though it did, so the set is closed here. The booleans take `true` only, for the same reason: there is no condition that holds by an element lacking an expression.",
+      "properties": {
+        "attributeIsExpression": {
+          "type": "string",
+          "description": "The attribute whose value is a policy expression rather than a literal."
+        },
+        "hasExpression": {
+          "const": true,
+          "description": "The element evaluates a policy expression anywhere in it."
+        },
+        "underConditional": {
+          "const": true,
+          "description": "A `choose` branch in the source decides whether the element runs at all."
+        }
+      }
+    },
+    "partialOverlay": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "description": "The rule as it reads once `partialWhen` holds, overlaid on the rule itself. The verdict is already partial by then, so it is not restated here.",
+      "properties": {
+        "answer": {"$ref": "#/$defs/answer"},
+        "capabilityId": {"type": "string"},
+        "options": {"$ref": "#/$defs/options"},
+        "proposal": {"type": "string"},
+        "rationale": {"type": "string"},
+        "target": {"type": "string"}
       }
     },
     "partialNeedsOptions": {
@@ -65,22 +113,35 @@
     },
     "assetRule": {
       "type": "object",
-      "required": ["match", "verdict"],
+      "required": ["selects", "verdict"],
       "additionalProperties": false,
       "allOf": [{"$ref": "#/$defs/partialNeedsOptions"}],
       "properties": {
-        "match": {
+        "selects": {
+          "description": "Where the object this rule judges lives, as a path into the inventory, with `[]` for \"each of these\". One asset raises several questions and they are decided separately, so they are several paths: an API's published surface, the dialect it translates, its model catalogue and its alias names are four objects, not one.",
+          "enum": ["assets.mcpServers[]", "assets.mcpServers[].toolDiscovery", "assets.agents[]",
+                   "assets.modelProviders[]", "assets.models[]",
+                   "assets.models[].endpoints.surface", "assets.models[].endpoints.translation",
+                   "assets.models[].routing.sessionAffinity", "assets.models[].models",
+                   "assets.models[].models.resolved[]"]
+        },
+        "where": {
           "type": "object",
           "additionalProperties": false,
           "minProperties": 1,
+          "description": "Field predicates on the object `selects` points at. `selects` plus the key is the path `compile` checks against inventory.schema.json.",
           "properties": {
-            "family": {"enum": ["models", "modelProviders", "mcpServers", "agents"]},
-            "pattern": {"type": "string"},
-            "toolDiscovery": {"type": "string"}
+            "pattern": {"$ref": "#/$defs/predicate"},
+            "status": {"$ref": "#/$defs/predicate"},
+            "discoverySource": {"$ref": "#/$defs/predicate"},
+            "catalogue": {"$ref": "#/$defs/predicate"},
+            "unpublishableCount": {"$ref": "#/$defs/predicate"},
+            "policiesApplied": {"$ref": "#/$defs/predicate"}
           }
         },
+        "blocking": {"type": "boolean"},
         "verdict": {"$ref": "#/$defs/verdict"},
-        "itemKind": {"$ref": "#/$defs/itemKind"},
+        "answer": {"$ref": "#/$defs/answer"},
         "capabilityId": {"type": "string"},
         "options": {"$ref": "#/$defs/options"},
         "proposal": {"type": "string"},
@@ -88,20 +149,40 @@
         "note": {"type": "string"}
       }
     },
+    "decidedNeedsAnswer": {
+      "if": {"properties": {"verdict": {"enum": ["partial", "gap"]}}, "required": ["verdict"]},
+      "then": {"required": ["answer"]}
+    },
     "structuralRule": {
       "type": "object",
-      "required": ["match", "itemKind", "verdict"],
+      "required": ["selects", "verdict"],
       "additionalProperties": false,
-      "allOf": [{"$ref": "#/$defs/partialNeedsOptions"}],
+      "allOf": [
+        {"$ref": "#/$defs/partialNeedsOptions"},
+        {"$ref": "#/$defs/decidedNeedsAnswer"}
+      ],
       "properties": {
-        "match": {
+        "selects": {
+          "description": "Where the object this rule judges lives. `policies[]` here is a policy fragment: what makes a document one is its `scope.level`, which `plan._policy_fragments` filters on, so a fragment needs no subject of its own.",
+          "enum": ["workspaces[]", "shared.subscriptions", "shared.telemetry", "shared.certificates",
+                   "shared.credentialProviders", "collection.coverage[]", "policies[]",
+                   "service.identity", "service.networking.targetRequirement"]
+        },
+        "where": {
           "type": "object",
-          "required": ["kind"],
           "additionalProperties": false,
-          "properties": {"kind": {"type": "string"}}
+          "minProperties": 1,
+          "properties": {
+            "needsSubnet": {"$ref": "#/$defs/predicate"},
+            "userAssignedIdentities": {"$ref": "#/$defs/predicate"},
+            "disposition": {
+              "$ref": "#/$defs/predicate",
+              "description": "What this migration makes of the fragment. The one predicate here that no record carries: `plan._policy_fragments` works it out, and the selection site says so, because a fragment the target must dissolve is not a fragment nothing includes, and neither is an `include-fragment` naming one this inventory does not hold."
+            }
+          }
         },
         "verdict": {"$ref": "#/$defs/verdict"},
-        "itemKind": {"$ref": "#/$defs/itemKind"},
+        "answer": {"$ref": "#/$defs/answer"},
         "capabilityId": {"type": "string"},
         "options": {"$ref": "#/$defs/options"},
         "proposal": {"type": "string"},
@@ -119,30 +200,42 @@
     },
     "policyRule": {
       "type": "object",
-      "required": ["match", "verdict"],
+      "required": ["selects", "verdict"],
       "additionalProperties": false,
       "allOf": [{"$ref": "#/$defs/partialNeedsOptions"}],
+      "dependentRequired": {"partial": ["partialWhen"]},
       "properties": {
-        "match": {
+        "selects": {"const": "policies[].elements[]"},
+        "fallback": {
+          "const": true,
+          "description": "Answers for whatever the passes above it did not, and is tried last. There is exactly one per subject; a second is a tie `compile` rejects. It exists so an element no rule recognises still reaches the plan rather than being dropped where it was classified. Written as a flag and not as a predicate, because matching everything is not a statement about the element."
+        },
+        "where": {
           "type": "object",
           "additionalProperties": false,
           "minProperties": 1,
           "properties": {
-            "element": {"type": "array", "items": {"type": "string"}, "minItems": 1},
-            "family": {"type": "string"},
-            "hasExpression": {"type": "boolean"}
+            "name": {
+              "type": "array", "items": {"type": "string"}, "minItems": 1,
+              "description": "Element names, compared against `policies[].elements[].name`. The one-of form of a predicate."
+            },
+            "family": {"$ref": "#/$defs/predicate"},
+            "expressionIds": {
+              "$ref": "#/$defs/predicate",
+              "description": "`{\"present\": true}` is the element evaluating a policy expression anywhere in it. It was `derived.hasExpression`, a computed key that named no field; `expressionIds` is the field the collector writes."
+            }
           }
         },
         "verdict": {"$ref": "#/$defs/verdict"},
-        "itemKind": {"$ref": "#/$defs/itemKind"},
+        "answer": {"$ref": "#/$defs/answer"},
         "capabilityId": {"type": "string"},
         "options": {"$ref": "#/$defs/options"},
         "proposal": {"type": "string"},
         "rationale": {"type": "string"},
         "note": {"type": "string"},
         "target": {"type": "string"},
-        "partial": {"type": "object"},
-        "partialWhen": {"type": "object"},
+        "partial": {"$ref": "#/$defs/partialOverlay"},
+        "partialWhen": {"$ref": "#/$defs/partialWhen"},
         "batchOn": {"type": "array", "items": {"type": "string"}}
       }
     }

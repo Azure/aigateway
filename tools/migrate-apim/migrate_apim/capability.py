@@ -24,28 +24,73 @@ from typing import Any, Callable, Iterable
 from .azcli import az_argv
 from .dispatch import selector
 
-# `policy_rule` runs three passes in order: an element-specific rule wins, then
-# a family rule, then the expression fallback. Each pass is its own selection
-# site, so each declares what it looks at.
+# `policy_rule` runs four passes in order: an element-specific rule wins, then a
+# family rule, then the expression fallback, then a terminal rule that matches
+# anything. Each pass is its own selection site, so each declares what it looks
+# at.
 #
-# All three hand the chosen rule back to the same reader in `plan._policies`, so
+# All four hand the chosen rule back to the same reader in `plan._policies`, so
 # they read the same fields; they differ only in how the rule is found.
 _POLICY_FIELDS = (
-    "verdict", "itemKind", "capabilityId", "target", "proposal", "rationale",
+    "verdict", "answer", "capabilityId", "target", "proposal", "rationale",
     "options", "partial", "partialWhen", "batchOn",
 )
 POLICY_BY_ELEMENT = selector(
-    "policies", keys=("element",), site="capability.policy_rule element",
-    reads=_POLICY_FIELDS,
+    "policies", selects="policies[].elements[]", keys=("name",),
+    site="capability.policy_rule element", reads=_POLICY_FIELDS,
 )
 POLICY_BY_FAMILY = selector(
-    "policies", keys=("family",), site="capability.policy_rule family",
-    reads=_POLICY_FIELDS,
+    "policies", selects="policies[].elements[]", keys=("family",),
+    site="capability.policy_rule family", reads=_POLICY_FIELDS,
 )
 POLICY_BY_EXPRESSION = selector(
-    "policies", keys=("hasExpression",), site="capability.policy_rule expression",
-    reads=_POLICY_FIELDS,
+    "policies", selects="policies[].elements[]", keys=("expressionIds",),
+    site="capability.policy_rule expression", reads=_POLICY_FIELDS,
 )
+# The pass that makes "no rule" unreachable. Everything above it answers some
+# part of APIM's policy vocabulary; this answers the rest, including whatever
+# APIM ships next. Without it an element nothing matched was dropped where it
+# was classified, so a policy the tool did not recognise left no trace at all --
+# and the elements that reached it were the ones carrying no expression, since
+# an expression at least fell into the pass above. The simpler the policy, the
+# more completely it vanished.
+POLICY_TERMINAL = selector(
+    "policies", selects="policies[].elements[]", fallback=True,
+    site="capability.policy_rule terminal", reads=_POLICY_FIELDS,
+)
+
+
+def resolve_policy_rule(
+    rules: list[dict[str, Any]], element_name: str, *, family: str = "",
+    has_expression: bool = False,
+) -> dict[str, Any] | None:
+    """The rule governing one policy element, by the four passes in order.
+
+    A module-level function because `compile` has to ask the same question of a
+    raw rules document, and asking it a second way is how the two answers drift.
+    """
+    for rule in rules:
+        if not POLICY_BY_ELEMENT.governs(rule):
+            continue
+        names = (rule.get("where") or {}).get("name")
+        if names and element_name in names:
+            return rule
+    for rule in rules:
+        if not POLICY_BY_FAMILY.governs(rule):
+            continue
+        where = rule.get("where") or {}
+        if where.get("family") and where["family"] == family:
+            return rule
+    if has_expression:
+        # `has_expression` is `bool(element["expressionIds"])`, which is all the
+        # `present` form asks, so the bool stands in for the list here.
+        found = POLICY_BY_EXPRESSION.first(rules, expressionIds=has_expression)
+        if found:
+            return found
+    for rule in rules:
+        if POLICY_TERMINAL.governs(rule):
+            return rule
+    return None
 
 CAPABILITIES_DIR = Path(__file__).resolve().parent.parent / "capabilities"
 # Discovered rather than written down. The catalog is renamed on every CLI
@@ -219,28 +264,25 @@ class CapabilityMap:
         ``@(context.Subscription.Id)`` still maps to ``tokenLimit`` -- only the
         partitioning needs choosing, which the rule expresses through
         ``partialWhen``. The expression rule is the fallback for elements with no
-        mapping of their own, where arbitrary C# genuinely has no target.
+        mapping of their own, where arbitrary C# genuinely has no target, and the
+        terminal rule catches whatever reaches neither.
         """
-        rules = self.rules.get("policies") or []
-        for rule in rules:
-            if not POLICY_BY_ELEMENT.governs(rule):
-                continue
-            names = (rule.get("match") or {}).get("element")
-            if names and element_name in names:
-                return rule
-        for rule in rules:
-            if not POLICY_BY_FAMILY.governs(rule):
-                continue
-            match = rule.get("match") or {}
-            if match.get("family") and match["family"] == family:
-                return rule
-        if has_expression:
-            for rule in rules:
-                if not POLICY_BY_EXPRESSION.governs(rule):
-                    continue
-                if (rule.get("match") or {}).get("hasExpression"):
-                    return rule
-        return None
+        return resolve_policy_rule(
+            self.rules.get("policies") or [], element_name,
+            family=family, has_expression=has_expression,
+        )
+
+    def terminal_policy_rule(self) -> dict[str, Any] | None:
+        """The rule that answers for an element nothing else recognises.
+
+        Named apart from the rest because reaching it is not the same as being
+        mapped: `compile` holds every element the tool knows of to a rule of its
+        own, so arriving here means the vocabulary has grown.
+        """
+        return next(
+            (rule for rule in self.rules.get("policies") or [] if POLICY_TERMINAL.governs(rule)),
+            None,
+        )
 
     def service_only_entry(self, entry_id: str) -> dict[str, Any] | None:
         """A capability the gateway has and the CLI cannot author."""

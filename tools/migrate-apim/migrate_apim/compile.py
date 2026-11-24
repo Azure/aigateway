@@ -33,11 +33,17 @@ from pathlib import Path
 from typing import Any
 
 from . import dispatch
-from .capability import CAPABILITIES_DIR, DEFAULT_CATALOG
+from .capability import (
+    CAPABILITIES_DIR,
+    DEFAULT_CATALOG,
+    POLICY_TERMINAL,
+    resolve_policy_rule,
+)
+from .policy import FAMILIES, family_of
 
 # Importing these registers every selection site in dispatch.REGISTRY. The
 # import is the point: the contract checked below is the one the planner runs.
-from . import plan as _plan  # noqa: F401  (imported for its selector declarations)
+from . import plan as _plan  # imported for its selector declarations, and for the vocabularies below
 
 ERROR = "error"
 WARNING = "warning"
@@ -329,8 +335,7 @@ def check_rules(catalog: dict[str, Any], rules: dict[str, Any], out: Compilation
 
     for section in _SELECTED_SECTIONS:
         for rule in rules.get(section) or []:
-            match = rule.get("match") or {}
-            label = f"{section} {json.dumps(match, sort_keys=True)}"
+            label = f"{section} {_rule_label(rule)}"
             governing = dispatch.governing(rule, section)
 
             if not governing:
@@ -389,23 +394,39 @@ def _option_values(options: list[Any]) -> list[str]:
     return [o["value"] if isinstance(o, dict) else o for o in options if o]
 
 
+
+def _rule_label(rule: dict[str, Any]) -> str:
+    """A rule named by how it is selected, for a diagnostic to point at."""
+    shown = {k: v for k, v in rule.items() if k in ("selects", "where", "fallback")}
+    return json.dumps(shown, sort_keys=True)
+
+
 def _explain_unreachable(rule: dict[str, Any], section: str, label: str, out: Compilation) -> None:
     """Say *why* nothing can choose this rule, not merely that nothing can.
 
-    "No site selects this" is true of a bogus match value and of an invented
-    match key alike, and the fix is different. A rule whose keys a site does
-    read, but whose value it never compares against, is a vocabulary problem;
-    a rule naming a key no site reads at all is a different mistake.
+    "No site selects this" is true of a subject nothing decides about, of a
+    bogus `where` value, and of an invented `where` key alike, and the fix is
+    different each time. A rule whose keys a site does read but whose value it
+    never compares against is a vocabulary problem; a rule naming a key no site
+    reads is a different mistake; and a rule naming a subject no site has is the
+    one this check gained when subjects became explicit.
     """
-    match = rule.get("match") or {}
-    sites = [s for s in dispatch.REGISTRY if s.section == section]
-    key_compatible = [s for s in sites if not set(match) - set(s.keys)]
+    where = rule.get("where") or {}
+    sites = [s for s in dispatch.REGISTRY if s.selects == rule.get("selects")]
+    if not sites:
+        out.error(
+            "rule-reachable",
+            f"{label}: selects {rule.get('selects')!r}, which no selection site decides about. "
+            f"Known paths: {', '.join(sorted({s.selects for s in dispatch.REGISTRY}))}.",
+        )
+        return
+    key_compatible = [s for s in sites if not set(where) - set(s.keys)]
 
     if key_compatible:
         for selector in key_compatible:
             for key, permitted in selector.values.items():
-                value = match.get(key)
-                if key in match and permitted and value not in permitted:
+                value = where.get(key)
+                if key in where and permitted and value not in permitted:
                     out.error(
                         "match-value-known",
                         f"{label}: {selector.site} never compares {key} against {value!r}; "
@@ -414,11 +435,11 @@ def _explain_unreachable(rule: dict[str, Any], section: str, label: str, out: Co
         return
 
     readable = sorted({key for selector in sites for key in selector.keys})
-    unknown = sorted(set(match) - set(readable))
+    unknown = sorted(set(where) - set(readable))
     detail = (
-        f"it matches on {unknown}, which no {section} selection site reads"
+        f"it matches on {unknown}, which no site deciding {rule.get('selects')!r} reads"
         if unknown
-        else f"no site reads this combination of keys {sorted(match)}"
+        else f"no site reads this combination of keys {sorted(where)}"
     )
     out.error(
         "rule-reachable",
@@ -427,14 +448,212 @@ def _explain_unreachable(rule: dict[str, Any], section: str, label: str, out: Co
     )
 
 
+def check_fragment_dispositions(rules: dict[str, Any], out: Compilation) -> None:
+    """Every case the planner can classify a fragment into must have a rule.
+
+    `plan.FRAGMENT_DISPOSITIONS` is the vocabulary, declared where the
+    classifying happens, so this is one list checked rather than two kept in
+    step. The gap it closes is specific to a site that dispatches on a second
+    match key: a `policyFragments` rule naming no disposition passes
+    `Selector.governs` -- pinning fewer keys is allowed, and usually right --
+    and is then never equal to any disposition the planner asks for. Reachable
+    and unselectable at once, which is the shape of a rule nobody notices.
+    """
+    structural = rules.get("structural") or []
+    out.cover(
+        f"{len(_plan.FRAGMENT_DISPOSITIONS)} fragment dispositions the planner can classify: "
+        f"each answered by a rule naming it"
+    )
+    seen: set[str] = set()
+    for rule in structural:
+        if rule.get("selects") != _plan.STRUCTURAL_POLICY_FRAGMENTS.selects:
+            continue
+        disposition = (rule.get("where") or {}).get("disposition")
+        if disposition is None:
+            out.error(
+                "fragment-disposition",
+                "a policy fragment rule names no disposition, so no selection site is ever equal "
+                f"to it. Name one of: {', '.join(_plan.FRAGMENT_DISPOSITIONS)}.",
+            )
+            continue
+        seen.add(disposition)
+    missing = [name for name in _plan.FRAGMENT_DISPOSITIONS if name not in seen]
+    if missing:
+        out.error(
+            "fragment-disposition",
+            f"no rule answers for {', '.join(missing)}, which `plan._policy_fragments` can "
+            "classify a fragment into. The item would carry no verdict and no rationale.",
+        )
+
+
+def check_policy_vocabulary(rules: dict[str, Any], out: Compilation) -> None:
+    """Every policy element the collector can name must be answered deliberately.
+
+    `policy.FAMILIES` is the vocabulary this tool classifies against: committed
+    data, so the question is decidable here, offline, with no APIM to ask. The
+    terminal rule answers for anything outside it, which is what keeps an
+    unrecognised policy out of silence -- but it would equally answer for an
+    element somebody simply never wrote a rule for, and then the safety net
+    becomes the mapping. Ten elements lived there, three of them carrying
+    backend credentials.
+
+    So the net is held to its purpose: a known element reaching it is an error,
+    and the fix is a rule of its own or a rule for its family.
+    """
+    policies = rules.get("policies") or []
+    out.cover(
+        f"{len(FAMILIES)} policy elements the collector classifies: each answered by a "
+        f"rule of its own or a family rule, none left to the terminal rule"
+    )
+
+    terminal = next((rule for rule in policies if POLICY_TERMINAL.governs(rule)), None)
+    if terminal is None:
+        out.error(
+            "policy-terminal",
+            "no rule matches `anyElement`, so an element outside the known vocabulary resolves "
+            "to nothing and is dropped where it is classified. Add the terminal rule.",
+        )
+        return
+
+    unanswered: dict[str, list[str]] = {}
+    for name in sorted(FAMILIES):
+        rule = resolve_policy_rule(policies, name, family=family_of(name), has_expression=False)
+        if rule is terminal:
+            unanswered.setdefault(family_of(name), []).append(name)
+
+    for family, names in sorted(unanswered.items()):
+        out.error(
+            "policy-vocabulary",
+            f"family {family!r}: {', '.join(names)} reach the terminal rule, which exists for "
+            f"policies this catalog has never heard of. Give the family a rule, or each element "
+            f"one of its own.",
+        )
+
+
+def _inventory_schema() -> dict[str, Any]:
+    path = Path(__file__).resolve().parent.parent / "schemas" / "inventory.schema.json"
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def check_subjects_have_rules(rules: dict[str, Any], out: Compilation) -> None:
+    """Every path a site selects on has at least one rule answering it.
+
+    This is what keeps the decisions in the file. A path with no rule is a
+    question the planner asks and the data does not answer -- which is how ten
+    of them came to be written in `plan.py` while `ARCHITECTURE.md` described
+    them as data. Declaring a site without writing its rule now fails the
+    build, so the gap cannot be reopened quietly.
+
+    The other direction is already covered: a rule no site selects is caught by
+    `check_rules`.
+    """
+    subjects = {site.selects for site in dispatch.REGISTRY}
+    answered = {
+        rule.get("selects")
+        for section in _SELECTED_SECTIONS
+        for rule in rules.get(section) or []
+    }
+    out.cover(
+        f"{len(subjects)} inventory paths the planner decides about: "
+        f"each answered by at least one rule"
+    )
+    for subject in sorted(subjects - answered):
+        site_names = [s.site for s in dispatch.REGISTRY if s.selects == subject]
+        out.error(
+            "subject-has-rule",
+            f"{subject!r} is decided at {site_names} and no rule answers for it, so the "
+            "decision is either hardcoded or absent. Write the rule.",
+        )
+
+
+def check_paths_are_fields(rules: dict[str, Any], inventory_schema: dict[str, Any],
+                           out: Compilation) -> None:
+    """What a rule selects, and every key it narrows with, has to exist.
+
+    A rule used to name its subject with a label -- `publishedSurface` -- that
+    appeared nowhere in the inventory, and the binding from a `where` key to
+    the field it was compared against lived inside the resolver. So a rule
+    could match on a field no record carries and simply never fire: the failure
+    `rule-reachable` cannot see, because the key is one a site does read.
+
+    A path is checkable, so both halves are checked here against the collector's
+    own schema, the way `check_capabilities` checks a declared CLI option
+    against the surface snapshot. Only `computed` keys are exempt, and they say
+    so.
+    """
+    declared = _schema_paths(inventory_schema)
+    checked = sum(1 + len([k for k in site.keys if k not in site.computed])
+                  for site in dispatch.REGISTRY)
+    out.cover(
+        f"{checked} inventory paths across {len(dispatch.REGISTRY)} selection sites: "
+        f"what each selects, and every field it narrows on, declared in inventory.schema.json"
+    )
+    for site in dispatch.REGISTRY:
+        if not _path_declared(site.selects, declared):
+            out.error(
+                "inventory-path",
+                f"{site.site}: selects {site.selects!r}, which inventory.schema.json does not "
+                "declare. Either the path is wrong or the schema has drifted from the collector.",
+            )
+            continue
+        for key in site.keys:
+            if key in site.computed:
+                continue
+            path = f"{site.selects}.{key}"
+            if _path_declared(path, declared):
+                continue
+            out.error(
+                "inventory-path",
+                f"{site.site}: {key!r} reads {path!r}, which inventory.schema.json does not "
+                "declare. Either the path is wrong or the schema has drifted from the collector.",
+            )
+
+
+def _schema_paths(schema: dict[str, Any]) -> set[str]:
+    """Every dotted property path the inventory schema declares."""
+    defs = schema.get("$defs") or {}
+
+    def walk(node: Any, seen: tuple[str, ...]) -> set[str]:
+        found: set[str] = set()
+        if not isinstance(node, dict):
+            return found
+        if "$ref" in node:
+            name = node["$ref"].rsplit("/", 1)[-1]
+            return set() if name in seen else walk(defs.get(name, {}), (*seen, name))
+        for key, sub in (node.get("properties") or {}).items():
+            found.add(key)
+            found.update(f"{key}.{nested}" for nested in walk(sub, seen))
+        if "items" in node:
+            found |= walk(node["items"], seen)
+        for combinator in ("oneOf", "anyOf", "allOf"):
+            for sub in node.get(combinator) or []:
+                found |= walk(sub, seen)
+        return found
+
+    return walk(schema, ())
+
+
+def _path_declared(path: str, declared: set[str]) -> bool:
+    """Whether the whole path exists, ignoring the `[]` that mark arrays.
+
+    Whole, not its tail: `_schema_paths` resolves `$ref`s, so every shape is
+    reachable by its full route from the root. Accepting a suffix would pass
+    `assets.models[].endpoints.surface.status` on the strength of some other
+    record having a `surface.status`, which is the drift this check exists to
+    find rather than something to tolerate.
+    """
+    return path.replace("[]", "") in declared
+
+
 def _check_uniqueness(rules: dict[str, Any], out: Compilation) -> None:
     """Selection is first-match or last-write; either way a tie is a silent bug.
 
     Ties are judged per selection site, over exactly the keys that site reads:
     two rules are indistinguishable when the site cannot tell them apart, not
     when they happen to look alike. Every section is covered, including the
-    policy passes keyed on `family` and `hasExpression` -- they were not, and a
-    second `family: transform` rule compiled clean while never being reached.
+    policy passes keyed on `family` and on whether the element carries an
+    expression -- they were not, and a second `family: transform` rule compiled
+    clean while never being reached.
     """
     for section in _SELECTED_SECTIONS:
         for selector in [s for s in dispatch.REGISTRY if s.section == section]:
@@ -442,28 +661,77 @@ def _check_uniqueness(rules: dict[str, Any], out: Compilation) -> None:
             for rule in rules.get(section) or []:
                 if not selector.governs(rule):
                     continue
-                match = rule.get("match") or {}
-                # A match value may itself be a list of alternatives -- a policy
-                # rule naming several elements. Each alternative is its own way
-                # to reach the rule, so each is its own chance of a tie.
-                for key in _match_keys(match, selector.keys):
+                where = rule.get("where") or {}
+                # A `where` value may itself name several alternatives -- a
+                # policy rule naming several elements. Each alternative is its
+                # own way to reach the rule, so each is its own chance of a tie.
+                for key in _where_keys(where, selector.keys):
                     if key in seen:
                         out.error(
                             "rule-unique",
                             f"{section}: {selector.site} cannot tell two rules apart on "
-                            f"{dict(zip(selector.keys, key))}; only one of them is ever used",
+                            f"{dict(zip(selector.keys, key))}; "
+                            "only one of them is ever used",
                         )
                     seen.add(key)
 
 
-def _match_keys(match: dict[str, Any], keys: tuple[str, ...]) -> list[tuple]:
+def _where_keys(where: dict[str, Any], keys: tuple[str, ...]) -> list[tuple]:
     """Every distinct way a site keyed on `keys` can arrive at this rule."""
     combinations: list[tuple] = [()]
     for name in keys:
-        value = match.get(name)
+        value = where.get(name)
         alternatives = value if isinstance(value, list) else [value]
-        combinations = [(*prefix, alt) for prefix in combinations for alt in alternatives]
+        combinations = [
+            # A presence test is a dict, which cannot go in a set. Serialised
+            # rather than dropped: two rules alike in `where` and differing only
+            # in whether a field is there are two answers, and a tie judged
+            # without them called them one.
+            (*prefix, json.dumps(alt, sort_keys=True) if isinstance(alt, dict) else alt)
+            for prefix in combinations for alt in alternatives
+        ]
     return combinations
+
+
+# What a `where` value may be, and nothing else. Three forms cover all of
+# today's rules with nothing left over; a fourth would start `where` down the
+# road to a query language, and the checker is where that road is closed.
+def _is_predicate(value: Any) -> bool:
+    if isinstance(value, dict):
+        return set(value) == {"present"} and isinstance(value["present"], bool)
+    if isinstance(value, list):
+        return bool(value) and all(isinstance(alt, (str, bool, int, float)) for alt in value)
+    return value is None or isinstance(value, (str, bool, int, float))
+
+
+def check_where_operators(rules: dict[str, Any], out: Compilation) -> None:
+    """Every predicate is equals, one of, or present.
+
+    `derived` was a second block of predicates beside `where`, and checked
+    against what each one computed, not one of the five was a different kind of
+    question: `policiesBypassed: true` tested `policiesApplied is False` -- an
+    equality on a real field, misfiled, and inverted in the name so a reader had
+    to negate it; the other four were a non-empty test on a field the collector
+    writes. Folding them into `where` is only an improvement while `where` stays
+    three forms wide, so this is what holds it there.
+    """
+    counted = sum(
+        len(rule.get("where") or {})
+        for section in _SELECTED_SECTIONS for rule in rules.get(section) or []
+    )
+    out.cover(f"{counted} where predicates: each equals, one of, or present")
+    for section in _SELECTED_SECTIONS:
+        for rule in rules.get(section) or []:
+            for key, predicate in (rule.get("where") or {}).items():
+                if _is_predicate(predicate):
+                    continue
+                out.error(
+                    "where-operator",
+                    f"{section} {_rule_label(rule)}: {key!r} is {predicate!r}, which is none of "
+                    "the three forms `where` takes: a value for equals, an array for one of, "
+                    '{"present": bool} for non-empty or empty. A predicate needing more than '
+                    "those belongs in code.",
+                )
 
 
 def _check_required_fields(rules: dict[str, Any], out: Compilation) -> None:
@@ -476,10 +744,9 @@ def _check_required_fields(rules: dict[str, Any], out: Compilation) -> None:
     for section in _SELECTED_SECTIONS:
         for rule in rules.get(section) or []:
             if "verdict" not in rule:
-                match = json.dumps(rule.get("match") or {}, sort_keys=True)
                 out.error(
                     "rule-has-verdict",
-                    f"{section} {match}: has no verdict, which decides the item's status",
+                    f"{section} {_rule_label(rule)}: has no verdict, which decides the item's status",
                 )
 
 
@@ -581,6 +848,11 @@ def compile_contract(
     check_capabilities(catalog, surface, out)
     check_pins(catalog, catalog_path, rules, surface, out)
     check_rules(catalog, rules, out)
+    check_where_operators(rules, out)
+    check_policy_vocabulary(rules, out)
+    check_fragment_dispositions(rules, out)
+    check_subjects_have_rules(rules, out)
+    check_paths_are_fields(rules, _inventory_schema(), out)
     if newest_release:
         check_release_pin(catalog, newest_release, out)
     return out

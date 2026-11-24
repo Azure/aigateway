@@ -3,6 +3,7 @@ import subprocess
 
 import pytest
 
+from migrate_apim import plan as plan_mod
 from migrate_apim.azcli import az_argv
 from migrate_apim.capability import (
     CAPABILITIES_DIR,
@@ -127,10 +128,28 @@ class TestPolicyRules:
     def test_expression_is_the_fallback_for_unmapped_elements(self, caps):
         rule = caps.policy_rule("some-future-policy", family="other", has_expression=True)
         assert rule["verdict"] == "gap"
-        assert (rule.get("match") or {}).get("hasExpression") is True
+        assert rule["where"] == {"expressionIds": {"present": True}}
 
-    def test_an_unmapped_element_without_an_expression_matches_nothing(self, caps):
-        assert caps.policy_rule("some-future-policy", family="other") is None
+    def test_an_unmapped_element_without_an_expression_reaches_the_terminal_rule(self, caps):
+        # It used to match nothing, and `plan._policies` dropped what matched
+        # nothing where it stood. An element carrying an expression at least
+        # reached the pass above, so the policies that vanished most completely
+        # were the simplest ones.
+        rule = caps.policy_rule("some-future-policy", family="other")
+        assert rule is caps.terminal_policy_rule()
+        assert rule["verdict"] == "gap"
+
+    def test_only_an_element_outside_the_vocabulary_reaches_the_terminal_rule(self, caps):
+        # The terminal rule is the net, not the mapping. `compile` holds every
+        # element in policy.FAMILIES to a rule of its own or a family rule.
+        from migrate_apim.policy import FAMILIES, family_of
+
+        terminal = caps.terminal_policy_rule()
+        reached = sorted(
+            name for name in FAMILIES
+            if caps.policy_rule(name, family=family_of(name)) is terminal
+        )
+        assert reached == []
 
     def test_plumbing_is_explicitly_not_applicable(self, caps):
         for name in ("base", "include-fragment", "choose", "set-variable", "cors"):
@@ -161,7 +180,8 @@ class TestTargetSurface:
 
     def test_an_unknown_coverage_gap_cannot_be_accepted(self, caps):
         rule = next(
-            r for r in caps.structural_rules() if (r.get("match") or {}).get("kind") == "coverageGap"
+            r for r in caps.structural_rules()
+            if r.get("selects") == plan_mod.STRUCTURAL_COVERAGE_GAP.selects
         )
         assert rule["cannotAccept"] is True
         assert rule["blocking"] is True
