@@ -178,13 +178,11 @@ class TestTargetSurface:
             if capability_id:
                 assert caps.capability(capability_id) is not None, capability_id
 
-    def test_an_unknown_coverage_gap_cannot_be_accepted(self, caps):
-        rule = next(
-            r for r in caps.structural_rules()
-            if r.get("selects") == plan_mod.STRUCTURAL_COVERAGE_GAP.selects
-        )
-        assert rule["cannotAccept"] is True
-        assert rule["blocking"] is True
+    # The coverage gate is no longer a rule, so there is no rule here to assert
+    # against. What matters is the item it produces, and
+    # `test_plan.TestCoverageGapCannotBeAccepted` holds that: blocking, cannot
+    # be accepted, and offering no `accept` option. Asserting the data a rule
+    # carried was always the weaker of the two tests.
 
 
 class TestTheDefaultCatalogueResolves:

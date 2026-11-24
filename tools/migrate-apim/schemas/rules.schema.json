@@ -167,7 +167,6 @@
             "apim.loggers",
             "apim.certificates",
             "apim.authorizationProviders",
-            "collection.coverage[]",
             "apim.policyFragments[]",
             "service.identity",
             "service"

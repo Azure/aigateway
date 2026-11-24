@@ -595,19 +595,6 @@
       "rationale": "A policy includes a fragment this inventory does not hold, so what runs at that point is unknown rather than absent. It cannot be accepted as a loss: nobody has read it, so nobody can say what accepting it costs."
     },
     {
-      "selects": "collection.coverage[]",
-      "verdict": "gap",
-      "answer": "supply",
-      "blocking": true,
-      "cannotAccept": true,
-      "options": [
-        {"value": "re-collect", "consequence": "Fix access and collect again."},
-        {"value": "supply-facts", "consequence": "State what is there."}
-      ],
-      "rationale": "A control-plane read failed, so this is unknown rather than absent. Unknown coverage cannot be accepted as an acceptable loss.",
-      "note": "Not an APIM path, and deliberately. This is a record of what the collection run managed to read, not a thing the service has. A failed read is unknown rather than absent, and only this tool can say so."
-    },
-    {
       "selects": "apim.loggers",
       "verdict": "partial",
       "answer": "choose",

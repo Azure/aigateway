@@ -18,6 +18,22 @@ Declares what the `az aigateway` CLI extension can do. Paired to one CLI release
 
 Declares how APIM shapes map to target capabilities. Never versioned separately; versioned with the catalog it references. Contains:
 
+**What belongs in this file, and what does not.** `rules.json` is the AI Gateway
+mapping, versioned with the capability catalog it names in `targetCapabilities`.
+The test for a rule is whether it moves when the target moves: "AI Gateway
+exposes no A2A building block" and "no caching on the typed gateway" are claims
+about a release, and a release that changed them would change the rule. A
+decision that holds whatever AI Gateway ever ships is not a mapping, however
+much it looks like one — it has no `capabilityId`, makes no claim about the
+target, and belongs in the planner.
+
+The coverage gate is the case that proved it. "A failed control-plane read is
+unknown rather than absent, and unknown coverage cannot be accepted as a loss"
+is a fact about the collection run and about what may be concluded from
+silence. It sat in this file as the only rule answering to nothing in the
+catalog, and — not coincidentally — the only one whose `selects` named no APIM
+object. The path never fit because the rule was never a mapping.
+
 Every rule names the object it judges in `selects`, by where that object lives: a path into the inventory, with `[]` for "each of these". It narrows with `where` (field predicates on that object) or `fallback` (the rule that answers when nothing above it did), and then declares the decision. The paths are APIM's object graph, because that is what a rule is about: an API, a policy element, a product, a workspace. One API raises several questions and they are decided separately, so they are several paths: `apim.apis[].operations[]` is not `assets.models[].models`. Take the path, open the inventory, see the object — and `compile` checks both halves against `inventory.schema.json`, which a label like `publishedSurface` could not be checked against at all.
 
 A path under `apim.` carries a further claim: that these are APIM's objects. So it has to be APIM's the whole way down, and `apim-path-is-apim` asks `_api_source` — the one place an APIM API's fields are written down — rather than the schema, which is a file we write and can widen until it certifies anything. A *reading* of an APIM object may be a `where` key (`apim.apis[]` narrowed on `pattern`, which reads honestly: APIM's object, our reading, and you can tell which is which) but never a path segment. `apim.apis[].endpoints.surface` shipped once: `endpoints` is a decomposition of ours and `surface` is a judgment about the target, and declaring both on `apim.apis[]` made the checker certify them.

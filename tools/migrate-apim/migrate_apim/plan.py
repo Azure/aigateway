@@ -162,10 +162,6 @@ STRUCTURAL_CREDENTIAL_PROVIDERS = _structural_selector(
     "apim.authorizationProviders", "authorizationProviders",
     reads=("verdict", "answer", "proposal", "rationale"),
 )
-STRUCTURAL_COVERAGE_GAP = _structural_selector(
-    "collection.coverage[]", "coverageGap",
-    reads=("verdict", "answer", "rationale", "options", "blocking", "cannotAccept"),
-)
 IDENTITY_RULE = selector(
     "structural", selects="service.identity", keys=("userAssignedIdentities",),
     site="plan._identity",
@@ -1552,26 +1548,35 @@ class PlanBuilder:
                 blocking=True,
             )
 
-        # A failed read is unknown, not absent, and cannot be accepted as a loss.
+        # Decided here rather than in rules.json, and deliberately. That file is
+        # the AI Gateway mapping, versioned with the capability catalog it names
+        # in `targetCapabilities`: every rule in it is a claim about the target
+        # that moves when the target does. This is not. "A failed read is unknown
+        # rather than absent" holds whatever AI Gateway ever ships -- it is a
+        # fact about this collection run, and about what may be concluded from
+        # silence. It was the one rule in the file that answered to nothing in
+        # the catalog, and the one whose `selects` path named no APIM object.
         failures = [
             entry for entry in (self.inventory.get("collection") or {}).get("coverage") or []
             if entry.get("status") == "failed"
         ]
         for failure in failures:
-            rule = STRUCTURAL_COVERAGE_GAP.first(structural) or {}
             self._add(
                 item_id=ids.item("coverage", f"{failure['collection']}/{failure['scope']}"),
                 source={"assetId": None, "assetKind": "coverageGap", "aspect": failure["collection"]},
-                kind=rule.get("answer", "supply"),
-                verdict=rule.get("verdict", "gap"),
-                rationale=rule.get("rationale", ""),
-                options=_options_of(rule) or [
+                kind="supply",
+                verdict="gap",
+                rationale=(
+                    "A control-plane read failed, so this is unknown rather than absent. "
+                    "Unknown coverage cannot be accepted as an acceptable loss."
+                ),
+                options=[
                     _opt("re-collect", "Fix access and collect again."),
                     _opt("supply-facts", "State what is there."),
                 ],
                 evidence={"coverage": failure},
-                blocking=rule.get("blocking", True),
-                cannot_accept=rule.get("cannotAccept", True),
+                blocking=True,
+                cannot_accept=True,
             )
 
     def _reports_telemetry(self) -> bool:
