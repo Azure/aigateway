@@ -547,8 +547,13 @@ an explicit question to the operator.
 
 ## Output shape
 
-Flat, id-addressed tables with assets referencing them, so nothing is duplicated and a re-collection
-of an unchanged service diffs cleanly. Ids are derived from ARM identity and are stable across runs.
+Three regions, and which one a thing is in says what kind of claim it is. **`apim`** is what APIM
+has, under APIM's own name for it — a rule in `capabilities/rules.json` selects from here, so the
+path a rule names is a path through the service's object graph. **`assets`** is what this tool
+concluded about it. **`collection`** is about the run that read it.
+
+Ids are derived from ARM identity and are stable across runs, so a re-collection of an unchanged
+service diffs cleanly.
 
 ```jsonc
 {
@@ -559,6 +564,16 @@ of an unchanged service diffs cleanly. Ids are derived from ARM identity and are
   "service":    { "resourceId": "...", "sku": {...}, "identity": {...}, "virtualNetworkType": "..." },
   "workspaces": [ { "name": "finance", "serveOn": "workspaceAndDefault", "collected": true } ],
 
+  "apim": {
+    "workspaces": [ { "name": "finance", "serveOn": "workspaceAndDefault", "collected": true } ],
+    "apis":       [ /* EVERY API: APIM's own fields, plus what this tool made of each */ ],
+    "backends": [...], "namedValues": [...], "policyFragments": [...],
+    "products": [...], "subscriptions": [...], "certificates": [...],
+    "authorizationServers": [...], "openidConnectProviders": [...],
+    "authorizationProviders": [...], "loggers": [...], "diagnostics": [...],
+    "policies": [ /* one per scope: raw XML + normalized elements + expressions */ ]
+  },
+
   "assets": {
     "modelProviders": [ /* upstream endpoints + resolved Foundry deployments + referencedBy */ ],
     "models":         [ /* APIM APIs publishing inference: provider, routing, models, endpoints */ ],
@@ -567,15 +582,8 @@ of an unchanged service diffs cleanly. Ids are derived from ARM identity and are
   },
   "excludedApis":      [ /* every API not inventoried, with its reason and signals */ ],
   "excludedBackends":  [ /* every backend not treated as a model provider, with its reason */ ],
+  "foundryAccounts":   [ /* Microsoft.CognitiveServices, not APIM -- so not under `apim` */ ],
 
-  "shared": {
-    "backends": [...], "namedValues": [...], "policyFragments": [...],
-    "products": [...], "subscriptions": [...], "certificates": [...],
-    "authorizationServers": [...], "openidConnectProviders": [...],
-    "credentialProviders": [...], "telemetry": {...}, "foundryAccounts": [...]
-  },
-
-  "policies": [ /* one per scope: raw XML + normalized elements + expressions */ ],
   "secrets":  [ /* every secretRef, referenced by id from the tables above */ ]
 }
 ```
