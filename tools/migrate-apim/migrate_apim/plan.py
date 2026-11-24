@@ -35,7 +35,11 @@ MCP_BY_PATTERN = selector(
     "assets",
     selects="apim.apis[]",
     keys=("type", "pattern"),
-    values={"pattern": MCP_PATTERNS},
+    # `type` needs a vocabulary of its own. Without it this site governs the
+    # agent rule as well -- `{type}` is a subset of `{type, pattern}` -- so two
+    # sites claimed one rule, and `rule-field-unread` asked the wrong one what
+    # it reads.
+    values={"type": ("mcp",), "pattern": MCP_PATTERNS},
     site="plan._mcp",
     reads=("verdict", "answer", "capabilityId", "proposal", "rationale", "options"),
 )
@@ -75,12 +79,13 @@ PROVIDER_RULE = selector(
 )
 SURFACE_BY_STATUS = selector(
     "assets", selects="apim.apis[].operations[]", keys=("group",),
-    values={"status": ("unbounded",)},
+    values={"group": ("wildcard",)},
     site="plan._model surface",
     reads=("verdict", "answer", "capabilityId", "proposal", "rationale", "options", "blocking"),
 )
 SURFACE_PARTIALLY_PUBLISHABLE = selector(
     "assets", selects="apim.apis[].operations[]", keys=("publishable",),
+    values={"publishable": (False,)},
     site="plan._model surface partial",
     reads=("verdict", "answer", "capabilityId", "proposal", "options", "blocking"),
 )

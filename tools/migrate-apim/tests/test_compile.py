@@ -580,7 +580,7 @@ class TestACleanRunSaysWhatItChecked:
     def test_every_check_reports_what_it_covered(self, compile_with, shipped):
         documented = shipped[0]["cliEvidence"]["documentedVersion"]
         covered = compile_with(newest_release=f"cli-v{documented}").covered
-        assert len(covered) == 11, covered
+        assert len(covered) == 12, covered
 
     def test_the_counts_are_the_real_ones(self, compile_with, shipped):
         catalog, rules, surface = shipped
@@ -730,3 +730,79 @@ class TestAnApimPathIsApimAllTheWayDown:
 
     def test_the_shipped_sites_all_hold(self, compile_with):
         assert [d for d in compile_with().errors] == []
+
+
+class TestASiteDoesNotClaimAnotherSitesRule:
+    """`governs` is a subset test, so a site reading more keys claims rules
+    about something else unless it says which literals it compares against.
+
+    `plan._mcp` reads `(type, pattern)`; the agent rule pins only `type`. With
+    no vocabulary for `type`, the MCP site governed it. Nothing failed at
+    runtime -- the criteria still picked the right rule -- but `rule-field-unread`
+    then asked a site that never builds the item what it reads, which is the
+    question that check exists to ask correctly.
+    """
+
+    def test_the_shipped_rules_each_have_one_site(self, compile_with):
+        assert "rule-one-site" not in codes(compile_with())
+
+    def test_a_site_claiming_another_rule_is_caught(self, shipped):
+        saved = list(dispatch.REGISTRY)
+        dispatch.REGISTRY.clear()
+        try:
+            # Two sites on one path, the wider one with no vocabulary to tell
+            # them apart. This is the shape the MCP site had.
+            dispatch.REGISTRY.extend([
+                dispatch.Selector(section="assets", selects="apim.apis[]",
+                                  keys=("type", "pattern"), values={}, site="wide"),
+                dispatch.Selector(section="assets", selects="apim.apis[]",
+                                  keys=("type",), values={"type": ("a2a",)}, site="narrow"),
+            ])
+            out = compile.Compilation()
+            compile.check_each_rule_has_one_site(
+                {"assets": [{"selects": "apim.apis[]", "where": {"type": "a2a"}}]}, out)
+            assert {d.check for d in out.errors} == {"rule-one-site"}
+        finally:
+            dispatch.REGISTRY.clear()
+            dispatch.REGISTRY.extend(saved)
+
+    def test_a_vocabulary_on_the_wider_site_resolves_it(self):
+        saved = list(dispatch.REGISTRY)
+        dispatch.REGISTRY.clear()
+        try:
+            dispatch.REGISTRY.extend([
+                dispatch.Selector(section="assets", selects="apim.apis[]",
+                                  keys=("type", "pattern"), values={"type": ("mcp",)}, site="wide"),
+                dispatch.Selector(section="assets", selects="apim.apis[]",
+                                  keys=("type",), values={"type": ("a2a",)}, site="narrow"),
+            ])
+            out = compile.Compilation()
+            compile.check_each_rule_has_one_site(
+                {"assets": [{"selects": "apim.apis[]", "where": {"type": "a2a"}}]}, out)
+            assert not out.errors
+        finally:
+            dispatch.REGISTRY.clear()
+            dispatch.REGISTRY.extend(saved)
+
+
+class TestASiteSaysWhichLiteralsItCompares:
+    """The surface question moved onto operations and its vocabulary did not
+    follow: `keys` became `("group",)` while `values` still named `status`, so
+    the stale entry constrained nothing and any `group` literal passed."""
+
+    def test_the_surface_sites_pin_their_literals(self):
+        for site_name, key, literal in (("plan._model surface", "group", "wildcard"),
+                                        ("plan._model surface partial", "publishable", False)):
+            site = next(s for s in dispatch.REGISTRY if s.site == site_name)
+            assert key in site.values, f"{site_name} does not say what {key!r} may be"
+            assert literal in site.values[key]
+
+    def test_every_sites_vocabulary_names_a_key_it_reads(self):
+        """A `values` entry for a key the site does not read constrains nothing.
+
+        That is how the stale `status` entry survived the move: it looked like a
+        vocabulary and was dead weight.
+        """
+        stale = [(s.site, key) for s in dispatch.REGISTRY
+                 for key in s.values if key not in s.keys]
+        assert not stale, stale

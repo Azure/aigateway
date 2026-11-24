@@ -567,6 +567,36 @@ def check_subjects_have_rules(rules: dict[str, Any], out: Compilation) -> None:
         )
 
 
+def check_each_rule_has_one_site(rules: dict[str, Any], out: Compilation) -> None:
+    """A rule belongs to exactly one site, or `reads` is asked of the wrong one.
+
+    `governs` is a subset test, so a site declaring more keys than another
+    governs that other's rules too: `plan._mcp` reads `(type, pattern)` and the
+    agent rule pins only `type`, so without a vocabulary for `type` the MCP site
+    claimed it. Nothing failed at runtime -- the criteria still picked the right
+    rule -- but `rule-field-unread` then asked a site that never builds the item
+    what fields it reads, which is the question that check exists to ask
+    correctly.
+
+    The fix is almost always a `values` entry: a site that says which literals
+    it compares against stops governing rules about something else.
+    """
+    out.cover(
+        f"{sum(len(rules.get(s) or []) for s in _SELECTED_SECTIONS)} rules: each governed by "
+        f"exactly one site, so `reads` is asked of the site that builds the item"
+    )
+    for section in _SELECTED_SECTIONS:
+        for rule in rules.get(section) or []:
+            sites = [s for s in dispatch.REGISTRY if s.section == section and s.governs(rule)]
+            if len(sites) > 1:
+                out.error(
+                    "rule-one-site",
+                    f"{_rule_label(rule)}: governed by {sorted(s.site for s in sites)}. "
+                    f"One of them reads more keys than the rule pins, so it claims a rule it "
+                    f"never builds -- give it a `values` entry for the key that distinguishes them.",
+                )
+
+
 def check_apim_paths_are_apim(out: Compilation) -> None:
     """An `apim.*` path has to be APIM's objects the whole way down.
 
@@ -923,6 +953,7 @@ def compile_contract(
     check_subjects_have_rules(rules, out)
     check_paths_are_fields(rules, _inventory_schema(), out)
     check_apim_paths_are_apim(out)
+    check_each_rule_has_one_site(rules, out)
     if newest_release:
         check_release_pin(catalog, newest_release, out)
     return out
