@@ -89,6 +89,10 @@ class Collector:
         self.subscription_id = ids.arm_segment(self.service_id, "subscriptions") or ""
         self._products_by_scope: dict[str, list[dict[str, Any]]] = {}
         self.excluded_backends: list[dict[str, Any]] = []
+        # Every API seen, in every scope walked. Accumulated here rather than
+        # returned, because it is one flat answer to "what APIs are there" and
+        # the scope loop is an implementation detail of finding them.
+        self.apim_apis: list[dict[str, Any]] = []
 
     # ------------------------------------------------------------------ run
 
@@ -157,6 +161,7 @@ class Collector:
                 {**entry, "collected": entry["name"] in scopes} for entry in workspaces
             ],
             "assets": assets,
+            "apim": {"apis": self.apim_apis},
             "excludedApis": excluded,
             "excludedBackends": self.excluded_backends,
             "shared": shared,
@@ -843,6 +848,7 @@ class Collector:
         if "models" in self.options.families:
             assets["modelProviders"] = self._model_providers(workspace, shared, assets, api_index)
         _mark_referenced(excluded, assets)
+        self.apim_apis.extend(_apim_apis(raw_apis, workspace, assets, excluded))
         return assets, excluded
 
     # ------------------------------------------------------- model providers
@@ -1788,6 +1794,47 @@ def _merge_shared(target: dict[str, Any], scope: dict[str, Any]) -> None:
                     existing[sub_key] = sub_value
         else:
             target[key] = value
+
+
+def _apim_apis(
+    raw_apis: list[dict[str, Any]],
+    workspace: str | None,
+    assets: dict[str, list[dict[str, Any]]],
+    excluded: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Every API APIM has in this scope, and what this tool made of each.
+
+    Answering "which APIs are on this service" took a union of five lists --
+    three asset families plus `excludedApis`, with model providers in a fourth
+    that has no API behind it at all. That is a question APIM can answer in one
+    call, so the inventory should answer it in one place.
+
+    The fields are `_api_source`'s, called here rather than copied: both this
+    and the `source` block on each asset come out of the one function, so there
+    is no second description of an API to drift from the first. What is added is
+    only the pair that cannot be read off APIM -- which asset the API became, or
+    why it became none. Exactly one of the two is set.
+    """
+    became = {
+        (asset.get("source") or {}).get("apiId"): asset["id"]
+        for family in assets.values()
+        for asset in family
+        if (asset.get("source") or {}).get("apiId")
+    }
+    # Read after `_mark_referenced`, so an API kept as a dependency carries the
+    # reason it was kept rather than the one it was first set aside for.
+    reasons = {entry["apiId"]: entry["reason"] for entry in excluded}
+    rows = []
+    for raw in raw_apis:
+        source = _api_source(raw, workspace)
+        rows.append({
+            **source,
+            "workspace": workspace or "default",
+            "subscriptionRequired": (raw.get("properties") or {}).get("subscriptionRequired"),
+            "assetId": became.get(source["apiId"]),
+            "excludedReason": reasons.get(source["apiId"]),
+        })
+    return rows
 
 
 def _api_source(raw: dict[str, Any], workspace: str | None) -> dict[str, Any]:

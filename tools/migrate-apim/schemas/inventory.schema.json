@@ -4,7 +4,7 @@
   "title": "APIM AI inventory",
   "description": "A faithful, secret-free capture of the AI assets of an Azure API Management instance, decomposed the way Azure AI Gateway building blocks are shaped.",
   "type": "object",
-  "required": ["schemaVersion", "kind", "generator", "collection", "service", "assets", "excludedApis", "shared", "policies", "secrets"],
+  "required": ["schemaVersion", "kind", "generator", "collection", "service", "apim", "assets", "excludedApis", "shared", "policies", "secrets"],
   "properties": {
     "$schema": {"type": "string"},
     "schemaVersion": {"const": "1.0"},
@@ -106,6 +106,44 @@
         "models": {"type": "array", "items": {"$ref": "#/$defs/modelApi"}},
         "mcpServers": {"type": "array", "items": {"$ref": "#/$defs/mcpServer"}},
         "agents": {"type": "array", "items": {"$ref": "#/$defs/agent"}}
+      }
+    },
+
+    "apim": {
+      "description": "What APIM has, named as APIM names it. `assets` is what this tool concluded about it; this is the source side of that reading, so a question about the service rather than about the migration is answered here.",
+      "type": "object",
+      "required": ["apis"],
+      "properties": {
+        "apis": {
+          "description": "Every API on the service, inventoried or not. The union of three asset families and `excludedApis` used to be the only way to ask what APIs exist, with model providers in a fourth list that has no API behind it at all. The fields are the same `_api_source` builds for each asset's `source` block, from the same function, so the two cannot disagree.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["apiId", "name", "workspace", "type", "assetId", "excludedReason"],
+            "properties": {
+              "apiId": {"type": "string"},
+              "name": {"type": ["string", "null"]},
+              "workspace": {"type": "string"},
+              "resourceId": {"type": ["string", "null"]},
+              "displayName": {"type": ["string", "null"]},
+              "description": {"type": ["string", "null"]},
+              "type": {"description": "APIM's own discriminator: http, mcp, a2a, unifiedModelApi.", "type": "string"},
+              "path": {"type": ["string", "null"]},
+              "effectivePath": {"type": ["string", "null"]},
+              "protocols": {"type": ["array", "null"], "items": {"type": "string"}},
+              "serviceUrl": {"type": ["string", "null"]},
+              "backendId": {"type": ["string", "null"]},
+              "apiRevision": {"type": ["string", "null"]},
+              "apiVersion": {"type": ["string", "null"]},
+              "apiVersionSetId": {"type": ["string", "null"]},
+              "isCurrent": {"type": ["boolean", "null"]},
+              "accessState": {"type": ["string", "null"]},
+              "subscriptionRequired": {"type": ["boolean", "null"]},
+              "assetId": {"description": "The asset this API became, or null. Exactly one of this and `excludedReason` is set.", "type": ["string", "null"]},
+              "excludedReason": {"description": "Why it became no asset, or null.", "type": ["string", "null"]}
+            }
+          }
+        }
       }
     },
 

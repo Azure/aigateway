@@ -50,8 +50,20 @@ def render(document: dict[str, Any], *, fmt: str = "text") -> str:
                 f"{'  - ' if fmt == 'markdown' else '      '}{name} {marker}"
                 + (f" {detail}" if detail else "")
             )
-    excluded = document.get("excludedApis") or []
-    lines.append(f"{bullet}{len(excluded)} APIs excluded as non-AI")
+    # Counted off `apim.apis`, which holds every API whichever way it went, so
+    # the two numbers add up to the one APIM would report. Counting the excluded
+    # alone left "excluded out of how many" for the reader to work out.
+    apis = (document.get("apim") or {}).get("apis") or []
+    excluded = [api for api in apis if api.get("excludedReason")]
+    reasons: dict[str, int] = {}
+    for api in excluded:
+        reasons[api["excludedReason"]] = reasons.get(api["excludedReason"], 0) + 1
+    lines.append(
+        f"{bullet}{len(apis)} APIs on the service, {len(apis) - len(excluded)} inventoried, "
+        f"{len(excluded)} not"
+    )
+    for reason, count in sorted(reasons.items()):
+        lines.append(f"{'  - ' if fmt == 'markdown' else '      '}{reason}: {count}")
     lines.append("")
 
     secrets = document.get("secrets") or []

@@ -794,3 +794,63 @@ class TestAServiceThatCouldNotBeRead:
             Collector(client, SERVICE, options()).run()
         assert "not found" in str(excinfo.value)
         assert "--subscription" in str(excinfo.value)
+
+
+class TestEveryApiIsInOnePlace:
+    """`apim.apis` answers "what APIs are on this service" in one read.
+
+    It used to take a union of four lists -- three asset families plus
+    `excludedApis` -- with model providers in a fifth that has no API behind it
+    at all. That is a question APIM answers in one call, and an inventory that
+    cannot answer it in one place makes every caller reassemble it, each the
+    same way, each able to forget a list.
+    """
+
+    def test_it_holds_every_api_exactly_once(self, inventory):
+        apis = inventory["apim"]["apis"]
+        ids = [api["apiId"] for api in apis]
+        assert len(ids) == len(set(ids)), "an API listed twice"
+
+        reachable = {
+            (asset.get("source") or {}).get("apiId")
+            for family in inventory["assets"].values() for asset in family
+            if (asset.get("source") or {}).get("apiId")
+        } | {entry["apiId"] for entry in inventory["excludedApis"]}
+        assert set(ids) == reachable
+
+    def test_an_api_either_became_an_asset_or_says_why_not(self, inventory):
+        """Exactly one of the two, for every API. Neither would be an API the
+        inventory holds and says nothing about, which is the state this
+        collection exists to make impossible."""
+        for api in inventory["apim"]["apis"]:
+            assert bool(api["assetId"]) != bool(api["excludedReason"]), api["apiId"]
+
+    def test_it_agrees_with_the_asset_it_points_at(self, inventory):
+        """Both come out of `_api_source`, so this is a guard on that staying true.
+
+        A second copy of an API's fields that nothing joins is a second
+        description, and a second description drifts.
+        """
+        by_id = {api["apiId"]: api for api in inventory["apim"]["apis"]}
+        for family in inventory["assets"].values():
+            for asset in family:
+                source = asset.get("source") or {}
+                if not source.get("apiId"):
+                    continue
+                row = by_id[source["apiId"]]
+                assert all(row[key] == value for key, value in source.items()), source["apiId"]
+                assert row["assetId"] == asset["id"]
+
+    def test_a_superseded_revision_is_in_it_too(self, inventory):
+        row = next(a for a in inventory["apim"]["apis"] if a["name"] == "aoai-api;rev=1")
+        assert row["isCurrent"] is False
+        assert row["excludedReason"] == "notCurrentRevision"
+        assert row["assetId"] is None
+
+    def test_the_summary_counts_from_it(self, inventory):
+        from migrate_apim.summary import render
+
+        line = next(l for l in render(inventory).splitlines() if "APIs on the service" in l)
+        total = len(inventory["apim"]["apis"])
+        excluded = len([a for a in inventory["apim"]["apis"] if a["excludedReason"]])
+        assert f"{total} APIs on the service, {total - excluded} inventoried, {excluded} not" in line
