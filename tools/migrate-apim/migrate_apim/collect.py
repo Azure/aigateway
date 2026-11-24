@@ -738,6 +738,14 @@ class Collector:
             name = raw.get("name") or ""
             props = raw.get("properties") or {}
             if not props.get("isCurrent", True):
+                # A superseded revision is not what callers reach, so it is not
+                # inventoried -- but it was leaving by a bare `continue`, with no
+                # excludedApis entry and no coverage record. That made it the one
+                # thing this collector dropped without saying so, in a file whose
+                # premise is that `excludedApis` proves nothing was. An operator
+                # auditing what moved could not tell a revision that was
+                # considered and set aside from one that was never seen.
+                excluded.append(_excluded(raw, workspace, "notCurrentRevision", []))
                 continue
             if self.options.exclude_api and detect.matches_any(name, self.options.exclude_api):
                 excluded.append(_excluded(raw, workspace, "excludedByOption", []))

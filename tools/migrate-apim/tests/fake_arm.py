@@ -68,6 +68,11 @@ def _api(name, **props):
 
 APIS = [
     _api("aoai-api", backendId="aoai-pool", type="http"),
+    # A superseded revision, which APIM lists beside the current one under the
+    # `;rev=` name. Not what callers reach, so not an asset -- but it is an API
+    # the collector saw, and it used to leave without a trace.
+    _api("aoai-api;rev=1", backendId="aoai-pool", type="http",
+         isCurrent=False, apiRevision="1"),
     _api(
         "support-mcp", type="mcp", backendId="support-backend",
         mcpProperties={"transportType": "streamable", "endpoints": [{"name": "mcp", "uriTemplate": "/mcp"}]},

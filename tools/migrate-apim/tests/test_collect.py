@@ -56,6 +56,28 @@ class TestAssets:
         assert excluded["orders-rest"]["reason"] == "notAnAiAssetButReferencedByOne"
         assert excluded["orders-rest"]["referencedBy"] == ["mcp:orders-mcp"]
 
+    def test_a_superseded_revision_is_recorded_rather_than_dropped(self, inventory):
+        """`excludedApis` is what proves no API was lost, so it has to hold them all.
+
+        A non-current revision left by a bare `continue`: no entry, no coverage
+        record, nothing. It is the one thing this collector dropped in silence,
+        which is exactly the shape of defect the list exists to rule out -- an
+        operator auditing what moved could not tell a revision considered and
+        set aside from one never seen.
+        """
+        excluded = {entry["name"]: entry for entry in inventory["excludedApis"]}
+        assert "aoai-api;rev=1" in excluded
+        assert excluded["aoai-api;rev=1"]["reason"] == "notCurrentRevision"
+
+    def test_a_superseded_revision_is_not_an_asset(self, inventory):
+        """Recording it must not promote it: callers do not reach it."""
+        names = [
+            asset["source"]["name"]
+            for family in inventory["assets"].values() for asset in family
+            if asset.get("source")
+        ]
+        assert "aoai-api;rev=1" not in names
+
     def test_expands_a_backend_pool_into_weighted_targets(self, inventory):
         model = inventory["assets"]["models"][0]
         assert model["routing"]["mode"] == "pool"
