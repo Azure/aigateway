@@ -138,19 +138,19 @@ def _structural_selector(path: str, site: str, *, reads: tuple[str, ...]) -> Any
 
 
 _DECIDED = ("verdict", "answer", "proposal", "rationale", "options")
-STRUCTURAL_WORKSPACE = _structural_selector("workspaces[]", "workspace", reads=_DECIDED)
+STRUCTURAL_WORKSPACE = _structural_selector("apim.workspaces[]", "workspace", reads=_DECIDED)
 STRUCTURAL_SUBSCRIPTIONS = _structural_selector(
-    "shared.subscriptions", "subscriptions", reads=_DECIDED,
+    "apim.subscriptions", "subscriptions", reads=_DECIDED,
 )
 STRUCTURAL_TELEMETRY = _structural_selector(
-    "shared.telemetry", "telemetry", reads=(*_DECIDED, "capabilityId", "prerequisiteWhen"),
+    "apim.loggers", "telemetry", reads=(*_DECIDED, "capabilityId", "prerequisiteWhen"),
 )
 STRUCTURAL_CERTIFICATES = _structural_selector(
-    "shared.certificates", "certificates",
+    "apim.certificates", "certificates",
     reads=("verdict", "answer", "proposal", "rationale"),
 )
 STRUCTURAL_CREDENTIAL_PROVIDERS = _structural_selector(
-    "shared.credentialProviders", "credentialProviders",
+    "apim.authorizationProviders", "authorizationProviders",
     reads=("verdict", "answer", "proposal", "rationale"),
 )
 STRUCTURAL_COVERAGE_GAP = _structural_selector(
@@ -177,7 +177,7 @@ REACHABILITY_BY_SUBNET = selector(
 # is where that filter lives.
 FRAGMENT_DISPOSITIONS = ("dissolved", "conditional", "splitSection", "unreferenced", "unresolved")
 STRUCTURAL_POLICY_FRAGMENTS = selector(
-    "structural", selects="policies[]", keys=("disposition",),
+    "structural", selects="apim.policies[]", keys=("disposition",),
     values={"disposition": FRAGMENT_DISPOSITIONS},
     computed=("disposition",),
     site="plan._policy_fragments",
@@ -1289,8 +1289,8 @@ class PlanBuilder:
         """
         if self._graph is None:
             self._graph = policy_mod.PolicyGraph(
-                self.inventory.get("policies") or [],
-                products=(self.inventory.get("shared") or {}).get("products") or [],
+                (self.inventory.get("apim") or {}).get("policies") or [],
+                products=(self.inventory.get("apim") or {}).get("products") or [],
             )
         return self._graph
 
@@ -1371,7 +1371,8 @@ class PlanBuilder:
     def _policy_document(self, policy_id: str) -> dict[str, Any]:
         if not self._policy_index:
             self._policy_index = {
-                document["id"]: document for document in self.inventory.get("policies") or []
+                document["id"]: document
+                for document in (self.inventory.get("apim") or {}).get("policies") or []
             }
         return self._policy_index.get(policy_id) or {}
 
@@ -1386,7 +1387,7 @@ class PlanBuilder:
         nothing includes, raises nothing -- and uncounted it would be absent
         from the plan rather than accounted for in it.
         """
-        for document in self.inventory.get("policies") or []:
+        for document in (self.inventory.get("apim") or {}).get("policies") or []:
             for element in document.get("elements") or []:
                 key = id(element)
                 if not _is_policy_statement(element):
@@ -1423,11 +1424,11 @@ class PlanBuilder:
     # --------------------------------------------------------- structural
 
     def _structural(self) -> None:
-        shared = self.inventory.get("shared") or {}
+        apim = self.inventory.get("apim") or {}
         structural = self.caps.structural_rules()
         self._policy_fragments(structural)
 
-        for workspace in self.inventory.get("workspaces") or []:
+        for workspace in apim.get("workspaces") or []:
             if workspace.get("name") == "default" or not workspace.get("collected"):
                 continue
             rule = STRUCTURAL_WORKSPACE.first(structural) or {}
@@ -1443,7 +1444,7 @@ class PlanBuilder:
                 blocking=True,
             )
 
-        subscriptions = shared.get("subscriptions") or []
+        subscriptions = apim.get("subscriptions") or []
         if subscriptions:
             rule = STRUCTURAL_SUBSCRIPTIONS.first(structural) or {}
             scopes = sorted({entry["scope"]["level"] for entry in subscriptions})
@@ -1477,7 +1478,7 @@ class PlanBuilder:
             rule = STRUCTURAL_TELEMETRY.first(structural) or {}
             loggers = [
                 logger.get("name") for logger in
-                ((self.inventory.get("shared") or {}).get("telemetry") or {}).get("loggers") or []
+                (self.inventory.get("apim") or {}).get("loggers") or []
             ]
             self._add(
                 item_id=_TELEMETRY_ITEM,
@@ -1494,16 +1495,22 @@ class PlanBuilder:
                 blocking=False,
             )
 
-        for kind, site in (("certificates", STRUCTURAL_CERTIFICATES),
-                           ("credentialProviders", STRUCTURAL_CREDENTIAL_PROVIDERS)):
-            entries = shared.get(kind) or []
+        # The collection is APIM's name for the resource; the aspect is the item's
+        # id, which does not move because the inventory renamed something. An id
+        # is what carries an operator's decision across re-runs, so it answers to
+        # the decision rather than to the shape of the document.
+        for collection, aspect, site in (
+            ("certificates", "certificates", STRUCTURAL_CERTIFICATES),
+            ("authorizationProviders", "credentialProviders", STRUCTURAL_CREDENTIAL_PROVIDERS),
+        ):
+            entries = apim.get(collection) or []
             if not entries:
                 continue
             rule = site.first(structural) or {}
             verdict = rule.get("verdict", "gap")
             self._add(
-                item_id=ids.item("shared", kind),
-                source={"assetId": None, "assetKind": kind, "aspect": "reprovisioning"},
+                item_id=ids.item("shared", aspect),
+                source={"assetId": None, "assetKind": aspect, "aspect": "reprovisioning"},
                 kind=rule.get("answer", "choose"),
                 verdict=verdict,
                 proposal=rule.get("proposal"),
@@ -1560,10 +1567,10 @@ class PlanBuilder:
         service-wide sink, while an `emit-token-metric` policy is an API asking
         for dimensions on it. An instance can carry one without the other.
         """
-        telemetry = (self.inventory.get("shared") or {}).get("telemetry") or {}
+        loggers = (self.inventory.get("apim") or {}).get("loggers") or []
         if any(
             str(logger.get("loggerType") or "").lower() in {"applicationinsights", "azuremonitor"}
-            for logger in telemetry.get("loggers") or []
+            for logger in loggers
         ):
             return True
         # Read from the source rather than from the items built so far: the item
@@ -1571,7 +1578,7 @@ class PlanBuilder:
         # would not exist.
         return any(
             "emit-token-metric" in (element.get("name") or "")
-            for document in self.inventory.get("policies") or []
+            for document in (self.inventory.get("apim") or {}).get("policies") or []
             for element in document.get("elements") or []
         )
 
@@ -1918,7 +1925,7 @@ class PlanBuilder:
         through.
         """
         document = next(
-            (doc for doc in self.inventory.get("policies") or []
+            (doc for doc in (self.inventory.get("apim") or {}).get("policies") or []
              if doc.get("id") == member.get("policyId")), None
         )
         if not document:

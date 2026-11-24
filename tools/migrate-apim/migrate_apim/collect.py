@@ -160,19 +160,44 @@ class Collector:
                 "warnings": self.warnings,
             },
             "service": service,
-            "workspaces": [
-                {**entry, "collected": entry["name"] in scopes} for entry in workspaces
-            ],
+            # What APIM has, under the names APIM gives it. A rule selects from
+            # here, so the path a rule names is a path through the service's own
+            # object graph rather than through this tool's decomposition of it.
+            # `authorizationProviders` is the one that had drifted: we called it
+            # `credentialProviders`, which is a name APIM does not use for a
+            # resource it does have.
+            "apim": {
+                "workspaces": [
+                    {**entry, "collected": entry["name"] in scopes} for entry in workspaces
+                ],
+                "apis": self.apim_apis,
+                "backends": shared.get("backends") or [],
+                "namedValues": shared.get("namedValues") or [],
+                "products": shared.get("products") or [],
+                "subscriptions": shared.get("subscriptions") or [],
+                "certificates": shared.get("certificates") or [],
+                "authorizationServers": shared.get("authorizationServers") or [],
+                "openidConnectProviders": shared.get("openidConnectProviders") or [],
+                "authorizationProviders": shared.get("authorizationProviders") or [],
+                "policyFragments": shared.get("policyFragments") or [],
+                # APIM has loggers and diagnostics; "telemetry" was a box we put
+                # them in, and a rule had to select the box to reach either.
+                "loggers": (shared.get("telemetry") or {}).get("loggers") or [],
+                "diagnostics": (shared.get("telemetry") or {}).get("diagnostics") or [],
+                "policies": self.policies,
+            },
             "assets": assets,
-            "apim": {"apis": self.apim_apis},
             "excludedApis": excluded,
             "excludedBackends": self.excluded_backends,
-            "shared": shared,
-            "policies": self.policies,
+            # Not APIM: a Microsoft.CognitiveServices account, read to resolve
+            # what a Foundry backend actually serves. It stays outside `apim`
+            # because putting it in would make the one claim that region makes
+            # -- these are APIM's objects -- false.
+            "foundryAccounts": [],
             "secrets": self.registry.items(),
         }
         if self.foundry:
-            document["shared"]["foundryAccounts"] = [
+            document["foundryAccounts"] = [
                 account.to_dict() for account in self.foundry.accounts() if account.deployments is not None
             ]
             if self.foundry.errors:
@@ -374,7 +399,7 @@ class Collector:
             "certificates": certificates,
             "authorizationServers": auth_servers,
             "openidConnectProviders": openid,
-            "credentialProviders": credential_providers,
+            "authorizationProviders": credential_providers,
             "telemetry": telemetry,
         }
 

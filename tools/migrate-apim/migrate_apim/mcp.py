@@ -194,7 +194,7 @@ def _subscription_key_ref(inventory: dict[str, Any], server: dict[str, Any]) -> 
     """A subscription key whose scope covers this API."""
     for entry in (server.get("access") or {}).get("subscriptions") or []:
         subscription = next(
-            (s for s in (inventory.get("shared") or {}).get("subscriptions") or []
+            (s for s in (inventory.get("apim") or {}).get("subscriptions") or []
              if s["id"] == entry["id"]), None
         )
         if subscription and subscription.get("secretRef"):

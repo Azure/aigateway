@@ -4,12 +4,21 @@
   "title": "APIM AI inventory",
   "description": "A faithful, secret-free capture of the AI assets of an Azure API Management instance, decomposed the way Azure AI Gateway building blocks are shaped.",
   "type": "object",
-  "required": ["schemaVersion", "kind", "generator", "collection", "service", "apim", "assets", "excludedApis", "shared", "policies", "secrets"],
+  "required": [
+    "schemaVersion",
+    "kind",
+    "generator",
+    "collection",
+    "service",
+    "apim",
+    "assets",
+    "excludedApis",
+    "secrets"
+  ],
   "properties": {
     "$schema": {"type": "string"},
     "schemaVersion": {"const": "1.0"},
     "kind": {"const": "apimAiInventory"},
-
     "generator": {
       "type": "object",
       "required": ["name", "version", "command"],
@@ -19,7 +28,6 @@
         "command": {"type": "string"}
       }
     },
-
     "collection": {
       "type": "object",
       "required": ["startedAt", "completedAt", "apiVersions", "options", "coverage", "warnings"],
@@ -29,10 +37,7 @@
         "requestCount": {"type": "integer", "minimum": 0},
         "apiVersions": {
           "type": "object",
-          "properties": {
-            "apiManagement": {"type": "string"},
-            "cognitiveServices": {"type": ["string", "null"]}
-          }
+          "properties": {"apiManagement": {"type": "string"}, "cognitiveServices": {"type": ["string", "null"]}}
         },
         "options": {"type": "object"},
         "coverage": {
@@ -63,7 +68,6 @@
         }
       }
     },
-
     "service": {
       "type": "object",
       "required": ["resourceId", "name", "sku"],
@@ -89,10 +93,7 @@
               "type": "array",
               "items": {
                 "type": "object",
-                "properties": {
-                  "resourceId": {"type": "string"},
-                  "clientId": {"type": ["string", "null"]}
-                }
+                "properties": {"resourceId": {"type": "string"}, "clientId": {"type": ["string", "null"]}}
               }
             }
           }
@@ -111,32 +112,13 @@
             "privateEndpointConnections": {"type": ["array", "null"]},
             "targetRequirement": {
               "type": ["object", "null"],
-              "properties": {
-                "needsSubnet": {"type": "boolean"},
-                "note": {"type": "string"}
-              }
+              "properties": {"needsSubnet": {"type": "boolean"}, "note": {"type": "string"}}
             }
           }
         },
         "tags": {"type": "object"}
       }
     },
-
-    "workspaces": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["name", "collected"],
-        "properties": {
-          "name": {"type": "string"},
-          "displayName": {"type": ["string", "null"]},
-          "description": {"type": ["string", "null"]},
-          "serveOn": {"type": ["string", "null"]},
-          "collected": {"type": "boolean"}
-        }
-      }
-    },
-
     "assets": {
       "type": "object",
       "required": ["modelProviders", "models", "mcpServers", "agents"],
@@ -147,11 +129,10 @@
         "agents": {"type": "array", "items": {"$ref": "#/$defs/agent"}}
       }
     },
-
     "apim": {
       "description": "What APIM has, named as APIM names it. `assets` is what this tool concluded about it; this is the source side of that reading, so a question about the service rather than about the migration is answered here.",
       "type": "object",
-      "required": ["apis"],
+      "required": ["workspaces", "apis", "policies"],
       "properties": {
         "apis": {
           "description": "Every API on the service, inventoried or not. The union of three asset families and `excludedApis` used to be the only way to ask what APIs exist, with model providers in a fourth list that has no API behind it at all. The fields are the same `_api_source` builds for each asset's `source` block, from the same function, so the two cannot disagree.",
@@ -166,7 +147,10 @@
               "resourceId": {"type": ["string", "null"]},
               "displayName": {"type": ["string", "null"]},
               "description": {"type": ["string", "null"]},
-              "type": {"description": "APIM's own discriminator: http, mcp, a2a, unifiedModelApi.", "type": "string"},
+              "type": {
+                "description": "APIM's own discriminator: http, mcp, a2a, unifiedModelApi.",
+                "type": "string"
+              },
               "path": {"type": ["string", "null"]},
               "effectivePath": {"type": ["string", "null"]},
               "protocols": {"type": ["array", "null"], "items": {"type": "string"}},
@@ -178,14 +162,48 @@
               "isCurrent": {"type": ["boolean", "null"]},
               "accessState": {"type": ["string", "null"]},
               "subscriptionRequired": {"type": ["boolean", "null"]},
-              "assetId": {"description": "The asset this API became, or null. Exactly one of this and `excludedReason` is set.", "type": ["string", "null"]},
+              "assetId": {
+                "description": "The asset this API became, or null. Exactly one of this and `excludedReason` is set.",
+                "type": ["string", "null"]
+              },
               "excludedReason": {"description": "Why it became no asset, or null.", "type": ["string", "null"]}
             }
           }
-        }
+        },
+        "workspaces": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "collected"],
+            "properties": {
+              "name": {"type": "string"},
+              "displayName": {"type": ["string", "null"]},
+              "description": {"type": ["string", "null"]},
+              "serveOn": {"type": ["string", "null"]},
+              "collected": {"type": "boolean"}
+            }
+          }
+        },
+        "backends": {"type": "array"},
+        "namedValues": {"type": "array", "items": {"$ref": "#/$defs/namedValue"}},
+        "products": {"type": "array"},
+        "subscriptions": {"type": "array"},
+        "certificates": {"type": "array"},
+        "authorizationServers": {"type": "array"},
+        "openidConnectProviders": {"type": "array"},
+        "policyFragments": {"type": "array"},
+        "authorizationProviders": {
+          "description": "APIM's own name for the resource; this inventory used to call it `credentialProviders`, which is a name APIM does not use.",
+          "type": "array"
+        },
+        "loggers": {
+          "description": "APIM has loggers and diagnostics; `telemetry` was a box this tool put them in, and a rule had to select the box to reach either.",
+          "type": "array"
+        },
+        "diagnostics": {"type": "array"},
+        "policies": {"type": "array", "items": {"$ref": "#/$defs/policyDocument"}}
       }
     },
-
     "excludedApis": {
       "description": "Every API the collector saw and did not inventory, with the reason. Nothing is dropped silently.",
       "type": "array",
@@ -204,7 +222,6 @@
         }
       }
     },
-
     "excludedBackends": {
       "description": "Backends the collector did not treat as model providers, with the reason. Proves backend coverage the way excludedApis proves API coverage.",
       "type": "array",
@@ -221,28 +238,12 @@
         }
       }
     },
-
-    "shared": {
-      "type": "object",
-      "properties": {
-        "backends": {"type": "array"},
-        "namedValues": {"type": "array", "items": {"$ref": "#/$defs/namedValue"}},
-        "policyFragments": {"type": "array"},
-        "products": {"type": "array"},
-        "subscriptions": {"type": "array"},
-        "certificates": {"type": "array"},
-        "authorizationServers": {"type": "array"},
-        "openidConnectProviders": {"type": "array"},
-        "credentialProviders": {"type": "array"},
-        "telemetry": {"type": "object"},
-        "foundryAccounts": {"type": "array"}
-      }
-    },
-
-    "policies": {"type": "array", "items": {"$ref": "#/$defs/policyDocument"}},
-    "secrets": {"type": "array", "items": {"$ref": "#/$defs/secretRef"}}
+    "secrets": {"type": "array", "items": {"$ref": "#/$defs/secretRef"}},
+    "foundryAccounts": {
+      "description": "Not APIM: Microsoft.CognitiveServices accounts, read to resolve what a Foundry backend serves.",
+      "type": "array"
+    }
   },
-
   "$defs": {
     "signal": {
       "type": "object",
@@ -254,7 +255,6 @@
         "detail": {"type": "string"}
       }
     },
-
     "detection": {
       "type": "object",
       "required": ["confidence", "score", "signals"],
@@ -266,7 +266,6 @@
         "reason": {"type": "string"}
       }
     },
-
     "apiSource": {
       "type": "object",
       "required": ["apiId", "name", "type", "path"],
@@ -285,11 +284,20 @@
         "isCurrent": {"type": ["boolean", "null"]}
       }
     },
-
     "modelProvider": {
       "description": "An upstream model endpoint. Maps to an AI Gateway modelProvider, and exists even when no APIM API publishes it.",
       "type": "object",
-      "required": ["id", "kind", "providerKind", "targetProviderKind", "endpoint", "origin", "auth", "models", "referencedBy"],
+      "required": [
+        "id",
+        "kind",
+        "providerKind",
+        "targetProviderKind",
+        "endpoint",
+        "origin",
+        "auth",
+        "models",
+        "referencedBy"
+      ],
       "properties": {
         "id": {"type": "string"},
         "kind": {"const": "modelProvider"},
@@ -314,15 +322,11 @@
         "models": {"$ref": "#/$defs/modelCatalogue"},
         "referencedBy": {
           "type": "object",
-          "properties": {
-            "apis": {"type": "array", "items": {"type": "string"}},
-            "policies": {"type": "array"}
-          }
+          "properties": {"apis": {"type": "array", "items": {"type": "string"}}, "policies": {"type": "array"}}
         },
         "secretRefs": {"type": "array", "items": {"type": "string"}}
       }
     },
-
     "modelCatalogue": {
       "type": "object",
       "required": ["status", "discoverySource", "resolved"],
@@ -337,10 +341,19 @@
         },
         "catalogue": {
           "description": "The model names the catalogue returned, which the planner samples into the question it asks.",
-          "type": "array", "items": {"type": "string"}
+          "type": "array",
+          "items": {"type": "string"}
         },
         "discoverySource": {
-          "enum": ["armDeployments", "backendLanguageModel", "modelsEndpoint", "awsCli", "gcloudCli", "manual", "unknown"]
+          "enum": [
+            "armDeployments",
+            "backendLanguageModel",
+            "modelsEndpoint",
+            "awsCli",
+            "gcloudCli",
+            "manual",
+            "unknown"
+          ]
         },
         "resolved": {
           "type": "array",
@@ -352,10 +365,7 @@
               "modelVersion": {"type": ["string", "null"]},
               "modelFormat": {"type": ["string", "null"]},
               "sku": {"type": ["object", "null"]},
-              "target": {
-                "description": "Pre-shaped AI Gateway model registration input.",
-                "type": "object"
-              }
+              "target": {"description": "Pre-shaped AI Gateway model registration input.", "type": "object"}
             }
           }
         },
@@ -363,14 +373,21 @@
         "notes": {"type": "array", "items": {"type": "string"}}
       }
     },
-
     "auth": {
       "type": "object",
       "required": ["mode", "secretRefs"],
       "properties": {
         "mode": {
           "description": "undetermined is not a mode the backend has; it says the question could not be answered -- a fragment that would not resolve, or no policy read at all. It is listed because the collector emits it, and a value the code produces and the schema rejects is a contract that only holds while nobody hits the case.",
-          "enum": ["none", "apiKey", "authorizationHeader", "clientCertificate", "managedIdentity", "credentialManager", "undetermined"]
+          "enum": [
+            "none",
+            "apiKey",
+            "authorizationHeader",
+            "clientCertificate",
+            "managedIdentity",
+            "credentialManager",
+            "undetermined"
+          ]
         },
         "secretRefs": {"type": "array", "items": {"type": "string"}},
         "evidence": {"type": "array", "items": {"type": "string"}},
@@ -384,17 +401,13 @@
           "type": "array",
           "items": {
             "type": "object",
-            "properties": {
-              "clientId": {"type": ["string", "null"]},
-              "audience": {"type": ["string", "null"]}
-            }
+            "properties": {"clientId": {"type": ["string", "null"]}, "audience": {"type": ["string", "null"]}}
           }
         },
         "identityNote": {"type": "string"},
         "basis": {"type": "object"}
       }
     },
-
     "modelApi": {
       "description": "An APIM API that publishes model inference. Maps to AI Gateway models plus an alias.",
       "type": "object",
@@ -428,18 +441,19 @@
         "access": {"type": "object"}
       }
     },
-
     "endpoints": {
       "type": "object",
       "properties": {
         "inboundDialects": {
           "description": "Inferred from operation URL templates, which operators configure freely. Evidence, not a declaration.",
-          "type": "array", "items": {"type": "string"}
+          "type": "array",
+          "items": {"type": "string"}
         },
         "inboundDialectsInferredFrom": {"const": "operationTemplates"},
         "backendDialects": {
           "description": "Declared by a languageModel backend's apiFormat.",
-          "type": "array", "items": {"type": "string"}
+          "type": "array",
+          "items": {"type": "string"}
         },
         "backendDialectsDeclared": {"type": "boolean"},
         "surface": {
@@ -484,7 +498,6 @@
         }
       }
     },
-
     "mcpServer": {
       "description": "An APIM MCP API. Maps to an AI Gateway toolServer with one or more endpoints.",
       "type": "object",
@@ -522,8 +535,7 @@
           "required": ["status", "source"],
           "properties": {
             "status": {"enum": ["complete", "runtimeOnly"]},
-            "source": {"enum": ["apimControlPlane", "upstreamMcpServer", "gatewayRuntime",
-                                "upstreamRuntime"]},
+            "source": {"enum": ["apimControlPlane", "upstreamMcpServer", "gatewayRuntime", "upstreamRuntime"]},
             "url": {"type": ["string", "null"]},
             "policiesApplied": {
               "description": "Whether the API's policies ran while the tools were listed. False means the list came straight from the upstream and can be broader than what callers reach.",
@@ -539,7 +551,6 @@
         "notes": {"type": "array", "items": {"type": "string"}}
       }
     },
-
     "agent": {
       "description": "An APIM A2A agent API. Inventoried now; AI Gateway has no agent building block yet.",
       "type": "object",
@@ -570,10 +581,7 @@
             "exposedPath": {"type": ["string", "null"]},
             "discovery": {
               "type": "object",
-              "properties": {
-                "status": {"const": "runtimeOnly"},
-                "note": {"type": "string"}
-              }
+              "properties": {"status": {"const": "runtimeOnly"}, "note": {"type": "string"}}
             }
           }
         },
@@ -610,7 +618,6 @@
         "note": {"type": "string"}
       }
     },
-
     "policyRefs": {
       "type": "object",
       "properties": {
@@ -625,7 +632,6 @@
         }
       }
     },
-
     "policyDocument": {
       "type": "object",
       "required": ["id", "scope", "elements", "stats"],
@@ -690,7 +696,6 @@
         "stats": {"type": "object"}
       }
     },
-
     "namedValue": {
       "type": "object",
       "required": ["id", "name", "secret"],
@@ -709,7 +714,6 @@
         "secretRef": {"type": ["string", "null"]}
       }
     },
-
     "secretRef": {
       "description": "A pointer to a credential plus the exact command that retrieves it at apply time. The value itself never appears in this document.",
       "type": "object",
@@ -718,7 +722,15 @@
         "id": {"type": "string", "pattern": "^secret:"},
         "class": {"type": "string"},
         "storage": {
-          "enum": ["apimEncrypted", "apimPlaintext", "keyVault", "inlineLiteral", "apimCertificateStore", "apimManagedToken", "none"]
+          "enum": [
+            "apimEncrypted",
+            "apimPlaintext",
+            "keyVault",
+            "inlineLiteral",
+            "apimCertificateStore",
+            "apimManagedToken",
+            "none"
+          ]
         },
         "description": {"type": "string"},
         "owner": {"type": ["string", "null"]},
@@ -731,7 +743,6 @@
         "notes": {"type": "array", "items": {"type": "string"}}
       }
     },
-
     "resolution": {
       "type": "object",
       "required": ["method", "request", "command", "valuePath", "permissions"],

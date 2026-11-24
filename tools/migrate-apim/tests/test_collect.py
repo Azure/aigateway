@@ -136,7 +136,7 @@ class TestAssets:
         assert provider["auth"]["modes"] == ["managedIdentity"]
 
     def test_management_uri_resource_id_is_normalized_to_an_arm_id(self, inventory):
-        backend = next(b for b in inventory["shared"]["backends"] if b["name"] == "aoai-east")
+        backend = next(b for b in inventory["apim"]["backends"] if b["name"] == "aoai-east")
         assert backend["resourceIdRef"].startswith("/subscriptions/")
         assert "management.azure.com" not in backend["resourceIdRef"]
 
@@ -248,7 +248,7 @@ class TestWorkspaces:
     def test_workspaces_are_collected_by_default(self, inventory):
         # A workspace can hold model APIs of its own; skipping it by default
         # would silently under-report the migration.
-        [workspace] = inventory["workspaces"]
+        [workspace] = inventory["apim"]["workspaces"]
         assert workspace["name"] == "finance"
         assert workspace["collected"] is True
         assert workspace["serveOn"] == "workspaceAndDefault"
@@ -257,12 +257,12 @@ class TestWorkspaces:
         model = next(m for m in inventory["assets"]["models"] if m["source"]["name"] == "model-api")
         assert model["id"] == "model:finance/model-api"
         assert model["workspace"] == "finance"
-        backend = next(b for b in inventory["shared"]["backends"] if b["name"] == "claude-backend")
+        backend = next(b for b in inventory["apim"]["backends"] if b["name"] == "claude-backend")
         assert backend["id"] == "backend:finance/claude-backend"
 
     def test_workspace_scope_can_be_disabled(self):
         document = Collector(FakeArmClient(), SERVICE, options(workspaces=["none"])).run()
-        assert [w["collected"] for w in document["workspaces"]] == [False]
+        assert [w["collected"] for w in document["apim"]["workspaces"]] == [False]
         assert not any(m["workspace"] == "finance" for m in document["assets"]["models"])
 
     def test_unknown_workspace_name_is_reported(self):
@@ -375,24 +375,24 @@ class TestSecrets:
         assert "sk-abcdefghijklmnopqrstuvwxyz01" not in payload
 
     def test_inline_backend_credential_becomes_a_reference(self, inventory):
-        backend = next(b for b in inventory["shared"]["backends"] if b["name"] == "support-backend")
+        backend = next(b for b in inventory["apim"]["backends"] if b["name"] == "support-backend")
         assert backend["credentials"]["header"]["x-api-key"][0].startswith("${secret:backendInline/")
         ref = next(s for s in inventory["secrets"] if s["class"] == "apimBackendInlineCredential")
         assert ref["retrievable"] is True
         assert ref["resolution"]["method"] == "armRead"
 
     def test_named_value_reference_is_preserved_verbatim(self, inventory):
-        backend = next(b for b in inventory["shared"]["backends"] if b["name"] == "aoai-west")
+        backend = next(b for b in inventory["apim"]["backends"] if b["name"] == "aoai-west")
         assert backend["credentials"]["header"]["api-key"] == ["{{aoai-key}}"]
         assert "secret:namedValue/aoai-key" in backend["secretRefs"]
 
     def test_non_secret_named_value_keeps_its_value(self, inventory):
-        entry = next(n for n in inventory["shared"]["namedValues"] if n["name"] == "MCP-KILLSWITCH")
+        entry = next(n for n in inventory["apim"]["namedValues"] if n["name"] == "MCP-KILLSWITCH")
         assert entry["value"] == "off"
         assert entry["secretRef"] is None
 
     def test_secret_named_value_has_no_value_but_has_a_recipe(self, inventory):
-        entry = next(n for n in inventory["shared"]["namedValues"] if n["name"] == "aoai-key")
+        entry = next(n for n in inventory["apim"]["namedValues"] if n["name"] == "aoai-key")
         assert entry["value"] is None
         ref = next(s for s in inventory["secrets"] if s["id"] == entry["secretRef"])
         assert ref["resolution"]["request"]["url"].endswith("/namedValues/aoai-key/listValue?api-version=2025-09-01-preview")
@@ -414,18 +414,18 @@ class TestSecrets:
 
 class TestPolicies:
     def test_captures_every_scope_it_reads(self, inventory):
-        levels = {document["scope"]["level"] for document in inventory["policies"]}
+        levels = {document["scope"]["level"] for document in inventory["apim"]["policies"]}
         assert {"api", "fragment"} <= levels
 
     def test_normalizes_llm_policies_into_families(self, inventory):
-        document = next(p for p in inventory["policies"] if p["id"] == "policy:api/aoai-api")
+        document = next(p for p in inventory["apim"]["policies"] if p["id"] == "policy:api/aoai-api")
         families = {element["family"] for element in document["elements"]}
         assert {"tokenLimit", "tokenMetrics", "semanticCache", "backendAuthentication"} <= families
 
     def test_tracks_fragment_dependencies(self, inventory):
-        document = next(p for p in inventory["policies"] if p["id"] == "policy:api/support-mcp")
+        document = next(p for p in inventory["apim"]["policies"] if p["id"] == "policy:api/support-mcp")
         assert document["fragmentRefs"] == ["killswitch"]
-        assert any(p["id"] == "policy:fragment/killswitch" for p in inventory["policies"])
+        assert any(p["id"] == "policy:fragment/killswitch" for p in inventory["apim"]["policies"])
 
     def test_links_assets_to_the_policies_that_govern_them(self, inventory):
         model = inventory["assets"]["models"][0]
@@ -491,7 +491,7 @@ class TestInferenceIsMarked:
             document = Collector(FakeArmClient(), SERVICE, options()).run()
         finally:
             fake_arm.ROUTES[key] = original
-        [subscription] = document["shared"]["subscriptions"]
+        [subscription] = document["apim"]["subscriptions"]
         # Defaulting to "service" would over-report a key as granting full access.
         assert subscription["scope"]["level"] == "unknown"
 
@@ -588,7 +588,7 @@ class TestCollectionCost:
     because "not collected" must not read as "none exist"."""
 
     def test_operation_policies_are_not_read_by_default(self, inventory):
-        levels = [doc["scope"]["level"] for doc in inventory["policies"]]
+        levels = [doc["scope"]["level"] for doc in inventory["apim"]["policies"]]
         assert "operation" not in levels
 
     def test_the_skip_is_recorded_in_coverage(self, inventory):
@@ -651,7 +651,7 @@ class TestBackendRoles:
         assert entry["declaredBy"]["contentSafety"]
 
     def test_roles_are_attached_to_the_backend_record(self, inventory):
-        backend = next(b for b in inventory["shared"]["backends"] if b["name"] == "AI-CS-demo")
+        backend = next(b for b in inventory["apim"]["backends"] if b["name"] == "AI-CS-demo")
         assert backend["roles"] == ["contentSafety"]
 
     def test_content_safety_is_surfaced_as_a_dependency_of_the_api(self, inventory):
@@ -678,7 +678,7 @@ class TestBackendRoles:
         pointer = next(
             e for e in model["supportingBackends"] if e["role"] == "contentSafety"
         )["fullConfigurationAt"]
-        document = next(p for p in inventory["policies"] if p["id"] == pointer["policyId"])
+        document = next(p for p in inventory["apim"]["policies"] if p["id"] == pointer["policyId"])
         categories = [
             element for element in document["elements"]
             if element["path"].startswith(pointer["path"]) and element["name"] == "category"
@@ -736,8 +736,8 @@ class TestOptions:
         document = Collector(
             FakeArmClient(), SERVICE, options(include_policy_xml=False)
         ).run()
-        assert all("xml" not in policy for policy in document["policies"])
-        assert any(policy["elements"] for policy in document["policies"])
+        assert all("xml" not in policy for policy in document["apim"]["policies"])
+        assert any(policy["elements"] for policy in document["apim"]["policies"])
 
     def test_no_foundry_skips_arm_resolution(self):
         document = Collector(FakeArmClient(), SERVICE, options(resolve_foundry=False)).run()
@@ -818,7 +818,7 @@ class TestFragmentsAreCollectedAsAssetsOfTheirOwn:
 
     def test_a_same_named_fragment_in_a_workspace_is_a_second_fragment(self):
         document = self._with_workspace_fragment()
-        ids = {d["id"] for d in document["policies"]
+        ids = {d["id"] for d in document["apim"]["policies"]
                if (d.get("scope") or {}).get("level") == "fragment"}
         assert ids == {"policy:fragment/killswitch", "policy:fragment/finance/killswitch"}
 
@@ -826,18 +826,18 @@ class TestFragmentsAreCollectedAsAssetsOfTheirOwn:
         document = self._with_workspace_fragment()
         bodies = {
             d["id"]: [e["name"] for e in d["elements"]]
-            for d in document["policies"] if (d.get("scope") or {}).get("level") == "fragment"
+            for d in document["apim"]["policies"] if (d.get("scope") or {}).get("level") == "fragment"
         }
         assert bodies["policy:fragment/killswitch"] == ["set-variable"]
         assert bodies["policy:fragment/finance/killswitch"] == ["set-variable"]
-        service = next(d for d in document["policies"] if d["id"] == "policy:fragment/killswitch")
-        finance = next(d for d in document["policies"]
+        service = next(d for d in document["apim"]["policies"] if d["id"] == "policy:fragment/killswitch")
+        finance = next(d for d in document["apim"]["policies"]
                        if d["id"] == "policy:fragment/finance/killswitch")
         assert service["elements"][0]["attributes"] != finance["elements"][0]["attributes"]
 
     def test_the_asset_record_says_which_workspace_it_is_in(self):
         document = self._with_workspace_fragment()
-        by_id = {f["id"]: f for f in document["shared"]["policyFragments"]}
+        by_id = {f["id"]: f for f in document["apim"]["policyFragments"]}
         assert by_id["policyFragment:killswitch"]["workspace"] == "default"
         assert by_id["policyFragment:finance/killswitch"]["workspace"] == "finance"
 
@@ -856,10 +856,10 @@ class TestFragmentsAreCollectedAsAssetsOfTheirOwn:
             document = Collector(FakeArmClient(), SERVICE, options()).run()
         finally:
             fake_arm.ROUTES[key] = original
-        fragment = next(d for d in document["policies"] if d["id"] == "policy:fragment/killswitch")
+        fragment = next(d for d in document["apim"]["policies"] if d["id"] == "policy:fragment/killswitch")
         assert fragment["parseError"], "unknown is not empty"
         assert "not evidence" in fragment["parseError"]
-        asset = next(f for f in document["shared"]["policyFragments"] if f["name"] == "killswitch")
+        asset = next(f for f in document["apim"]["policyFragments"] if f["name"] == "killswitch")
         assert asset["parseError"]
 
     def test_the_fragment_list_is_read_as_authored(self):

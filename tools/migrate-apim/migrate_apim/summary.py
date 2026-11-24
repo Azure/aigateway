@@ -80,7 +80,7 @@ def render(document: dict[str, Any], *, fmt: str = "text") -> str:
         lines.append(f"{'  - ' if fmt == 'markdown' else '      '}{name}: {count}")
     lines.append("")
 
-    policies = document.get("policies") or []
+    policies = (document.get("apim") or {}).get("policies") or []
     elements = sum((policy.get("stats") or {}).get("elementCount", 0) for policy in policies)
     expressions = sum(len(policy.get("expressions") or []) for policy in policies)
     families: dict[str, int] = {}

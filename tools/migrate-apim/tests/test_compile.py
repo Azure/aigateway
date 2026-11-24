@@ -173,7 +173,7 @@ class TestRulesThatCannotBeApplied:
     def test_a_partial_rule_without_options_is_caught(self, compile_with, shipped):
         rules = copy.deepcopy(shipped[1])
         rules["structural"].append(
-            {"selects": "shared.subscriptions", "verdict": "partial"})
+            {"selects": "apim.subscriptions", "verdict": "partial"})
         assert "partial-needs-options" in codes(compile_with(rules=rules))
 
     def test_a_proposal_that_is_not_an_option_is_caught(self, compile_with, shipped):
@@ -348,7 +348,7 @@ class TestEveryRuleFieldHasAReader:
         """
         rules = copy.deepcopy(shipped[1])
         rules["structural"].append({
-            "selects": "shared.loggers[]", "verdict": "handled",
+            "selects": "apim.loggers[]", "verdict": "handled",
             "answer": "choose", "rationale": "x", "proposal": "accept",
         })
         result = compile_with(rules=rules)
@@ -397,13 +397,13 @@ class TestEveryPolicyPassIsCheckedForTies:
 
     def test_two_rules_with_the_same_family_are_caught(self, compile_with, shipped):
         rules = copy.deepcopy(shipped[1])
-        rules["policies"].append({"selects": "policies[].elements[]",
+        rules["policies"].append({"selects": "apim.policies[].elements[]",
                                   "where": {"family": "transform"}, "verdict": "gap"})
         assert "rule-unique" in codes(compile_with(rules=rules))
 
     def test_two_expression_fallbacks_are_caught(self, compile_with, shipped):
         rules = copy.deepcopy(shipped[1])
-        rules["policies"].append({"selects": "policies[].elements[]",
+        rules["policies"].append({"selects": "apim.policies[].elements[]",
                                   "where": {"expressionIds": {"present": True}},
                                   "verdict": "gap"})
         assert "rule-unique" in codes(compile_with(rules=rules))
@@ -411,7 +411,7 @@ class TestEveryPolicyPassIsCheckedForTies:
     def test_one_repeated_element_among_many_is_still_caught(self, compile_with, shipped):
         rules = copy.deepcopy(shipped[1])
         rules["policies"].append(
-            {"selects": "policies[].elements[]",
+            {"selects": "apim.policies[].elements[]",
              "where": {"name": ["brand-new", "ip-filter"]}, "verdict": "gap"})
         result = compile_with(rules=rules)
         assert "rule-unique" in codes(result)

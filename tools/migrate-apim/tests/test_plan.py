@@ -272,7 +272,7 @@ def _routed(inventory, *, path, attributes, expressions=(), name="set-backend-se
             api="aoai-api"):
     """A copy of the inventory with one routing element added to an API policy."""
     changed = copy.deepcopy(inventory)
-    document = next(d for d in changed["policies"]
+    document = next(d for d in changed["apim"]["policies"]
                     if (d.get("scope") or {}).get("level") == "api"
                     and (d.get("scope") or {}).get("name") == api)
     document["elements"].append({
@@ -402,8 +402,8 @@ class TestTheRulesDecideAndTheBuilderReads:
         import copy
 
         enriched = copy.deepcopy(inventory)
-        enriched["shared"]["certificates"] = [{"name": "client-cert"}]
-        enriched["shared"]["credentialProviders"] = [{"name": "github-connection"}]
+        enriched["apim"]["certificates"] = [{"name": "client-cert"}]
+        enriched["apim"]["authorizationProviders"] = [{"name": "github-connection"}]
         built = build_plan(enriched, capabilities)
         for kind, site in (("certificates", plan_mod.STRUCTURAL_CERTIFICATES),
                            ("credentialProviders", plan_mod.STRUCTURAL_CREDENTIAL_PROVIDERS)):
@@ -494,7 +494,7 @@ class TestRegeneration:
         known = len(batch["memberDigests"])
 
         changed = copy.deepcopy(inventory)
-        document = next(p for p in changed["policies"] if p["id"] == "policy:api/support-mcp")
+        document = next(p for p in changed["apim"]["policies"] if p["id"] == "policy:api/support-mcp")
         extra = copy.deepcopy(
             next(e for e in document["elements"] if e["name"] == "rate-limit-by-key")
         )
@@ -1179,7 +1179,7 @@ class TestPolicyTargetsAreApplied:
         import copy
 
         doubled = copy.deepcopy(inventory)
-        api_policies = [d for d in doubled["policies"]
+        api_policies = [d for d in doubled["apim"]["policies"]
                         if (d.get("scope") or {}).get("level") == "api"]
         assert len(api_policies) >= 2, "need two API-scoped policies to batch"
         for index, document in enumerate(api_policies[:2]):
@@ -1207,7 +1207,7 @@ class TestPolicyTargetsAreApplied:
         import copy
 
         orphaned = copy.deepcopy(inventory)
-        document = next(d for d in orphaned["policies"]
+        document = next(d for d in orphaned["apim"]["policies"]
                         if d["id"] == "policy:api/support-mcp")
         document["elements"].append({
             "section": "inbound", "path": "inbound/azure-openai-token-limit[9]",
@@ -1236,7 +1236,7 @@ class TestEveryPolicyElementIsAccountedFor:
 
     def _unknown(self, inventory, name="quantum-shield", family="other"):
         document = copy.deepcopy(inventory)
-        target = next(d for d in document["policies"] if d["id"] == "policy:api/aoai-api")
+        target = next(d for d in document["apim"]["policies"] if d["id"] == "policy:api/aoai-api")
         target["elements"].append({
             "section": "inbound", "path": f"inbound/{name}[1]", "name": name,
             "family": family, "depth": 1, "attributes": {"mode": "strict"},
@@ -1248,7 +1248,7 @@ class TestEveryPolicyElementIsAccountedFor:
         self, inventory, capabilities
     ):
         coverage = build_plan(copy.deepcopy(inventory), capabilities)["policyCoverage"]
-        walked = sum(len(d.get("elements") or []) for d in inventory["policies"])
+        walked = sum(len(d.get("elements") or []) for d in inventory["apim"]["policies"])
         assert coverage["walked"] == walked
         # Exclusive buckets, or the sum says nothing.
         assert sum(coverage["dispositions"].values()) == walked
@@ -1295,7 +1295,7 @@ class TestTheGatewayWideBaseline:
         import copy
 
         doubled = copy.deepcopy(inventory)
-        api_policies = [d for d in doubled["policies"]
+        api_policies = [d for d in doubled["apim"]["policies"]
                         if (d.get("scope") or {}).get("level") == "api"]
         for index, document in enumerate(api_policies[:2]):
             document["elements"].append({
@@ -1374,7 +1374,7 @@ class TestKeysAreOnlyMadeWhenAsked:
         second = build_plan(copy.deepcopy(inventory), capabilities, previous=first)
         item = next(i for i in second["items"] if i["id"] == item_id)
         objects = (item["target"] or {})["objects"]
-        subscriptions = inventory["shared"]["subscriptions"]
+        subscriptions = inventory["apim"]["subscriptions"]
         assert len(objects) == len(subscriptions)
         for obj in objects:
             # The value is the one thing that cannot come across.
@@ -1388,7 +1388,7 @@ class TestAttributesWithNoTargetField:
         import copy
 
         quota = copy.deepcopy(inventory)
-        document = next(d for d in quota["policies"]
+        document = next(d for d in quota["apim"]["policies"]
                         if (d.get("scope") or {}).get("level") == "api")
         document["elements"].append({
             "section": "inbound", "path": "inbound/llm-token-limit[7]",
@@ -1434,12 +1434,9 @@ class TestTheOnlyTelemetryPathBetweenTheTwoProducts:
         import copy
 
         logged = copy.deepcopy(inventory)
-        logged["shared"]["telemetry"] = {
-            "loggers": [{"name": "azuremonitor", "loggerType": "azureMonitor",
-                         "resourceId": None, "isBuffered": True, "credentialsReferenced": []}],
-            "diagnostics": [],
-        }
-        for document in logged["policies"]:
+        logged["apim"]["loggers"] = [{"name": "azuremonitor", "loggerType": "azureMonitor",
+                         "resourceId": None, "isBuffered": True, "credentialsReferenced": []}]
+        for document in logged["apim"]["policies"]:
             document["elements"] = [e for e in document.get("elements") or []
                                     if "emit-token-metric" not in e["name"]]
         built = build_plan(logged, capabilities)
@@ -1451,8 +1448,8 @@ class TestTheOnlyTelemetryPathBetweenTheTwoProducts:
         import copy
 
         quiet = copy.deepcopy(inventory)
-        quiet["shared"]["telemetry"] = {"loggers": [], "diagnostics": []}
-        for document in quiet["policies"]:
+        quiet["apim"]["loggers"] = []
+        for document in quiet["apim"]["policies"]:
             document["elements"] = [e for e in document.get("elements") or []
                                     if "emit-token-metric" not in e["name"]]
         built = build_plan(quiet, capabilities)
@@ -1510,10 +1507,8 @@ class TestWhichApplicationInsightsIsAQuestion:
         import copy
 
         logged = copy.deepcopy(inventory)
-        logged["shared"]["telemetry"] = {
-            "loggers": [{"name": "azuremonitor", "loggerType": "azureMonitor"}], "diagnostics": [],
-        }
-        for document in logged["policies"]:
+        logged["apim"]["loggers"] = [{"name": "azuremonitor", "loggerType": "azureMonitor"}]
+        for document in logged["apim"]["policies"]:
             document["elements"] = [e for e in document.get("elements") or []
                                     if "emit-token-metric" not in e["name"]]
         built = build_plan(logged, capabilities)
@@ -1600,7 +1595,7 @@ class TestWhatWillNotTravelIsSaidWhileItIsStillAQuestion:
         import copy
 
         quota = copy.deepcopy(inventory)
-        document = next(d for d in quota["policies"]
+        document = next(d for d in quota["apim"]["policies"]
                         if (d.get("scope") or {}).get("level") == "api")
         document["elements"].append({
             "section": "inbound", "path": "inbound/llm-token-limit[8]",
@@ -1665,11 +1660,11 @@ def element(name, path, *, section="inbound", family="other", attributes=None,
 
 def policy_document(document, policy_id, scope):
     """The inventory's document for one scope, created if the fixture has none."""
-    found = next((d for d in document["policies"] if d["id"] == policy_id), None)
+    found = next((d for d in document["apim"]["policies"] if d["id"] == policy_id), None)
     if found is None:
         found = {"id": policy_id, "scope": scope, "elements": [], "fragmentRefs": [],
                  "stats": {"sections": ["inbound"]}}
-        document["policies"].append(found)
+        document["apim"]["policies"].append(found)
     return found
 
 
@@ -1877,7 +1872,7 @@ class TestInheritanceDecidesWhatAGlobalPolicyReaches:
         token_limit_fragment(document, "shared-limits")
         includes(document, "policy:global", {"level": "global", "name": None,
                                              "workspace": "default"}, "shared-limits")
-        aoai = next(d for d in document["policies"] if d["id"] == "policy:api/aoai-api")
+        aoai = next(d for d in document["apim"]["policies"] if d["id"] == "policy:api/aoai-api")
         if not api_inherits:
             aoai["elements"] = [e for e in aoai["elements"]
                                 if not (e["name"] == "base" and e["section"] == "inbound")]
@@ -1902,7 +1897,7 @@ class TestWhatGovernsNothingIsCountedRatherThanAbsent:
         self, inventory, capabilities
     ):
         coverage = build_plan(copy.deepcopy(inventory), capabilities)["policyCoverage"]
-        walked = sum(len(d.get("elements") or []) for d in inventory["policies"])
+        walked = sum(len(d.get("elements") or []) for d in inventory["apim"]["policies"])
         assert coverage["walked"] == walked
         assert sum(coverage["dispositions"].values()) == walked
 
@@ -1930,7 +1925,7 @@ class TestWhatGovernsNothingIsCountedRatherThanAbsent:
         # never reached a rule, and would now have been counted as a statement
         # being configured -- which is the one thing the tally must not say.
         document = copy.deepcopy(inventory)
-        aoai = next(d for d in document["policies"] if d["id"] == "policy:api/aoai-api")
+        aoai = next(d for d in document["apim"]["policies"] if d["id"] == "policy:api/aoai-api")
         aoai["elements"].append(element(
             "set-header", "inbound/retry[1]/choose[1]/when[1]/set-header[1]",
             family="transform", attributes={"name": "x-retry"},
@@ -1981,7 +1976,7 @@ class TestAnOperationIsAScopeOfItsOwn:
     ):
         document = self._with_operation(inventory)
         coverage = build_plan(document, capabilities)["policyCoverage"]
-        walked = sum(len(d.get("elements") or []) for d in document["policies"])
+        walked = sum(len(d.get("elements") or []) for d in document["apim"]["policies"])
         assert coverage["walked"] == walked
         assert sum(coverage["dispositions"].values()) == walked
 

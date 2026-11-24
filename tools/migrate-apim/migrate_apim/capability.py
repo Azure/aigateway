@@ -36,15 +36,15 @@ _POLICY_FIELDS = (
     "options", "partial", "partialWhen", "batchOn",
 )
 POLICY_BY_ELEMENT = selector(
-    "policies", selects="policies[].elements[]", keys=("name",),
+    "policies", selects="apim.policies[].elements[]", keys=("name",),
     site="capability.policy_rule element", reads=_POLICY_FIELDS,
 )
 POLICY_BY_FAMILY = selector(
-    "policies", selects="policies[].elements[]", keys=("family",),
+    "policies", selects="apim.policies[].elements[]", keys=("family",),
     site="capability.policy_rule family", reads=_POLICY_FIELDS,
 )
 POLICY_BY_EXPRESSION = selector(
-    "policies", selects="policies[].elements[]", keys=("expressionIds",),
+    "policies", selects="apim.policies[].elements[]", keys=("expressionIds",),
     site="capability.policy_rule expression", reads=_POLICY_FIELDS,
 )
 # The pass that makes "no rule" unreachable. Everything above it answers some
@@ -55,7 +55,7 @@ POLICY_BY_EXPRESSION = selector(
 # an expression at least fell into the pass above. The simpler the policy, the
 # more completely it vanished.
 POLICY_TERMINAL = selector(
-    "policies", selects="policies[].elements[]", fallback=True,
+    "policies", selects="apim.policies[].elements[]", fallback=True,
     site="capability.policy_rule terminal", reads=_POLICY_FIELDS,
 )
 

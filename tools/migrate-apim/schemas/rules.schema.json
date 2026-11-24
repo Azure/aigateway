@@ -54,10 +54,7 @@
             "type": "object",
             "required": ["value", "consequence"],
             "additionalProperties": false,
-            "properties": {
-              "value": {"type": "string"},
-              "consequence": {"type": "string"}
-            }
+            "properties": {"value": {"type": "string"}, "consequence": {"type": "string"}}
           }
         ]
       }
@@ -83,10 +80,7 @@
           "type": "string",
           "description": "The attribute whose value is a policy expression rather than a literal."
         },
-        "hasExpression": {
-          "const": true,
-          "description": "The element evaluates a policy expression anywhere in it."
-        },
+        "hasExpression": {"const": true, "description": "The element evaluates a policy expression anywhere in it."},
         "underConditional": {
           "const": true,
           "description": "A `choose` branch in the source decides whether the element runs at all."
@@ -119,11 +113,18 @@
       "properties": {
         "selects": {
           "description": "Where the object this rule judges lives, as a path into the inventory, with `[]` for \"each of these\". One asset raises several questions and they are decided separately, so they are several paths: an API's published surface, the dialect it translates, its model catalogue and its alias names are four objects, not one.",
-          "enum": ["assets.mcpServers[]", "assets.mcpServers[].toolDiscovery", "assets.agents[]",
-                   "assets.modelProviders[]", "assets.models[]",
-                   "assets.models[].endpoints.surface", "assets.models[].endpoints.translation",
-                   "assets.models[].routing.sessionAffinity", "assets.models[].models",
-                   "assets.models[].models.resolved[]"]
+          "enum": [
+            "assets.mcpServers[]",
+            "assets.mcpServers[].toolDiscovery",
+            "assets.agents[]",
+            "assets.modelProviders[]",
+            "assets.models[]",
+            "assets.models[].endpoints.surface",
+            "assets.models[].endpoints.translation",
+            "assets.models[].routing.sessionAffinity",
+            "assets.models[].models",
+            "assets.models[].models.resolved[]"
+          ]
         },
         "where": {
           "type": "object",
@@ -157,16 +158,21 @@
       "type": "object",
       "required": ["selects", "verdict"],
       "additionalProperties": false,
-      "allOf": [
-        {"$ref": "#/$defs/partialNeedsOptions"},
-        {"$ref": "#/$defs/decidedNeedsAnswer"}
-      ],
+      "allOf": [{"$ref": "#/$defs/partialNeedsOptions"}, {"$ref": "#/$defs/decidedNeedsAnswer"}],
       "properties": {
         "selects": {
           "description": "Where the object this rule judges lives. `policies[]` here is a policy fragment: what makes a document one is its `scope.level`, which `plan._policy_fragments` filters on, so a fragment needs no subject of its own.",
-          "enum": ["workspaces[]", "shared.subscriptions", "shared.telemetry", "shared.certificates",
-                   "shared.credentialProviders", "collection.coverage[]", "policies[]",
-                   "service.identity", "service.networking.targetRequirement"]
+          "enum": [
+            "apim.workspaces[]",
+            "apim.subscriptions",
+            "apim.loggers",
+            "apim.certificates",
+            "apim.authorizationProviders",
+            "collection.coverage[]",
+            "apim.policies[]",
+            "service.identity",
+            "service.networking.targetRequirement"
+          ]
         },
         "where": {
           "type": "object",
@@ -205,7 +211,7 @@
       "allOf": [{"$ref": "#/$defs/partialNeedsOptions"}],
       "dependentRequired": {"partial": ["partialWhen"]},
       "properties": {
-        "selects": {"const": "policies[].elements[]"},
+        "selects": {"const": "apim.policies[].elements[]"},
         "fallback": {
           "const": true,
           "description": "Answers for whatever the passes above it did not, and is tried last. There is exactly one per subject; a second is a tie `compile` rejects. It exists so an element no rule recognises still reaches the plan rather than being dropped where it was classified. Written as a flag and not as a predicate, because matching everything is not a statement about the element."
@@ -216,7 +222,9 @@
           "minProperties": 1,
           "properties": {
             "name": {
-              "type": "array", "items": {"type": "string"}, "minItems": 1,
+              "type": "array",
+              "items": {"type": "string"},
+              "minItems": 1,
               "description": "Element names, compared against `policies[].elements[].name`. The one-of form of a predicate."
             },
             "family": {"$ref": "#/$defs/predicate"},

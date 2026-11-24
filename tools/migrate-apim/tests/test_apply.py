@@ -1757,7 +1757,7 @@ class TestAnOrdinaryPolicyDoesNotStopPreflight:
 
     def _with(self, inventory, element):
         document = copy.deepcopy(inventory)
-        aoai = next(d for d in document["policies"] if d["id"] == "policy:api/aoai-api")
+        aoai = next(d for d in document["apim"]["policies"] if d["id"] == "policy:api/aoai-api")
         aoai["elements"].append(element)
         plan = build_plan(document, CapabilityMap.load(), target=TARGET)
         for item in plan["items"]:
@@ -1788,7 +1788,7 @@ class TestAnOrdinaryPolicyDoesNotStopPreflight:
         # It governs no traffic, which is a fact about the fragment and not an
         # object the plan failed to build. Reported on its own item instead.
         document = copy.deepcopy(inventory)
-        document["policies"].append({
+        document["apim"]["policies"].append({
             "id": "policy:fragment/unused",
             "scope": {"level": "fragment", "name": "unused", "workspace": "default"},
             "stats": {"sections": ["fragment"]}, "fragmentRefs": [],
