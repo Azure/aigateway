@@ -163,11 +163,12 @@ class TestRulesThatCannotBeApplied:
 
     def test_a_tie_on_a_presence_test_says_which_one(self, compile_with, shipped):
         rules = copy.deepcopy(shipped[1])
-        catalogued = next(r for r in rules["assets"]
-                          if (r.get("where") or {}).get("catalogue") == {"present": True})
-        rules["assets"].append(copy.deepcopy(catalogued))
+        assigned = next(r for r in rules["structural"]
+                        if (r.get("where") or {}).get("userAssignedIdentities")
+                        == {"present": True})
+        rules["structural"].append(copy.deepcopy(assigned))
         [diagnostic] = [d for d in compile_with(rules=rules).errors if d.check == "rule-unique"]
-        assert "'catalogue'" in diagnostic.message
+        assert "'userAssignedIdentities'" in diagnostic.message
         assert "present" in diagnostic.message
 
     def test_a_partial_rule_without_options_is_caught(self, compile_with, shipped):
@@ -382,9 +383,10 @@ class TestWhereTakesThreeFormsAndNoMore:
     def test_a_presence_test_with_a_second_key_is_rejected(self, compile_with, shipped):
         # `{"present": true, "equals": "x"}` would read as both and be neither.
         rules = copy.deepcopy(shipped[1])
-        rule = next(r for r in rules["assets"]
-                    if (r.get("where") or {}).get("catalogue") == {"present": True})
-        rule["where"]["catalogue"] = {"present": True, "equals": "x"}
+        rule = next(r for r in rules["structural"]
+                    if (r.get("where") or {}).get("userAssignedIdentities")
+                    == {"present": True})
+        rule["where"]["userAssignedIdentities"] = {"present": True, "equals": "x"}
         assert "where-operator" in codes(compile_with(rules=rules))
 
     def test_the_shipped_rules_use_only_the_three(self, compile_with):

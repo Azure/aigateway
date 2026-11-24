@@ -85,13 +85,13 @@ class TestTheDecisionsThatMovedAreTheOnesThatWereThere:
             ["split", "inference-only", "retain-in-apim", "block"], blocking=True)
 
     def test_a_translating_dialect_moves_callers(self, caps):
-        rule = plan_mod.DIALECT_TRANSLATING.first(caps.asset_rules(), status="translating")
+        rule = plan_mod.DIALECT_TRANSLATING.first(caps.asset_rules(), translation="translating")
         assert decision(rule) == expected(
             "partial", "choose", "alias.create", "move-callers",
             ["move-callers", "retain-in-apim", "block"], blocking=True)
 
     def test_an_indeterminate_dialect_asks_and_proposes_nothing(self, caps):
-        rule = plan_mod.DIALECT_INDETERMINATE.first(caps.asset_rules(), status="indeterminate")
+        rule = plan_mod.DIALECT_INDETERMINATE.first(caps.asset_rules(), translation="indeterminate")
         assert decision(rule) == expected(
             "partial", "supply", "alias.create", None,
             ["confirm-dialect", "retain-in-apim"], blocking=True)
@@ -104,21 +104,21 @@ class TestTheDecisionsThatMovedAreTheOnesThatWereThere:
             ["accept-loss", "retain-in-apim", "block"])
 
     def test_a_read_catalogue_is_published_as_listed(self, caps):
-        rule = plan_mod.CATALOGUE_RULE.first(caps.asset_rules(), catalogue=["gpt-4o"])
+        rule = plan_mod.CATALOGUE_RULE.first(caps.asset_rules(), catalogueFetched=True)
         assert decision(rule) == expected(
             "partial", "supply", "model.create", "list-models",
             ["list-models", "retain-in-apim"], blocking=True)
 
     def test_an_unread_catalogue_with_an_endpoint_proposes_resolving_it(self, caps):
         rule = plan_mod.CATALOGUE_RULE.first(
-            caps.asset_rules(), catalogue=[], discoverySource="modelsEndpoint")
+            caps.asset_rules(), catalogueFetched=False, discoverySource="modelsEndpoint")
         assert decision(rule) == expected(
             "partial", "supply", "model.create", "resolve-models",
             ["resolve-models", "list-models", "retain-in-apim"], blocking=True)
 
     def test_an_unread_catalogue_without_one_proposes_naming_them(self, caps):
         rule = plan_mod.CATALOGUE_RULE.first(
-            caps.asset_rules(), catalogue=[], discoverySource=None)
+            caps.asset_rules(), catalogueFetched=False, discoverySource=None)
         assert decision(rule) == expected(
             "partial", "supply", "model.create", "list-models",
             ["resolve-models", "list-models", "retain-in-apim"], blocking=True)
@@ -131,7 +131,7 @@ class TestTheDecisionsThatMovedAreTheOnesThatWereThere:
 
     def test_a_bypassed_tool_list_is_a_decision(self, caps):
         rule = plan_mod.TOOL_EXPOSURE_BYPASSED.first(
-            caps.asset_rules(), policiesApplied=False)
+            caps.asset_rules(), type="mcp", toolsFromGateway=False)
         assert decision(rule) == expected(
             "partial", "supply", None, "accept-as-listed",
             ["accept-as-listed", "verify-through-gateway", "retain-in-apim"])
@@ -251,7 +251,7 @@ class TestThePlannerOffersWhatTheFileSays:
 
     def test_a_translating_dialect_offers_the_rules_choices(self, inventory, caps):
         built = build_plan(inventory, saying(
-            caps, plan_mod.DIALECT_TRANSLATING, {"options": OFFERED}, status="translating"))
+            caps, plan_mod.DIALECT_TRANSLATING, {"options": OFFERED}, translation="translating"))
         assert offered(item_with(built, "callerDialect")) == OFFERED
 
     def test_an_indeterminate_dialect_offers_the_rules_choices(self, inventory, caps):
@@ -259,7 +259,7 @@ class TestThePlannerOffersWhatTheFileSays:
         asset = next(m for m in changed["assets"]["models"] if m["source"]["name"] == "model-api")
         asset["endpoints"]["translation"]["status"] = "indeterminate"
         built = build_plan(changed, saying(
-            caps, plan_mod.DIALECT_INDETERMINATE, {"options": OFFERED}, status="indeterminate"))
+            caps, plan_mod.DIALECT_INDETERMINATE, {"options": OFFERED}, translation="indeterminate"))
         assert offered(item_with(built, "callerDialect")) == OFFERED
 
     def test_session_affinity_offers_the_rules_choices(self, inventory, caps):
@@ -273,7 +273,7 @@ class TestThePlannerOffersWhatTheFileSays:
     def test_an_unread_catalogue_offers_the_rules_choices(self, inventory, caps):
         built = build_plan(inventory, saying(
             caps, plan_mod.CATALOGUE_RULE, {"options": OFFERED},
-            catalogue=[], discoverySource="modelsEndpoint"))
+            catalogueFetched=False, discoverySource="modelsEndpoint"))
         assert offered(item_with(built, "modelCatalogue")) == OFFERED
 
     def test_alias_naming_offers_the_rules_choices(self, inventory, caps):
@@ -288,7 +288,7 @@ class TestThePlannerOffersWhatTheFileSays:
                                    "discoveredCount": 3}
         built = build_plan(changed, saying(
             caps, plan_mod.TOOL_EXPOSURE_BYPASSED, {"options": OFFERED},
-            policiesApplied=False))
+            type="mcp", toolsFromGateway=False))
         assert offered(item_with(built, "toolExposure")) == OFFERED
 
     def test_a_user_assigned_identity_offers_the_rules_choice_and_the_reuse(

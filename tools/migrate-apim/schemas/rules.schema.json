@@ -118,10 +118,7 @@
             "apim.apis[].operations[]",
             "apim.backends[].pool.sessionAffinity",
             "assets.modelProviders[]",
-            "assets.models[].endpoints.translation",
-            "assets.models[].models",
-            "assets.models[].models.resolved[]",
-            "assets.mcpServers[].toolDiscovery"
+            "assets.models[].models.resolved[]"
           ]
         },
         "where": {
@@ -131,15 +128,15 @@
           "description": "Field predicates on the object `selects` points at. `selects` plus the key is the path `compile` checks against inventory.schema.json.",
           "properties": {
             "pattern": {"$ref": "#/$defs/predicate"},
-            "status": {"$ref": "#/$defs/predicate"},
             "discoverySource": {"$ref": "#/$defs/predicate"},
-            "catalogue": {"$ref": "#/$defs/predicate"},
-            "unpublishableCount": {"$ref": "#/$defs/predicate"},
-            "policiesApplied": {"$ref": "#/$defs/predicate"},
             "type": {"$ref": "#/$defs/predicate"},
             "role": {"$ref": "#/$defs/predicate"},
             "group": {"$ref": "#/$defs/predicate"},
-            "publishable": {"$ref": "#/$defs/predicate"}
+            "publishable": {"$ref": "#/$defs/predicate"},
+            "translation": {"$ref": "#/$defs/predicate"},
+            "toolDiscovery": {"$ref": "#/$defs/predicate"},
+            "toolsFromGateway": {"$ref": "#/$defs/predicate"},
+            "catalogueFetched": {"$ref": "#/$defs/predicate"}
           }
         },
         "blocking": {"type": "boolean"},

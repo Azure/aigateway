@@ -49,9 +49,9 @@ MCP_BY_PATTERN = selector(
 # string; what it compares is the `status` inside it.
 MCP_BY_TOOL_DISCOVERY = selector(
     "assets",
-    selects="assets.mcpServers[].toolDiscovery",
-    keys=("status",),
-    values={"status": ("runtimeOnly",)},
+    selects="apim.apis[]",
+    keys=("type", "toolDiscovery"),
+    values={"type": ("mcp",), "toolDiscovery": ("runtimeOnly", "complete")},
     site="plan._mcp tool exposure",
     reads=("verdict", "answer", "proposal", "rationale", "options"),
 )
@@ -92,14 +92,14 @@ SURFACE_PARTIALLY_PUBLISHABLE = selector(
 # Two cases, two sites: the indeterminate one proposes nothing, and one selector
 # for both would have excused a `proposal` on it that the planner never reads.
 DIALECT_TRANSLATING = selector(
-    "assets", selects="assets.models[].endpoints.translation", keys=("status",),
-    values={"status": ("translating",)},
+    "assets", selects="apim.apis[]", keys=("translation",),
+    values={"translation": ("translating",)},
     site="plan._model dialect translating",
     reads=("verdict", "answer", "capabilityId", "proposal", "rationale", "options", "blocking"),
 )
 DIALECT_INDETERMINATE = selector(
-    "assets", selects="assets.models[].endpoints.translation", keys=("status",),
-    values={"status": ("indeterminate",)},
+    "assets", selects="apim.apis[]", keys=("translation",),
+    values={"translation": ("indeterminate",)},
     site="plan._model dialect indeterminate",
     reads=("verdict", "answer", "capabilityId", "rationale", "options", "blocking"),
 )
@@ -108,8 +108,10 @@ SESSION_AFFINITY_RULE = selector(
     reads=("verdict", "answer", "capabilityId", "proposal", "options"),
 )
 CATALOGUE_RULE = selector(
-    "assets", selects="assets.models[].models", keys=("discoverySource", "catalogue"),
-    values={"discoverySource": ("modelsEndpoint",)},
+    "assets", selects="apim.apis[]", keys=("catalogueFetched", "discoverySource"),
+    values={"catalogueFetched": (True, False),
+            "discoverySource": ("armDeployments", "backendLanguageModel",
+                                "modelsEndpoint", "awsCli", "gcloudCli", "manual", "unknown")},
     site="plan._enumerate_models",
     reads=("verdict", "answer", "capabilityId", "proposal", "rationale", "options", "blocking"),
 )
@@ -127,8 +129,8 @@ ALIAS_NAMES_RULE = selector(
 # `policiesBypassed: true` used to say this, which a reader had to negate: what
 # it tested was `policiesApplied is False`, a plain equality on a real field.
 TOOL_EXPOSURE_BYPASSED = selector(
-    "assets", selects="assets.mcpServers[].toolDiscovery", keys=("policiesApplied",),
-    values={"policiesApplied": (False,)},
+    "assets", selects="apim.apis[]", keys=("type", "toolsFromGateway"),
+    values={"type": ("mcp",), "toolsFromGateway": (True, False)},
     site="plan._mcp tool exposure bypassed",
     reads=("verdict", "answer", "proposal", "options"),
 )
@@ -627,7 +629,7 @@ class PlanBuilder:
         # Dialect translation.
         translation = endpoints.get("translation") or {}
         if translation.get("status") == "translating":
-            rule = DIALECT_TRANSLATING.first(self.caps.asset_rules(), status="translating") or {}
+            rule = DIALECT_TRANSLATING.first(self.caps.asset_rules(), translation="translating") or {}
             self._add(
                 item_id=ids.item(asset_id, "dialect"),
                 source={"assetId": asset_id, "assetKind": "modelApi", "aspect": "callerDialect"},
@@ -646,7 +648,7 @@ class PlanBuilder:
             )
         elif translation.get("status") == "indeterminate":
             rule = DIALECT_INDETERMINATE.first(
-                self.caps.asset_rules(), status="indeterminate") or {}
+                self.caps.asset_rules(), translation="indeterminate") or {}
             self._add(
                 item_id=ids.item(asset_id, "dialect"),
                 source={"assetId": asset_id, "assetKind": "modelApi", "aspect": "callerDialect"},
@@ -730,7 +732,7 @@ class PlanBuilder:
             # detail. Confirming is one step; pruning is an edit to the same list.
             sample = ", ".join(str(name) for name in catalogue[:6])
             more = f" and {len(catalogue) - 6} more" if len(catalogue) > 6 else ""
-            rule = CATALOGUE_RULE.first(self.caps.asset_rules(), catalogue=catalogue) or {}
+            rule = CATALOGUE_RULE.first(self.caps.asset_rules(), catalogueFetched=True) or {}
             # Listing them costs nothing to say except how many there are, which
             # is this catalogue's count.
             options = _options_of(rule, {
@@ -750,12 +752,12 @@ class PlanBuilder:
             # fetch it rather than ask someone to type model names. Which is
             # which is the rule's to say, so the two cases are two rules.
             rule = CATALOGUE_RULE.first(
-                self.caps.asset_rules(), catalogue=catalogue,
+                self.caps.asset_rules(), catalogueFetched=False,
                 discoverySource=models.get("discoverySource"),
             ) or CATALOGUE_RULE.first(
                 # The rule that pins no source, which is the one that answers
                 # when this provider's is not one a rule names.
-                self.caps.asset_rules(), catalogue=catalogue, discoverySource=None,
+                self.caps.asset_rules(), catalogueFetched=False, discoverySource=None,
             ) or {}
             options = _options_of(rule)
             proposal = rule.get("proposal", "list-models")
@@ -1016,8 +1018,8 @@ class PlanBuilder:
             # it can be broader than what callers reach through the gateway.
             # Treating it as settled would publish tools APIM currently withholds.
             bypass_rule = TOOL_EXPOSURE_BYPASSED.first(
-                self.caps.asset_rules(),
-                policiesApplied=discovery_record.get("policiesApplied"),
+                self.caps.asset_rules(), type="mcp",
+                toolsFromGateway=discovery_record.get("policiesApplied"),
             ) or {}
             self._add(
                 item_id=ids.item(asset_id, "tools"),
@@ -1037,7 +1039,7 @@ class PlanBuilder:
             )
         if discovery == "runtimeOnly":
             tool_rule = MCP_BY_TOOL_DISCOVERY.first(
-                self.caps.asset_rules(), status="runtimeOnly"
+                self.caps.asset_rules(), type="mcp", toolDiscovery="runtimeOnly"
             ) or {}
             self._add(
                 item_id=ids.item(asset_id, "tools"),

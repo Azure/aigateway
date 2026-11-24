@@ -1862,6 +1862,21 @@ def _apim_apis(
         # record plus two readings of its `urlTemplate`, named as readings:
         # `group` is which inference route it looks like, `publishable` whether
         # the target has that route at all.
+        # Scalar readings of the API, for a rule to narrow on. The evidence they
+        # summarise is this tool's -- a catalogue resolved from CognitiveServices
+        # deployments, a dialect comparison, a tool list fetched at runtime --
+        # but what each is *about* is the API, which is APIM's. So the subject of
+        # the rule is the APIM object and the reading is a `where` key, which is
+        # the same shape `type` and `pattern` already have.
+        if asset:
+            catalogue = asset.get("models") or {}
+            translation = (asset.get("endpoints") or {}).get("translation") or {}
+            discovery = asset.get("toolDiscovery") or {}
+            row["catalogueFetched"] = bool(catalogue.get("catalogue"))
+            row["discoverySource"] = catalogue.get("discoverySource")
+            row["translation"] = translation.get("status")
+            row["toolDiscovery"] = discovery.get("status")
+            row["toolsFromGateway"] = discovery.get("policiesApplied")
         row["operations"] = [
             {**operation, **_operation_reading(operation.get("urlTemplate") or "")}
             for operation in operations_by_api.get(source["apiId"]) or []
@@ -1885,7 +1900,8 @@ _ROLE_OF = {"modelApi": "modelApi", "mcpServer": "mcpServer", "agent": "agent"}
 # was not: `endpoints` is a decomposition of ours, and putting it in the path
 # made a whole structure of this tool's read as though APIM returned it.
 APIM_READINGS = {
-    "apim.apis[]": ("role", "pattern"),
+    "apim.apis[]": ("role", "pattern", "catalogueFetched", "discoverySource", "translation",
+                    "toolDiscovery", "toolsFromGateway"),
     "apim.apis[].operations[]": ("group", "publishable", "route", "subresource", "template"),
 }
 

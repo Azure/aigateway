@@ -44,8 +44,8 @@
       "proposal": "retain-in-apim"
     },
     {
-      "selects": "assets.mcpServers[].toolDiscovery",
-      "where": {"status": "runtimeOnly"},
+      "selects": "apim.apis[]",
+      "where": {"type": "mcp", "toolDiscovery": "runtimeOnly"},
       "verdict": "gap",
       "answer": "supply",
       "options": [
@@ -121,8 +121,8 @@
       "note": "`split` is bare because what it costs is the number of operations that stay behind, which only this API's surface knows; the planner composes that sentence. The item's rationale is composed there too, for the same reason."
     },
     {
-      "selects": "assets.models[].endpoints.translation",
-      "where": {"status": "translating"},
+      "selects": "apim.apis[]",
+      "where": {"translation": "translating"},
       "verdict": "partial",
       "answer": "choose",
       "capabilityId": "alias.create",
@@ -137,8 +137,8 @@
       "note": "`move-callers` is bare because what it costs is the dialect this backend speaks, which the planner reads off the asset. The rationale is used only when the collector left no note of its own."
     },
     {
-      "selects": "assets.models[].endpoints.translation",
-      "where": {"status": "indeterminate"},
+      "selects": "apim.apis[]",
+      "where": {"translation": "indeterminate"},
       "verdict": "partial",
       "answer": "supply",
       "capabilityId": "alias.create",
@@ -169,8 +169,8 @@
       "note": "`block` is here because stopping the migration is the option an operator loses if nobody writes it down: this is a gap the target does not have, only the tooling. The item's sentence names which CLI gap it is, so it is composed in the planner rather than stated here."
     },
     {
-      "selects": "assets.models[].models",
-      "where": {"catalogue": {"present": true}},
+      "selects": "apim.apis[]",
+      "where": {"catalogueFetched": true},
       "verdict": "partial",
       "answer": "supply",
       "capabilityId": "model.create",
@@ -180,8 +180,8 @@
       "note": "The catalogue has been read. It lists what exists, not what each one can serve, which is why this is still a decision. `list-models` is bare and the item's rationale is composed in the planner: both name how many models came back and where from."
     },
     {
-      "selects": "assets.models[].models",
-      "where": {"catalogue": {"present": false}, "discoverySource": "modelsEndpoint"},
+      "selects": "apim.apis[]",
+      "where": {"catalogueFetched": false, "discoverySource": "modelsEndpoint"},
       "verdict": "partial",
       "answer": "supply",
       "capabilityId": "model.create",
@@ -198,8 +198,8 @@
       "rationale": "The model catalogue could not be resolved."
     },
     {
-      "selects": "assets.models[].models",
-      "where": {"catalogue": {"present": false}},
+      "selects": "apim.apis[]",
+      "where": {"catalogueFetched": false},
       "verdict": "partial",
       "answer": "supply",
       "capabilityId": "model.create",
@@ -219,7 +219,7 @@
       "selects": "assets.models[].models.resolved[]",
       "verdict": "native",
       "capabilityId": "model.create",
-      "note": "A model registers directly, whether it was resolved from a deployment or named in this API's catalogue decision. Which of the two it was is what the item says, so that sentence is composed in the planner."
+      "note": "Not an APIM path, and deliberately. What is registered is one model deployment, read from Microsoft.CognitiveServices. APIM has the API in front of it, which is a different object and already has its own rules."
     },
     {
       "selects": "apim.apis[]",
@@ -239,8 +239,8 @@
       "note": "The planner follows this sentence with the names it proposes for this API's models, which is the only part of the item that is not the same for every API."
     },
     {
-      "selects": "assets.mcpServers[].toolDiscovery",
-      "where": {"policiesApplied": false},
+      "selects": "apim.apis[]",
+      "where": {"type": "mcp", "toolsFromGateway": false},
       "verdict": "partial",
       "answer": "supply",
       "proposal": "accept-as-listed",

@@ -194,6 +194,14 @@
                     "template": {"type": ["string", "null"]}
                   }
                 }
+              },
+              "discoverySource": {"type": ["string", "null"]},
+              "translation": {"type": ["string", "null"]},
+              "toolDiscovery": {"type": ["string", "null"]},
+              "toolsFromGateway": {"type": ["boolean", "null"]},
+              "catalogueFetched": {
+                "description": "Whether a model catalogue was actually fetched for this API. The fetch is this tool's -- CognitiveServices deployments, a backend declaration, a /v1/models call -- but what it is about is the API.",
+                "type": ["boolean", "null"]
               }
             }
           }
