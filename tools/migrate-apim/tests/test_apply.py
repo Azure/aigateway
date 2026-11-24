@@ -1799,6 +1799,13 @@ class TestAnOrdinaryPolicyDoesNotStopPreflight:
                 "text": None, "expressionIds": [], "namedValueRefs": [], "childNames": [],
             }],
         })
+        # Two objects, as the collector emits: the APIM policyFragments resource
+        # the rules select, and the policy document holding its body.
+        document["apim"]["policyFragments"].append({
+            "id": "policyFragment:unused", "name": "unused", "workspace": "default",
+            "description": None, "policyId": "policy:fragment/unused",
+            "elementCount": 1, "parseError": None,
+        })
         plan = build_plan(document, CapabilityMap.load(), target=TARGET)
         for item in plan["items"]:
             if item["status"] == "needs-decision":

@@ -520,13 +520,13 @@
       "proposal": "accept"
     },
     {
-      "selects": "apim.policies[]",
+      "selects": "apim.policyFragments[]",
       "where": {"disposition": "dissolved"},
       "verdict": "handled",
       "rationale": "AI Gateway has no policy composition: no fragments, no includes, no inheritance. A fragment is therefore dissolved into every scope that includes it, and what it carries is assessed as the elements of that scope. Listed so a reader can see the fragment reached the plan rather than having to infer it from the policies it contributed."
     },
     {
-      "selects": "apim.policies[]",
+      "selects": "apim.policyFragments[]",
       "where": {"disposition": "conditional"},
       "verdict": "partial",
       "answer": "choose",
@@ -548,7 +548,7 @@
       "rationale": "A `choose` branch at the include site decides whether this fragment runs at all, and dissolving it into the including scope keeps what it carries and not the condition on it. The target has nowhere to put the branch: its policy surface is six declarative types with no predicate."
     },
     {
-      "selects": "apim.policies[]",
+      "selects": "apim.policyFragments[]",
       "where": {"disposition": "splitSection"},
       "verdict": "partial",
       "answer": "choose",
@@ -570,13 +570,13 @@
       "rationale": "The same fragment is included into more than one section, so what it does depends on where it was pulled in -- a check on the way in is not the same check on the way out. One dissolution cannot be both."
     },
     {
-      "selects": "apim.policies[]",
+      "selects": "apim.policyFragments[]",
       "where": {"disposition": "unreferenced"},
       "verdict": "notApplicable",
       "rationale": "Nothing includes this fragment, so it governs no traffic and there is nothing to dissolve it into. Reported rather than dropped: a fragment that governs nothing and a fragment nobody looked for are the same silence, and operation policies are not collected unless asked for."
     },
     {
-      "selects": "apim.policies[]",
+      "selects": "apim.policyFragments[]",
       "where": {"disposition": "unresolved"},
       "verdict": "gap",
       "answer": "supply",

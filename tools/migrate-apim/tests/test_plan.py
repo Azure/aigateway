@@ -1665,7 +1665,30 @@ def policy_document(document, policy_id, scope):
         found = {"id": policy_id, "scope": scope, "elements": [], "fragmentRefs": [],
                  "stats": {"sections": ["inbound"]}}
         document["apim"]["policies"].append(found)
+    if scope.get("level") == "fragment":
+        _register_fragment(document, found, scope)
     return found
+
+
+def _register_fragment(document, found, scope):
+    """A fragment is two objects, and the collector emits both.
+
+    `apim.policyFragments[]` is the APIM resource the rules select;
+    `apim.policies[]` holds its body. A fixture that invents only the document
+    is not the shape a collection produces, and the rules would see nothing.
+    """
+    name = scope.get("name") or ""
+    workspace = scope.get("workspace") or "default"
+    scoped = name if workspace == "default" else f"{workspace}/{name}"
+    fragments = document["apim"].setdefault("policyFragments", [])
+    entry = next((f for f in fragments if f.get("policyId") == found["id"]), None)
+    if entry is None:
+        entry = {"id": f"policyFragment:{scoped}", "name": name, "workspace": workspace,
+                 "description": None, "policyId": found["id"]}
+        fragments.append(entry)
+    entry["elementCount"] = len(found.get("elements") or [])
+    entry["parseError"] = found.get("parseError")
+    return entry
 
 
 def includes(document, policy_id, scope, fragment_name, *, conditional=False, section="inbound"):
@@ -1697,6 +1720,7 @@ def token_limit_fragment(document, name, *, workspace="default", counter_key="sh
         family="tokenLimit",
         attributes={"tokens-per-minute": tpm, "counter-key": counter_key},
     ))
+    _register_fragment(document, found, {"level": "fragment", "name": name, "workspace": workspace})
     return found
 
 
@@ -1992,6 +2016,9 @@ class TestAFragmentNobodyCouldReadIsNotADissolvedOne:
         broken["parseError"] = (
             "The body could not be read, so what this fragment contains is unknown."
         )
+        # The resource carries the parse error too, which is what the rules see;
+        # setting it on the document alone leaves the two disagreeing.
+        _register_fragment(document, broken, broken["scope"])
         if included:
             includes(document, "policy:api/aoai-api",
                      {"level": "api", "name": "aoai-api", "workspace": "default"}, "broken")

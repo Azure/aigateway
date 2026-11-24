@@ -160,7 +160,7 @@
       "allOf": [{"$ref": "#/$defs/partialNeedsOptions"}, {"$ref": "#/$defs/decidedNeedsAnswer"}],
       "properties": {
         "selects": {
-          "description": "Where the object this rule judges lives. `policies[]` here is a policy fragment: what makes a document one is its `scope.level`, which `plan._policy_fragments` filters on, so a fragment needs no subject of its own.",
+          "description": "Where the object this rule judges lives. A fragment is selected as `apim.policyFragments[]`, the APIM resource, rather than as a policy document narrowed by `scope.level`.",
           "enum": [
             "apim.workspaces[]",
             "apim.subscriptions",
@@ -168,7 +168,7 @@
             "apim.certificates",
             "apim.authorizationProviders",
             "collection.coverage[]",
-            "apim.policies[]",
+            "apim.policyFragments[]",
             "service.identity",
             "service"
           ]

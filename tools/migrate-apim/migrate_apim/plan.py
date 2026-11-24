@@ -181,12 +181,12 @@ REACHABILITY_BY_SUBNET = selector(
 # has no policy composition at all -- no fragments, no includes, no inheritance
 # -- so every fragment has the same fate, dissolved into whatever includes it,
 # and what varies is only whether the dissolution can keep what the fragment
-# meant. A fragment is a policy document like any other, which is why the path
-# is `policies[]`: what makes it one is `scope.level`, and `graph.fragments()`
-# is where that filter lives.
+# meant. The path is `policyFragments[]` because APIM has that resource: naming
+# `policies[]` and filtering it to `scope.level == "fragment"` put the narrowing
+# in code, where nobody reading the rule could see it.
 FRAGMENT_DISPOSITIONS = ("dissolved", "conditional", "splitSection", "unreferenced", "unresolved")
 STRUCTURAL_POLICY_FRAGMENTS = selector(
-    "structural", selects="apim.policies[]", keys=("disposition",),
+    "structural", selects="apim.policyFragments[]", keys=("disposition",),
     values={"disposition": FRAGMENT_DISPOSITIONS},
     computed=("disposition",),
     site="plan._policy_fragments",
@@ -1212,11 +1212,17 @@ class PlanBuilder:
         # otherwise is the forward walk, which records the name it could not
         # resolve where it tried to resolve it.
         unreadable = set(self._unreadable_fragments)
-        for document in graph.fragments():
-            name = (document.get("scope") or {}).get("name") or ""
-            sites = _unique_arrivals(self._fragment_arrivals.get(document["id"]) or [])
+        # APIM has a policyFragments resource, so that is the object these rules
+        # are about. Selecting `policies[]` and filtering it to `scope.level ==
+        # "fragment"` in `graph.fragments()` meant the rule named every policy
+        # document and only ever saw one kind, with the narrowing in code where
+        # nobody reading the rule could see it.
+        for fragment in (self.inventory.get("apim") or {}).get("policyFragments") or []:
+            policy_id = fragment.get("policyId")
+            name = fragment.get("name") or ""
+            sites = _unique_arrivals(self._fragment_arrivals.get(policy_id) or [])
             sections = {site["section"] for site in sites}
-            if document["id"] in unreadable:
+            if policy_id in unreadable:
                 # Collected, included, and unreadable. It has no elements to
                 # dissolve and nobody can say what it carried, so it is the
                 # same unknown as a `fragment-id` naming nothing -- and a
@@ -1235,8 +1241,8 @@ class PlanBuilder:
                 structural, disposition=disposition
             ) or {}
             self._add(
-                item_id=ids.item("fragment", document["id"]),
-                source={"assetId": document["id"], "assetKind": "policyFragment", "aspect": name},
+                item_id=ids.item("fragment", policy_id),
+                source={"assetId": policy_id, "assetKind": "policyFragment", "aspect": name},
                 kind=rule.get("answer"),
                 verdict=rule.get("verdict", "handled"),
                 proposal=rule.get("proposal"),
@@ -1245,8 +1251,8 @@ class PlanBuilder:
                 evidence={
                     "fragment": name,
                     "disposition": disposition,
-                    "elementCount": len(document.get("elements") or []),
-                    "parseError": document.get("parseError"),
+                    "elementCount": fragment.get("elementCount"),
+                    "parseError": fragment.get("parseError"),
                     "sections": sorted(sections),
                     # Whether operation policies were collected decides what
                     # "nothing includes it" is worth: an operation can include a
