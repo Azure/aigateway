@@ -16,9 +16,7 @@ from urllib.parse import urlsplit
 
 from . import detect, ids, policy as policy_mod, secrets
 from .arm import ArmAuthError, ArmClient, ArmError
-from .foundry import (
-    FoundryResolver, publishable_reading, resolved_model, target_model_registration,
-)
+from .foundry import FoundryResolver, resolved_model, target_model_registration
 
 SCHEMA_VERSION = "1.0"
 GENERATOR_VERSION = "0.1.0"
@@ -1038,8 +1036,7 @@ class Collector:
                             "modelName": declaration.get("model"),
                             "apiFormat": declaration.get("apiFormat"),
                             "formatResolution": declaration.get("formatResolution"),
-                            "publishable": publishable_reading(
-                                declaration.get("supportedEndpoints")),
+                            "inferenceRoutes": declaration.get("supportedEndpoints"),
                             "target": {
                                 "providerKind": declaration.get("targetProviderKind"),
                                 "deployment": {"modelName": declaration.get("model")},
@@ -1294,8 +1291,7 @@ class Collector:
                     "modelName": declaration.get("model"),
                     "apiFormat": declaration.get("apiFormat"),
                     "formatResolution": declaration.get("formatResolution"),
-                    "publishable": publishable_reading(
-                        declaration.get("supportedEndpoints")),
+                    "inferenceRoutes": declaration.get("supportedEndpoints"),
                     "target": {
                         "providerKind": declaration.get("targetProviderKind"),
                         "deployment": {"modelName": declaration.get("model")},

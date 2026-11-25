@@ -217,14 +217,14 @@
     },
     {
       "selects": "assets.models[].models.resolved[]",
-      "where": {"publishable": true},
+      "where": {"inferenceRoutes": {"present": true}},
       "verdict": "native",
       "capabilityId": "model.create",
-      "note": "Not an APIM path, and deliberately. What is registered is one model deployment, read from Microsoft.CognitiveServices. APIM has the API in front of it, which is a different object and already has its own rules."
+      "note": "Not an APIM path, and deliberately. What is registered is one model deployment, read from Microsoft.CognitiveServices. APIM has the API in front of it, which is a different object and already has its own rules. `inferenceRoutes` is what `model create --supported-endpoints` takes, so this rule asks the question the command asks."
     },
     {
       "selects": "assets.models[].models.resolved[]",
-      "where": {"publishable": false},
+      "where": {"inferenceRoutes": {"present": false}},
       "verdict": "gap",
       "answer": "choose",
       "capabilityId": "model.create",
@@ -240,8 +240,8 @@
           "consequence": "Keep this model's callers on APIM, which still serves it as it does today. The rest of the API still moves."
         }
       ],
-      "rationale": "This model declares none of the routes the gateway publishes. The gateway serves /openai/v1/chat/completions, /openai/v1/responses, /openai/v1/embeddings and /v1/messages; a deployment whose capabilities name none of them cannot be reached through it. Registering it anyway produces a model that reads as migrated and fails at the upstream on the first call.",
-      "note": "The reading is the model's own declaration, not a guess. Foundry reports capabilities as the strings \"true\" and \"false\", so a deployment saying `chatCompletion: \"false\"` is stating it cannot serve that route -- which is why the value is compared rather than the key tested."
+      "rationale": "This model declares no inference route the gateway publishes, and `model create` takes one as `--supported-endpoints`. The gateway serves /openai/v1/chat/completions, /openai/v1/responses, /openai/v1/embeddings and /v1/messages; a deployment whose capabilities name none of them cannot be reached through it. Registering it anyway produces a model that reads as migrated and fails at the upstream on the first call.",
+      "note": "The routes are the model's own declaration, not a guess. Foundry reports capabilities as the strings \"true\" and \"false\", so a deployment saying `chatCompletion: \"false\"` is stating it cannot serve that route -- which is why the value is compared rather than the key tested. An empty list is that claim; a backend whose dialect could not be read carries null instead and is a plannerGap, not this decision, because nothing established what it serves."
     },
     {
       "selects": "apim.apis[]",

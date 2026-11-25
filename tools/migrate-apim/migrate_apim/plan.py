@@ -22,7 +22,6 @@ from . import ids
 from . import policy as policy_mod
 from .capability import CapabilityMap
 from .detect import MCP_PATTERNS, dialect_target
-from .foundry import publishable_reading
 from .dispatch import selector
 
 SCHEMA_VERSION = "1.0"
@@ -117,11 +116,11 @@ CATALOGUE_RULE = selector(
     reads=("verdict", "answer", "capabilityId", "proposal", "rationale", "options", "blocking"),
 )
 MODEL_REGISTRATION_RULE = selector(
-    "assets", selects="assets.models[].models.resolved[]", keys=("publishable",),
-    # `None` is in neither list on purpose: a backend whose dialect could not be
-    # read has not been shown to lack a route, and the dialect rules ask about
-    # that. It matches no rule here and keeps the native default.
-    values={"publishable": (True, False)},
+    # The routes themselves, because `--supported-endpoints` is what `model
+    # create` requires: a rule asking whether this model has one is asking the
+    # same question the command does. A presence test names no literals, so
+    # there is no vocabulary to declare.
+    "assets", selects="assets.models[].models.resolved[]", keys=("inferenceRoutes",),
     site="plan._model_registration",
     reads=("verdict", "answer", "capabilityId", "proposal", "rationale", "options", "blocking"),
 )
@@ -837,11 +836,11 @@ class PlanBuilder:
                 "modelName": name,
                 "deploymentName": name,
                 "enumerated": True,
-                # Carried here too, so every resolved record answers the same
-                # question however it was discovered. An enumerated model takes
-                # its routes from the provider's protocol, so this is only false
-                # if the operator overrode `decision.endpoints` with none.
-                "publishable": publishable_reading(endpoints),
+                # Carried here too, so every resolved record names its routes
+                # however it was discovered. An enumerated model takes them
+                # from the provider's protocol, so this is only empty if the
+                # operator overrode `decision.endpoints` with nothing.
+                "inferenceRoutes": endpoints,
                 "target": {
                     "supportedEndpoints": endpoints,
                     "apiFormat": mapped["apiFormat"],
@@ -869,14 +868,21 @@ class PlanBuilder:
         pooled = len({r.get("backendId")
                       for r in (model.get("models") or {}).get("resolved") or []}) > 1
         item_key = f"model/{name}@{provider_name}" if pooled else f"model/{name}"
-        publishable = resolved.get("publishable")
-        registration_rule = MODEL_REGISTRATION_RULE.first(
-            self.caps.asset_rules(), publishable=publishable) or {}
-        # A model the gateway has no route for is a loss to settle, not an
-        # object to build. Emitting the registration anyway is what published
+        # `None` means the routes were never established -- a backend whose
+        # dialect could not be read -- and `bool(None)` is False, so asking the
+        # rules would answer it with "this model serves nothing", a loss nobody
+        # demonstrated. SKILL.md puts an unreadable dialect on this tool rather
+        # than on the operator, so it is a plannerGap below and never a rule.
+        routes = resolved.get("inferenceRoutes")
+        known = isinstance(routes, list)
+        registration_rule = (
+            MODEL_REGISTRATION_RULE.first(self.caps.asset_rules(), inferenceRoutes=routes) or {}
+        ) if known else {}
+        # A model with no route is a loss to settle, not an object to build.
+        # Emitting the registration anyway is what published
         # `Microsoft-Decision-1` on a route its own capabilities denied: it
         # registered, read back clean, and could only fail at the upstream.
-        unpublishable = publishable is False
+        unpublishable = known and not routes
         item = self._add(
             item_id=ids.item(asset_id, item_key),
             source={"assetId": asset_id, "assetKind": "modelApi", "aspect": f"model:{name}"
@@ -917,30 +923,30 @@ class PlanBuilder:
                 }],
             },
         )
-        if "publishable" not in resolved:
-            # An inventory collected before this reading existed. Absent is not
-            # the same as null: null is a dialect that could not be read, and
-            # this is a record from a collector that did not ask the question.
-            # Its `supportedEndpoints` were computed by reading capability keys
-            # and ignoring their values, so they may name a route the model
-            # denies -- which is the whole defect, and it cannot be recovered
-            # from the record. Only a re-collect can answer it.
+        if "inferenceRoutes" not in resolved:
+            # An inventory collected before the routes were read off the model.
+            # Absent is not null: null is a dialect that could not be read, and
+            # this is a record from a collector that did not ask. Its
+            # `supportedEndpoints` came from reading capability keys and
+            # ignoring their values, so they may name a route the model denies
+            # -- which is the defect itself, and nothing in the record can tell
+            # you which. Only a re-collect can answer it.
             item["plannerGap"] = (
-                f"`{resolved.get('modelName')}` was collected before models were read for "
-                "whether the gateway has a route for them, so its endpoints may name one the "
-                "model denies. Re-run `collect` and plan again."
+                f"`{resolved.get('modelName')}` was collected before a model's inference routes "
+                "were read from what it declares, so its endpoints may name one the model "
+                "denies. Re-run `collect` and plan again."
             )
-        elif not unpublishable and not endpoints:
+        elif not known:
             # Not a loss to accept and not a question for the operator: the
-            # routes are unknown, which only happens when a backend's dialect
-            # could not be read. `model create` without `--supported-endpoints`
-            # takes the gateway's default, so letting this through registers the
-            # model on a route nobody established it serves.
+            # routes were never established, which only happens when a
+            # backend's dialect could not be read. `model create` without
+            # `--supported-endpoints` takes the gateway's default, so letting
+            # this through registers the model on a route nobody established.
             item["plannerGap"] = (
-                f"`{resolved.get('modelName')}` would be registered with no supported endpoints, "
-                "so the gateway's default applies to a model whose routes were never read. "
-                "Resolve its dialect in the inventory, or settle the API's dialect item, rather "
-                "than registering it on a guess."
+                f"`{resolved.get('modelName')}` has no inference route, because its backend's "
+                "dialect could not be read. `model create` requires one and would otherwise "
+                "fall back to the gateway's default. Resolve the dialect in the inventory "
+                "rather than registering it on a guess."
             )
 
     def _alias_naming(self, model: dict[str, Any], registrations: list[dict[str, Any]]) -> None:

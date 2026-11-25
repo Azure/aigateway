@@ -1133,6 +1133,16 @@ class TestEveryApiIsInOnePlace:
         assert f"{total} APIs on the service, {total - excluded} inventoried, {excluded} not" in line
 
 
+def _account():
+    from migrate_apim.foundry import FoundryAccount
+    return FoundryAccount(
+        resource_id="/subscriptions/s/resourceGroups/r/providers/"
+                    "Microsoft.CognitiveServices/accounts/a",
+        name="a", resource_group="r", subscription_id="s", location="eastus2",
+        kind="AIServices", sku="S0", hosts={"a.cognitiveservices.azure.com"},
+    )
+
+
 class TestACapabilityValueIsReadNotJustItsKey:
     """Foundry writes capability values as the strings "true" and "false".
 
@@ -1161,12 +1171,25 @@ class TestACapabilityValueIsReadNotJustItsKey:
         assert supported_endpoints(
             {"capabilities": {"imageGenerations": "true", "area": "US"}}) == []
 
-    def test_unknown_routes_are_unknown_rather_than_absent(self):
-        """A dialect that could not be read has not been shown to lack a route."""
-        from migrate_apim.foundry import publishable_reading
-        assert publishable_reading(None) is None
-        assert publishable_reading([]) is False
-        assert publishable_reading(["/v1/messages"]) is True
+    def test_the_record_names_the_routes_the_command_takes(self):
+        """`inferenceRoutes` is the value `model create --supported-endpoints` wants."""
+        from migrate_apim.foundry import resolved_model
+        account = _account()
+        deployment = {"name": "d", "modelName": "m", "modelVersion": "1",
+                      "modelFormat": "OpenAI", "sku": {}, "raiPolicyName": None,
+                      "capabilities": {"chatCompletion": "true"}}
+        record = resolved_model(account, deployment)
+        assert record["inferenceRoutes"] == ["/openai/v1/chat/completions"]
+        assert record["inferenceRoutes"] == record["target"]["supportedEndpoints"], \
+            "one list, named where a rule can reach it and where the command reads it"
+
+    def test_a_model_denying_every_route_names_none(self):
+        from migrate_apim.foundry import resolved_model
+        account = _account()
+        deployment = {"name": "d", "modelName": "m", "modelVersion": "1",
+                      "modelFormat": "Microsoft", "sku": {}, "raiPolicyName": None,
+                      "capabilities": {"chatCompletion": "false", "decision": "true"}}
+        assert resolved_model(account, deployment)["inferenceRoutes"] == []
 
 
 class TestTheReadingsFollowTheAssetTheySummarise:

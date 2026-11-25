@@ -514,7 +514,7 @@
      }
     ],
     "proposal": "accept-loss",
-    "rationale": "This model declares none of the routes the gateway publishes. The gateway serves /openai/v1/chat/completions, /openai/v1/responses, /openai/v1/embeddings and /v1/messages; a deployment whose capabilities name none of them cannot be reached through it. Registering it anyway produces a model that reads as migrated and fails at the upstream on the first call.",
+    "rationale": "This model declares no inference route the gateway publishes, and `model create` takes one as `--supported-endpoints`. The gateway serves /openai/v1/chat/completions, /openai/v1/responses, /openai/v1/embeddings and /v1/messages; a deployment whose capabilities name none of them cannot be reached through it. Registering it anyway produces a model that reads as migrated and fails at the upstream on the first call.",
     "shapeDigest": "sha256:e9124a90a5a89118e008741d6b20b949df6ebb0fe407f311095101d1c77d6b32",
     "source": {
      "aspect": "model:decision-1@aoai-east",
@@ -561,7 +561,7 @@
      }
     ],
     "proposal": "accept-loss",
-    "rationale": "This model declares none of the routes the gateway publishes. The gateway serves /openai/v1/chat/completions, /openai/v1/responses, /openai/v1/embeddings and /v1/messages; a deployment whose capabilities name none of them cannot be reached through it. Registering it anyway produces a model that reads as migrated and fails at the upstream on the first call.",
+    "rationale": "This model declares no inference route the gateway publishes, and `model create` takes one as `--supported-endpoints`. The gateway serves /openai/v1/chat/completions, /openai/v1/responses, /openai/v1/embeddings and /v1/messages; a deployment whose capabilities name none of them cannot be reached through it. Registering it anyway produces a model that reads as migrated and fails at the upstream on the first call.",
     "shapeDigest": "sha256:e9124a90a5a89118e008741d6b20b949df6ebb0fe407f311095101d1c77d6b32",
     "source": {
      "aspect": "model:dall-e-3@aoai-east",

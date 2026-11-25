@@ -136,7 +136,8 @@
             "translation": {"$ref": "#/$defs/predicate"},
             "toolDiscovery": {"$ref": "#/$defs/predicate"},
             "toolsFromGateway": {"$ref": "#/$defs/predicate"},
-            "catalogueFetched": {"$ref": "#/$defs/predicate"}
+            "catalogueFetched": {"$ref": "#/$defs/predicate"},
+            "inferenceRoutes": {"$ref": "#/$defs/predicate"}
           }
         },
         "blocking": {"type": "boolean"},

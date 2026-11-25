@@ -234,30 +234,17 @@ def target_model_registration(account: FoundryAccount, deployment: dict[str, Any
     }
 
 
-def publishable_reading(endpoints: list[str] | None) -> bool | None:
-    """Whether the gateway has a route for this model, or None if unknown.
-
-    An empty list is a claim: Foundry declared the deployment's capabilities and
-    none of them map to a publishable route. `None` is the absence of one -- a
-    backend whose dialect could not be read says nothing about what it serves,
-    and the dialect rules already ask about that. Collapsing the two would
-    assert a loss nobody established, which is the distinction the coverage gate
-    exists to keep.
-    """
-    if endpoints is None:
-        return None
-    return bool(endpoints)
 
 
 def resolved_model(account: FoundryAccount, deployment: dict[str, Any],
                    **extra: Any) -> dict[str, Any]:
     """One resolved-deployment record, with the reading the rules narrow on.
 
-    Both callers built this shape literally and neither carried whether the
-    gateway has a route for the model at all, so a deployment serving only
+    Both callers built this shape literally and neither named the routes the
+    model can serve anywhere a rule could reach, so a deployment serving only
     images or transcription was registered exactly like one serving chat.
-    `publishable` is that reading, rendered here so the two sites cannot
-    disagree about it.
+    `inferenceRoutes` is that list, rendered here from the registration so the
+    two cannot disagree about it.
     """
     registration = target_model_registration(account, deployment)
     record: dict[str, Any] = {
@@ -267,7 +254,12 @@ def resolved_model(account: FoundryAccount, deployment: dict[str, Any],
         "modelFormat": deployment["modelFormat"],
         "sku": deployment["sku"],
         "raiPolicyName": deployment["raiPolicyName"],
-        "publishable": publishable_reading(registration["supportedEndpoints"]),
+        # The same list the registration carries, not a second reading of it:
+        # `--supported-endpoints` is what `model create` requires, so the rules
+        # narrow on the routes themselves rather than on a verdict about them.
+        # A rule cannot reach into `target`, which is this tool's shaping of
+        # the record, so it is named here where the subject is the model.
+        "inferenceRoutes": registration["supportedEndpoints"],
         "target": registration,
     }
     record.update(extra)

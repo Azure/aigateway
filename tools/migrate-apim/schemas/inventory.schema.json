@@ -422,9 +422,10 @@
               "modelVersion": {"type": ["string", "null"]},
               "modelFormat": {"type": ["string", "null"]},
               "sku": {"type": ["object", "null"]},
-              "publishable": {
-                "description": "Whether the gateway has a route for this model, read from what the model itself declares -- a Foundry deployment's capabilities map, or a backend's stated dialect. False is a claim: the routes are known and none of them is publishable, so registering it would publish a model the upstream rejects. Null is the absence of one, for a backend whose dialect could not be read; the dialect rules ask about that rather than this.",
-                "type": ["boolean", "null"]
+              "inferenceRoutes": {
+                "description": "The routes this model declares it can serve, read from a Foundry deployment's capabilities map or a backend's stated dialect, and narrowed to the ones AI Gateway publishes. It is the value `model create --supported-endpoints` takes, so the rules narrow on it rather than on a verdict about it. An empty list is a claim: the routes are known and none is publishable, so registering the model would publish one the upstream rejects. Null is the absence of a claim, for a backend whose dialect could not be read; that is a planner gap rather than a decision, because nothing established what it serves.",
+                "type": ["array", "null"],
+                "items": {"type": "string"}
               },
               "target": {"description": "Pre-shaped AI Gateway model registration input.", "type": "object"}
             }

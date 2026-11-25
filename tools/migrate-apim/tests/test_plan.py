@@ -2559,7 +2559,7 @@ class TestAnInventoryOlderThanTheReading:
     """Absent is not null, and reading it as null would hide the defect.
 
     A record from a collector that never asked whether the gateway has a route
-    carries no `publishable`. Treating that as "unknown, keep the default"
+    carries no `inferenceRoutes`. Treating that as "unknown, keep the default"
     looks right and is wrong: those records' `supportedEndpoints` came from
     reading capability keys and ignoring their values, so they can name a
     route the model denies. Nothing in the record can tell you which.
@@ -2569,7 +2569,7 @@ class TestAnInventoryOlderThanTheReading:
         document = copy.deepcopy(inventory)
         for asset in document["assets"]["models"]:
             for record in (asset.get("models") or {}).get("resolved") or []:
-                record.pop("publishable", None)
+                record.pop("inferenceRoutes", None)
         return document
 
     def test_an_old_record_is_a_planner_gap(self, inventory, capabilities):
@@ -2587,7 +2587,7 @@ class TestAnInventoryOlderThanTheReading:
         document = copy.deepcopy(inventory)
         for asset in document["assets"]["models"]:
             for record in (asset.get("models") or {}).get("resolved") or []:
-                record["publishable"] = None
+                record["inferenceRoutes"] = None
         plan = build_plan(document, capabilities)
         assert not [g for g in plan["plannerGaps"] if "collected before" in g["gap"]]
 
