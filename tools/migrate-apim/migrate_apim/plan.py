@@ -917,7 +917,20 @@ class PlanBuilder:
                 }],
             },
         )
-        if not unpublishable and not endpoints:
+        if "publishable" not in resolved:
+            # An inventory collected before this reading existed. Absent is not
+            # the same as null: null is a dialect that could not be read, and
+            # this is a record from a collector that did not ask the question.
+            # Its `supportedEndpoints` were computed by reading capability keys
+            # and ignoring their values, so they may name a route the model
+            # denies -- which is the whole defect, and it cannot be recovered
+            # from the record. Only a re-collect can answer it.
+            item["plannerGap"] = (
+                f"`{resolved.get('modelName')}` was collected before models were read for "
+                "whether the gateway has a route for them, so its endpoints may name one the "
+                "model denies. Re-run `collect` and plan again."
+            )
+        elif not unpublishable and not endpoints:
             # Not a loss to accept and not a question for the operator: the
             # routes are unknown, which only happens when a backend's dialect
             # could not be read. `model create` without `--supported-endpoints`

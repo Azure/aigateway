@@ -2553,3 +2553,44 @@ class TestThePrerequisiteThatLooksLikeAPortalTripIsACommand:
             for command in prereq.get("commands") or []:
                 assert command.get("changes") or command.get("note") or command.get("scope"), \
                     f"{prereq['id']} offers a command with nothing said about it"
+
+
+class TestAnInventoryOlderThanTheReading:
+    """Absent is not null, and reading it as null would hide the defect.
+
+    A record from a collector that never asked whether the gateway has a route
+    carries no `publishable`. Treating that as "unknown, keep the default"
+    looks right and is wrong: those records' `supportedEndpoints` came from
+    reading capability keys and ignoring their values, so they can name a
+    route the model denies. Nothing in the record can tell you which.
+    """
+
+    def aged(self, inventory):
+        document = copy.deepcopy(inventory)
+        for asset in document["assets"]["models"]:
+            for record in (asset.get("models") or {}).get("resolved") or []:
+                record.pop("publishable", None)
+        return document
+
+    def test_an_old_record_is_a_planner_gap(self, inventory, capabilities):
+        plan = build_plan(self.aged(inventory), capabilities)
+        gaps = [g for g in plan["plannerGaps"] if "collected before" in g["gap"]]
+        assert gaps, "a stale reading has to be reported, not silently defaulted"
+
+    def test_the_gap_says_to_re_collect(self, inventory, capabilities):
+        plan = build_plan(self.aged(inventory), capabilities)
+        gap = next(g for g in plan["plannerGaps"] if "collected before" in g["gap"])
+        assert "Re-run `collect`" in gap["gap"]
+
+    def test_a_null_reading_is_not_a_gap(self, inventory, capabilities):
+        """A dialect that could not be read is a different thing, and allowed."""
+        document = copy.deepcopy(inventory)
+        for asset in document["assets"]["models"]:
+            for record in (asset.get("models") or {}).get("resolved") or []:
+                record["publishable"] = None
+        plan = build_plan(document, capabilities)
+        assert not [g for g in plan["plannerGaps"] if "collected before" in g["gap"]]
+
+    def test_a_current_inventory_has_no_such_gap(self, inventory, capabilities):
+        plan = build_plan(inventory, capabilities)
+        assert not [g for g in plan["plannerGaps"] if "collected before" in g["gap"]]
