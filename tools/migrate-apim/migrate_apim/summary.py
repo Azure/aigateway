@@ -120,10 +120,15 @@ def render_plan(document: dict[str, Any], *, fmt: str = "text") -> str:
 
     lines.append(f"{heading}Migration plan: {source.get('name')}")
     caps = target.get("capabilities") or {}
-    lines.append(
-        f"{bullet}{summary.get('total')} items against CLI {caps.get('cliVersion')} "
-        f"({'probed' if caps.get('probed') else 'declared, not probed'})"
-    )
+    # "against CLI <documented version>" read as a statement about the
+    # installed extension and was a statement about the catalog. They are
+    # routinely different, and only one of them is going to run the commands.
+    if caps.get("probed"):
+        installed = caps.get("installedVersion") or "unknown"
+        provenance = f"catalog {caps.get('cliVersion')}, installed {installed} (probed)"
+    else:
+        provenance = f"catalog {caps.get('cliVersion')} (declared, installed CLI not probed)"
+    lines.append(f"{bullet}{summary.get('total')} items against {provenance}")
     by_status = summary.get("byStatus") or {}
     lines.append(
         f"{bullet}" + ", ".join(f"{count} {status}" for status, count in sorted(by_status.items()))

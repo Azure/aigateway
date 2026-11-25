@@ -252,3 +252,35 @@ class TestTheCatalogueOnlyDeclaresRealCommands:
             "the catalogue declares what the installed CLI does not expose: "
             + json.dumps(unavailable, indent=2)
         )
+
+
+class TestAPlanSaysWhichCliItMeans:
+    """`cliVersion` is the catalog's documented version, not the installed one.
+
+    Reported alone it read as a claim about the machine: a plan built on a host
+    running extension b26 announced "against CLI 1.0.0b31", which is the
+    version the catalog documents and says nothing about what will run the
+    commands.
+    """
+
+    def test_an_unprobed_map_claims_nothing_about_the_install(self):
+        caps = CapabilityMap.load().to_dict()
+        assert caps["probed"] is False
+        assert caps["installedVersion"] is None
+
+    def test_a_probe_records_what_is_installed(self):
+        caps = CapabilityMap.load()
+        caps.probe(probe=lambda command: {"--name", "--gateway-name", "-g", "--subscription",
+                                          "--location", "--yes", "--system-assigned",
+                                          "--provider-name", "--deployment-config",
+                                          "--supported-endpoints", "--api-format",
+                                          "--routing-name", "--backend-models", "--kind",
+                                          "--endpoint", "--api-key", "--value",
+                                          "--metrics-endpoint", "--exporter"},
+                   available=lambda: True)
+        caps.installed_version = "1.0.0b26"
+        out = caps.to_dict()
+        assert out["probed"] is True
+        assert out["installedVersion"] == "1.0.0b26"
+        assert out["cliVersion"] != out["installedVersion"], \
+            "the catalog's version and the installed one are different facts"

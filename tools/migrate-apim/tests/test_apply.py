@@ -1844,3 +1844,31 @@ class TestAModelWithNoRoutesIsNotRegisteredOnADefault:
         })
         joined = " ".join(argv)
         assert "--supported-endpoints /openai/v1/chat/completions /openai/v1/responses" in joined
+
+
+class TestPreflightSaysWhenTheCliWasNeverAsked:
+    """A declared capability table is a claim about the catalog, not the host.
+
+    `--probe-cli` is opt-in, apply never probes, and SKILL.md does not mention
+    it, so nothing told anyone the reconciliation existed. A command the
+    catalog declares and the installed extension lacks then surfaced as a
+    failed step mid-apply.
+    """
+
+    def codes(self, findings):
+        return {f["code"] for f in findings}
+
+    def test_an_unprobed_plan_is_noted(self, inventory, settled):
+        findings = preflight(settled, inventory)
+        assert "capabilitiesNotProbed" in self.codes(findings)
+
+    def test_it_does_not_block(self, inventory, settled):
+        note = next(f for f in preflight(settled, inventory)
+                    if f["code"] == "capabilitiesNotProbed")
+        assert note["blocking"] is False
+        assert "--probe-cli" in note["remedy"]
+
+    def test_a_probed_plan_is_not_noted(self, inventory, settled):
+        probed = copy.deepcopy(settled)
+        probed["target"]["capabilities"]["probed"] = True
+        assert "capabilitiesNotProbed" not in self.codes(preflight(probed, inventory))

@@ -158,6 +158,21 @@ def preflight(plan: dict[str, Any], inventory: dict[str, Any], *, runner: Runner
         except ApplyError as exc:
             finding("badTarget", True, str(exc))
 
+    # The capability table is the catalog's declaration unless somebody asked
+    # for a probe, and nothing ever mentioned that it could be asked for:
+    # `--probe-cli` is opt-in, apply never probes, and SKILL.md does not name
+    # it. So a command the installed extension does not expose is discovered
+    # when its step fails, which is the one moment preflight exists to avoid.
+    caps = (plan.get("target") or {}).get("capabilities") or {}
+    if caps and not caps.get("probed"):
+        finding(
+            "capabilitiesNotProbed", False,
+            f"The plan was built against catalog {caps.get('cliVersion')} as declared; the "
+            "installed `az aigateway` was not asked what it exposes. A command this catalog "
+            "declares and your extension lacks will fail when its step runs.",
+            "Re-run plan with --probe-cli to reconcile the two before writing anything.",
+        )
+
     unsettled = [i for i in plan.get("items") or [] if i.get("status") in {"needs-decision", "stale"}]
     if unsettled:
         finding(

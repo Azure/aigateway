@@ -2441,6 +2441,7 @@
     },
     "catalog": "aigateway-1.0.0b31",
     "cliVersion": "1.0.0b31",
+    "installedVersion": null,
     "probed": false,
     "serviceOnly": [
      "alias-selection-order",

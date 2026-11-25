@@ -181,6 +181,11 @@ class CapabilityMap:
             entry for entry in (catalog.get("serviceOnly") or []) if isinstance(entry, dict)
         ]
         self.probed = False
+        # What `az aigateway` is actually installed, filled in by a probe.
+        # `cliVersion` is the catalog's documented version and says nothing
+        # about this machine, so a plan reporting only that read as a claim
+        # about the install -- "against CLI 1.0.0b31" beside a b26 extension.
+        self.installed_version: str | None = None
 
     # ------------------------------------------------------------- loading
 
@@ -242,6 +247,8 @@ class CapabilityMap:
             capability.missing_options = missing
             capability.support = "unavailable" if missing else "conditional"
         self.probed = True
+        if self.installed_version is None:
+            self.installed_version = az_extension_version()
         return self
 
     # --------------------------------------------------------------- rules
@@ -297,7 +304,11 @@ class CapabilityMap:
     def to_dict(self) -> dict[str, Any]:
         return {
             "catalog": self.catalog_name,
+            # The version the catalog documents. It is a fact about this file,
+            # not about the machine, which is why the installed one is reported
+            # beside it rather than folded into it.
             "cliVersion": self.cli_version,
+            "installedVersion": self.installed_version,
             "probed": self.probed,
             "capabilities": {cid: cap.support for cid, cap in sorted(self.capabilities.items())},
             "unsupported": self.unsupported,
@@ -322,6 +333,25 @@ def az_extension_present(*, timeout: int = 30) -> bool:
     except (FileNotFoundError, subprocess.TimeoutExpired):  # pragma: no cover
         return False
     return proc.returncode == 0
+
+
+def az_extension_version(*, timeout: int = 30) -> str | None:
+    """The installed `aigateway` extension's version, or None if unreadable.
+
+    Reported beside the catalog's documented version rather than in place of
+    it: the two answer different questions, and a plan that printed only the
+    documented one read as a statement about the machine it was built on.
+    """
+    try:
+        proc = subprocess.run(
+            az_argv(["az", "extension", "show", "-n", "aigateway", "--query", "version", "-o", "tsv"]),
+            capture_output=True, text=True, timeout=timeout,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):  # pragma: no cover
+        return None
+    if proc.returncode != 0:  # pragma: no cover
+        return None
+    return proc.stdout.strip() or None
 
 
 def az_option_probe(command: Iterable[str], *, timeout: int = 30) -> set[str] | None:
