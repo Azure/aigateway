@@ -2448,3 +2448,71 @@ class TestAnAliasNameCanActuallyBeOverridden:
         settled = self.settle(plan, item["id"], "use-model-names")
         after = self.alias_item(build_plan(inventory, capabilities, previous=settled))
         assert "needsFact" not in after
+
+
+class TestADeliberateSkipIsStillAnUnknown:
+    """`notCollected` was honest in the inventory and absent from the plan.
+
+    The collector records the skip because "not collected" must never read as
+    "none exist". Nothing downstream carried it: the gate asked only for
+    `failed`, SKILL.md told the agent to check for `failed`, and on a real
+    migration an agent reading the whole coverage array put `notCollected` in
+    its allow-list and reported coverage clean over 132 unread policies.
+    """
+
+    def skipped(self, inventory, collection="operationPolicies", count=50, scopes=2):
+        """Only the skips under test, so the fixture's own do not add to them."""
+        document = self.without_skips(inventory)
+        coverage = document["collection"]["coverage"]
+        for n in range(scopes):
+            coverage.append({"collection": collection, "scope": f"service/api:a{n}",
+                             "status": "notCollected", "count": count, "error": None})
+        return document
+
+    def without_skips(self, inventory):
+        document = copy.deepcopy(inventory)
+        collection = document.setdefault("collection", {})
+        collection["coverage"] = [entry for entry in collection.get("coverage") or []
+                                  if entry.get("status") != "notCollected"]
+        return document
+
+    def item(self, plan, collection="operationPolicies"):
+        return next((i for i in plan["items"]
+                     if i["id"] == f"item:coverage/notCollected/{collection}"), None)
+
+    def test_a_skip_is_raised(self, inventory, capabilities):
+        item = self.item(build_plan(self.skipped(inventory), capabilities))
+        assert item is not None, "a deliberate skip has to reach the plan"
+        assert item["status"] == "needs-decision"
+
+    def test_it_counts_what_was_not_read(self, inventory, capabilities):
+        item = self.item(build_plan(self.skipped(inventory), capabilities))
+        assert item["evidence"]["objects"] == 100
+        assert "100 operationPolicies across 2 scope(s)" in item["rationale"]
+
+    def test_it_names_the_flag_that_resolves_it(self, inventory, capabilities):
+        item = self.item(build_plan(self.skipped(inventory), capabilities))
+        assert "--operation-policies" in json.dumps(item["options"])
+
+    def test_it_can_be_accepted_unlike_a_failed_read(self, inventory, capabilities):
+        """A skip is recoverable, so "I know and I am going without it" is an answer."""
+        item = self.item(build_plan(self.skipped(inventory), capabilities))
+        assert item["cannotAccept"] is False
+        assert "accept-unexamined" in {o["value"] for o in item["options"]}
+
+    def test_it_does_not_block(self, inventory, capabilities):
+        item = self.item(build_plan(self.skipped(inventory), capabilities))
+        assert item["blocking"] is False
+
+    def test_one_question_per_collection_not_per_scope(self, inventory, capabilities):
+        plan = build_plan(self.skipped(inventory, scopes=6), capabilities)
+        raised = [i for i in plan["items"] if i["id"].startswith("item:coverage/notCollected/")]
+        assert len(raised) == 1
+
+    def test_nothing_skipped_raises_nothing(self, inventory, capabilities):
+        assert self.item(build_plan(self.without_skips(inventory), capabilities)) is None
+
+    def test_the_fixture_skips_operation_policies_as_a_real_run_does(
+            self, inventory, capabilities):
+        """Collecting them is off by default, so every real plan meets this."""
+        assert self.item(build_plan(inventory, capabilities)) is not None

@@ -201,6 +201,11 @@ ADAPTED = "adapted"
 
 # The one item that decides where gateway telemetry reports.
 _TELEMETRY_ITEM = "item:telemetry/destination"
+
+# Which `collect` flag turns a deliberate skip back on. Naming the flag is the
+# difference between an unknown an operator can resolve and one they can only
+# be told about.
+_FLAG_FOR_COLLECTION = {"operationPolicies": "operation-policies"}
 EXCLUDED = "excluded"
 STALE = "stale"
 
@@ -1652,6 +1657,48 @@ class PlanBuilder:
                 evidence={"coverage": failure},
                 blocking=True,
                 cannot_accept=True,
+            )
+
+        # A deliberate skip is as unknown as a failed read, and was the one
+        # kind of unknown nothing carried forward. `notCollected` is recorded
+        # honestly in the inventory and the plan said nothing about it, so an
+        # agent reading coverage for `failed` entries -- which is what SKILL.md
+        # asked for -- reported "coverage is clean" over 132 unread operation
+        # policies on a real instance.
+        #
+        # It is not the same question as a failed read, which is why it is not
+        # the same item. This one can be accepted: the read was skipped by
+        # choice and is one flag away from being made, so "I know, and I am
+        # migrating without it" is an answer a failed read cannot give.
+        skipped: dict[str, list[dict[str, Any]]] = {}
+        for entry in (self.inventory.get("collection") or {}).get("coverage") or []:
+            if entry.get("status") == "notCollected":
+                skipped.setdefault(entry["collection"], []).append(entry)
+        for collection, entries in sorted(skipped.items()):
+            objects = sum(int(entry.get("count") or 0) for entry in entries)
+            self._add(
+                item_id=ids.item("coverage", f"notCollected/{collection}"),
+                source={"assetId": None, "assetKind": "coverageGap", "aspect": collection},
+                kind="choose",
+                verdict="gap",
+                proposal="re-collect",
+                rationale=(
+                    f"{objects} {collection} across {len(entries)} scope(s) were not read. The "
+                    "skip is deliberate -- APIM has no bulk read for these, so collecting them "
+                    "costs one round trip each -- and it is recorded rather than silent, but "
+                    "nothing has been established about what they contain. Any policy among "
+                    "them migrates as though it were not there."
+                ),
+                options=[
+                    _opt("re-collect",
+                         f"Run `collect --{_FLAG_FOR_COLLECTION.get(collection, collection)}` "
+                         "and plan again, so the decision rests on what they actually say."),
+                    _opt("accept-unexamined",
+                         "Migrate without reading them, accepting that a policy among them is "
+                         "neither carried across nor reported as lost."),
+                ],
+                evidence={"coverage": entries, "objects": objects},
+                blocking=False,
             )
 
     def _reports_telemetry(self) -> bool:

@@ -2251,6 +2251,72 @@
     "status": "needs-decision",
     "target": {},
     "verdict": "partial"
+   },
+   {
+    "blocking": false,
+    "cannotAccept": false,
+    "capabilityId": null,
+    "decidedAgainst": null,
+    "decision": null,
+    "evidence": {
+     "coverage": [
+      {
+       "collection": "operationPolicies",
+       "count": 6,
+       "error": null,
+       "scope": "service/api:aoai-api",
+       "status": "notCollected"
+      },
+      {
+       "collection": "operationPolicies",
+       "count": 1,
+       "error": null,
+       "scope": "service/api:orders-rest",
+       "status": "notCollected"
+      },
+      {
+       "collection": "operationPolicies",
+       "count": 1,
+       "error": null,
+       "scope": "service/api:meta-ai",
+       "status": "notCollected"
+      },
+      {
+       "collection": "operationPolicies",
+       "count": 2,
+       "error": null,
+       "scope": "finance/api:model-api",
+       "status": "notCollected"
+      }
+     ],
+     "objects": 10
+    },
+    "id": "item:coverage/notCollected/operationPolicies",
+    "kind": "choose",
+    "memberDigests": {
+     "item:coverage/notCollected/operationPolicies": "sha256:29ff62258756a78fea8bcdd082f3a58e78fde25a865293e03ba50765cd112497"
+    },
+    "options": [
+     {
+      "consequence": "Run `collect --operation-policies` and plan again, so the decision rests on what they actually say.",
+      "value": "re-collect"
+     },
+     {
+      "consequence": "Migrate without reading them, accepting that a policy among them is neither carried across nor reported as lost.",
+      "value": "accept-unexamined"
+     }
+    ],
+    "proposal": "re-collect",
+    "rationale": "10 operationPolicies across 4 scope(s) were not read. The skip is deliberate -- APIM has no bulk read for these, so collecting them costs one round trip each -- and it is recorded rather than silent, but nothing has been established about what they contain. Any policy among them migrates as though it were not there.",
+    "shapeDigest": "sha256:bb35a58465e448f40cadddf9f9c3d3a684fc8aa320c2a2a884b1729f0016278b",
+    "source": {
+     "aspect": "operationPolicies",
+     "assetId": null,
+     "assetKind": "coverageGap"
+    },
+    "status": "needs-decision",
+    "target": {},
+    "verdict": "gap"
    }
   ],
   "kind": "apimMigrationPlan",
@@ -2316,18 +2382,18 @@
   "summary": {
    "blocking": 12,
    "byKind": {
-    "choose": 17,
+    "choose": 18,
     "supply": 4
    },
    "byStatus": {
     "excluded": 1,
-    "needs-decision": 21,
+    "needs-decision": 22,
     "ready": 11
    },
    "orphanedDecisions": 0,
    "plannerGaps": 0,
-   "total": 33,
-   "unsettled": 21
+   "total": 34,
+   "unsettled": 22
   },
   "target": {
    "capabilities": {
