@@ -629,8 +629,16 @@ class PlanBuilder:
             registrations = models.get("resolved") or []
         for resolved in registrations:
             self._model_registration(model, resolved)
-        if registrations:
-            self._alias_naming(model, registrations)
+        # An alias resolves to a registered model, so a model that is not being
+        # registered cannot have one. Aliasing every resolved model regardless
+        # published `Decision-1` as a callable name whose target the plan had
+        # just settled as an accepted loss -- the aliases phase would look up a
+        # model id the models phase never created. Which models have a route is
+        # the same question `_model_registration` asked; the answer is reused
+        # rather than asked again.
+        aliasable = [entry for entry in registrations if entry.get("inferenceRoutes")]
+        if aliasable:
+            self._alias_naming(model, aliasable)
 
         # Dialect translation.
         translation = endpoints.get("translation") or {}

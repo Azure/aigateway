@@ -635,7 +635,7 @@
     "decidedAgainst": null,
     "decision": null,
     "evidence": {
-     "count": 4,
+     "count": 2,
      "members": [
       {
        "aliasName": "gpt-5",
@@ -672,46 +672,16 @@
        "supportedEndpoints": [
         "/openai/v1/embeddings"
        ]
-      },
-      {
-       "aliasName": "decision-1",
-       "backends": [
-        {
-         "priority": 1,
-         "providerName": "aoai-east",
-         "weight": 80
-        }
-       ],
-       "modelName": "Microsoft-Decision-1",
-       "proposedAliasName": "decision-1",
-       "supportedEndpoints": []
-      },
-      {
-       "aliasName": "dall-e-3",
-       "backends": [
-        {
-         "priority": 1,
-         "providerName": "aoai-east",
-         "weight": 80
-        }
-       ],
-       "modelName": "dall-e-3",
-       "proposedAliasName": "dall-e-3",
-       "supportedEndpoints": []
       }
      ],
      "pooled": true,
      "singleMemberModels": [
-      "text-embedding-3-large",
-      "decision-1",
-      "dall-e-3"
+      "text-embedding-3-large"
      ]
     },
     "id": "item:model/aoai-api/aliasNames",
     "kind": "supply",
     "memberDigests": {
-     "Microsoft-Decision-1": "sha256:89ff88dfa15f08a53406596fc86e2f0def6e52b9aab1c8c2a22d5dade55abd89",
-     "dall-e-3": "sha256:aa838a58cd3bb865494df786ba0464e592cfa4f3b1031688ceeec126e57ff151",
      "gpt-5.2": "sha256:34506c9b678adbc4d95a5e178b14f1e110e4237df4cc7d7019c56b7480a408a3",
      "text-embedding-3-large": "sha256:8da8e7d7592e7e7ad7a4fbab947e9dbd5e59842828bafd540e2e76d52339e5cc"
     },
@@ -726,7 +696,7 @@
      }
     ],
     "proposal": "use-model-names",
-    "rationale": "An alias publishes the route, and its routingName is what clients send as `model`. APIM does not store it. Proposed for 4 model(s): gpt-5, text-embedding-3-large, decision-1, dall-e-3. This API load-balances across 2 backends; each alias carries the pool's priority and weight. 3 of them are deployed in only one member (text-embedding-3-large, decision-1, dall-e-3), so those route to that member alone instead of being split.",
+    "rationale": "An alias publishes the route, and its routingName is what clients send as `model`. APIM does not store it. Proposed for 2 model(s): gpt-5, text-embedding-3-large. This API load-balances across 2 backends; each alias carries the pool's priority and weight. 1 of them are deployed in only one member (text-embedding-3-large), so those route to that member alone instead of being split.",
     "shapeDigest": "sha256:c38a8a146c1e64afc7969f5aebe8f5474eca1797df68eab2d1e0509c3d6e63ba",
     "source": {
      "aspect": "aliasNames",
@@ -774,32 +744,6 @@
        "supportedEndpoints": [
         "/openai/v1/embeddings"
        ]
-      },
-      {
-       "backendModels": [
-        {
-         "modelName": "decision-1",
-         "priority": 1,
-         "providerName": "aoai-east",
-         "resourceId": null,
-         "weight": 80
-        }
-       ],
-       "routingName": "decision-1",
-       "supportedEndpoints": []
-      },
-      {
-       "backendModels": [
-        {
-         "modelName": "dall-e-3",
-         "priority": 1,
-         "providerName": "aoai-east",
-         "resourceId": null,
-         "weight": 80
-        }
-       ],
-       "routingName": "dall-e-3",
-       "supportedEndpoints": []
       }
      ]
     },

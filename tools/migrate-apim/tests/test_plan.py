@@ -2594,3 +2594,61 @@ class TestAnInventoryOlderThanTheReading:
     def test_a_current_inventory_has_no_such_gap(self, inventory, capabilities):
         plan = build_plan(inventory, capabilities)
         assert not [g for g in plan["plannerGaps"] if "collected before" in g["gap"]]
+
+
+class TestAnAliasNeedsAModelToResolveTo:
+    """An alias resolves to a registered model, so an unregistered one gets none.
+
+    Caught on a second live migration: `Decision-1` was correctly settled as an
+    accepted loss and built no registration, and the alias item went on
+    publishing `Decision-1` as a callable name anyway. The aliases phase would
+    have looked up a model id the models phase was never going to create.
+    """
+
+    def alias_item(self, plan, asset="model:aoai-api"):
+        return next((i for i in plan["items"]
+                     if i["source"]["aspect"] == "aliasNames"
+                     and i["source"]["assetId"] == asset), None)
+
+    def routing_names(self, item):
+        return {o["routingName"] for o in (item.get("target") or {}).get("objects") or []}
+
+    def test_a_model_with_no_route_gets_no_alias(self, inventory, capabilities):
+        plan = build_plan(inventory, capabilities)
+        names = self.routing_names(self.alias_item(plan))
+        assert "decision-1" not in names
+        assert "dall-e-3" not in names
+
+    def test_the_models_that_do_have_routes_still_get_one(self, inventory, capabilities):
+        plan = build_plan(inventory, capabilities)
+        names = self.routing_names(self.alias_item(plan))
+        assert "gpt-5" in names
+        assert "text-embedding-3-large" in names
+
+    def test_every_alias_points_at_a_model_the_plan_registers(
+            self, inventory, capabilities):
+        """The invariant, stated once: no alias may outlive its registration."""
+        plan = build_plan(inventory, capabilities)
+        registered = {
+            o["name"]
+            for i in plan["items"] if i.get("capabilityId") == "model.create"
+            for o in (i.get("target") or {}).get("objects") or []
+        }
+        for item in plan["items"]:
+            if item["source"]["aspect"] != "aliasNames":
+                continue
+            for obj in (item.get("target") or {}).get("objects") or []:
+                for backend in obj["backendModels"]:
+                    assert backend["modelName"] in registered, (
+                        f"{obj['routingName']} resolves to {backend['modelName']}, "
+                        "which nothing registers"
+                    )
+
+    def test_an_api_whose_models_all_lack_routes_raises_no_alias_item(
+            self, inventory, capabilities):
+        document = copy.deepcopy(inventory)
+        for asset in document["assets"]["models"]:
+            for record in (asset.get("models") or {}).get("resolved") or []:
+                record["inferenceRoutes"] = []
+        plan = build_plan(document, capabilities)
+        assert self.alias_item(plan) is None, "nothing to alias is not an empty question"
