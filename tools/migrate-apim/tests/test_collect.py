@@ -1167,3 +1167,54 @@ class TestACapabilityValueIsReadNotJustItsKey:
         assert publishable_reading(None) is None
         assert publishable_reading([]) is False
         assert publishable_reading(["/v1/messages"]) is True
+
+
+class TestTheReadingsFollowTheAssetTheySummarise:
+    """"Rendered once, so there is nothing to drift" held only until collection.
+
+    `resolve-models` and `discover-tools` -- the two commands the skill
+    requires -- rewrite an asset in place. The readings on `apim.apis[]` are a
+    copy of what that asset said when it was collected, so afterwards a
+    provider whose catalogue had just been fetched still read
+    `catalogueFetched: false`, and a server whose tools had just been listed
+    still read `toolDiscovery: runtimeOnly`.
+    """
+
+    def api_row(self, inventory, asset_id):
+        return next(r for r in inventory["apim"]["apis"] if r.get("assetId") == asset_id)
+
+    def an_asset(self, inventory, family):
+        return (inventory["assets"][family] or [])[0]
+
+    def test_a_fetched_catalogue_is_reflected(self, inventory):
+        from migrate_apim.collect import refresh_api_readings
+        asset = next(a for a in inventory["assets"]["models"]
+                     if (a.get("source") or {}).get("apiId"))
+        row = self.api_row(inventory, asset["id"])
+        asset.setdefault("models", {})["catalogue"] = ["muse-1", "muse-2"]
+        asset["models"]["discoverySource"] = "modelsEndpoint"
+        assert row["catalogueFetched"] is False, "nothing has refreshed it yet"
+
+        refresh_api_readings(inventory)
+        row = self.api_row(inventory, asset["id"])
+        assert row["catalogueFetched"] is True
+        assert row["discoverySource"] == "modelsEndpoint"
+
+    def test_a_discovered_tool_list_is_reflected(self, inventory):
+        from migrate_apim.collect import refresh_api_readings
+        servers = inventory["assets"].get("mcpServers") or []
+        if not servers:
+            pytest.skip("fixture has no MCP server")
+        asset = servers[0]
+        asset["toolDiscovery"] = {"status": "complete", "policiesApplied": True}
+        refresh_api_readings(inventory)
+        row = self.api_row(inventory, asset["id"])
+        assert row["toolDiscovery"] == "complete"
+        assert row["toolsFromGateway"] is True
+
+    def test_refreshing_an_untouched_inventory_changes_nothing(self, inventory):
+        import copy as _copy
+        from migrate_apim.collect import refresh_api_readings
+        before = _copy.deepcopy(inventory)
+        refresh_api_readings(inventory)
+        assert inventory == before

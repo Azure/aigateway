@@ -1829,6 +1829,57 @@ def _service_source(raw: dict[str, Any], *, subscription_id: str = "",
     }
 
 
+def api_readings(asset: dict[str, Any]) -> dict[str, Any]:
+    """The scalar readings of an API that a rule narrows on.
+
+    The evidence each summarises is this tool's -- a catalogue resolved from
+    CognitiveServices deployments, a dialect comparison, a tool list fetched at
+    runtime -- but what each is *about* is the API, which is APIM's.
+
+    Rendered here rather than inline because the asset they read can be
+    rewritten after collection: see `refresh_api_readings`.
+    """
+    catalogue = asset.get("models") or {}
+    translation = (asset.get("endpoints") or {}).get("translation") or {}
+    discovery = asset.get("toolDiscovery") or {}
+    return {
+        "catalogueFetched": bool(catalogue.get("catalogue")),
+        "discoverySource": catalogue.get("discoverySource"),
+        "translation": translation.get("status"),
+        "toolDiscovery": discovery.get("status"),
+        "toolsFromGateway": discovery.get("policiesApplied"),
+    }
+
+
+def refresh_api_readings(inventory: dict[str, Any]) -> dict[str, Any]:
+    """Re-render `apim.apis[]`'s readings from the assets they summarise.
+
+    "One reading, rendered once, so there is nothing to drift" held only until
+    something rewrote an asset after collection -- and `resolve-models` and
+    `discover-tools`, the two commands the skill requires, do exactly that.
+    They updated the asset and left the copy saying what was true before they
+    ran: a provider whose catalogue had just been fetched still read
+    `catalogueFetched: false`, and a server whose tools had just been listed
+    still read `toolDiscovery: runtimeOnly`.
+
+    Nothing selected on the stale value yet, because the planner reads the
+    asset. That is the whole danger: the vocabulary those commits introduced
+    for rules to narrow on was wrong, and the first rule to use it would have
+    been wrong with it, silently.
+    """
+    assets = (inventory.get("assets") or {})
+    by_id = {
+        asset["id"]: asset
+        for family in assets.values() if isinstance(family, list)
+        for asset in family if isinstance(asset, dict) and asset.get("id")
+    }
+    for row in (inventory.get("apim") or {}).get("apis") or []:
+        asset = by_id.get(row.get("assetId"))
+        if asset:
+            row.update(api_readings(asset))
+    return inventory
+
+
 def _apim_apis(
     raw_apis: list[dict[str, Any]],
     workspace: str | None,
@@ -1882,14 +1933,7 @@ def _apim_apis(
         # the rule is the APIM object and the reading is a `where` key, which is
         # the same shape `type` and `pattern` already have.
         if asset:
-            catalogue = asset.get("models") or {}
-            translation = (asset.get("endpoints") or {}).get("translation") or {}
-            discovery = asset.get("toolDiscovery") or {}
-            row["catalogueFetched"] = bool(catalogue.get("catalogue"))
-            row["discoverySource"] = catalogue.get("discoverySource")
-            row["translation"] = translation.get("status")
-            row["toolDiscovery"] = discovery.get("status")
-            row["toolsFromGateway"] = discovery.get("policiesApplied")
+            row.update(api_readings(asset))
         row["operations"] = [
             {**operation, **_operation_reading(operation.get("urlTemplate") or "")}
             for operation in operations_by_api.get(source["apiId"]) or []

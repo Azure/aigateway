@@ -14,7 +14,10 @@ from . import summary as summary_mod
 from . import apply as apply_mod
 from .arm import ArmAuthError, ArmClient, ArmError
 from .azcli import CLI_MISSING, az_argv, az_available
-from .collect import Collector, CollectOptions, DEFAULT_APIM_API_VERSION, GENERATOR_VERSION
+from .collect import (
+    Collector, CollectOptions, DEFAULT_APIM_API_VERSION, GENERATOR_VERSION,
+    refresh_api_readings,
+)
 
 _SERVICE_ID = re.compile(
     r"^/subscriptions/(?P<sub>[^/]+)/resourceGroups/(?P<rg>[^/]+)/providers/"
@@ -414,6 +417,10 @@ def _resolve_models(args: argparse.Namespace) -> int:
 
     resolved = [result for result in results if result.status == "resolved"]
     if resolved:
+        # The readings on `apim.apis[]` summarise the assets this just
+        # rewrote, so they are re-rendered rather than left describing what
+        # was true before the catalogue was fetched.
+        refresh_api_readings(inventory)
         output = Path(args.output) if args.output else path
         output.write_text(json.dumps(inventory, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         print(f"\nUpdated {output} ({len(resolved)} provider(s) resolved)", file=sys.stderr)
@@ -458,6 +465,9 @@ def _discover_tools(args: argparse.Namespace) -> int:
 
     found = [result for result in results if result.status == "discovered"]
     if found:
+        # Same reason as `resolve-models`: the tool list just moved, and
+        # `toolDiscovery` / `toolsFromGateway` are readings of it.
+        refresh_api_readings(inventory)
         output = Path(args.output) if args.output else path
         output.write_text(json.dumps(inventory, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         print(f"\nUpdated {output} ({len(found)} server(s) discovered)", file=sys.stderr)
