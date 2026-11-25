@@ -1785,7 +1785,43 @@ class PlanBuilder:
             self.prerequisites.append({
                 "id": "prereq:appinsights-otlp",
                 "owner": "azure-administrator",
-                "commands": [],
+                # This was an empty list, which read as "nothing to run here"
+                # and sent every operator to the portal -- or, more often, to
+                # settling telemetry on `gateway-metrics-only` because the
+                # endpoint could not be had. It is an ARM property. Enabling it
+                # provisions the managed Azure Monitor workspace, data
+                # collection endpoint and rule, and fills in the three OTLP
+                # endpoints; the second command reads back the one the
+                # telemetry decision needs.
+                "commands": [
+                    {
+                        "command": (
+                            "az rest --method patch --url "
+                            "'https://management.azure.com<app-insights-resource-id>"
+                            "?api-version=2020-02-02-preview' "
+                            "--headers 'Content-Type=application/json' "
+                            "--body '{\"properties\": "
+                            "{\"AzureMonitorWorkspaceIngestionMode\": \"Enabled\"}}'"
+                        ),
+                        "changes": (
+                            "Turns on OTLP ingestion for this Application Insights resource and "
+                            "creates the managed workspace, collection endpoint and rule behind "
+                            "it. Other workloads reporting to the resource are unaffected."
+                        ),
+                    },
+                    {
+                        "command": (
+                            "az rest --method get --url "
+                            "'https://management.azure.com<app-insights-resource-id>"
+                            "?api-version=2020-02-02-preview' "
+                            "--query properties.OTLPMetricsEndpoint -o tsv"
+                        ),
+                        "changes": (
+                            "Reads nothing but the endpoint. This is the value the telemetry "
+                            "item is settled with."
+                        ),
+                    },
+                ],
                 "summary": (
                     "Create an Application Insights resource with the OTLP endpoint enabled"
                     if settled == "new-appinsights" else
@@ -1802,7 +1838,14 @@ class PlanBuilder:
                     "turns it on. Enable it on the existing resource, or create one with it "
                     "enabled, then settle the telemetry item on an OpenTelemetry exporter pointed "
                     "at it. Without that endpoint there is no path at all, and the gateway's own "
-                    "metrics are the only telemetry the migration produces."
+                    "metrics are the only telemetry the migration produces. "
+                    "The resource id is the Application Insights component's -- the APIM logger "
+                    "names it when there is one to reuse, and `az monitor app-insights component "
+                    "show --query id -o tsv` gives it for one you just created. A component with "
+                    "OTLP off returns null for OTLPMetricsEndpoint, which says the feature is "
+                    "unset rather than unavailable; it is absent from the portal blade and from "
+                    "`component update`, but it is an ARM property. If your shell mangles the "
+                    "inline JSON, write the body to a file and pass `--body @file`."
                 ),
             })
         self.prerequisites.append({

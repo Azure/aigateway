@@ -2348,8 +2348,17 @@
     "summary": "Grant the gateway identity data-plane access on each Foundry account"
    },
    {
-    "commands": [],
-    "detail": "APIM sends telemetry to Azure Application Insights; AI Gateway sends it through an OpenTelemetry exporter. The only surface both support is the OTLP endpoint on the Application Insights resource, which is off until someone turns it on. Enable it on the existing resource, or create one with it enabled, then settle the telemetry item on an OpenTelemetry exporter pointed at it. Without that endpoint there is no path at all, and the gateway's own metrics are the only telemetry the migration produces.",
+    "commands": [
+     {
+      "changes": "Turns on OTLP ingestion for this Application Insights resource and creates the managed workspace, collection endpoint and rule behind it. Other workloads reporting to the resource are unaffected.",
+      "command": "az rest --method patch --url 'https://management.azure.com<app-insights-resource-id>?api-version=2020-02-02-preview' --headers 'Content-Type=application/json' --body '{\"properties\": {\"AzureMonitorWorkspaceIngestionMode\": \"Enabled\"}}'"
+     },
+     {
+      "changes": "Reads nothing but the endpoint. This is the value the telemetry item is settled with.",
+      "command": "az rest --method get --url 'https://management.azure.com<app-insights-resource-id>?api-version=2020-02-02-preview' --query properties.OTLPMetricsEndpoint -o tsv"
+     }
+    ],
+    "detail": "APIM sends telemetry to Azure Application Insights; AI Gateway sends it through an OpenTelemetry exporter. The only surface both support is the OTLP endpoint on the Application Insights resource, which is off until someone turns it on. Enable it on the existing resource, or create one with it enabled, then settle the telemetry item on an OpenTelemetry exporter pointed at it. Without that endpoint there is no path at all, and the gateway's own metrics are the only telemetry the migration produces. The resource id is the Application Insights component's -- the APIM logger names it when there is one to reuse, and `az monitor app-insights component show --query id -o tsv` gives it for one you just created. A component with OTLP off returns null for OTLPMetricsEndpoint, which says the feature is unset rather than unavailable; it is absent from the portal blade and from `component update`, but it is an ARM property. If your shell mangles the inline JSON, write the body to a file and pass `--body @file`.",
     "id": "prereq:appinsights-otlp",
     "owner": "azure-administrator",
     "summary": "Enable the OTLP endpoint on the Application Insights resource APIM reports to"

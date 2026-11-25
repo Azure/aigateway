@@ -2516,3 +2516,40 @@ class TestADeliberateSkipIsStillAnUnknown:
             self, inventory, capabilities):
         """Collecting them is off by default, so every real plan meets this."""
         assert self.item(build_plan(inventory, capabilities)) is not None
+
+
+class TestThePrerequisiteThatLooksLikeAPortalTripIsACommand:
+    """Enabling App Insights OTLP carried no command, so it read as portal-only.
+
+    It is an ARM property. The empty `commands` list sent operators to the
+    portal, or -- on a live migration -- to settling telemetry on
+    `gateway-metrics-only` because the endpoint could not be obtained. SKILL.md
+    already says to offer the prerequisites that are commands; this one just
+    never looked like one.
+    """
+
+    def prereq(self, plan, prereq_id="prereq:appinsights-otlp"):
+        return next((p for p in plan["prerequisites"] if p["id"] == prereq_id), None)
+
+    def test_it_carries_the_command_that_enables_it(self, inventory, capabilities):
+        found = self.prereq(build_plan(inventory, capabilities))
+        assert found is not None, "fixture should report telemetry"
+        assert found["commands"], "an ARM property is not a portal-only act"
+        enable = found["commands"][0]["command"]
+        assert "AzureMonitorWorkspaceIngestionMode" in enable
+        assert "2020-02-02-preview" in enable
+
+    def test_it_also_reads_back_the_endpoint_the_decision_needs(
+            self, inventory, capabilities):
+        found = self.prereq(build_plan(inventory, capabilities))
+        read = found["commands"][-1]["command"]
+        assert "OTLPMetricsEndpoint" in read
+        assert "--method get" in read
+
+    def test_every_command_says_what_it_changes(self, inventory, capabilities):
+        """A privilege or configuration change is shown before it is offered."""
+        plan = build_plan(inventory, capabilities)
+        for prereq in plan["prerequisites"]:
+            for command in prereq.get("commands") or []:
+                assert command.get("changes") or command.get("note") or command.get("scope"), \
+                    f"{prereq['id']} offers a command with nothing said about it"
