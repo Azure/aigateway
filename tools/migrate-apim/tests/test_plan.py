@@ -2374,3 +2374,77 @@ class TestAModelTheGatewayHasNoRouteFor:
         after = build_plan(inventory, capabilities, previous=settled)
         assert after["plannerGaps"] == []
         assert self.item_for(after, "decision-1")["status"] == "adapted"
+
+
+class TestAnAliasNameCanActuallyBeOverridden:
+    """`override` was offered on every alias item and read by nothing.
+
+    The names came from the registrations whichever option was chosen, so an
+    operator who supplied their own got the proposals and no warning. The plan
+    was the record of a decision the generator ignored.
+    """
+
+    def alias_item(self, plan, asset="model:aoai-api"):
+        return next(i for i in plan["items"]
+                    if i["source"]["aspect"] == "aliasNames"
+                    and i["source"]["assetId"] == asset)
+
+    def routing_names(self, item):
+        return {o["routingName"] for o in item["target"]["objects"]}
+
+    def settle(self, plan, item_id, decision):
+        settled = copy.deepcopy(plan)
+        for entry in settled["items"]:
+            if entry["id"] == item_id:
+                entry["status"], entry["decision"] = "adapted", decision
+        return settled
+
+    def test_the_default_is_still_the_model_name(self, inventory, capabilities):
+        item = self.alias_item(build_plan(inventory, capabilities))
+        assert "gpt-5" in self.routing_names(item)
+
+    def test_an_override_reaches_the_target_object(self, inventory, capabilities):
+        plan = build_plan(inventory, capabilities)
+        item = self.alias_item(plan)
+        settled = self.settle(plan, item["id"],
+                              {"value": "override", "names": {"gpt-5": "chat-fast"}})
+        after = self.alias_item(build_plan(inventory, capabilities, previous=settled))
+        names = self.routing_names(after)
+        assert "chat-fast" in names, "the decision has to reach what clients send"
+        assert "gpt-5" not in names
+
+    def test_a_renamed_alias_still_points_at_the_registered_model(
+            self, inventory, capabilities):
+        """Renaming what callers send must not repoint the alias."""
+        plan = build_plan(inventory, capabilities)
+        item = self.alias_item(plan)
+        settled = self.settle(plan, item["id"],
+                              {"value": "override", "names": {"gpt-5": "chat-fast"}})
+        after = self.alias_item(build_plan(inventory, capabilities, previous=settled))
+        renamed = next(o for o in after["target"]["objects"]
+                       if o["routingName"] == "chat-fast")
+        assert {b["modelName"] for b in renamed["backendModels"]} == {"gpt-5"}
+
+    def test_names_left_out_keep_their_proposal(self, inventory, capabilities):
+        plan = build_plan(inventory, capabilities)
+        item = self.alias_item(plan)
+        settled = self.settle(plan, item["id"],
+                              {"value": "override", "names": {"gpt-5": "chat-fast"}})
+        after = self.alias_item(build_plan(inventory, capabilities, previous=settled))
+        assert "text-embedding-3-large" in self.routing_names(after)
+
+    def test_overriding_with_no_names_says_so(self, inventory, capabilities):
+        """Settled on supplying names and supplying none is not settled."""
+        plan = build_plan(inventory, capabilities)
+        item = self.alias_item(plan)
+        settled = self.settle(plan, item["id"], "override")
+        after = self.alias_item(build_plan(inventory, capabilities, previous=settled))
+        assert "needsFact" in after
+        assert "names" in after["needsFact"]["how"]
+
+    def test_use_model_names_needs_no_facts(self, inventory, capabilities):
+        plan = build_plan(inventory, capabilities)
+        item = self.alias_item(plan)
+        settled = self.settle(plan, item["id"], "use-model-names")
+        after = self.alias_item(build_plan(inventory, capabilities, previous=settled))
+        assert "needsFact" not in after

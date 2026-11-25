@@ -934,6 +934,16 @@ class PlanBuilder:
         It is one decision with a per-model default that can be overridden.
         """
         asset_id = model["id"]
+        item_id = ids.item(asset_id, "aliasNames")
+        # `override` was offered on every one of these items and read by
+        # nothing: the names came from the registrations either way, so an
+        # operator who supplied their own got the defaults and no warning.
+        settled = self._settled(item_id)
+        overrides = {
+            str(proposed): str(name).strip()
+            for proposed, name in ((settled or {}).get("names") or {}).items()
+            if str(name).strip()
+        }
         # One alias per callable name, fronting every pool member that serves it.
         # A load-balanced API registers the same model once per account, and an
         # alias per registration would have published the name twice, each
@@ -949,6 +959,9 @@ class PlanBuilder:
             {
                 "modelName": copies[0].get("modelName"),
                 "proposedAliasName": alias_name,
+                # What clients will actually send. The same as the proposal
+                # unless this item was settled on `override`, which names it.
+                "aliasName": overrides.get(alias_name, alias_name),
                 "supportedEndpoints": (copies[0].get("target") or {}).get("supportedEndpoints") or [],
                 "backends": [
                     {
@@ -988,8 +1001,8 @@ class PlanBuilder:
                     "instead of being split."
                 )
         rule = ALIAS_NAMES_RULE.first(self.caps.asset_rules(), role="modelApi") or {}
-        self._add(
-            item_id=ids.item(asset_id, "aliasNames"),
+        item = self._add(
+            item_id=item_id,
             source={"assetId": asset_id, "assetKind": "modelApi", "aspect": "aliasNames"},
             kind=rule.get("answer", "supply"),
             verdict=rule.get("verdict", "partial"),
@@ -1010,8 +1023,12 @@ class PlanBuilder:
                 "capability": "alias.create",
                 "objects": [
                     {
-                        "routingName": member["proposedAliasName"],
+                        "routingName": member["aliasName"],
                         "backendModels": [{
+                            # The registered model's name, which is the
+                            # proposal: renaming what callers send must not
+                            # repoint the alias at a model that was never
+                            # registered under that name.
                             "modelName": _slug(str(member["proposedAliasName"])),
                             # Resolved against the gateway during the aliases
                             # phase: a model's ARM id is a runtime fact.
@@ -1026,6 +1043,20 @@ class PlanBuilder:
                 ],
             },
         )
+        if (settled or {}).get("value") == "override" and not overrides:
+            # Settled on supplying names and supplying none. The aliases would
+            # be created under the proposals, which is the answer the operator
+            # explicitly did not choose.
+            item["needsFact"] = {
+                "what": "the names clients will send",
+                "how": (
+                    'Set `decision` to {"value": "override", "names": {"<proposed>": "<yours>"}}, '
+                    "keyed by the proposed name in `evidence.members[].proposedAliasName`. Only "
+                    "the names you list change; the rest keep their proposal. The model each "
+                    "alias points at is unaffected -- it is registered under the proposed name, "
+                    "and renaming what callers send does not repoint it."
+                ),
+            }
 
     def _mcp(self, server: dict[str, Any]) -> None:
         asset_id = server["id"]

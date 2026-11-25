@@ -254,7 +254,7 @@
         {"value": "use-model-names", "consequence": "Publish each model under its own name."},
         {
           "value": "override",
-          "consequence": "Supply names per model; set them in this item's members."
+          "consequence": "Name them yourself. Set `decision` to {\"value\": \"override\", \"names\": {\"<proposed>\": \"<yours>\"}}, keyed by the proposed name; anything you leave out keeps its proposal. The model an alias resolves to does not move with the name."
         }
       ],
       "rationale": "An alias publishes the route, and its routingName is what clients send as `model`. APIM does not store it.",

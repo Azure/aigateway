@@ -638,6 +638,7 @@
      "count": 4,
      "members": [
       {
+       "aliasName": "gpt-5",
        "backends": [
         {
          "priority": 1,
@@ -658,6 +659,7 @@
        ]
       },
       {
+       "aliasName": "text-embedding-3-large",
        "backends": [
         {
          "priority": 1,
@@ -672,6 +674,7 @@
        ]
       },
       {
+       "aliasName": "decision-1",
        "backends": [
         {
          "priority": 1,
@@ -684,6 +687,7 @@
        "supportedEndpoints": []
       },
       {
+       "aliasName": "dall-e-3",
        "backends": [
         {
          "priority": 1,
@@ -706,10 +710,10 @@
     "id": "item:model/aoai-api/aliasNames",
     "kind": "supply",
     "memberDigests": {
-     "Microsoft-Decision-1": "sha256:6bb7fe3f1f440813f1d2ae062fd5c6ffc2d19d8912552558eceec21d3657ccb8",
-     "dall-e-3": "sha256:a5d311c4063282d4e7ddc6a8044d1acddbfcc247a6570b6de4b5304ad9789c27",
-     "gpt-5.2": "sha256:8722b822bee2d6bd8c8d1fdd25c267646436ed2eba3929aa35356f9255251c7d",
-     "text-embedding-3-large": "sha256:e86f2572e76bbc9c98f418cc96a700b62ce67f2f9c4cf36d5d6c4860f9586284"
+     "Microsoft-Decision-1": "sha256:89ff88dfa15f08a53406596fc86e2f0def6e52b9aab1c8c2a22d5dade55abd89",
+     "dall-e-3": "sha256:aa838a58cd3bb865494df786ba0464e592cfa4f3b1031688ceeec126e57ff151",
+     "gpt-5.2": "sha256:34506c9b678adbc4d95a5e178b14f1e110e4237df4cc7d7019c56b7480a408a3",
+     "text-embedding-3-large": "sha256:8da8e7d7592e7e7ad7a4fbab947e9dbd5e59842828bafd540e2e76d52339e5cc"
     },
     "options": [
      {
@@ -717,7 +721,7 @@
       "value": "use-model-names"
      },
      {
-      "consequence": "Supply names per model; set them in this item's members.",
+      "consequence": "Name them yourself. Set `decision` to {\"value\": \"override\", \"names\": {\"<proposed>\": \"<yours>\"}}, keyed by the proposed name; anything you leave out keeps its proposal. The model an alias resolves to does not move with the name.",
       "value": "override"
      }
     ],
@@ -1051,6 +1055,7 @@
      "count": 1,
      "members": [
       {
+       "aliasName": "claude-opus-5",
        "backends": [
         {
          "priority": 0,
@@ -1071,7 +1076,7 @@
     "id": "item:model/finance/model-api/aliasNames",
     "kind": "supply",
     "memberDigests": {
-     "claude-opus-5": "sha256:59f6b52ef3f09e1243ef6543c1db175ec2fbce577672adfe97e9f805f3f7b50f"
+     "claude-opus-5": "sha256:c2706709931a38e9d18fb8038bf45a04fd7b670c1ea3458c82161d32b3809312"
     },
     "options": [
      {
@@ -1079,7 +1084,7 @@
       "value": "use-model-names"
      },
      {
-      "consequence": "Supply names per model; set them in this item's members.",
+      "consequence": "Name them yourself. Set `decision` to {\"value\": \"override\", \"names\": {\"<proposed>\": \"<yours>\"}}, keyed by the proposed name; anything you leave out keeps its proposal. The model an alias resolves to does not move with the name.",
       "value": "override"
      }
     ],
