@@ -16,7 +16,9 @@ from urllib.parse import urlsplit
 
 from . import detect, ids, policy as policy_mod, secrets
 from .arm import ArmAuthError, ArmClient, ArmError
-from .foundry import FoundryResolver, target_model_registration
+from .foundry import (
+    FoundryResolver, publishable_reading, resolved_model, target_model_registration,
+)
 
 SCHEMA_VERSION = "1.0"
 GENERATOR_VERSION = "0.1.0"
@@ -1036,6 +1038,8 @@ class Collector:
                             "modelName": declaration.get("model"),
                             "apiFormat": declaration.get("apiFormat"),
                             "formatResolution": declaration.get("formatResolution"),
+                            "publishable": publishable_reading(
+                                declaration.get("supportedEndpoints")),
                             "target": {
                                 "providerKind": declaration.get("targetProviderKind"),
                                 "deployment": {"modelName": declaration.get("model")},
@@ -1070,15 +1074,7 @@ class Collector:
                         "status": "resolved" if deployments else "empty",
                         "discoverySource": "armDeployments",
                         "resolved": [
-                            {
-                                "deploymentName": deployment["name"],
-                                "modelName": deployment["modelName"],
-                                "modelVersion": deployment["modelVersion"],
-                                "modelFormat": deployment["modelFormat"],
-                                "sku": deployment["sku"],
-                                "raiPolicyName": deployment["raiPolicyName"],
-                                "target": target_model_registration(account, deployment),
-                            }
+                            resolved_model(account, deployment)
                             for deployment in deployments
                         ],
                         "notes": [account.deployments_error] if account.deployments_error else [],
@@ -1298,6 +1294,8 @@ class Collector:
                     "modelName": declaration.get("model"),
                     "apiFormat": declaration.get("apiFormat"),
                     "formatResolution": declaration.get("formatResolution"),
+                    "publishable": publishable_reading(
+                        declaration.get("supportedEndpoints")),
                     "target": {
                         "providerKind": declaration.get("targetProviderKind"),
                         "deployment": {"modelName": declaration.get("model")},
@@ -1333,21 +1331,15 @@ class Collector:
                 account = account or member
                 deployments = self.foundry.load_deployments(member)
                 for deployment in deployments:
-                    resolved.append({
-                        "deploymentName": deployment["name"],
-                        "modelName": deployment["modelName"],
-                        "modelVersion": deployment["modelVersion"],
-                        "modelFormat": deployment["modelFormat"],
-                        "sku": deployment["sku"],
-                        "raiPolicyName": deployment["raiPolicyName"],
+                    resolved.append(resolved_model(
+                        member, deployment,
                         # Which member serves it, and on what share of traffic.
                         # One alias fronts the same model across members, so the
                         # registration has to say where each copy lives.
-                        "backendId": target.get("backendId"),
-                        "poolPriority": target.get("priority"),
-                        "poolWeight": target.get("weight"),
-                        "target": target_model_registration(member, deployment),
-                    })
+                        backendId=target.get("backendId"),
+                        poolPriority=target.get("priority"),
+                        poolWeight=target.get("weight"),
+                    ))
                 if member.deployments_error:
                     models["notes"].append(member.deployments_error)
             if account:

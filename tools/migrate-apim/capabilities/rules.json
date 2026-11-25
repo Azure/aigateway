@@ -217,9 +217,31 @@
     },
     {
       "selects": "assets.models[].models.resolved[]",
+      "where": {"publishable": true},
       "verdict": "native",
       "capabilityId": "model.create",
       "note": "Not an APIM path, and deliberately. What is registered is one model deployment, read from Microsoft.CognitiveServices. APIM has the API in front of it, which is a different object and already has its own rules."
+    },
+    {
+      "selects": "assets.models[].models.resolved[]",
+      "where": {"publishable": false},
+      "verdict": "gap",
+      "answer": "choose",
+      "capabilityId": "model.create",
+      "proposal": "accept-loss",
+      "blocking": true,
+      "options": [
+        {
+          "value": "accept-loss",
+          "consequence": "The model is not registered. Callers of it get nothing from the gateway, and the capability it served -- image generation, transcription, a decision model -- has no equivalent here."
+        },
+        {
+          "value": "retain-in-apim",
+          "consequence": "Keep this model's callers on APIM, which still serves it as it does today. The rest of the API still moves."
+        }
+      ],
+      "rationale": "This model declares none of the routes the gateway publishes. The gateway serves /openai/v1/chat/completions, /openai/v1/responses, /openai/v1/embeddings and /v1/messages; a deployment whose capabilities name none of them cannot be reached through it. Registering it anyway produces a model that reads as migrated and fails at the upstream on the first call.",
+      "note": "The reading is the model's own declaration, not a guess. Foundry reports capabilities as the strings \"true\" and \"false\", so a deployment saying `chatCompletion: \"false\"` is stating it cannot serve that route -- which is why the value is compared rather than the key tested."
     },
     {
       "selects": "apim.apis[]",

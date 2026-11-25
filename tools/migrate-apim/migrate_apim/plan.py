@@ -22,6 +22,7 @@ from . import ids
 from . import policy as policy_mod
 from .capability import CapabilityMap
 from .detect import MCP_PATTERNS, dialect_target
+from .foundry import publishable_reading
 from .dispatch import selector
 
 SCHEMA_VERSION = "1.0"
@@ -116,8 +117,13 @@ CATALOGUE_RULE = selector(
     reads=("verdict", "answer", "capabilityId", "proposal", "rationale", "options", "blocking"),
 )
 MODEL_REGISTRATION_RULE = selector(
-    "assets", selects="assets.models[].models.resolved[]", site="plan._model_registration",
-    reads=("verdict", "answer", "capabilityId"),
+    "assets", selects="assets.models[].models.resolved[]", keys=("publishable",),
+    # `None` is in neither list on purpose: a backend whose dialect could not be
+    # read has not been shown to lack a route, and the dialect rules ask about
+    # that. It matches no rule here and keeps the native default.
+    values={"publishable": (True, False)},
+    site="plan._model_registration",
+    reads=("verdict", "answer", "capabilityId", "proposal", "rationale", "options", "blocking"),
 )
 # The API itself, because an alias name is the one thing about it that APIM does
 # not hold anywhere: it arrives in the request body, so every model needs one.
@@ -817,15 +823,22 @@ class PlanBuilder:
                 "keyed by model name."
             ),
         }
-        return [
-            {
+        enumerated: list[dict[str, Any]] = []
+        for name in names:
+            endpoints = [
+                str(route) for route in (per_model.get(name) or mapped["supportedEndpoints"])
+            ]
+            enumerated.append({
                 "modelName": name,
                 "deploymentName": name,
                 "enumerated": True,
+                # Carried here too, so every resolved record answers the same
+                # question however it was discovered. An enumerated model takes
+                # its routes from the provider's protocol, so this is only false
+                # if the operator overrode `decision.endpoints` with none.
+                "publishable": publishable_reading(endpoints),
                 "target": {
-                    "supportedEndpoints": [
-                        str(route) for route in (per_model.get(name) or mapped["supportedEndpoints"])
-                    ],
+                    "supportedEndpoints": endpoints,
                     "apiFormat": mapped["apiFormat"],
                     # A Custom provider has no backing ARM deployment, so a
                     # registration carries the model name alone. Confirmed against
@@ -833,9 +846,8 @@ class PlanBuilder:
                     # `deployment: {modelName: ...}` with no resourceId.
                     "deployment": {"modelName": name},
                 },
-            }
-            for name in names
-        ]
+            })
+        return enumerated
 
     def _model_registration(self, model: dict[str, Any], resolved: dict[str, Any]) -> None:
         asset_id = model["id"]
@@ -852,21 +864,41 @@ class PlanBuilder:
         pooled = len({r.get("backendId")
                       for r in (model.get("models") or {}).get("resolved") or []}) > 1
         item_key = f"model/{name}@{provider_name}" if pooled else f"model/{name}"
-        registration_rule = MODEL_REGISTRATION_RULE.first(self.caps.asset_rules()) or {}
-        self._add(
+        publishable = resolved.get("publishable")
+        registration_rule = MODEL_REGISTRATION_RULE.first(
+            self.caps.asset_rules(), publishable=publishable) or {}
+        # A model the gateway has no route for is a loss to settle, not an
+        # object to build. Emitting the registration anyway is what published
+        # `Microsoft-Decision-1` on a route its own capabilities denied: it
+        # registered, read back clean, and could only fail at the upstream.
+        unpublishable = publishable is False
+        item = self._add(
             item_id=ids.item(asset_id, item_key),
             source={"assetId": asset_id, "assetKind": "modelApi", "aspect": f"model:{name}"
                     + (f"@{provider_name}" if pooled else "")},
             kind=registration_rule.get("answer"),
             verdict=registration_rule.get("verdict", "native"),
             capability_id=registration_rule.get("capabilityId", "model.create"),
+            proposal=registration_rule.get("proposal"),
+            options=_options_of(registration_rule),
+            blocking=registration_rule.get("blocking", False),
             rationale=(
-                f"Registers {resolved.get('modelName')} named in this API's model catalogue decision."
+                registration_rule.get("rationale") if unpublishable
+                else f"Registers {resolved.get('modelName')} named in this API's model catalogue decision."
                 if resolved.get("enumerated")
                 else f"Registers {resolved.get('modelName')} from a resolved deployment."
             ),
-            evidence={"modelName": resolved.get("modelName"), "modelVersion": resolved.get("modelVersion")},
-            target={
+            evidence={
+                "modelName": resolved.get("modelName"),
+                "modelVersion": resolved.get("modelVersion"),
+                # What this model says it serves. On a gap item it is the whole
+                # case, so the routes it is being measured against are carried
+                # beside it rather than left at the top of the plan.
+                "declaredEndpoints": endpoints,
+                **({"publishableRoutes": list(self.caps.publishable_routes())}
+                   if unpublishable else {}),
+            },
+            target=None if unpublishable else {
                 "capability": "model.create",
                 "objects": [{
                     "name": _slug(name),
@@ -880,6 +912,18 @@ class PlanBuilder:
                 }],
             },
         )
+        if not unpublishable and not endpoints:
+            # Not a loss to accept and not a question for the operator: the
+            # routes are unknown, which only happens when a backend's dialect
+            # could not be read. `model create` without `--supported-endpoints`
+            # takes the gateway's default, so letting this through registers the
+            # model on a route nobody established it serves.
+            item["plannerGap"] = (
+                f"`{resolved.get('modelName')}` would be registered with no supported endpoints, "
+                "so the gateway's default applies to a model whose routes were never read. "
+                "Resolve its dialect in the inventory, or settle the API's dialect item, rather "
+                "than registering it on a guess."
+            )
 
     def _alias_naming(self, model: dict[str, Any], registrations: list[dict[str, Any]]) -> None:
         """One naming decision per API, not one per model.

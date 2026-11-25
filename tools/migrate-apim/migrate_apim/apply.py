@@ -940,6 +940,15 @@ def _model_create(executor: Executor, step: Step, obj: dict[str, Any]) -> tuple[
     provider = spec.get("providerName")
     if not provider:
         raise ApplyError(f"{step.item_id} does not say which provider to register under")
+    # Before the deployment config is written, so a refused step leaves no file
+    # behind. `--supported-endpoints` omitted does not mean "no routes", it
+    # means the gateway's default -- which registered models nothing
+    # established could serve. The planner no longer builds such an object.
+    if not spec.get("supportedEndpoints"):
+        raise ApplyError(
+            f"`{spec.get('name')}` has no supported endpoints, so `model create` would fall back "
+            "to the gateway's default route for a model nothing established it can serve."
+        )
     path = executor._json_file(spec.get("deploymentConfig") or {})
     argv = [
         "az", "aigateway", "model", "create", *executor.target.selectors,
@@ -951,9 +960,7 @@ def _model_create(executor: Executor, step: Step, obj: dict[str, Any]) -> tuple[
     # `--supported-endpoints` takes space-separated values, not a repeatable
     # flag: repeating it keeps only the last, which silently registered a model
     # on one route when the plan asked for several.
-    endpoints = spec.get("supportedEndpoints") or []
-    if endpoints:
-        argv += ["--supported-endpoints", *endpoints]
+    argv += ["--supported-endpoints", *spec["supportedEndpoints"]]
     return argv + ["-o", "json"], [path]
 
 

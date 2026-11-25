@@ -422,6 +422,10 @@
               "modelVersion": {"type": ["string", "null"]},
               "modelFormat": {"type": ["string", "null"]},
               "sku": {"type": ["object", "null"]},
+              "publishable": {
+                "description": "Whether the gateway has a route for this model, read from what the model itself declares -- a Foundry deployment's capabilities map, or a backend's stated dialect. False is a claim: the routes are known and none of them is publishable, so registering it would publish a model the upstream rejects. Null is the absence of one, for a backend whose dialect could not be read; the dialect rules ask about that rather than this.",
+                "type": ["boolean", "null"]
+              },
               "target": {"description": "Pre-shaped AI Gateway model registration input.", "type": "object"}
             }
           }

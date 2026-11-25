@@ -1816,3 +1816,31 @@ class TestAnOrdinaryPolicyDoesNotStopPreflight:
         assert next(i for i in plan["items"]
                     if i["source"]["assetKind"] == "policyFragment"
                     and i["source"]["aspect"] == "unused")
+
+
+class TestAModelWithNoRoutesIsNotRegisteredOnADefault:
+    """`model create` without `--supported-endpoints` takes the gateway default.
+
+    So omitting the flag is not "no routes", it is "whichever route the gateway
+    picks" -- which registered models nothing established could serve. The
+    planner no longer builds such an object; this refuses to execute one.
+    """
+
+    def test_building_the_step_refuses_rather_than_omitting_the_flag(self, inventory, settled):
+        from migrate_apim.apply import _model_create
+        executor = Executor(settled, inventory, new_journal(settled), runner=_Runner())
+        with pytest.raises(ApplyError) as caught:
+            _model_create(executor, None, {"name": "decision-1", "providerName": "p",
+                                           "supportedEndpoints": []})
+        assert "no supported endpoints" in str(caught.value)
+        assert "default" in str(caught.value)
+
+    def test_a_model_with_routes_still_passes_them(self, inventory, settled):
+        from migrate_apim.apply import _model_create
+        executor = Executor(settled, inventory, new_journal(settled), runner=_Runner())
+        argv, _ = _model_create(executor, None, {
+            "name": "gpt-5", "providerName": "p",
+            "supportedEndpoints": ["/openai/v1/chat/completions", "/openai/v1/responses"],
+        })
+        joined = " ".join(argv)
+        assert "--supported-endpoints /openai/v1/chat/completions /openai/v1/responses" in joined

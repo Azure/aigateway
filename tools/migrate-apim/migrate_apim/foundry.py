@@ -189,13 +189,32 @@ _CAPABILITY_ROUTES = {
 }
 
 
+def _declares(value: Any) -> bool:
+    """Whether a capability's value says the deployment has it.
+
+    Foundry reports these as the strings `"true"` and `"false"`, so the value
+    has to be compared rather than tested: `bool("false")` is True, which is
+    the trap that made reading the key enough. A deployment carrying
+    `chatCompletion: "false"` is stating it cannot serve that route.
+    """
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() == "true"
+
+
 def supported_endpoints(deployment: dict[str, Any]) -> list[str]:
-    """The publishable routes this deployment declares it can serve."""
+    """The publishable routes this deployment declares it can serve.
+
+    The value matters as much as the key. Reading only the key published
+    `Microsoft-Decision-1` -- `chatCompletion: "false"` -- on
+    `/openai/v1/chat/completions`, where it registered cleanly and could only
+    ever fail at the upstream.
+    """
     capabilities = deployment.get("capabilities") or {}
     found: list[str] = []
-    for name in capabilities:
+    for name, value in capabilities.items():
         route = _CAPABILITY_ROUTES.get(str(name).lower())
-        if route and route not in found:
+        if route and _declares(value) and route not in found:
             found.append(route)
     return sorted(found)
 
@@ -213,3 +232,43 @@ def target_model_registration(account: FoundryAccount, deployment: dict[str, Any
         "providerEndpoint": f"https://{sorted(account.hosts)[0]}/" if account.hosts else None,
         "providerResourceIds": [account.resource_id],
     }
+
+
+def publishable_reading(endpoints: list[str] | None) -> bool | None:
+    """Whether the gateway has a route for this model, or None if unknown.
+
+    An empty list is a claim: Foundry declared the deployment's capabilities and
+    none of them map to a publishable route. `None` is the absence of one -- a
+    backend whose dialect could not be read says nothing about what it serves,
+    and the dialect rules already ask about that. Collapsing the two would
+    assert a loss nobody established, which is the distinction the coverage gate
+    exists to keep.
+    """
+    if endpoints is None:
+        return None
+    return bool(endpoints)
+
+
+def resolved_model(account: FoundryAccount, deployment: dict[str, Any],
+                   **extra: Any) -> dict[str, Any]:
+    """One resolved-deployment record, with the reading the rules narrow on.
+
+    Both callers built this shape literally and neither carried whether the
+    gateway has a route for the model at all, so a deployment serving only
+    images or transcription was registered exactly like one serving chat.
+    `publishable` is that reading, rendered here so the two sites cannot
+    disagree about it.
+    """
+    registration = target_model_registration(account, deployment)
+    record: dict[str, Any] = {
+        "deploymentName": deployment["name"],
+        "modelName": deployment["modelName"],
+        "modelVersion": deployment["modelVersion"],
+        "modelFormat": deployment["modelFormat"],
+        "sku": deployment["sku"],
+        "raiPolicyName": deployment["raiPolicyName"],
+        "publishable": publishable_reading(registration["supportedEndpoints"]),
+        "target": registration,
+    }
+    record.update(extra)
+    return record

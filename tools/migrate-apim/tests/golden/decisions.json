@@ -384,13 +384,17 @@
     "decidedAgainst": null,
     "decision": null,
     "evidence": {
+     "declaredEndpoints": [
+      "/openai/v1/chat/completions",
+      "/openai/v1/responses"
+     ],
      "modelName": "gpt-5.2",
      "modelVersion": "2025-12-11"
     },
     "id": "item:model/aoai-api/model/gpt-5-aoai-east",
     "kind": null,
     "memberDigests": {
-     "model:aoai-api": "sha256:62d3f8ecb3430d4af1f0cf4f2e8de3faff23fee51d4454bb401010f732121f11"
+     "model:aoai-api": "sha256:e1d8447ebccf3fbae29a9d749993b0b16f3198eadc7b70608a50df6b502b270d"
     },
     "options": [],
     "proposal": null,
@@ -433,13 +437,16 @@
     "decidedAgainst": null,
     "decision": null,
     "evidence": {
+     "declaredEndpoints": [
+      "/openai/v1/embeddings"
+     ],
      "modelName": "text-embedding-3-large",
      "modelVersion": "1"
     },
     "id": "item:model/aoai-api/model/text-embedding-3-large-aoai-east",
     "kind": null,
     "memberDigests": {
-     "model:aoai-api": "sha256:809bd1a871d6523eb298711fc8fef8a983c30fcacd07072df61de49c0cb760ed"
+     "model:aoai-api": "sha256:29428b208d6c3e8bd9fc0bd4197688bcda2fc33d1595dcaf05218a4995bece7b"
     },
     "options": [],
     "proposal": null,
@@ -472,6 +479,100 @@
     "verdict": "native"
    },
    {
+    "blocking": true,
+    "cannotAccept": false,
+    "capabilityId": "model.create",
+    "capabilityLimitations": [
+     "Explicit selected models/operations only. No Foundry onboarding side effects or implicit aliases; callable routes require separate alias nodes."
+    ],
+    "decidedAgainst": null,
+    "decision": null,
+    "evidence": {
+     "declaredEndpoints": [],
+     "modelName": "Microsoft-Decision-1",
+     "modelVersion": "1",
+     "publishableRoutes": [
+      "/openai/v1/chat/completions",
+      "/openai/v1/responses",
+      "/openai/v1/embeddings",
+      "/v1/messages"
+     ]
+    },
+    "id": "item:model/aoai-api/model/decision-1-aoai-east",
+    "kind": "choose",
+    "memberDigests": {
+     "model:aoai-api": "sha256:701fac9cdc94680e460dbf743a0ba3da29bea2637d9369353f8c471ca64c5bfb"
+    },
+    "options": [
+     {
+      "consequence": "The model is not registered. Callers of it get nothing from the gateway, and the capability it served -- image generation, transcription, a decision model -- has no equivalent here.",
+      "value": "accept-loss"
+     },
+     {
+      "consequence": "Keep this model's callers on APIM, which still serves it as it does today. The rest of the API still moves.",
+      "value": "retain-in-apim"
+     }
+    ],
+    "proposal": "accept-loss",
+    "rationale": "This model declares none of the routes the gateway publishes. The gateway serves /openai/v1/chat/completions, /openai/v1/responses, /openai/v1/embeddings and /v1/messages; a deployment whose capabilities name none of them cannot be reached through it. Registering it anyway produces a model that reads as migrated and fails at the upstream on the first call.",
+    "shapeDigest": "sha256:e9124a90a5a89118e008741d6b20b949df6ebb0fe407f311095101d1c77d6b32",
+    "source": {
+     "aspect": "model:decision-1@aoai-east",
+     "assetId": "model:aoai-api",
+     "assetKind": "modelApi"
+    },
+    "status": "needs-decision",
+    "target": {},
+    "verdict": "gap"
+   },
+   {
+    "blocking": true,
+    "cannotAccept": false,
+    "capabilityId": "model.create",
+    "capabilityLimitations": [
+     "Explicit selected models/operations only. No Foundry onboarding side effects or implicit aliases; callable routes require separate alias nodes."
+    ],
+    "decidedAgainst": null,
+    "decision": null,
+    "evidence": {
+     "declaredEndpoints": [],
+     "modelName": "dall-e-3",
+     "modelVersion": "3.0",
+     "publishableRoutes": [
+      "/openai/v1/chat/completions",
+      "/openai/v1/responses",
+      "/openai/v1/embeddings",
+      "/v1/messages"
+     ]
+    },
+    "id": "item:model/aoai-api/model/dall-e-3-aoai-east",
+    "kind": "choose",
+    "memberDigests": {
+     "model:aoai-api": "sha256:b490e1dc6fe2bfd814971b14ff43c635581dd12e477027b553f7dc34c71f3ad3"
+    },
+    "options": [
+     {
+      "consequence": "The model is not registered. Callers of it get nothing from the gateway, and the capability it served -- image generation, transcription, a decision model -- has no equivalent here.",
+      "value": "accept-loss"
+     },
+     {
+      "consequence": "Keep this model's callers on APIM, which still serves it as it does today. The rest of the API still moves.",
+      "value": "retain-in-apim"
+     }
+    ],
+    "proposal": "accept-loss",
+    "rationale": "This model declares none of the routes the gateway publishes. The gateway serves /openai/v1/chat/completions, /openai/v1/responses, /openai/v1/embeddings and /v1/messages; a deployment whose capabilities name none of them cannot be reached through it. Registering it anyway produces a model that reads as migrated and fails at the upstream on the first call.",
+    "shapeDigest": "sha256:e9124a90a5a89118e008741d6b20b949df6ebb0fe407f311095101d1c77d6b32",
+    "source": {
+     "aspect": "model:dall-e-3@aoai-east",
+     "assetId": "model:aoai-api",
+     "assetKind": "modelApi"
+    },
+    "status": "needs-decision",
+    "target": {},
+    "verdict": "gap"
+   },
+   {
     "blocking": false,
     "cannotAccept": false,
     "capabilityId": "model.create",
@@ -481,13 +582,17 @@
     "decidedAgainst": null,
     "decision": null,
     "evidence": {
+     "declaredEndpoints": [
+      "/openai/v1/chat/completions",
+      "/openai/v1/responses"
+     ],
      "modelName": "gpt-5.2",
      "modelVersion": "2025-12-11"
     },
     "id": "item:model/aoai-api/model/gpt-5-aoai-west",
     "kind": null,
     "memberDigests": {
-     "model:aoai-api": "sha256:62d3f8ecb3430d4af1f0cf4f2e8de3faff23fee51d4454bb401010f732121f11"
+     "model:aoai-api": "sha256:e1d8447ebccf3fbae29a9d749993b0b16f3198eadc7b70608a50df6b502b270d"
     },
     "options": [],
     "proposal": null,
@@ -530,7 +635,7 @@
     "decidedAgainst": null,
     "decision": null,
     "evidence": {
-     "count": 2,
+     "count": 4,
      "members": [
       {
        "backends": [
@@ -565,16 +670,44 @@
        "supportedEndpoints": [
         "/openai/v1/embeddings"
        ]
+      },
+      {
+       "backends": [
+        {
+         "priority": 1,
+         "providerName": "aoai-east",
+         "weight": 80
+        }
+       ],
+       "modelName": "Microsoft-Decision-1",
+       "proposedAliasName": "decision-1",
+       "supportedEndpoints": []
+      },
+      {
+       "backends": [
+        {
+         "priority": 1,
+         "providerName": "aoai-east",
+         "weight": 80
+        }
+       ],
+       "modelName": "dall-e-3",
+       "proposedAliasName": "dall-e-3",
+       "supportedEndpoints": []
       }
      ],
      "pooled": true,
      "singleMemberModels": [
-      "text-embedding-3-large"
+      "text-embedding-3-large",
+      "decision-1",
+      "dall-e-3"
      ]
     },
     "id": "item:model/aoai-api/aliasNames",
     "kind": "supply",
     "memberDigests": {
+     "Microsoft-Decision-1": "sha256:6bb7fe3f1f440813f1d2ae062fd5c6ffc2d19d8912552558eceec21d3657ccb8",
+     "dall-e-3": "sha256:a5d311c4063282d4e7ddc6a8044d1acddbfcc247a6570b6de4b5304ad9789c27",
      "gpt-5.2": "sha256:8722b822bee2d6bd8c8d1fdd25c267646436ed2eba3929aa35356f9255251c7d",
      "text-embedding-3-large": "sha256:e86f2572e76bbc9c98f418cc96a700b62ce67f2f9c4cf36d5d6c4860f9586284"
     },
@@ -589,7 +722,7 @@
      }
     ],
     "proposal": "use-model-names",
-    "rationale": "An alias publishes the route, and its routingName is what clients send as `model`. APIM does not store it. Proposed for 2 model(s): gpt-5, text-embedding-3-large. This API load-balances across 2 backends; each alias carries the pool's priority and weight. 1 of them are deployed in only one member (text-embedding-3-large), so those route to that member alone instead of being split.",
+    "rationale": "An alias publishes the route, and its routingName is what clients send as `model`. APIM does not store it. Proposed for 4 model(s): gpt-5, text-embedding-3-large, decision-1, dall-e-3. This API load-balances across 2 backends; each alias carries the pool's priority and weight. 3 of them are deployed in only one member (text-embedding-3-large, decision-1, dall-e-3), so those route to that member alone instead of being split.",
     "shapeDigest": "sha256:c38a8a146c1e64afc7969f5aebe8f5474eca1797df68eab2d1e0509c3d6e63ba",
     "source": {
      "aspect": "aliasNames",
@@ -637,6 +770,32 @@
        "supportedEndpoints": [
         "/openai/v1/embeddings"
        ]
+      },
+      {
+       "backendModels": [
+        {
+         "modelName": "decision-1",
+         "priority": 1,
+         "providerName": "aoai-east",
+         "resourceId": null,
+         "weight": 80
+        }
+       ],
+       "routingName": "decision-1",
+       "supportedEndpoints": []
+      },
+      {
+       "backendModels": [
+        {
+         "modelName": "dall-e-3",
+         "priority": 1,
+         "providerName": "aoai-east",
+         "resourceId": null,
+         "weight": 80
+        }
+       ],
+       "routingName": "dall-e-3",
+       "supportedEndpoints": []
       }
      ]
     },
@@ -840,13 +999,16 @@
     "decidedAgainst": null,
     "decision": null,
     "evidence": {
+     "declaredEndpoints": [
+      "/v1/messages"
+     ],
      "modelName": "claude-opus-5",
      "modelVersion": null
     },
     "id": "item:model/finance/model-api/model/claude-opus-5",
     "kind": null,
     "memberDigests": {
-     "model:finance/model-api": "sha256:9c2f3352b9b3cb176de3495e41bdfa74ca71cc30558e625362714e2ad171db8a"
+     "model:finance/model-api": "sha256:e60b53b304a11837bb086b0c224344082f5e23ce44366acfa6997aecd809ddd3"
     },
     "options": [],
     "proposal": null,
@@ -2147,20 +2309,20 @@
    "resourceId": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-demo/providers/Microsoft.ApiManagement/service/apim-demo"
   },
   "summary": {
-   "blocking": 10,
+   "blocking": 12,
    "byKind": {
-    "choose": 15,
+    "choose": 17,
     "supply": 4
    },
    "byStatus": {
     "excluded": 1,
-    "needs-decision": 19,
+    "needs-decision": 21,
     "ready": 11
    },
    "orphanedDecisions": 0,
    "plannerGaps": 0,
-   "total": 31,
-   "unsettled": 19
+   "total": 33,
+   "unsettled": 21
   },
   "target": {
    "capabilities": {

@@ -945,6 +945,9 @@ class TestLoadBalancedPool:
             for i in plan["items"]
             if i.get("capabilityId") == "model.create"
             and i["source"]["assetId"] == "model:aoai-api"
+            # A model the gateway has no route for is a decision, not a
+            # registration, so it builds no object to read a provider off.
+            and (i.get("target") or {}).get("objects")
         ]
         assert ("gpt-5", "aoai-east") in registrations
         assert ("gpt-5", "aoai-west") in registrations
@@ -2314,3 +2317,60 @@ class TestADecisionRestsOnFactsThatAreStillThere:
         after = limit_item(build_plan(document, capabilities, previous=settled),
                            "policy:fragment/shared-limits")
         assert after["status"] == "adapted", "nothing moved, so nothing is re-asked"
+
+
+class TestAModelTheGatewayHasNoRouteFor:
+    """A model is registered on the routes it declares, not on a default.
+
+    `supported_endpoints` read the capability keys and never their values, and
+    Foundry writes those values as the strings "true" and "false". So a
+    deployment saying `chatCompletion: "false"` was published on
+    `/openai/v1/chat/completions`: it registered, read back clean, and could
+    only fail at the upstream on the first call.
+    """
+
+    def item_for(self, plan, name):
+        # A pooled API suffixes the member onto the item key, so the name is a
+        # prefix of the id's last segment rather than the whole of it.
+        return next(i for i in plan["items"] if f"/model/{name}" in i["id"])
+
+    def test_a_denied_capability_is_not_a_route(self, inventory, capabilities):
+        plan = build_plan(inventory, capabilities)
+        item = self.item_for(plan, "decision-1")
+        assert item["status"] == "needs-decision"
+        assert item["verdict"] == "gap"
+        assert item["evidence"]["declaredEndpoints"] == []
+        assert not (item["target"] or {}).get("objects"), \
+            "a model with no route builds no registration"
+
+    def test_a_capability_with_no_gateway_route_is_not_a_route(self, inventory, capabilities):
+        item = self.item_for(build_plan(inventory, capabilities), "dall-e-3")
+        assert item["status"] == "needs-decision"
+        assert item["evidence"]["declaredEndpoints"] == []
+
+    def test_the_gap_offers_a_loss_and_a_retention_and_no_silent_migrate(
+            self, inventory, capabilities):
+        item = self.item_for(build_plan(inventory, capabilities), "decision-1")
+        assert {o["value"] for o in item["options"]} == {"accept-loss", "retain-in-apim"}
+        assert item["blocking"] is True
+        # The routes it was measured against travel with the question.
+        assert "/openai/v1/chat/completions" in item["evidence"]["publishableRoutes"]
+
+    def test_a_declared_capability_still_registers(self, inventory, capabilities):
+        """The fix must not withdraw the models that do serve a route."""
+        plan = build_plan(inventory, capabilities)
+        item = self.item_for(plan, "text-embedding-3-large-aoai-east")
+        assert item["status"] == "ready"
+        assert item["target"]["objects"][0]["supportedEndpoints"] == ["/openai/v1/embeddings"]
+
+    def test_accepting_the_loss_is_not_a_planner_gap(self, inventory, capabilities):
+        """An accepted loss creates nothing on purpose; that is not a defect."""
+        plan = build_plan(inventory, capabilities)
+        item = self.item_for(plan, "decision-1")
+        settled = copy.deepcopy(plan)
+        for entry in settled["items"]:
+            if entry["id"] == item["id"]:
+                entry["status"], entry["decision"] = "adapted", "accept-loss"
+        after = build_plan(inventory, capabilities, previous=settled)
+        assert after["plannerGaps"] == []
+        assert self.item_for(after, "decision-1")["status"] == "adapted"

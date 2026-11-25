@@ -1131,3 +1131,39 @@ class TestEveryApiIsInOnePlace:
         total = len(inventory["apim"]["apis"])
         excluded = len([a for a in inventory["apim"]["apis"] if a["excludedReason"]])
         assert f"{total} APIs on the service, {total - excluded} inventoried, {excluded} not" in line
+
+
+class TestACapabilityValueIsReadNotJustItsKey:
+    """Foundry writes capability values as the strings "true" and "false".
+
+    `bool("false")` is True, so testing the value naively is as wrong as not
+    testing it. Both are pinned here because the obvious fix is the second bug.
+    """
+
+    def test_a_false_capability_declares_no_route(self):
+        from migrate_apim.foundry import supported_endpoints
+        assert supported_endpoints(
+            {"capabilities": {"chatCompletion": "false", "decision": "true"}}) == []
+
+    def test_a_true_capability_declares_its_route(self):
+        from migrate_apim.foundry import supported_endpoints
+        assert supported_endpoints({"capabilities": {"chatCompletion": "true"}}) == [
+            "/openai/v1/chat/completions"]
+
+    def test_a_real_boolean_is_read_too(self):
+        from migrate_apim.foundry import supported_endpoints
+        assert supported_endpoints({"capabilities": {"embeddings": True}}) == [
+            "/openai/v1/embeddings"]
+        assert supported_endpoints({"capabilities": {"embeddings": False}}) == []
+
+    def test_a_capability_with_no_gateway_route_is_ignored(self):
+        from migrate_apim.foundry import supported_endpoints
+        assert supported_endpoints(
+            {"capabilities": {"imageGenerations": "true", "area": "US"}}) == []
+
+    def test_unknown_routes_are_unknown_rather_than_absent(self):
+        """A dialect that could not be read has not been shown to lack a route."""
+        from migrate_apim.foundry import publishable_reading
+        assert publishable_reading(None) is None
+        assert publishable_reading([]) is False
+        assert publishable_reading(["/v1/messages"]) is True
