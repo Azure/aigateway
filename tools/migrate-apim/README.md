@@ -139,6 +139,12 @@ and it took the run from 37 seconds to over eight minutes. Skipping them is reco
 "not collected" must never read as "none exist": a `notCollected` entry in `collection.coverage`
 with the number skipped, and `policyRefs.operationPoliciesCollected: false` on each asset.
 
+`plan` carries it a third time, as a non-blocking decision naming this flag. The inventory was
+honest about the skip from the start and the plan was silent, so an agent checking coverage for
+failed reads — which is what it was told to check — reported coverage clean over 132 unread policy
+documents. It can be accepted, unlike a failed read: the skip is one flag away from being undone,
+so "I know, and I am migrating without them" is an answer, made once and on purpose.
+
 <details>
 <summary>All <code>collect</code> options</summary>
 

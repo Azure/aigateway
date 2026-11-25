@@ -69,8 +69,15 @@ Do not provision a gateway because someone asked whether a migration is possible
 `collect` is read-only and never reads a secret. If the operator has already named a subset, honour
 it; do not open by asking "the whole instance or just AI?".
 
-Check `collection.coverage` for `failed` entries before trusting the result. A failed read is an
-unknown, not an absence.
+Check `collection.coverage` before trusting the result, for **two** statuses and not one. A
+`failed` read is an unknown, not an absence. A `notCollected` read is also an unknown — the tool
+skipped it deliberately, because APIM has no bulk read for it, and said so rather than letting
+silence read as "none exist". Operation policies are off by default for that reason, and on a real
+instance that is routinely over a hundred policy documents nobody has looked at.
+
+Neither is "clean". The plan raises an item for each, and the `notCollected` one names the
+`collect` flag that resolves it — re-collect and the decision rests on what those documents
+actually say, rather than on not having read them.
 
 The tool writes progress to stderr and results to stdout. Do not read stderr output as failure —
 some shells, PowerShell among them, present it as an error. Use the exit code. If a command does
@@ -115,6 +122,8 @@ produces no object is the plan telling you one is still missing:
 ```jsonc
 "decision": "split"                                    // most items
 "decision": {"value": "list-models", "models": ["gpt-4o", "gpt-5"]}   // names the catalogue
+"decision": {"value": "override",                      // what clients will send
+             "names": {"gpt-4o": "chat-fast"}}         // keyed by the proposed name
 "decision": {"kind": "OpenTelemetry",                  // where telemetry reports
              "openTelemetry": {"metricsEndpoint": "https://<app-insights-otlp>/v1/metrics"}}
 ```
@@ -231,8 +240,11 @@ yourself — the role name, its definition id and the scope are all decided ther
 
 - Show the command and say what it changes: which principal gets which role on which scope.
 - Get explicit agreement first. A role assignment is a privilege change, not a step in a checklist.
-- Never acknowledge a prerequisite to get past preflight. `--acknowledge` records that the work is
-  *done*, so acknowledging it yourself asserts something you have not established.
+- Acknowledge only a prerequisite you performed and verified in this session. `--acknowledge`
+  records that the work is *done*, so acknowledging one to get past preflight asserts something you
+  have not established — but recording one you just carried out and read back is what the flag is
+  for, and leaving it unacknowledged misreports finished work as outstanding. Say which of the two
+  you are doing.
 - Say when it failed and why. Lacking the permission to grant a role is a normal outcome and the
   operator needs to hear it, not a retry.
 - A grant made is part of the migration record: report it alongside what `apply` provisioned.
@@ -243,6 +255,12 @@ decisions someone makes in a portal. Do not simulate those.
 Never pass a secret as a scalar CLI flag; process arguments are visible. A `{"$secretRef": "..."}`
 placeholder is resolved from the inventory's retrieval recipe at apply time and written to a
 mode-`0600` file passed as `@path`.
+
+The same care applies to what you *read*. Several Azure reads hand you a credential whether you
+wanted one or not — `az monitor app-insights component create` and a plain ARM GET on the component
+both return a connection string containing an instrumentation key. Project the field you need
+(`--query properties.OTLPMetricsEndpoint`), not the whole resource, so the key never reaches your
+transcript.
 
 ## 4. Report honestly
 

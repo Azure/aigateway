@@ -53,7 +53,11 @@ A path under `apim.` carries a further claim: that these are APIM's objects. So 
 
   The last pass is what makes an unmapped element impossible rather than unlikely: before it, an element matching no rule was dropped where it was classified, and the ones that vanished were those carrying *no* expression, since an expression at least reached the pass above. It is a net and not a mapping, so `compile` holds every element in `policy.FAMILIES` to a rule of its own or a family rule and fails if one is left to it. The planner counts what reaches it into `policyCoverage.unrecognised` on the plan.
 
-- **`publishableRoutes[]`** — The four routes AI Gateway publishes (`/openai/v1/chat/completions`, `/v1/messages`, etc.). Used to decide what part of a model API surface can move.
+- **`publishableRoutes[]`** — The four routes AI Gateway publishes (`/openai/v1/chat/completions`, `/v1/messages`, etc.). Used twice: to decide what part of a model API surface can move, and — through the `publishable` reading on a resolved model — whether an individual model can move at all.
+
+  A model declares its own routes: a Foundry deployment's `capabilities` map, or a backend's stated dialect. A deployment whose capabilities name none of the four cannot be reached through the gateway, so registering it produces a model that reads as migrated and fails at the upstream on the first call. `publishable: false` is that claim and raises a decision; `publishable: null` is the absence of one, for a backend whose dialect could not be read, and keeps the native default because the dialect rules ask about that instead.
+
+  The values in that map are the strings `"true"` and `"false"`, so the value has to be compared and not tested — reading only the key published a deployment that said `chatCompletion: "false"`, and `bool("false")` is `True`.
 
 ## How the Planner Uses Both
 
