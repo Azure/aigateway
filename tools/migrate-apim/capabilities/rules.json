@@ -94,7 +94,39 @@
         {"value": "accept", "consequence": "Register the provider with no authentication. Every call through it fails at the upstream."},
         {"value": "block", "consequence": "Stop the migration until the upstream can be re-credentialed."}
       ],
-      "note": "The decision the `backendAuthentication` family rule used to raise on the policy element, moved to the object that registers the upstream -- which is where accepting or retaining it has its effect. `mode` is a field of the auth record, so the nesting is in `selects` and the predicate names a real field. The modes listed here are plan.INEXPRESSIBLE_PROVIDER_AUTH, which is also what `_custom_auth` refuses to invent an object for."
+      "note": "The decision the `backendAuthentication` family rule used to raise on the policy element, moved to the object that registers the upstream -- which is where accepting or retaining it has its effect. `mode` is a field of the auth record, so the nesting is in `selects` and the predicate names a real field. The modes listed here are plan.INEXPRESSIBLE_PROVIDER_AUTH; `_custom_auth` refuses to invent an object for these and for the two rules below."
+    },
+    {
+      "selects": "assets.modelProviders[].auth",
+      "where": {"mode": ["authorizationHeader"]},
+      "verdict": "gap",
+      "answer": "choose",
+      "capabilityId": "provider.create",
+      "proposal": "compensate",
+      "rationale": "the upstream is reached with an `Authorization: <scheme> <parameter>` header. The header name maps -- ApiKey takes any name -- but what the gateway has to send is the scheme joined to the secret, and `apply` substitutes a secret reference verbatim, so nothing can prepend `Bearer ` without reading the secret. This tool never reads one. Registered as it was read, the key took the hardcoded `api-key` name and lost its scheme.",
+      "options": [
+        {"value": "compensate", "consequence": "Store the whole header value, scheme included, as one secret and register it as an ApiKey named `Authorization`. The gateway then sends what APIM sent, and the join is done once by hand rather than by this tool."},
+        {"value": "retain-in-apim", "consequence": "Keep this upstream's callers on APIM, which still reaches it as it does today."},
+        {"value": "accept", "consequence": "Register the provider with no authentication. Every call through it fails at the upstream."},
+        {"value": "block", "consequence": "Stop the migration until the upstream can be re-credentialed."}
+      ],
+      "note": "Apart from the rule above because the obstacle is the value and not the field: this one has a target shape and a correct workaround, which is why it proposes `compensate` where a credential with no field at all proposes `retain-in-apim`. plan.UNCOMPOSABLE_PROVIDER_AUTH."
+    },
+    {
+      "selects": "assets.modelProviders[].auth",
+      "where": {"mode": ["undetermined"]},
+      "verdict": "partial",
+      "answer": "choose",
+      "capabilityId": "provider.create",
+      "proposal": "retain-in-apim",
+      "blocking": true,
+      "rationale": "how this upstream authenticates could not be established, so what to register is unknown rather than missing. Registering it anyway publishes an endpoint whose credential nothing in the source confirmed, which fails at the first call if the guess is wrong. The collector's sentence that follows says which case it is -- a policy fragment that would not resolve, or no policy read for this provider at all -- and re-collecting with access to that fragment, or to the API that routes here, is what turns this into an answer rather than a choice.",
+      "options": [
+        {"value": "retain-in-apim", "consequence": "Keep this upstream's callers on APIM, where whatever credential it uses still applies."},
+        {"value": "accept", "consequence": "Register the provider with no authentication. Correct only if the upstream is genuinely open; otherwise every call through it fails."},
+        {"value": "block", "consequence": "Stop the migration until the credential is established, by re-collecting or by reading the backend by hand."}
+      ],
+      "note": "Not a `plannerGap`, whose schema reserves that field for defects in this tool rather than decisions for the operator. An unreadable fragment is arguably such a defect, but an upstream no API routes to is a real unknown about the source, and both end in the same place: the plan cannot produce the object and the operator has real options. Blocking, because a provider registered with a credential nobody established is the failure mode this vocabulary exists to surface before the first write. plan.UNREAD_PROVIDER_AUTH."
     },
     {
       "selects": "apim.apis[].operations[]",

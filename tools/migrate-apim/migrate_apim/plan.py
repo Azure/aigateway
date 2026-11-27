@@ -79,6 +79,23 @@ AGENT_RULE = selector(
 # below raises a gap for exactly these, and `_custom_auth` emits nothing for
 # them: one claim, stated once, so the object and the verdict cannot disagree.
 INEXPRESSIBLE_PROVIDER_AUTH = ("basic", "clientCertificate", "credentialManager")
+# `Authorization: <scheme> <parameter>`, from a backend's
+# `credentials.authorization`. Apart from the three above because the target
+# *does* have a shape for it -- ApiKey takes any header name, and `Authorization`
+# is a header -- and the obstacle is the value rather than the field: what the
+# gateway must send is the scheme joined to the secret, and `apply` substitutes a
+# `$secretRef` verbatim, so nothing can prepend `Bearer ` without reading the
+# secret. Registering it as read gave the key the hardcoded `api-key` name and
+# dropped the scheme, which is wrong twice over.
+UNCOMPOSABLE_PROVIDER_AUTH = ("authorizationHeader",)
+# Nobody established what the upstream credential is. Not a statement about the
+# target at all: the source is what could not be read, so the question is what
+# to register rather than whether it maps.
+UNREAD_PROVIDER_AUTH = ("undetermined",)
+# Every mode `_custom_auth` refuses to invent an object for.
+UNREGISTRABLE_PROVIDER_AUTH = (
+    INEXPRESSIBLE_PROVIDER_AUTH + UNCOMPOSABLE_PROVIDER_AUTH + UNREAD_PROVIDER_AUTH
+)
 
 PROVIDER_RULE = selector(
     "assets", selects="assets.modelProviders[]", site="plan._provider",
@@ -90,9 +107,10 @@ PROVIDER_RULE = selector(
 # nesting, `where` names the field, so `compile` can check the path.
 PROVIDER_AUTH_RULE = selector(
     "assets", selects="assets.modelProviders[].auth", keys=("mode",),
-    values={"mode": INEXPRESSIBLE_PROVIDER_AUTH},
+    values={"mode": UNREGISTRABLE_PROVIDER_AUTH},
     site="plan._provider auth",
-    reads=("verdict", "answer", "capabilityId", "proposal", "rationale", "options"),
+    reads=("verdict", "answer", "capabilityId", "proposal", "rationale", "options",
+           "blocking"),
 )
 SURFACE_BY_STATUS = selector(
     "assets", selects="apim.apis[].operations[]", keys=("group",),
@@ -587,6 +605,21 @@ class PlanBuilder:
             self.caps.asset_rules(), mode=auth.get("mode")
         ) or {}
         label = provider.get("providerLabel") or provider.get("providerKind")
+        # Named after this provider, so the sentence is built here. The rule
+        # states the mapping as a note rather than a rationale: a rationale it
+        # carried would never reach an item, which is the kind of dead field
+        # `reads` exists to expose. The gap sentence is the rule's, because what
+        # is lost is the same for every provider it covers.
+        if auth_rule.get("rationale"):
+            rationale = f"{label} provider: {auth_rule['rationale']}"
+            # Which credential could not be read is the collector's to say and
+            # differs per provider -- an unresolved fragment names itself, an
+            # unrouted backend does not. The rule's sentence is the one that
+            # holds without it, so the two are stated in that order.
+            if auth.get("note"):
+                rationale = f"{rationale} {auth['note']}"
+        else:
+            rationale = f"{label} provider registers directly."
         self._add(
             item_id=ids.item("modelProvider", provider["id"]),
             source={"assetId": provider["id"], "assetKind": "modelProvider", "aspect": "registration"},
@@ -595,17 +628,13 @@ class PlanBuilder:
             capability_id=auth_rule.get("capabilityId") or rule.get("capabilityId", "provider.create"),
             proposal=auth_rule.get("proposal"),
             options=_options_of(auth_rule) if auth_rule else [],
-            # Named after this provider, so the sentence is built here. The rule
-            # states the mapping as a note rather than a rationale: a rationale
-            # it carried would never reach an item, which is the kind of dead
-            # field `reads` exists to expose. The gap sentence is the rule's,
-            # because what is lost is the same for every provider it covers.
-            rationale=(
-                f"{label} provider: {auth_rule['rationale']}" if auth_rule.get("rationale")
-                else f"{label} provider registers directly."
-            ),
+            rationale=rationale,
             evidence={"endpoint": provider.get("endpoint"), "authMode": auth.get("mode")},
             target={"capability": "provider.create", "objects": [objects]},
+            # An unknown credential blocks: registering a provider nobody
+            # established a credential for is the failure this review exists
+            # to stop, and it cannot be settled by reading the plan.
+            blocking=auth_rule.get("blocking", False),
         )
 
     def _model(self, model: dict[str, Any]) -> None:
@@ -2715,8 +2744,14 @@ def _custom_auth(auth: dict[str, Any]) -> dict[str, Any] | None:
     name nothing read: an mTLS backend registered as an api-key provider with
     no api key, under verdict `native`. An object the plan omits is incomplete
     and reads as incomplete; one it invents reads as configuration.
+
+    The same holds for a credential this tool could not compose or could not
+    read. An `Authorization: Bearer ...` header registered as `api-key` without
+    its scheme, and an upstream nobody established a credential for registered
+    as an api-key provider with no key, are both inventions -- and the second is
+    the worse of the two, because there is no evidence behind it at all.
     """
-    if auth.get("mode") in INEXPRESSIBLE_PROVIDER_AUTH:
+    if auth.get("mode") in UNREGISTRABLE_PROVIDER_AUTH:
         return None
     refs = auth.get("secretRefs") or []
     header = ((auth.get("parameters") or {}).get("header") or ["api-key"])[0]

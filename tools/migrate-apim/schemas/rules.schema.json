@@ -157,7 +157,7 @@
             "anyPublishable": {"$ref": "#/$defs/predicate"},
             "mode": {
               "$ref": "#/$defs/predicate",
-              "description": "The upstream credential a model provider is reached with, from `assets.modelProviders[].auth.mode`. The one-of form names the modes the target has no field for, which is what separates registering a provider from losing it."
+              "description": "The upstream credential a model provider is reached with, from `assets.modelProviders[].auth.mode`. The one-of form names the modes a provider cannot be registered as read: those the target has no field for, the `Authorization` header whose scheme cannot be joined to a secret this tool never reads, and the one nobody established at all. Together they are what separates registering a provider from losing it or guessing at it."
             }
           }
         },

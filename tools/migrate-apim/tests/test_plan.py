@@ -2748,6 +2748,121 @@ class TestACredentialTheTargetCannotExpress:
         assert item["target"]["objects"][0]["custom"]["authentication"]["kind"] == "ApiKey"
 
 
+class TestAnAuthorizationHeaderCannotBeComposed:
+    """`Authorization: <scheme> <parameter>` has a target shape and no value.
+
+    ApiKey takes any header name, so the field is there -- but what the gateway
+    must send is the scheme joined to the secret, and `apply` substitutes a
+    `$secretRef` verbatim. Nothing can prepend `Bearer ` without reading the
+    secret, which this tool never does. Registered as read, the key took the
+    hardcoded `api-key` name and dropped the scheme: wrong header, wrong value.
+    """
+
+    def _with_authorization(self, inventory):
+        changed = copy.deepcopy(inventory)
+        provider = next(
+            p for p in changed["assets"]["modelProviders"]
+            if p["targetProviderKind"] == "Custom"
+        )
+        provider["auth"] = {
+            "mode": "authorizationHeader", "modes": ["authorizationHeader"],
+            "scheme": "Bearer", "secretRefs": ["secret:namedValue/token"], "evidence": [],
+        }
+        return changed, provider["id"]
+
+    def test_it_is_a_gap_rather_than_a_misnamed_api_key(self, inventory, capabilities):
+        changed, provider_id = self._with_authorization(inventory)
+        item = item_for(build_plan(changed, capabilities), provider_id)
+        assert item["verdict"] == "gap"
+        assert "authorization" in item["rationale"].lower()
+
+    def test_it_proposes_compensating_because_a_correct_shape_exists(
+        self, inventory, capabilities
+    ):
+        """Unlike a credential with no field at all, this one has a workaround.
+
+        Storing the whole header value as one secret registers correctly, so
+        `compensate` is the proposal here where `retain-in-apim` is the
+        proposal for mTLS. The difference is the point of the separate rule.
+        """
+        changed, provider_id = self._with_authorization(inventory)
+        item = item_for(build_plan(changed, capabilities), provider_id)
+        assert item["proposal"] == "compensate"
+
+    def test_the_secret_is_not_published_under_the_wrong_header(
+        self, inventory, capabilities
+    ):
+        """The old object named `api-key` and carried the scheme-less secret."""
+        changed, provider_id = self._with_authorization(inventory)
+        item = item_for(build_plan(changed, capabilities), provider_id)
+        assert "authentication" not in item["target"]["objects"][0]["custom"]
+
+
+class TestACredentialNobodyRead:
+    """`undetermined` is a question about the source, not about the target.
+
+    The target may be perfectly able to reach this upstream; what is missing is
+    any statement of how. Registering it anyway published an api-key provider
+    with a null key under verdict `native` -- an assertion with no evidence
+    behind it at all, which is a worse claim than one the target cannot keep.
+    """
+
+    def _undetermined(self, inventory, note):
+        changed = copy.deepcopy(inventory)
+        provider = next(
+            p for p in changed["assets"]["modelProviders"]
+            if p["targetProviderKind"] == "Custom"
+        )
+        provider["auth"] = {
+            "mode": "undetermined", "modes": [], "secretRefs": [], "evidence": [],
+            "note": note,
+        }
+        return changed, provider["id"]
+
+    def test_it_blocks_rather_than_registering_a_guess(self, inventory, capabilities):
+        changed, provider_id = self._undetermined(inventory, "fragment x would not resolve.")
+        item = item_for(build_plan(changed, capabilities), provider_id)
+        assert item["verdict"] == "partial"
+        assert item["blocking"] is True
+        assert item["proposal"] == "retain-in-apim"
+        assert "authentication" not in item["target"]["objects"][0]["custom"]
+
+    def test_it_is_not_folded_into_the_inexpressible_gap(self, inventory, capabilities):
+        """Two different questions: "no target for it" and "nobody read it".
+
+        A credential with no field is the operator's to accept or retain; one
+        nobody read cannot be answered at all until it is read, which is why
+        this one blocks and offers no `compensate`.
+        """
+        changed, provider_id = self._undetermined(inventory, "nothing was read.")
+        item = item_for(build_plan(changed, capabilities), provider_id)
+        assert item["verdict"] != "gap"
+        assert "compensate" not in {option["value"] for option in item["options"]}
+
+    @pytest.mark.parametrize("note", [
+        "No credential found, but policy fragments ghost could not be resolved, so one may be set there.",
+        "No backend credentials and no policy was read for this asset, so how it authenticates upstream could not be determined.",
+    ])
+    def test_the_collector_says_which_case_it_is(self, inventory, capabilities, note):
+        """One rule, two causes. The rule's sentence holds for both; which one
+        applies is the collector's to say, and names the fragment when it can.
+        """
+        changed, provider_id = self._undetermined(inventory, note)
+        item = item_for(build_plan(changed, capabilities), provider_id)
+        assert item["rationale"].endswith(note)
+
+    def test_a_provider_whose_credential_was_read_is_untouched(
+        self, inventory, capabilities
+    ):
+        """The fixture reads every credential, so nothing here blocks today."""
+        plan = build_plan(copy.deepcopy(inventory), capabilities)
+        blocked = [
+            item for item in plan["items"]
+            if item["source"]["assetKind"] == "modelProvider" and item.get("blocking")
+        ]
+        assert blocked == []
+
+
 class TestHandledIsAPromiseThatGetsChecked:
     """`handled` drops the element from the plan, so it had better be true.
 
