@@ -1415,10 +1415,15 @@ class TestABackendChosenAtRuntimeIsStillBehindItsApi:
         asset = next(
             a for a in document["assets"]["models"] if a["source"]["name"] == "aoai-api"
         )
-        # The precondition: no target resolved, the candidates named instead.
+        # The precondition: no *single* backend resolved, so the candidates are
+        # named and the targets are derived from them. `mode` is what keeps the
+        # distinction from a declared pool; this used to assert no targets at
+        # all, which is what left the catalogue unresolvable.
         assert asset["routing"]["mode"] == "conditional"
-        assert asset["routing"]["targets"] == []
         assert asset["routing"]["candidates"] == ["aoai-east", "aoai-west"]
+        assert [target["backendId"] for target in asset["routing"]["targets"]] == [
+            "backend:aoai-east", "backend:aoai-west"
+        ]
 
         for name in ("aoai-east", "aoai-west"):
             provider = next(
@@ -1533,3 +1538,81 @@ class TestABackendChosenAtRuntimeIsStillBehindItsApi:
             None, "11111111-1111-1111-1111-111111111111"
         ]
         assert "2 managed identities apply" in auth["identityNote"]
+
+    def test_the_model_catalogue_resolves_from_the_backends_the_policy_names(self):
+        """The models are readable, so the operator must not be asked for them.
+
+        Model resolution walks `targets`, so an empty list meant no Foundry
+        account was ever looked up: the catalogue came back `unresolved` with
+        "Provider could not be inferred from the backend URL", and the plan
+        raised a blocking item asking the operator to hand-list models that ARM
+        had already resolved for the very same backends in the pool case.
+        """
+        document = self._collect(self.CONDITIONAL, strip_credentials=False)
+        asset = next(
+            a for a in document["assets"]["models"] if a["source"]["name"] == "aoai-api"
+        )
+        models = asset["models"]
+        assert models["status"] == "resolved"
+        assert models["discoverySource"] == "armDeployments"
+        assert models["notes"] == []
+        # Every member's catalogue, filed under the member that serves it.
+        assert {r["backendId"] for r in models["resolved"]} == {
+            "backend:aoai-east", "backend:aoai-west"
+        }
+        # And the provider is identified rather than "unknown".
+        assert asset["provider"]["targetProviderKind"] == "Foundry"
+
+    def test_a_runtime_choice_is_not_reported_as_a_declared_pool(self):
+        """Deriving targets must not invent what APIM did not declare.
+
+        A pool states a priority and a weight per member; a `choose` states a
+        condition. Carrying the members across without carrying shares they
+        never had is the point -- what the condition meant is the separate
+        decision the `set-backend-service` rule raises.
+        """
+        document = self._collect(self.CONDITIONAL, strip_credentials=False)
+        routing = next(
+            a for a in document["assets"]["models"] if a["source"]["name"] == "aoai-api"
+        )["routing"]
+        assert routing["mode"] == "conditional"
+        assert routing["sessionAffinity"] is None
+        # Asserted over a non-empty list on purpose: "no target carries a
+        # weight" is vacuously true of no targets, which is the shape this
+        # exists to tell apart from a pool.
+        assert len(routing["targets"]) == 2
+        assert [t["priority"] for t in routing["targets"]] == [None, None]
+        assert [t["weight"] for t in routing["targets"]] == [None, None]
+
+    def test_the_compensate_proposal_has_an_alias_to_compensate_in(self):
+        """The plan must not propose an answer it builds nothing to carry.
+
+        The `set-backend-service` decision proposes `compensate`: say what the
+        condition was for in the priority and weight of the alias backend
+        models. With no target resolved there was no alias and no members, so
+        the proposed answer could not be applied to anything.
+        """
+        from migrate_apim.capability import CapabilityMap
+        from migrate_apim.plan import build_plan
+
+        document = self._collect(self.CONDITIONAL, strip_credentials=False)
+        plan = build_plan(document, CapabilityMap.load())
+
+        routing_items = [
+            item for item in plan["items"]
+            if (item.get("evidence") or {}).get("element") == "set-backend-service"
+        ]
+        assert [item["proposal"] for item in routing_items] == ["compensate"]
+
+        aliases = [
+            object_
+            for item in plan["items"]
+            if (item.get("target") or {}).get("capability") == "alias.create"
+            for object_ in (item.get("target") or {}).get("objects") or []
+        ]
+        assert aliases, "compensate names alias priority and weight; there was no alias"
+        members = {
+            backend["providerName"]
+            for alias in aliases for backend in alias["backendModels"]
+        }
+        assert {"aoai-east", "aoai-west"} <= members

@@ -828,7 +828,21 @@ class Collector:
             backend_record, routing_candidates = _resolve_backend(
                 props, backends_by_name, backends_by_id, workspace, api_scoped.elements
             )
-            backend_urls = _backend_urls(backend_record, backends_by_id)
+            # The records behind the names `_resolve_backend` reported instead of
+            # a route. They are what the API reaches, so everything that reads a
+            # backend -- the provider classification, the model catalogue, the
+            # alias members -- has to see them, or a conditionally routed API is
+            # analysed as one with no backend at all.
+            candidate_records = [
+                record for record in (
+                    backends_by_name.get(candidate)
+                    or backends_by_id.get(ids.backend(candidate, workspace))
+                    for candidate in routing_candidates
+                ) if record
+            ]
+            backend_urls = _backend_urls(
+                backend_record, backends_by_id, candidates=candidate_records
+            )
 
             api_type = (props.get("type") or "http").lower()
             operations: list[dict[str, Any]] = []
@@ -886,7 +900,7 @@ class Collector:
                 assets["models"].append(
                     self._model_asset(
                         common, raw, operations, backend_record, backends_by_id, classification,
-                        effective, routing_candidates,
+                        effective, routing_candidates, candidate_records,
                     )
                 )
             else:
@@ -1295,9 +1309,13 @@ class Collector:
         classification: detect.Classification,
         effective: policy_mod.Resolution,
         routing_candidates: list[str] | None = None,
+        candidate_records: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         props = raw.get("properties") or {}
-        targets = _routing_targets(backend_record, backends_by_id, props.get("serviceUrl"))
+        targets = _routing_targets(
+            backend_record, backends_by_id, props.get("serviceUrl"),
+            candidates=candidate_records,
+        )
         provider_rule = classification.provider
         endpoint = targets[0]["url"] if targets else props.get("serviceUrl")
 
@@ -2115,9 +2133,17 @@ def _raw_backend(record: dict[str, Any] | None) -> dict[str, Any] | None:
     return {"properties": {"url": record.get("url"), "resourceId": record.get("resourceIdRef")}}
 
 
-def _backend_urls(record: dict[str, Any] | None, by_id: dict[str, dict[str, Any]]) -> list[str]:
+def _backend_urls(
+    record: dict[str, Any] | None,
+    by_id: dict[str, dict[str, Any]],
+    candidates: list[dict[str, Any]] | None = None,
+) -> list[str]:
     if not record:
-        return []
+        # What the API reaches when it picks at runtime. `classify_api` reads
+        # these to recognise a model provider by host, so without them a
+        # conditionally routed API was classified with no backend evidence and
+        # its provider came back "unknown".
+        return [member["url"] for member in (candidates or []) if member.get("url")]
     urls = [record.get("url")] if record.get("url") else []
     for item in ((record.get("pool") or {}).get("services") or []):
         member = by_id.get(item["backendId"])
@@ -2159,10 +2185,43 @@ def _api_backend_ids(asset: dict[str, Any]) -> set[str]:
     return reachable
 
 
+def _member_target(record: dict[str, Any]) -> dict[str, Any]:
+    """One backend as a routing target, however the API arrived at it.
+
+    Priority and weight are a pool's declaration, so they are absent here: the
+    API that names this backend directly reaches only it, and the one that
+    picks between candidates declares no share either.
+    """
+    return {
+        "backendId": record.get("id"),
+        "url": record.get("url"),
+        "resourceIdRef": record.get("resourceIdRef"),
+        "priority": None,
+        "weight": None,
+        "circuitBreaker": record.get("circuitBreaker"),
+        "secretRefs": record.get("secretRefs") or [],
+        "provider": record.get("provider"),
+        "languageModel": record.get("languageModel"),
+    }
+
+
 def _routing_targets(
-    record: dict[str, Any] | None, by_id: dict[str, dict[str, Any]], service_url: str | None
+    record: dict[str, Any] | None,
+    by_id: dict[str, dict[str, Any]],
+    service_url: str | None,
+    candidates: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     if record is None:
+        # A `set-backend-service` count that is not exactly one resolves to no
+        # single backend, but the API still reaches every candidate. Reporting
+        # no target at all made the model catalogue unresolvable and left the
+        # alias with no members -- so the plan proposed carrying the routing
+        # condition into alias priority and weight while building no alias to
+        # carry it. They are targets without a priority or a weight because a
+        # `choose` declares neither; what the condition meant is the separate
+        # decision the `set-backend-service` rule already raises.
+        if candidates:
+            return [_member_target(member) for member in candidates]
         return [{"backendId": None, "url": service_url, "priority": None, "weight": None}] if service_url else []
     pool = record.get("pool") or {}
     if pool.get("services"):
@@ -2183,19 +2242,7 @@ def _routing_targets(
                 }
             )
         return targets
-    return [
-        {
-            "backendId": record.get("id"),
-            "url": record.get("url"),
-            "resourceIdRef": record.get("resourceIdRef"),
-            "priority": None,
-            "weight": None,
-            "circuitBreaker": record.get("circuitBreaker"),
-            "secretRefs": record.get("secretRefs") or [],
-            "provider": record.get("provider"),
-            "languageModel": record.get("languageModel"),
-        }
-    ]
+    return [_member_target(record)]
 
 
 # A backend can carry several credentials at once. The reported mode is the one
