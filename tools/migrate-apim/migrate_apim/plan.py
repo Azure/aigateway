@@ -73,9 +73,26 @@ AGENT_RULE = selector(
 # would have excused the ones it does not: `options` on a rule whose site writes
 # its own, `rationale` on one whose sentence is always composed from the asset.
 # Both were there, and `rule-field-unread` could not see either.
+# Upstream credentials a Custom provider has no field for. The authentication
+# enum is ApiKey only in this baseline -- a parameter on the request -- so a
+# credential that is anything else has nowhere to go. The provider-auth rule
+# below raises a gap for exactly these, and `_custom_auth` emits nothing for
+# them: one claim, stated once, so the object and the verdict cannot disagree.
+INEXPRESSIBLE_PROVIDER_AUTH = ("basic", "clientCertificate", "credentialManager")
+
 PROVIDER_RULE = selector(
     "assets", selects="assets.modelProviders[]", site="plan._provider",
     reads=("verdict", "answer", "capabilityId"),
+)
+# The provider's own credential, which decides whether registering it is a
+# mapping or a loss. Selected apart from the provider rule above because the
+# subject is the auth record, and `mode` is its field: `selects` carries the
+# nesting, `where` names the field, so `compile` can check the path.
+PROVIDER_AUTH_RULE = selector(
+    "assets", selects="assets.modelProviders[].auth", keys=("mode",),
+    values={"mode": INEXPRESSIBLE_PROVIDER_AUTH},
+    site="plan._provider auth",
+    reads=("verdict", "answer", "capabilityId", "proposal", "rationale", "options"),
 )
 SURFACE_BY_STATUS = selector(
     "assets", selects="apim.apis[].operations[]", keys=("group",),
@@ -555,23 +572,38 @@ class PlanBuilder:
                 },
             }
         else:
-            objects["custom"] = {
-                "endpoint": provider.get("endpoint"),
-                "authentication": _custom_auth(auth),
-            }
+            custom: dict[str, Any] = {"endpoint": provider.get("endpoint")}
+            authentication = _custom_auth(auth)
+            # Omitted rather than nulled: the registration is genuinely
+            # incomplete, and the auth rule below is what says so.
+            if authentication is not None:
+                custom["authentication"] = authentication
+            objects["custom"] = custom
         rule = PROVIDER_RULE.first(self.caps.asset_rules()) or {}
+        # The credential outranks the registration. A provider whose upstream
+        # is reached a way `model-provider create` cannot express does not
+        # register directly, whatever the shape of the rest of it.
+        auth_rule = PROVIDER_AUTH_RULE.first(
+            self.caps.asset_rules(), mode=auth.get("mode")
+        ) or {}
+        label = provider.get("providerLabel") or provider.get("providerKind")
         self._add(
             item_id=ids.item("modelProvider", provider["id"]),
             source={"assetId": provider["id"], "assetKind": "modelProvider", "aspect": "registration"},
-            kind=rule.get("answer"),
-            verdict=rule.get("verdict", "native"),
-            capability_id=rule.get("capabilityId", "provider.create"),
+            kind=auth_rule.get("answer") or rule.get("answer"),
+            verdict=auth_rule.get("verdict") or rule.get("verdict", "native"),
+            capability_id=auth_rule.get("capabilityId") or rule.get("capabilityId", "provider.create"),
+            proposal=auth_rule.get("proposal"),
+            options=_options_of(auth_rule) if auth_rule else [],
             # Named after this provider, so the sentence is built here. The rule
             # states the mapping as a note rather than a rationale: a rationale
             # it carried would never reach an item, which is the kind of dead
-            # field `reads` exists to expose.
-            rationale=(f"{provider.get('providerLabel') or provider.get('providerKind')} provider "
-                       "registers directly."),
+            # field `reads` exists to expose. The gap sentence is the rule's,
+            # because what is lost is the same for every provider it covers.
+            rationale=(
+                f"{label} provider: {auth_rule['rationale']}" if auth_rule.get("rationale")
+                else f"{label} provider registers directly."
+            ),
             evidence={"endpoint": provider.get("endpoint"), "authMode": auth.get("mode")},
             target={"capability": "provider.create", "objects": [objects]},
         )
@@ -1236,6 +1268,7 @@ class PlanBuilder:
             # strength of an alias pool that holds the backends and not the
             # logic that picked among them, and left no trace in the plan.
             rule = _apply_partial_when(rule, element, under_conditional=conditional)
+            rule = self._apply_uncarried(rule, hits)
             if rule["verdict"] in {"notApplicable", "handled"}:
                 _note(dispositions, element_id, rule["verdict"])
                 continue
@@ -1503,6 +1536,60 @@ class PlanBuilder:
                 for document in (self.inventory.get("apim") or {}).get("policies") or []
             }
         return self._policy_index.get(policy_id) or {}
+
+    def _apply_uncarried(
+        self, rule: dict[str, Any], hits: list[tuple[dict[str, Any], Any]]
+    ) -> dict[str, Any]:
+        """Demote a `handled` rule whose carrier was never raised.
+
+        `handled` excludes an element from the plan on the grounds that another
+        item carries it. That is a claim about this migration, not about the
+        element, and it is false wherever the carrying item does not exist: an
+        MCP server reaches its upstream with a client certificate and has no
+        model provider at all. Swallowing it there deletes the only mention of
+        a credential that does not travel -- which is exactly how
+        `authentication-managed-identity` came to be marked carried by a
+        provider item that had never read a policy.
+
+        So the promise is checked against the items already added. `_policies`
+        runs after every asset item, so "was it raised" is answerable here and
+        is not a guess.
+
+        Demotion covers the whole element, including assets that *are* carried.
+        One element is one decision, and the members name which assets it
+        reaches; asking about one asset too many is the recoverable direction.
+        """
+        if rule.get("verdict") != "handled" or not rule.get("carriedBy"):
+            return rule
+        if rule["carriedBy"] != "modelProvider":
+            # Nothing else declares a carrier yet. An unknown one is not
+            # evidence that the item exists, so it is not treated as proof.
+            return {**rule, **(rule.get("uncarried") or {})}
+        carried = self._provider_carried_assets()
+        if {asset["id"] for asset, _ in hits} <= carried:
+            return rule
+        return {**rule, **(rule.get("uncarried") or {})}
+
+    def _provider_carried_assets(self) -> set[str]:
+        """Assets whose upstream credential a model provider item speaks for.
+
+        Speaking for it means raising the gap, not merely existing. A backend
+        can carry a managed identity *and* a client certificate, and the
+        identity wins `_AUTH_PRECEDENCE`, so the provider registers with the
+        identity and says nothing about the certificate. Counting that provider
+        as the carrier swallowed the certificate with nothing left asking about
+        it -- the same silent drop one layer in.
+        """
+        raised = {
+            item["source"]["assetId"] for item in self.items
+            if (item.get("source") or {}).get("assetKind") == "modelProvider"
+            and item.get("verdict") == "gap"
+        }
+        assets = (self.inventory.get("assets") or {}).get("models") or []
+        return {
+            asset["id"] for asset in assets
+            if any(provider_id in raised for provider_id in asset.get("providerIds") or [])
+        }
 
     def _count_policy_coverage(
         self, dispositions: dict[int, str], reached: set[int]
@@ -2621,8 +2708,16 @@ def _slug(value: str) -> str:
     return value.split(":", 1)[-1].replace("/", "-")
 
 
-def _custom_auth(auth: dict[str, Any]) -> dict[str, Any]:
-    """Custom provider authentication. The enum is ApiKey only in this baseline."""
+def _custom_auth(auth: dict[str, Any]) -> dict[str, Any] | None:
+    """Custom provider authentication, or None where the target has no field.
+
+    Returning an ApiKey for every mode published a null key under a header
+    name nothing read: an mTLS backend registered as an api-key provider with
+    no api key, under verdict `native`. An object the plan omits is incomplete
+    and reads as incomplete; one it invents reads as configuration.
+    """
+    if auth.get("mode") in INEXPRESSIBLE_PROVIDER_AUTH:
+        return None
     refs = auth.get("secretRefs") or []
     header = ((auth.get("parameters") or {}).get("header") or ["api-key"])[0]
     return {

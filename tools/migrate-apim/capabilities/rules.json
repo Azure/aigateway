@@ -81,6 +81,22 @@
       "note": "Not an APIM path, and deliberately. A model provider is an upstream model endpoint, which APIM reaches either through a backend or through an API's serviceUrl -- so there is no single APIM object that is all of them. Selecting apim.backends[] would quietly drop every provider reached by a service URL, which is the kind of false tidiness this vocabulary exists to avoid."
     },
     {
+      "selects": "assets.modelProviders[].auth",
+      "where": {"mode": ["basic", "clientCertificate", "credentialManager"]},
+      "verdict": "gap",
+      "answer": "choose",
+      "capabilityId": "provider.create",
+      "proposal": "retain-in-apim",
+      "rationale": "the upstream is reached with a credential `model-provider create` has no field for. The authentication enum is ApiKey -- a parameter on the request -- so a basic credential, a client certificate and an APIM credential-manager connection each have no target. Registering the provider anyway publishes an endpoint the gateway cannot authenticate to.",
+      "options": [
+        {"value": "retain-in-apim", "consequence": "Keep this upstream's callers on APIM, which still reaches it as it does today."},
+        {"value": "compensate", "consequence": "Re-credential the upstream with an API key, or a managed identity where it supports one, and register it with that instead. A basic credential can be carried as an `Authorization: Basic ...` header, which is an ApiKey to the target -- but the value has to be composed by hand, because this tool never reads a secret."},
+        {"value": "accept", "consequence": "Register the provider with no authentication. Every call through it fails at the upstream."},
+        {"value": "block", "consequence": "Stop the migration until the upstream can be re-credentialed."}
+      ],
+      "note": "The decision the `backendAuthentication` family rule used to raise on the policy element, moved to the object that registers the upstream -- which is where accepting or retaining it has its effect. `mode` is a field of the auth record, so the nesting is in `selects` and the predicate names a real field. The modes listed here are plan.INEXPRESSIBLE_PROVIDER_AUTH, which is also what `_custom_auth` refuses to invent an object for."
+    },
+    {
       "selects": "apim.apis[].operations[]",
       "where": {"group": "wildcard"},
       "verdict": "partial",
@@ -416,10 +432,18 @@
     {
       "selects": "apim.policies[].elements[]",
       "where": {"family": "backendAuthentication"},
-      "verdict": "gap",
-      "answer": "choose",
-      "rationale": "A model provider authenticates with a managed identity or an API key. `model-provider create` and `model-provider update` expose no basic credential, no client certificate, and nothing equivalent to an APIM credential manager, so a backend secured any other way has no target. `authentication-managed-identity` is the one member of this family that does map, and it has a rule of its own.",
-      "proposal": "retain-in-apim"
+      "verdict": "handled",
+      "capabilityId": "provider.create",
+      "target": "provider.authentication",
+      "carriedBy": "modelProvider",
+      "rationale": "The credential this sets becomes the model provider's authentication, so what it costs is decided on the model provider item rather than raised again here. `authentication-managed-identity` is the member of this family that maps, and it has a rule of its own.",
+      "uncarried": {
+        "verdict": "gap",
+        "answer": "choose",
+        "proposal": "retain-in-apim",
+        "rationale": "A model provider authenticates with a managed identity or an API key. `model-provider create` and `model-provider update` expose no basic credential, no client certificate, and nothing equivalent to an APIM credential manager, so a backend secured any other way has no target. `authentication-managed-identity` is the one member of this family that does map, and it has a rule of its own."
+      },
+      "note": "`handled` is a promise that another item carries this, and it only holds where the asset has a model provider. An MCP server authenticating its upstream with a client certificate has none -- `mcp create` registers a tool server, not a credentialed model endpoint -- so for those the planner falls back to `uncarried` and raises the decision here. Without that check the flip to `handled` would delete the element from the plan, which is the defect the managed-identity rule had."
     },
     {
       "selects": "apim.policies[].elements[]",

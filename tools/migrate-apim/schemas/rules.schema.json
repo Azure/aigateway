@@ -105,6 +105,21 @@
       "if": {"properties": {"verdict": {"const": "partial"}}, "required": ["verdict"]},
       "then": {"required": ["options"]}
     },
+    "uncarriedOverlay": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "description": "The rule as it reads where nothing carried the element after all. Unlike `partial` this does restate the verdict, because what a `handled` rule falls back to is not fixed: the element is whatever it would have been had it never been claimed.",
+      "properties": {
+        "verdict": {"$ref": "#/$defs/verdict"},
+        "answer": {"$ref": "#/$defs/answer"},
+        "capabilityId": {"type": "string"},
+        "options": {"$ref": "#/$defs/options"},
+        "proposal": {"type": "string"},
+        "rationale": {"type": "string"},
+        "target": {"type": "string"}
+      }
+    },
     "assetRule": {
       "type": "object",
       "required": ["selects", "verdict"],
@@ -118,6 +133,7 @@
             "apim.apis[].operations[]",
             "apim.backends[].pool.sessionAffinity",
             "assets.modelProviders[]",
+            "assets.modelProviders[].auth",
             "assets.models[].models.resolved[]"
           ]
         },
@@ -138,7 +154,11 @@
             "toolsFromGateway": {"$ref": "#/$defs/predicate"},
             "catalogueFetched": {"$ref": "#/$defs/predicate"},
             "inferenceRoutes": {"$ref": "#/$defs/predicate"},
-            "anyPublishable": {"$ref": "#/$defs/predicate"}
+            "anyPublishable": {"$ref": "#/$defs/predicate"},
+            "mode": {
+              "$ref": "#/$defs/predicate",
+              "description": "The upstream credential a model provider is reached with, from `assets.modelProviders[].auth.mode`. The one-of form names the modes the target has no field for, which is what separates registering a provider from losing it."
+            }
           }
         },
         "blocking": {"type": "boolean"},
@@ -209,7 +229,6 @@
       "required": ["selects", "verdict"],
       "additionalProperties": false,
       "allOf": [{"$ref": "#/$defs/partialNeedsOptions"}],
-      "dependentRequired": {"partial": ["partialWhen"]},
       "properties": {
         "selects": {"const": "apim.policies[].elements[]"},
         "fallback": {
@@ -248,7 +267,21 @@
         "target": {"type": "string"},
         "partial": {"$ref": "#/$defs/partialOverlay"},
         "partialWhen": {"$ref": "#/$defs/partialWhen"},
+        "carriedBy": {
+          "type": "string",
+          "enum": ["modelProvider"],
+          "description": "The asset kind whose item carries this element, for a `handled` verdict. `handled` excludes the element from the plan, so it is a claim that something else states the same fact -- and the claim is false wherever that item was not raised. `plan._policies` checks it against the items already added and falls back to `uncarried` when it does not hold. An enum because a carrier the planner cannot verify is not evidence of one."
+        },
+        "uncarried": {
+          "$ref": "#/$defs/uncarriedOverlay",
+          "description": "The rule as it reads where `carriedBy` names no item that was raised. Overlaid on the rule itself, the way `partial` is."
+        },
         "batchOn": {"type": "array", "items": {"type": "string"}}
+      },
+      "dependentRequired": {
+        "partial": ["partialWhen"],
+        "carriedBy": ["uncarried"],
+        "uncarried": ["carriedBy"]
       }
     }
   }

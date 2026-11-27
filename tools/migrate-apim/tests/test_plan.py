@@ -2694,3 +2694,141 @@ class TestAnAliasNeedsAModelToResolveTo:
                 record["inferenceRoutes"] = []
         plan = build_plan(document, capabilities)
         assert self.alias_item(plan) is None, "nothing to alias is not an empty question"
+
+
+class TestACredentialTheTargetCannotExpress:
+    """A provider is only `native` if the gateway can be told how to reach it.
+
+    `_custom_auth` used to answer every mode with an ApiKey object, so a
+    backend reached over mTLS planned as an api-key provider with a null key,
+    under verdict `native` and the sentence "registers directly" -- while the
+    policy element that set the certificate separately raised a gap saying it
+    could not move. One plan, two answers.
+    """
+
+    def _with_mode(self, inventory, mode):
+        changed = copy.deepcopy(inventory)
+        provider = next(
+            p for p in changed["assets"]["modelProviders"]
+            if p["targetProviderKind"] == "Custom"
+        )
+        provider["auth"] = {"mode": mode, "modes": [mode], "secretRefs": [], "evidence": []}
+        return changed, provider["id"]
+
+    @pytest.mark.parametrize("mode", ["basic", "clientCertificate", "credentialManager"])
+    def test_an_inexpressible_credential_is_a_gap_not_a_registration(
+        self, inventory, capabilities, mode
+    ):
+        changed, provider_id = self._with_mode(inventory, mode)
+        item = item_for(build_plan(changed, capabilities), provider_id)
+        assert item["verdict"] == "gap"
+        assert item["proposal"] == "retain-in-apim"
+        assert "compensate" in {option["value"] for option in item["options"]}
+
+    @pytest.mark.parametrize("mode", ["basic", "clientCertificate", "credentialManager"])
+    def test_no_authentication_object_is_invented_for_it(
+        self, inventory, capabilities, mode
+    ):
+        """An absent object reads as incomplete; a null key reads as configured."""
+        changed, provider_id = self._with_mode(inventory, mode)
+        item = item_for(build_plan(changed, capabilities), provider_id)
+        custom = item["target"]["objects"][0]["custom"]
+        assert "authentication" not in custom
+        assert custom["endpoint"]
+
+    def test_an_api_key_still_registers_directly(self, inventory, capabilities):
+        """The gap is the three modes with no field, not every Custom provider."""
+        changed = copy.deepcopy(inventory)
+        provider = next(
+            p for p in changed["assets"]["modelProviders"]
+            if p["targetProviderKind"] == "Custom" and p["auth"]["mode"] == "apiKey"
+        )
+        item = item_for(build_plan(changed, capabilities), provider["id"])
+        assert item["verdict"] == "native"
+        assert item["target"]["objects"][0]["custom"]["authentication"]["kind"] == "ApiKey"
+
+
+class TestHandledIsAPromiseThatGetsChecked:
+    """`handled` drops the element from the plan, so it had better be true.
+
+    This is the shape of the managed-identity defect: the family rule said the
+    model provider item carried the credential, the provider never read a
+    policy, and the fact left no trace anywhere. Flipping the rest of
+    `backendAuthentication` to `handled` re-opens exactly that hole for any
+    asset with no model provider behind it -- an MCP server reaching its
+    upstream over mTLS has none, because `mcp create` registers a tool server
+    and not a credentialed model endpoint.
+    """
+
+    def _cert_on(self, inventory, policy_id):
+        changed = copy.deepcopy(inventory)
+        document = next(p for p in changed["apim"]["policies"] if p["id"] == policy_id)
+        element = copy.deepcopy(document["elements"][0])
+        element.update({
+            "name": "authentication-certificate", "family": "backendAuthentication",
+            "path": "inbound/authentication-certificate[1]", "section": "inbound",
+            "attributes": {"thumbprint": "A1B2C3"}, "expressionIds": [], "childNames": [],
+        })
+        document["elements"].append(element)
+        return changed
+
+    def _cert_item(self, document):
+        return next(
+            (i for i in document["items"]
+             if (i.get("evidence") or {}).get("element") == "authentication-certificate"),
+            None,
+        )
+
+    def test_an_mcp_server_keeps_the_decision_because_nothing_carries_it(
+        self, inventory, capabilities
+    ):
+        changed = self._cert_on(inventory, "policy:api/support-mcp")
+        item = self._cert_item(build_plan(changed, capabilities))
+        assert item is not None, "the element was swallowed by an item that was never raised"
+        assert item["verdict"] == "gap"
+        assert item["proposal"] == "retain-in-apim"
+
+    def _carried(self, inventory):
+        """A model API whose providers do raise the credential gap."""
+        changed = self._cert_on(inventory, "policy:api/aoai-api")
+        for provider in changed["assets"]["modelProviders"]:
+            if provider["id"] in {"modelProvider:aoai-east", "modelProvider:aoai-west"}:
+                provider["auth"] = {"mode": "clientCertificate", "modes": ["clientCertificate"],
+                                    "secretRefs": [], "evidence": ["policy:authentication-certificate"]}
+        return changed
+
+    def test_a_model_api_hands_it_to_the_provider_item(self, inventory, capabilities):
+        """Where a carrier does exist, the decision is asked once, on the provider."""
+        document = build_plan(self._carried(inventory), capabilities)
+        assert self._cert_item(document) is None
+        gaps = [
+            i for i in document["items"]
+            if i["source"]["assetKind"] == "modelProvider" and i["verdict"] == "gap"
+        ]
+        assert {i["evidence"]["authMode"] for i in gaps} == {"clientCertificate"}
+
+    def test_a_provider_that_registers_anyway_does_not_carry_it(
+        self, inventory, capabilities
+    ):
+        """Existing is not carrying.
+
+        A backend can hold a managed identity and a client certificate at
+        once. The identity wins `_AUTH_PRECEDENCE`, so the provider registers
+        with it and says nothing about the certificate -- which makes it the
+        wrong object to hand the certificate's decision to.
+        """
+        document = build_plan(self._cert_on(inventory, "policy:api/aoai-api"), capabilities)
+        providers = [i for i in document["items"] if i["source"]["assetKind"] == "modelProvider"]
+        assert {i["evidence"]["authMode"] for i in providers} >= {"managedIdentity"}
+        assert not [i for i in providers if i["verdict"] == "gap"]
+        item = self._cert_item(document)
+        assert item is not None, "swallowed by a provider that never mentions it"
+        assert item["verdict"] == "gap"
+
+    def test_the_element_is_still_counted_either_way(self, inventory, capabilities):
+        """Swallowed is not lost: `policyCoverage` is a sum over the inventory."""
+        carried = build_plan(self._carried(inventory), capabilities)
+        uncarried = build_plan(self._cert_on(inventory, "policy:api/support-mcp"), capabilities)
+        base = build_plan(copy.deepcopy(inventory), capabilities)
+        for document in (carried, uncarried):
+            assert document["policyCoverage"]["walked"] == base["policyCoverage"]["walked"] + 1

@@ -35,6 +35,11 @@ from .dispatch import selector
 _POLICY_FIELDS = (
     "verdict", "answer", "capabilityId", "target", "proposal", "rationale",
     "options", "partial", "partialWhen", "batchOn",
+    # A `handled` rule names what carries it, and what to say when nothing
+    # does. Read in `plan._policies`, which checks the promise rather than
+    # taking it: an element excluded on the strength of an item that was
+    # never raised leaves no trace at all.
+    "carriedBy", "uncarried",
 )
 POLICY_BY_ELEMENT = selector(
     "policies", selects="apim.policies[].elements[]",
