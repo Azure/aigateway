@@ -1616,3 +1616,89 @@ class TestABackendChosenAtRuntimeIsStillBehindItsApi:
             for alias in aliases for backend in alias["backendModels"]
         }
         assert {"aoai-east", "aoai-west"} <= members
+
+
+class TestAnMcpServerChosenAtRuntime:
+    """The same gap, one asset kind over.
+
+    A model API that picks its upstream in policy now reads its candidates as
+    targets. An MCP server did not: `_mcp_asset` called `_routing_targets`
+    without them, so a tool server behind a `choose` reported no upstream at
+    all -- and `mcp create` takes the absolute URL of the endpoint, so a server
+    with no upstream registers nothing.
+    """
+
+    CONDITIONAL = (
+        "<policies><inbound><base />"
+        "<choose>"
+        '<when condition="@(true)"><set-backend-service backend-id="support-backend" /></when>'
+        '<otherwise><set-backend-service backend-id="support-backend-eu" /></otherwise>'
+        "</choose>"
+        "</inbound><backend><base /></backend>"
+        "<outbound><base /></outbound><on-error><base /></on-error></policies>"
+    )
+
+    def _collect(self, policy):
+        """Collect with `support-mcp` routed by policy instead of `backendId`."""
+        import copy, fake_arm
+
+        apis_key, backends_key = f"{SERVICE}/apis", f"{SERVICE}/backends"
+        policy_key = f"{SERVICE}/apis/support-mcp"
+        originals = (
+            fake_arm.ROUTES[apis_key], fake_arm.ROUTES[backends_key],
+            fake_arm.POLICIES[policy_key],
+        )
+
+        apis = copy.deepcopy(originals[0])
+        for api in apis:
+            if api["name"] == "support-mcp":
+                api["properties"]["backendId"] = None
+        backends = copy.deepcopy(originals[1])
+        # A second upstream, so the choose has two arms to pick between. One
+        # arm is not a runtime choice -- `_resolve_backend` resolves it.
+        backends.append({
+            "id": f"{SERVICE}/backends/support-backend-eu", "name": "support-backend-eu",
+            "properties": {"type": "Single", "protocol": "http",
+                           "url": "https://support-eu.contoso.com:8000"},
+        })
+
+        fake_arm.ROUTES[apis_key] = apis
+        fake_arm.ROUTES[backends_key] = backends
+        fake_arm.POLICIES[policy_key] = policy
+        try:
+            return Collector(FakeArmClient(), SERVICE, options()).run()
+        finally:
+            (fake_arm.ROUTES[apis_key], fake_arm.ROUTES[backends_key],
+             fake_arm.POLICIES[policy_key]) = originals
+
+    def _server(self, document):
+        return next(
+            a for a in document["assets"]["mcpServers"]
+            if a["source"]["name"] == "support-mcp"
+        )
+
+    def test_every_backend_the_choose_can_pick_is_an_upstream(self):
+        server = self._server(self._collect(self.CONDITIONAL))
+        assert [u["backendId"] for u in server["upstream"]] == [
+            "backend:support-backend", "backend:support-backend-eu"
+        ]
+
+    def test_each_upstream_carries_what_registering_it_needs(self):
+        """A backendId alone registers nothing: `mcp create` takes a URL and a
+        transport, so a candidate has to arrive as complete as a target does."""
+        server = self._server(self._collect(self.CONDITIONAL))
+        # Asserted over a known count, not over whatever the list holds: every
+        # claim below is vacuously true of the empty list this used to be.
+        assert len(server["upstream"]) == 2
+        for upstream in server["upstream"]:
+            assert upstream["url"]
+            assert upstream["transport"] == "streamableHttp"
+
+    def test_a_declared_backend_is_unaffected(self):
+        """The fixture routes by `backendId`, which still resolves to one."""
+        import fake_arm
+
+        server = self._server(
+            Collector(FakeArmClient(), SERVICE, options()).run()
+        )
+        assert [u["backendId"] for u in server["upstream"]] == ["backend:support-backend"]

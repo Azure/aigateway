@@ -828,18 +828,9 @@ class Collector:
             backend_record, routing_candidates = _resolve_backend(
                 props, backends_by_name, backends_by_id, workspace, api_scoped.elements
             )
-            # The records behind the names `_resolve_backend` reported instead of
-            # a route. They are what the API reaches, so everything that reads a
-            # backend -- the provider classification, the model catalogue, the
-            # alias members -- has to see them, or a conditionally routed API is
-            # analysed as one with no backend at all.
-            candidate_records = [
-                record for record in (
-                    backends_by_name.get(candidate)
-                    or backends_by_id.get(ids.backend(candidate, workspace))
-                    for candidate in routing_candidates
-                ) if record
-            ]
+            candidate_records = _candidate_records(
+                routing_candidates, backends_by_name, backends_by_id, workspace
+            )
             backend_urls = _backend_urls(
                 backend_record, backends_by_id, candidates=candidate_records
             )
@@ -893,7 +884,10 @@ class Collector:
                 })
 
             if classification.kind == "mcpServer" and "mcp" in self.options.families:
-                assets["mcpServers"].append(self._mcp_asset(common, raw, api_url, backend_record, backends_by_id, workspace, scope_label, classification))
+                assets["mcpServers"].append(self._mcp_asset(
+                    common, raw, api_url, backend_record, backends_by_id, workspace,
+                    scope_label, classification, candidate_records,
+                ))
             elif classification.kind == "agent" and "a2a" in self.options.families:
                 assets["agents"].append(self._agent_asset(common, raw, api_url, backend_record, workspace))
             elif classification.kind == "modelApi" and "models" in self.options.families:
@@ -1249,8 +1243,21 @@ class Collector:
                     )
                     continue
                 source_props = source.get("properties") or {}
-                record, _ = _resolve_backend(source_props, backends_by_name, backends_by_id, workspace)
-                for target in _routing_targets(record, backends_by_id, source_props.get("serviceUrl")):
+                # The source API routes the tool calls, so a runtime choice in
+                # *its* policy is this server's upstream just as much as a
+                # declared backend is. Dropping the candidates here reported a
+                # projected server as having no upstream at all.
+                resolution = self._effective_by_api.get(ids.api(source_name, workspace))
+                record, source_candidates = _resolve_backend(
+                    source_props, backends_by_name, backends_by_id, workspace,
+                    resolution.elements if resolution else None,
+                )
+                for target in _routing_targets(
+                    record, backends_by_id, source_props.get("serviceUrl"),
+                    candidates=_candidate_records(
+                        source_candidates, backends_by_name, backends_by_id, workspace
+                    ),
+                ):
                     upstream.append({**target, "viaApi": ids.api(source_name, workspace), "transport": "http"})
             asset["upstream"] = upstream
             asset["sourceApiIds"] = [ids.api(name, workspace) for name in source_names]
@@ -1503,6 +1510,7 @@ class Collector:
         workspace: str | None,
         scope: str,
         classification: detect.Classification,
+        candidate_records: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         props = raw.get("properties") or {}
         mcp_props = props.get("mcpProperties") or {}
@@ -1540,7 +1548,10 @@ class Collector:
 
         transport = _mcp_transport(mcp_props)
         upstream = []
-        for target in _routing_targets(backend_record, backends_by_id, props.get("serviceUrl")):
+        for target in _routing_targets(
+            backend_record, backends_by_id, props.get("serviceUrl"),
+            candidates=candidate_records,
+        ):
             upstream.append(
                 {
                     **target,
@@ -2125,6 +2136,32 @@ def _resolve_backend(
         return None, candidates
     name = candidates[0]
     return by_name.get(name) or by_id.get(ids.backend(name, workspace)), []
+
+
+def _candidate_records(
+    names: list[str] | None,
+    by_name: dict[str, dict[str, Any]],
+    by_id: dict[str, dict[str, Any]],
+    workspace: str | None,
+) -> list[dict[str, Any]]:
+    """The backend records behind the names `_resolve_backend` reported.
+
+    An API that picks its upstream at runtime reports candidates instead of a
+    route, and those are what it reaches. Everything that reads a backend has
+    to see them -- the provider classification, the model catalogue, the alias
+    members, an MCP server's upstream -- or a conditionally routed API is
+    analysed as one with no backend at all.
+
+    A name that resolves to no record is dropped rather than carried as None:
+    `set-backend-service` names a backend by id, and one APIM does not have is
+    a dangling reference in the source, not an upstream to report.
+    """
+    return [
+        record for record in (
+            by_name.get(name) or by_id.get(ids.backend(name, workspace))
+            for name in names or ()
+        ) if record
+    ]
 
 
 def _raw_backend(record: dict[str, Any] | None) -> dict[str, Any] | None:
