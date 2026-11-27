@@ -96,6 +96,14 @@ UNREAD_PROVIDER_AUTH = ("undetermined",)
 UNREGISTRABLE_PROVIDER_AUTH = (
     INEXPRESSIBLE_PROVIDER_AUTH + UNCOMPOSABLE_PROVIDER_AUTH + UNREAD_PROVIDER_AUTH
 )
+# A credential the source does not have: no credential on the backend and none
+# set by the policies examined. Deliberately outside the tuple above, and so
+# outside the provider-auth rule's vocabulary, because this is not a gap to
+# decide -- an upstream called unauthenticated registers with no authentication,
+# and that is the configuration. What it must not do is register a null api key
+# under a header name nothing set, which states a credential the source has not
+# got. The reading is the collector's; this only stops the plan improving on it.
+UNCREDENTIALED_PROVIDER_AUTH = ("none",)
 
 PROVIDER_RULE = selector(
     "assets", selects="assets.modelProviders[]", site="plan._provider",
@@ -2750,8 +2758,14 @@ def _custom_auth(auth: dict[str, Any]) -> dict[str, Any] | None:
     its scheme, and an upstream nobody established a credential for registered
     as an api-key provider with no key, are both inventions -- and the second is
     the worse of the two, because there is no evidence behind it at all.
+
+    `none` returns None for a different reason: not a refusal to invent, but
+    nothing to state. The upstream is called unauthenticated, so an absent
+    authentication object is the configuration rather than an omission, and no
+    rule raises a gap for it.
     """
-    if auth.get("mode") in UNREGISTRABLE_PROVIDER_AUTH:
+    mode = auth.get("mode")
+    if mode in UNREGISTRABLE_PROVIDER_AUTH or mode in UNCREDENTIALED_PROVIDER_AUTH:
         return None
     refs = auth.get("secretRefs") or []
     header = ((auth.get("parameters") or {}).get("header") or ["api-key"])[0]

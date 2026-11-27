@@ -2863,6 +2863,57 @@ class TestACredentialNobodyRead:
         assert blocked == []
 
 
+class TestAnUpstreamNobodyCredentials:
+    """`none` is a reading, not a refusal, and not a gap.
+
+    The collector reaches it only by looking: no credential on the backend and
+    none set by the policies it examined. So the provider registers with no
+    authentication, which is the configuration. It was the last mode still
+    answered with `{"kind": "ApiKey", "headerName": "api-key", "value": null}`
+    -- a header name nothing set, holding a key nothing has, for an upstream
+    the source says is called unauthenticated.
+    """
+
+    def _uncredentialed(self, inventory):
+        changed = copy.deepcopy(inventory)
+        provider = next(
+            p for p in changed["assets"]["modelProviders"]
+            if p["targetProviderKind"] == "Custom"
+        )
+        provider["auth"] = {
+            "mode": "none", "modes": [], "secretRefs": [], "evidence": [],
+            "note": ("No credential on the backend and none set by the policies "
+                     "examined; the upstream appears to be called unauthenticated."),
+        }
+        return changed, provider["id"]
+
+    def test_no_api_key_is_invented_for_it(self, inventory, capabilities):
+        changed, provider_id = self._uncredentialed(inventory)
+        item = item_for(build_plan(changed, capabilities), provider_id)
+        custom = item["target"]["objects"][0]["custom"]
+        assert "authentication" not in custom
+        assert custom["endpoint"]
+
+    def test_it_is_not_turned_into_a_decision(self, inventory, capabilities):
+        """An unauthenticated upstream is not a gap: there is nothing to choose.
+
+        The provider-auth rule's vocabulary deliberately excludes `none`, so a
+        rule pinning it would fail `compile` rather than quietly raise a
+        question the source already answered.
+        """
+        changed, provider_id = self._uncredentialed(inventory)
+        item = item_for(build_plan(changed, capabilities), provider_id)
+        assert item["verdict"] == "native"
+        assert not item.get("blocking")
+        assert item["options"] == []
+
+    def test_none_is_outside_the_rules_vocabulary(self):
+        """Kept apart in code, so the two reasons for an absent object cannot
+        be confused: refusing to invent one, and having nothing to state."""
+        assert "none" not in plan_mod.UNREGISTRABLE_PROVIDER_AUTH
+        assert "none" in plan_mod.UNCREDENTIALED_PROVIDER_AUTH
+
+
 class TestHandledIsAPromiseThatGetsChecked:
     """`handled` drops the element from the plan, so it had better be true.
 
