@@ -805,14 +805,14 @@ def _where_keys(where: dict[str, Any], keys: tuple[str, ...]) -> list[tuple]:
 # road to a query language, and the checker is where that road is closed.
 def _is_predicate(value: Any) -> bool:
     if isinstance(value, dict):
-        return set(value) == {"present"} and isinstance(value["present"], bool)
+        return set(value) == {"nonEmpty"} and isinstance(value["nonEmpty"], bool)
     if isinstance(value, list):
         return bool(value) and all(isinstance(alt, (str, bool, int, float)) for alt in value)
     return value is None or isinstance(value, (str, bool, int, float))
 
 
 def check_where_operators(rules: dict[str, Any], out: Compilation) -> None:
-    """Every predicate is equals, one of, or present.
+    """Every predicate is equals, one of, or non-empty.
 
     `derived` was a second block of predicates beside `where`, and checked
     against what each one computed, not one of the five was a different kind of
@@ -826,7 +826,7 @@ def check_where_operators(rules: dict[str, Any], out: Compilation) -> None:
         len(rule.get("where") or {})
         for section in _SELECTED_SECTIONS for rule in rules.get(section) or []
     )
-    out.cover(f"{counted} where predicates: each equals, one of, or present")
+    out.cover(f"{counted} where predicates: each equals, one of, or non-empty")
     for section in _SELECTED_SECTIONS:
         for rule in rules.get(section) or []:
             for key, predicate in (rule.get("where") or {}).items():
@@ -836,7 +836,7 @@ def check_where_operators(rules: dict[str, Any], out: Compilation) -> None:
                     "where-operator",
                     f"{section} {_rule_label(rule)}: {key!r} is {predicate!r}, which is none of "
                     "the three forms `where` takes: a value for equals, an array for one of, "
-                    '{"present": bool} for non-empty or empty. A predicate needing more than '
+                    '{"nonEmpty": bool} for non-empty or empty. A predicate needing more than '
                     "those belongs in code.",
                 )
 

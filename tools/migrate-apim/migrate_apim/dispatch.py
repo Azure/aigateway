@@ -25,11 +25,19 @@ may legitimately pin fewer keys. What it may not do is pin *more*, because the
 surplus would be silently ignored.
 
 A `where` predicate takes one of three forms and no others -- `key: value` for
-equals, `key: [a, b]` for one of, `key: {"present": bool}` for non-empty or
+equals, `key: [a, b]` for one of, `key: {"nonEmpty": bool}` for non-empty or
 empty. `compile` rejects anything else. Three is what the thirty-nine rules
 need; a fourth would start `where` down the road to a query language, and a
 predicate that needs `contains` or `matches` belongs in code where it can say
 why.
+
+The third form was `present`, which reads as "the key exists" -- the one thing
+it does not test. It is truthiness: `[]`, `""` and `0` are all empty. That
+distinction is load-bearing on `inferenceRoutes`, where an empty list is a
+model declaring it serves no route and so a real decision, while null means the
+dialect could not be read and is filtered out before any predicate runs. Read
+as a null check, `{"nonEmpty": false}` would stop matching the empty list and a
+model that serves nothing would register as though it served something.
 
 A fourth thing can go wrong, one layer in: the rule is selected, and then a
 *field* of it is never looked at. That is the same defect as an unreadable
@@ -144,7 +152,7 @@ class Selector:
 
         A criterion is the value read off the record; which of the three forms
         the rule wrote it as is the rule's business. That is what lets
-        `unpublishableCount` be asked once and answered by `{"present": true}`,
+        `unpublishableCount` be asked once and answered by `{"nonEmpty": true}`,
         where the caller used to have to compute `hasUnpublishable` itself and
         the rule had to carry a key no record has.
         """
@@ -188,7 +196,7 @@ def holds(predicate: Any, value: Any) -> bool:
     names no source at all.
     """
     if isinstance(predicate, dict):
-        return bool(value) is bool(predicate.get("present"))
+        return bool(value) is bool(predicate.get("nonEmpty"))
     if isinstance(predicate, list):
         return value in predicate
     return predicate == value

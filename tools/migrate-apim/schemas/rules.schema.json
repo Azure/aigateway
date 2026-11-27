@@ -31,15 +31,15 @@
       "description": "How the question this rule raises is answered: `choose` one of `options`, or `supply` the data the decision carries -- a model list, a name per member. It replaces `itemKind`, whose seven values conflated that mechanical distinction with a presentation label: six of them meant \"pick one of options\" and differed only in what they were called, while the planner reads `decision.models` off exactly one kind of answer."
     },
     "predicate": {
-      "description": "One `where` predicate, in one of exactly three forms: a value is equals, an array is one of, and {\"present\": bool} is non-empty or empty. Closed on purpose. `derived` was a second block of predicates and all five of its keys turned out to be tests on a real field -- `policiesBypassed: true` was `policiesApplied is False` misfiled and inverted in the name -- so folding them in is only an improvement while `where` stays small. A predicate needing `contains`, `gt` or `matches` belongs in code, where it can say why.",
+      "description": "One `where` predicate, in one of exactly three forms: a value is equals, an array is one of, and {\"nonEmpty\": bool} is non-empty or empty. Closed on purpose. `derived` was a second block of predicates and all five of its keys turned out to be tests on a real field -- `policiesBypassed: true` was `policiesApplied is False` misfiled and inverted in the name -- so folding them in is only an improvement while `where` stays small. A predicate needing `contains`, `gt` or `matches` belongs in code, where it can say why. The third form was `present`, which named the one thing it does not test: it is truthiness, so [], \"\" and 0 are all empty. Read as a null check it would stop matching the empty list, and `inferenceRoutes: []` -- a model declaring it serves no route -- would register as though it served something.",
       "oneOf": [
         {"type": ["string", "boolean", "number", "null"]},
         {"type": "array", "minItems": 1, "items": {"type": ["string", "boolean", "number"]}},
         {
           "type": "object",
-          "required": ["present"],
+          "required": ["nonEmpty"],
           "additionalProperties": false,
-          "properties": {"present": {"type": "boolean"}}
+          "properties": {"nonEmpty": {"type": "boolean"}}
         }
       ]
     },
@@ -249,11 +249,11 @@
             "family": {"$ref": "#/$defs/predicate"},
             "expressionIds": {
               "$ref": "#/$defs/predicate",
-              "description": "`{\"present\": true}` is the element evaluating a policy expression anywhere in it. It was `derived.hasExpression`, a computed key that named no field; `expressionIds` is the field the collector writes."
+              "description": "`{\"nonEmpty\": true}` is the element evaluating a policy expression anywhere in it. It was `derived.hasExpression`, a computed key that named no field; `expressionIds` is the field the collector writes."
             },
             "credentialParameter": {
               "$ref": "#/$defs/predicate",
-              "description": "`{\"present\": true}` is a `set-header` or `set-query-parameter` whose value is the upstream credential, which the target takes as a model provider's ApiKey authentication rather than as request rewriting. The field the collector writes when the parameter name is a credential name and its value is a named value or a redacted literal; the only `where` key that pairs with `name` to separate two rules over one element."
+              "description": "`{\"nonEmpty\": true}` is a `set-header` or `set-query-parameter` whose value is the upstream credential, which the target takes as a model provider's ApiKey authentication rather than as request rewriting. The field the collector writes when the parameter name is a credential name and its value is a named value or a redacted literal; the only `where` key that pairs with `name` to separate two rules over one element."
             }
           }
         },

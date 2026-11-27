@@ -106,7 +106,7 @@ def resolve_policy_rule(
             return rule
     if has_expression:
         # `has_expression` is `bool(element["expressionIds"])`, which is all the
-        # `present` form asks, so the bool stands in for the list here.
+        # `nonEmpty` form asks, so the bool stands in for the list here.
         found = POLICY_BY_EXPRESSION.first(rules, expressionIds=has_expression)
         if found:
             return found

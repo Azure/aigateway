@@ -128,7 +128,7 @@ class TestPolicyRules:
     def test_expression_is_the_fallback_for_unmapped_elements(self, caps):
         rule = caps.policy_rule("some-future-policy", family="other", has_expression=True)
         assert rule["verdict"] == "gap"
-        assert rule["where"] == {"expressionIds": {"present": True}}
+        assert rule["where"] == {"expressionIds": {"nonEmpty": True}}
 
     def test_an_unmapped_element_without_an_expression_reaches_the_terminal_rule(self, caps):
         # It used to match nothing, and `plan._policies` dropped what matched

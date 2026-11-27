@@ -279,14 +279,14 @@
     },
     {
       "selects": "assets.models[].models.resolved[]",
-      "where": {"inferenceRoutes": {"present": true}},
+      "where": {"inferenceRoutes": {"nonEmpty": true}},
       "verdict": "native",
       "capabilityId": "model.create",
       "note": "Not an APIM path, and deliberately. What is registered is one model deployment, read from Microsoft.CognitiveServices. APIM has the API in front of it, which is a different object and already has its own rules. `inferenceRoutes` is what `model create --supported-endpoints` takes, so this rule asks the question the command asks."
     },
     {
       "selects": "assets.models[].models.resolved[]",
-      "where": {"inferenceRoutes": {"present": false}},
+      "where": {"inferenceRoutes": {"nonEmpty": false}},
       "verdict": "gap",
       "answer": "choose",
       "capabilityId": "model.create",
@@ -370,7 +370,7 @@
     },
     {
       "selects": "apim.policies[].elements[]",
-      "where": {"name": ["set-header", "set-query-parameter"], "credentialParameter": {"present": true}},
+      "where": {"name": ["set-header", "set-query-parameter"], "credentialParameter": {"nonEmpty": true}},
       "verdict": "handled",
       "capabilityId": "provider.create",
       "target": "provider.authentication.ApiKey",
@@ -571,7 +571,7 @@
     },
     {
       "selects": "apim.policies[].elements[]",
-      "where": {"expressionIds": {"present": true}},
+      "where": {"expressionIds": {"nonEmpty": true}},
       "verdict": "gap",
       "answer": "choose",
       "note": "Third of the four passes in capability.policy_rule, so it is reached only by an element with no rule of its own and no family rule. The ordering is in the code, not in a priority here.",
@@ -724,7 +724,7 @@
     },
     {
       "selects": "service.identity",
-      "where": {"userAssignedIdentities": {"present": true}},
+      "where": {"userAssignedIdentities": {"nonEmpty": true}},
       "verdict": "partial",
       "answer": "choose",
       "capabilityId": "identity.assign",
@@ -739,7 +739,7 @@
     },
     {
       "selects": "service.identity",
-      "where": {"userAssignedIdentities": {"present": false}},
+      "where": {"userAssignedIdentities": {"nonEmpty": false}},
       "verdict": "native",
       "capabilityId": "identity.assign",
       "proposal": "system-assigned",

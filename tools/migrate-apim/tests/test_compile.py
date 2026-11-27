@@ -165,11 +165,11 @@ class TestRulesThatCannotBeApplied:
         rules = copy.deepcopy(shipped[1])
         assigned = next(r for r in rules["structural"]
                         if (r.get("where") or {}).get("userAssignedIdentities")
-                        == {"present": True})
+                        == {"nonEmpty": True})
         rules["structural"].append(copy.deepcopy(assigned))
         [diagnostic] = [d for d in compile_with(rules=rules).errors if d.check == "rule-unique"]
         assert "'userAssignedIdentities'" in diagnostic.message
-        assert "present" in diagnostic.message
+        assert "nonEmpty" in diagnostic.message
 
     def test_a_partial_rule_without_options_is_caught(self, compile_with, shipped):
         rules = copy.deepcopy(shipped[1])
@@ -381,12 +381,12 @@ class TestWhereTakesThreeFormsAndNoMore:
         assert "belongs in code" in diagnostic.message
 
     def test_a_presence_test_with_a_second_key_is_rejected(self, compile_with, shipped):
-        # `{"present": true, "equals": "x"}` would read as both and be neither.
+        # `{"nonEmpty": true, "equals": "x"}` would read as both and be neither.
         rules = copy.deepcopy(shipped[1])
         rule = next(r for r in rules["structural"]
                     if (r.get("where") or {}).get("userAssignedIdentities")
-                    == {"present": True})
-        rule["where"]["userAssignedIdentities"] = {"present": True, "equals": "x"}
+                    == {"nonEmpty": True})
+        rule["where"]["userAssignedIdentities"] = {"nonEmpty": True, "equals": "x"}
         assert "where-operator" in codes(compile_with(rules=rules))
 
     def test_the_shipped_rules_use_only_the_three(self, compile_with):
@@ -406,7 +406,7 @@ class TestEveryPolicyPassIsCheckedForTies:
     def test_two_expression_fallbacks_are_caught(self, compile_with, shipped):
         rules = copy.deepcopy(shipped[1])
         rules["policies"].append({"selects": "apim.policies[].elements[]",
-                                  "where": {"expressionIds": {"present": True}},
+                                  "where": {"expressionIds": {"nonEmpty": True}},
                                   "verdict": "gap"})
         assert "rule-unique" in codes(compile_with(rules=rules))
 
