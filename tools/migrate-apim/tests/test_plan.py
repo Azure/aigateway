@@ -2998,3 +2998,35 @@ class TestHandledIsAPromiseThatGetsChecked:
         base = build_plan(copy.deepcopy(inventory), capabilities)
         for document in (carried, uncarried):
             assert document["policyCoverage"]["walked"] == base["policyCoverage"]["walked"] + 1
+
+
+class TestNamingASecretIsNotRegisteringIt:
+    """The guard that lets `_backend_auth` name the basic password at all.
+
+    `secretRefs` fills a Custom provider's ApiKey value, so a mode that refuses
+    to emit an authentication object is what makes recording the ref safe. If
+    `basic` ever stopped being refused, the password would silently become the
+    api key of a provider that reads as registered.
+    """
+
+    def test_a_refused_mode_emits_nothing_however_many_secrets_it_names(
+        self, inventory, capabilities
+    ):
+        changed = copy.deepcopy(inventory)
+        provider = next(
+            p for p in changed["assets"]["modelProviders"]
+            if p["targetProviderKind"] == "Custom"
+        )
+        provider["auth"] = {
+            "mode": "basic", "modes": ["basic"], "evidence": ["policy:authentication-basic"],
+            "secretRefs": ["secret:policyInline/policy-api/x/inbound/authentication-basic-1-/-password"],
+        }
+        item = item_for(build_plan(changed, capabilities), provider["id"])
+        assert item["verdict"] == "gap"
+        assert "authentication" not in item["target"]["objects"][0]["custom"]
+
+    def test_every_refused_mode_is_one_custom_auth_refuses(self):
+        """The rule's vocabulary and `_custom_auth` read the same tuple, so a
+        mode cannot be made a gap in one and registered in the other."""
+        for mode in plan_mod.UNREGISTRABLE_PROVIDER_AUTH:
+            assert plan_mod._custom_auth({"mode": mode, "secretRefs": ["x"]}) is None

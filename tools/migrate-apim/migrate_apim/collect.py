@@ -2361,14 +2361,17 @@ def _backend_auth(
         if element["name"] == "authentication-certificate":
             note("clientCertificate", "policy:authentication-certificate")
         elif element["name"] == "authentication-basic":
-            # No secret ref, deliberately, and the same way the two branches
-            # around it carry none. `secretRefs` is what `_custom_auth` reads
-            # to fill a provider's ApiKey value, so claiming the password here
-            # would publish a basic credential as a working api key -- a
-            # stronger falsehood than the one this branch exists to remove. The
-            # password is still registered on the policy document, so it is
-            # recorded; it is just not this provider's credential.
             note("basic", "policy:authentication-basic")
+            # The password, which `policy.parse` redacted out of the attribute
+            # and registered a ref for. Withheld until `_custom_auth` learned
+            # to refuse this mode: `secretRefs` is what fills a provider's
+            # ApiKey value, so naming it here used to publish a basic
+            # credential as a working api key. `basic` is now refused outright,
+            # so the ref reaches nothing that would misread it -- and whoever
+            # takes the `compensate` option needs to know where the password is
+            # to compose the `Authorization: Basic ...` header by hand.
+            if element.get("secretRef"):
+                add_secret(element["secretRef"])
         elif element["name"] == "get-authorization-context":
             note("credentialManager", "policy:get-authorization-context")
         elif element.get("credentialParameter"):
@@ -2393,6 +2396,13 @@ def _backend_auth(
                     ref = (secret_by_named_value or {}).get(nv_name)
                     if ref:
                         add_secret(ref)
+                # A key written straight into the XML rather than as a named
+                # value. `policy.parse` redacted it and registered a ref for
+                # reading it back, so it resolves like any other -- and without
+                # this the provider registered `kind: ApiKey` with a null key,
+                # which is the shape this mode exists to avoid.
+                if child.get("secretRef"):
+                    add_secret(child["secretRef"])
 
     # Per request context, because the last `authentication-managed-identity`
     # to run is the one that applies and a union of alternatives is not an

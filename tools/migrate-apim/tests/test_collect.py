@@ -1702,3 +1702,120 @@ class TestAnMcpServerChosenAtRuntime:
             Collector(FakeArmClient(), SERVICE, options()).run()
         )
         assert [u["backendId"] for u in server["upstream"]] == ["backend:support-backend"]
+
+
+class TestACredentialWrittenStraightIntoThePolicy:
+    """A key written inline is the same credential as `{{name}}`.
+
+    `policy.parse` redacts a hard-coded credential and registers a ref for
+    reading it back, but the ref lived only on the document. `_backend_auth`
+    is handed elements, so it saw the named-value form and not this one: the
+    upstream reported `mode: apiKey` -- correctly -- with no secret behind it,
+    and the provider registered `kind: ApiKey` with a null key. The mode was
+    right and the registration was empty, which is the shape that mode exists
+    to avoid.
+    """
+
+    LITERAL = "sk-abcdefghijklmnopqrstuvwxyz01"
+
+    def _collect(self, value):
+        """Collect with `meta-ai` credentialled by policy instead of its backend."""
+        import copy, fake_arm
+
+        backends_key = f"{SERVICE}/backends"
+        policy_key = f"{SERVICE}/apis/meta-ai"
+        originals = (fake_arm.ROUTES[backends_key], fake_arm.POLICIES.get(policy_key))
+
+        backends = copy.deepcopy(originals[0])
+        for backend in backends:
+            if backend["name"] == "meta-ai-openai-endpoint":
+                backend["properties"].pop("credentials", None)
+        fake_arm.ROUTES[backends_key] = backends
+        fake_arm.POLICIES[policy_key] = (
+            '<policies><inbound><base />'
+            f'<set-header name="api-key" exists-action="override"><value>{value}</value></set-header>'
+            '</inbound><backend><base /></backend><outbound><base /></outbound>'
+            '<on-error><base /></on-error></policies>'
+        )
+        try:
+            return Collector(FakeArmClient(), SERVICE, options()).run()
+        finally:
+            fake_arm.ROUTES[backends_key] = originals[0]
+            if originals[1] is None:
+                fake_arm.POLICIES.pop(policy_key, None)
+            else:
+                fake_arm.POLICIES[policy_key] = originals[1]
+
+    def _auth(self, document):
+        return next(
+            p for p in document["assets"]["modelProviders"] if "meta-ai" in p["id"]
+        )["auth"]
+
+    def test_an_inline_key_resolves_like_a_named_value(self):
+        auth = self._auth(self._collect(self.LITERAL))
+        assert auth["mode"] == "apiKey"
+        assert len(auth["secretRefs"]) == 1
+        assert auth["secretRefs"][0].startswith("secret:policyInline/")
+
+    def test_a_named_value_still_resolves_to_its_own_ref(self):
+        """The inline path is additional, not a replacement."""
+        auth = self._auth(self._collect("{{meta-ai-Authorization-LLM}}"))
+        assert auth["secretRefs"] == ["secret:namedValue/meta-ai-Authorization-LLM"]
+
+    def test_the_credential_itself_is_never_carried(self):
+        """A ref says where to read it. The inventory never holds the value."""
+        document = self._collect(self.LITERAL)
+        assert self.LITERAL not in json.dumps(document)
+
+
+class TestTheBasicPasswordIsNamedButNotRegistered:
+    """Recording where the password is, without registering it as a key.
+
+    The ref was withheld while `_custom_auth` answered every mode with an
+    ApiKey object: `secretRefs` is what fills that object's value, so naming
+    the password published a basic credential as a working api key. `basic` is
+    refused outright now, so the ref reaches nothing that would misread it --
+    and the `compensate` option tells an operator to compose
+    `Authorization: Basic ...` by hand, which they cannot do without knowing
+    where the password lives.
+    """
+
+    PASSWORD = "hunter2-not-a-real-password"
+
+    def _collect(self):
+        import copy, fake_arm
+
+        backends_key = f"{SERVICE}/backends"
+        policy_key = f"{SERVICE}/apis/meta-ai"
+        originals = (fake_arm.ROUTES[backends_key], fake_arm.POLICIES.get(policy_key))
+
+        backends = copy.deepcopy(originals[0])
+        for backend in backends:
+            if backend["name"] == "meta-ai-openai-endpoint":
+                backend["properties"].pop("credentials", None)
+        fake_arm.ROUTES[backends_key] = backends
+        fake_arm.POLICIES[policy_key] = (
+            '<policies><inbound><base />'
+            f'<authentication-basic username="svc" password="{self.PASSWORD}" />'
+            '</inbound><backend><base /></backend><outbound><base /></outbound>'
+            '<on-error><base /></on-error></policies>'
+        )
+        try:
+            return Collector(FakeArmClient(), SERVICE, options()).run()
+        finally:
+            fake_arm.ROUTES[backends_key] = originals[0]
+            if originals[1] is None:
+                fake_arm.POLICIES.pop(policy_key, None)
+            else:
+                fake_arm.POLICIES[policy_key] = originals[1]
+
+    def test_the_password_is_referenced(self):
+        document = self._collect()
+        auth = next(
+            p for p in document["assets"]["modelProviders"] if "meta-ai" in p["id"]
+        )["auth"]
+        assert auth["mode"] == "basic"
+        assert [r for r in auth["secretRefs"] if r.startswith("secret:policyInline/")]
+
+    def test_the_password_value_is_not(self):
+        assert self.PASSWORD not in json.dumps(self._collect())

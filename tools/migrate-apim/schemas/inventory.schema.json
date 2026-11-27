@@ -737,6 +737,10 @@
               "credentialParameter": {
                 "type": "string",
                 "description": "The header or query parameter name this element sets, when it carries the upstream credential: a credential parameter name whose value is a named value or a redacted literal. A model provider's authentication.kind: ApiKey takes exactly this name and that value, so the element is provider configuration rather than request rewriting."
+              },
+              "secretRef": {
+                "type": "string",
+                "description": "The secret this element's text was redacted into, for a credential hard-coded in the policy XML. The counterpart of namedValueRefs: the same credential written inline rather than as {{name}}, carried on the element so that whatever reads one way of writing it reads the other. The document's secretRefs holds it too; this says which element it came from."
               }
             }
           }

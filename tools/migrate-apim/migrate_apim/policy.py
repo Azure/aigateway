@@ -153,7 +153,14 @@ def parse(
     secret_refs: list[str] = []
     redactions: list[dict[str, Any]] = []
 
-    def register_literal(path: str, literal_class: str, raw: str) -> str:
+    def register_literal(path: str, literal_class: str, raw: str) -> str | None:
+        """Register a credential hard-coded in the XML, and name the ref for it.
+
+        Returns None when there is no registry to mint one, so a caller can
+        tell "no secret here" from "a secret nothing can resolve". It used to
+        answer the second with the redaction placeholder, which is a value and
+        not a reference.
+        """
         if registry is not None:
             ref_id = registry.policy_inline(
                 policy_id=policy_id,
@@ -167,7 +174,7 @@ def parse(
             redactions.append({"path": path, "class": literal_class, "secretRef": ref_id, "_raw": raw})
             return ref_id
         redactions.append({"path": path, "class": literal_class, "secretRef": None, "_raw": raw})
-        return "<redacted>"
+        return None
 
     sections_present: list[str] = []
     walk_args = {
@@ -354,12 +361,21 @@ def _capture_value(
             record["expressionIds"].append(expression_id)
         return raw
 
+    # The ref goes on the element as well as on the document. A named value in
+    # the same position lands in `namedValueRefs`, and whoever reads one has to
+    # be able to read the other: a key written inline is the same credential as
+    # a key written as `{{name}}`, and reading only the second registered an
+    # api-key provider with a null key for the first.
     literal_class = secrets.classify_literal(raw, parameter_name=parameter_name)
     if literal_class and literal_class != "declaredCredentialParameter":
-        register_literal(path, literal_class, raw)
+        ref_id = register_literal(path, literal_class, raw)
+        if ref_id:
+            record["secretRef"] = ref_id
         return secrets.redact(raw)
     if literal_class == "declaredCredentialParameter" and not refs:
-        register_literal(path, literal_class, raw)
+        ref_id = register_literal(path, literal_class, raw)
+        if ref_id:
+            record["secretRef"] = ref_id
         return secrets.redact(raw)
     return raw
 
