@@ -3,15 +3,10 @@
 Inventory the AI assets of an Azure API Management instance, shaped for migration to
 [Azure AI Gateway](https://ai.gateway.azure.com) (`Microsoft.ApiManagement/aigateways`).
 
-It answers two questions a coding agent has to answer before it can move anything:
-
 1. **What AI workload is actually running in this APIM?** Models, MCP servers, and A2A agents —
    and nothing else.
 2. **What would it take to reproduce it on AI Gateway?** Every asset is captured decomposed into
    the target's building blocks, so the gap is a comparison rather than an interpretation.
-
-Status: `collect`, `resolve-models`, `discover-tools`, `plan`, `apply` and `validate` are
-implemented and verified against live APIM instances.
 
 ---
 
@@ -138,6 +133,12 @@ round trip per operation — on one real instance that was 110 of 171 reads, nea
 and it took the run from 37 seconds to over eight minutes. Skipping them is recorded twice, because
 "not collected" must never read as "none exist": a `notCollected` entry in `collection.coverage`
 with the number skipped, and `policyRefs.operationPoliciesCollected: false` on each asset.
+
+`plan` carries it a third time, as a non-blocking decision naming this flag. The inventory was
+honest about the skip from the start and the plan was silent, so an agent checking coverage for
+failed reads — which is what it was told to check — reported coverage clean over 132 unread policy
+documents. It can be accepted, unlike a failed read: the skip is one flag away from being undone,
+so "I know, and I am migrating without them" is an answer, made once and on purpose.
 
 <details>
 <summary>All <code>collect</code> options</summary>
@@ -323,7 +324,9 @@ Deliberately, **no mapping verdict is computed here.** Classification against AI
 `assess` and its versioned capability map, so that a new AI Gateway release changes a data file
 rather than the collector. What `collect` does guarantee:
 
-- `include-fragment` dependencies are resolved and the fragments are captured as their own documents.
+- `include-fragment` dependencies are resolved and the fragments are captured as their own
+  documents, scoped to the workspace they belong to. Two workspaces may hold a fragment of the same
+  name, and they are two fragments.
 - Every `@(…)`/`@{…}` expression gets a stable `expr:<hash>` id, its `context.*` references, and its
   source — the single strongest predictor of a non-portable policy.
 - Elements the tool has never heard of get `family: "other"` rather than being dropped.
@@ -404,7 +407,8 @@ inventory is decomposed the way it is.
 | MCP federation router | One `toolServers` with several endpoints | Direct |
 | A2A agent API | — | No building block yet; inventoried and parked. See below |
 | Products and subscription keys | `apiKeys` (gateway-wide) plus Entra RBAC | **Weak.** See gaps |
-| Named values, policy fragments | — | No equivalent; values are inlined into target configuration |
+| Named values | — | No equivalent; values are inlined into target configuration |
+| Policy fragments | — | **No equivalent.** The gateway has no policy composition at all: no fragments, no includes, no inheritance. A fragment is dissolved into every scope that includes it, and an item per fragment says whether the dissolution kept what it meant — see [Policy resolution](#policy-resolution) |
 | Loggers and diagnostics | `telemetryExporters` | Partial |
 
 Caveats worth catching before they bite, all from the shipped AI Gateway surface: an alias holds
@@ -433,8 +437,75 @@ model, or a tool server. APIM has well over a hundred. Most of the migration's r
 | `azure-openai-content-safety`, `llm-content-safety` | — | **Gap.** Content-safety flags exist in the CLI but are not supported on typed `aigateways`. The policy also pulls in a separate Content Safety backend, surfaced as a `supportingBackends` dependency |
 | Transformations: `set-body`, `set-header`, `rewrite-uri`, `json-to-xml` | — | **Gap.** No request/response rewriting |
 | `send-request`, `return-response`, custom `@{…}` expressions | — | **Gap.** `agentHooks` is the nearest mechanism, and only for tool traffic |
+| `authentication-basic`, `authentication-certificate`, `get-authorization-context` | Provider `authentication` | **Handled** by the model provider item, which raises the gap: `model-provider create/update` exposes no basic credential, no client certificate, and no credential-manager equivalent, so the provider is a gap rather than a registration and no authentication object is emitted for it. Where the asset has no model provider — an MCP server reaching its upstream over mTLS — nothing carries it and the decision is raised on the element instead |
+| `check-header`, `validate-client-certificate` | — | **Gap.** Caller authentication is Entra auth plus RBAC, or an API key. A gate on a shared header secret or a client certificate is neither |
+| `emit-metric`, `log-to-eventhub` | — | **Gap.** `telemetry-exporter create` takes a kind and an endpoint, not a metric to emit or a sink to write to |
+| `set-service-url` | — | **Gap.** An alias backend pool holds backends the gateway knows; overriding the URL outright names no backend |
+| `mcp-server` | `mcp create` | **Handled.** Collected as an MCP asset from the API that carries it, and registered by the MCP server item |
+| `validate-mcp-request` | — | **Gap.** `mcp create` registers a server, its endpoints and its versions; guarding a tool call on the way through is not part of that surface |
 | `cors`, `trace`, correlation headers | — | **Not applicable** |
+| Anything else APIM ships | — | **Gap, blocking.** Reported rather than assumed harmless — see below |
 | — | `costLimit` | AI Gateway capability with no APIM source; an upgrade, not a gap |
+
+**Nothing is dropped for want of a rule.** Rule selection ends in a terminal rule that matches
+anything the four passes above it did not, so an element this catalog has never heard of reaches the
+plan as a blocking decision instead of being discarded where it was classified. That hole was real:
+ten elements matched no rule at all, three of them carrying backend credentials, and because an
+element containing an expression at least fell into the pass above, the policies that vanished most
+completely were the simplest ones.
+
+The net is not allowed to become the mapping. `compile` holds every element in `policy.FAMILIES` —
+the vocabulary the collector classifies against — to a rule of its own or a rule for its family, and
+fails naming any that are left to the terminal rule. What legitimately reaches it is counted on the
+plan under `policyCoverage`, which accounts for every element walked under exactly one disposition
+and sums them, so a reader can check the planner against the inventory rather than trust it.
+
+### Policy resolution
+
+Which policy governs which API is one question with one answer, in
+`policy.PolicyGraph`. `collect` asks it to decide what authenticates a backend; `plan` asks it to
+decide what a policy item covers. Asking it two ways is how two answers drift, and they had: the
+collector resolved fragments and folded in the product and global policy but never the workspace,
+and the planner turned a scope level back into the APIs under it and could not answer for a fragment
+or an operation at all.
+
+Nothing is re-derived to answer it. `include-fragment` and `base` are already elements in the
+inventory, each with its section and its path, so inclusion and inheritance are read rather than
+inferred:
+
+- **A fragment** is spliced in at the site that included it, transitively and guarding against the
+  cycle APIM will store but never run. Its elements have no section of their own — a fragment has no
+  `inbound` wrapper — so they take the include site's, and a fragment pulled in under a `choose` is
+  conditional however unconditionally its body reads.
+- **`<base />`** decides inheritance. A parent scope's section runs only where the child asks for it,
+  so an API that overrides its `inbound` does not inherit the global policy however globally that
+  policy is written. A scope with no policy of its own inherits, because APIM's default template is
+  `<base />` in all four sections. An omission is recorded, not merely acted on.
+- **Workspace, product and operation** are the rest of the chain. Every scope comparison is keyed on
+  the workspace-qualified name, so `finance/shared` and `hr/shared` are two APIs.
+- **A `fragment-id`** is matched without regard to case, because APIM resource names do not
+  distinguish it and the attribute is typed by hand. One naming no collected fragment is reported as
+  a blocking gap that cannot be accepted as a loss: nobody has read it, so nobody can say what
+  accepting it costs.
+
+- **A product** is an alternative context, not a link in the chain: which one applies depends on the
+  subscription a call arrived on. Each is resolved independently and the results unioned, alongside
+  the chain with no product in it, so one product's section without `<base />` cannot suppress a
+  sibling's policy or the global policy behind it.
+- **An operation** is a scope of its own. Where every operation of an API carries a policy, each is
+  resolved through the whole chain and the API's own resolution is not added — an operation that
+  omits `<base />` overrides it, and no request arrives anywhere else.
+
+Everything is asked in that one direction. The reverse question — *which scopes include this
+fragment* — is deliberately not answered, because it can only be answered from the references
+written in the documents, and a reference is not an arrival: one on an API nobody is migrating, or
+in a policy every migrated API overrides, names a fragment that governs nothing here.
+
+A policy item's members therefore carry three things: where the element is written, which scope
+pulled it in, and what it governs. The second is what makes extracting a policy into a fragment
+change nothing — a fragment is never a scope, so "is this the API's own policy" has to be asked of
+the include site. The third is what makes a settled decision notice an API joining the fragment it
+was settled against.
 
 ### Known structural gaps
 
@@ -477,8 +548,13 @@ an explicit question to the operator.
 
 ## Output shape
 
-Flat, id-addressed tables with assets referencing them, so nothing is duplicated and a re-collection
-of an unchanged service diffs cleanly. Ids are derived from ARM identity and are stable across runs.
+Three regions, and which one a thing is in says what kind of claim it is. **`apim`** is what APIM
+has, under APIM's own name for it — a rule in `capabilities/rules.json` selects from here, so the
+path a rule names is a path through the service's object graph. **`assets`** is what this tool
+concluded about it. **`collection`** is about the run that read it.
+
+Ids are derived from ARM identity and are stable across runs, so a re-collection of an unchanged
+service diffs cleanly.
 
 ```jsonc
 {
@@ -489,6 +565,16 @@ of an unchanged service diffs cleanly. Ids are derived from ARM identity and are
   "service":    { "resourceId": "...", "sku": {...}, "identity": {...}, "virtualNetworkType": "..." },
   "workspaces": [ { "name": "finance", "serveOn": "workspaceAndDefault", "collected": true } ],
 
+  "apim": {
+    "workspaces": [ { "name": "finance", "serveOn": "workspaceAndDefault", "collected": true } ],
+    "apis":       [ /* EVERY API: APIM's own fields, plus what this tool made of each */ ],
+    "backends": [...], "namedValues": [...], "policyFragments": [...],
+    "products": [...], "subscriptions": [...], "certificates": [...],
+    "authorizationServers": [...], "openidConnectProviders": [...],
+    "authorizationProviders": [...], "loggers": [...], "diagnostics": [...],
+    "policies": [ /* one per scope: raw XML + normalized elements + expressions */ ]
+  },
+
   "assets": {
     "modelProviders": [ /* upstream endpoints + resolved Foundry deployments + referencedBy */ ],
     "models":         [ /* APIM APIs publishing inference: provider, routing, models, endpoints */ ],
@@ -497,15 +583,8 @@ of an unchanged service diffs cleanly. Ids are derived from ARM identity and are
   },
   "excludedApis":      [ /* every API not inventoried, with its reason and signals */ ],
   "excludedBackends":  [ /* every backend not treated as a model provider, with its reason */ ],
+  "foundryAccounts":   [ /* Microsoft.CognitiveServices, not APIM -- so not under `apim` */ ],
 
-  "shared": {
-    "backends": [...], "namedValues": [...], "policyFragments": [...],
-    "products": [...], "subscriptions": [...], "certificates": [...],
-    "authorizationServers": [...], "openidConnectProviders": [...],
-    "credentialProviders": [...], "telemetry": {...}, "foundryAccounts": [...]
-  },
-
-  "policies": [ /* one per scope: raw XML + normalized elements + expressions */ ],
   "secrets":  [ /* every secretRef, referenced by id from the tables above */ ]
 }
 ```
@@ -641,9 +720,9 @@ Each item is one source aspect and what becomes of it:
   "id": "item:model/a2a-intent-fdry-9a73/surface",
   "source": {"assetId": "model:a2a-intent-fdry-9a73", "aspect": "publishedSurface"},
   "status": "needs-decision",     // ready | needs-decision | adapted | excluded | stale
-  "kind": "reduce-surface",
+  "kind": "choose",
   "proposal": "split",
-  "rationale": "7 of 50 operations map to the four publishable routes. No target for: threads x17, …",
+  "rationale": "7 of 50 operations move. No target for: threads x17, … No model behind this API serves: embeddings x1.",
   "options": [
     {"value": "split", "consequence": "Inference moves; 43 operations stay on APIM."},
     {"value": "inference-only", "consequence": "Inference moves and the rest is dropped; those callers break."}
@@ -653,9 +732,13 @@ Each item is one source aspect and what becomes of it:
 }
 ```
 
-**Decision kinds.** `reduce-surface` (what part of an API can move), `translate` (maps with different
-semantics), `accept-loss` (no equivalent), `enumerate` (a fact only runtime or the operator has),
-`name` (what clients send as `model`), `scope` (access model), `collapse` (workspaces).
+**How an item is answered.** `kind` is `choose` -- pick one of `options` -- or `supply`, where the
+answer carries data the plan reads back: the models to register, a name per model. That binary is
+what an agent or a UI has to act on, because it decides whether to render a picker or a form, and it
+is what `shapeDigest` invalidates a settled answer on. It replaces seven labels (`reduce-surface`,
+`translate`, `accept-loss`, `enumerate`, `name`, `scope`, `collapse`) of which six meant "pick one of
+`options`" and differed only in what they were called. Which question an item asks is
+`source.aspect`, where it always was.
 
 **"Can this be migrated?" has three negative answers, and the plan distinguishes them.** The target
 cannot do it — a `gap` verdict and a loss decision. The installed CLI cannot author it —
@@ -687,13 +770,13 @@ where, because its own sink is a logger on the service rather than part of the p
 left at that, no exporter is created and the phase reports nothing amiss. That is `needsFact` on
 the item, naming what is missing and the shape of the answer.
 
-There is deliberately no `identify` kind. If a provider or protocol cannot be identified, that is a
-collector gap to fix — see the governing rule below.
+No item ever asks who a provider is or what protocol it speaks. If either cannot be identified,
+that is a collector gap to fix — see the governing rule below.
 
-**Batching.** Items of the same kind and shape merge into one, so three identical `rate-limit-by-key`
-policies are one decision about partitioning, not three. Which attributes make two policies
-different is declared per rule (`batchOn`), so two token limits with different ceilings but the same
-counter key stay one item.
+**Batching.** Policy elements deciding the same thing the same way merge into one item, so three
+identical `rate-limit-by-key` policies are one decision about partitioning, not three. Which
+attributes make two policies different is declared per rule (`batchOn`), so two token limits with
+different ceilings but the same counter key stay one item.
 
 ### What counts as a question
 
@@ -724,6 +807,15 @@ A real Azure OpenAI import publishes far more. On `a2a-intent-fdry-9a73`, 50 ope
 17 thread operations, 16 vector-store, 5 assistants, 3 audio, 1 images and 1 legacy completions have
 no target at all. So the first question about a model API is not how to map it but **how much of it
 can move** — and `split` keeps the rest on APIM rather than dropping it.
+
+A route in that list is necessary and not sufficient: a model behind the API still has to serve it.
+The two readings are separate, so the plan keeps them separate — each left-behind group carries the
+reason it stays, `noTargetRoute` or `noModelServes`, and `evidence.surface.servedRoutes` names what
+the deployments declared. An APIM embeddings operation over a `gpt-5-mini` deployment is the second
+kind: `/openai/v1/embeddings` is publishable, `gpt-5-mini` serves chat completions and responses, and
+counting the route alone reported the operation as migrating when nothing would serve it. Where
+nothing survives both readings there is no inference to split off, and the proposal is
+`retain-in-apim` rather than a `split` naming a half that does not exist.
 
 ## Applying the plan
 
@@ -756,9 +848,18 @@ checked, so a journal carrying a stale or wrong phase status repairs itself on t
 There is no transaction across steps, so the cost of finding a problem halfway is a half-built
 gateway. `--preflight` refuses while any of these stands: the plan names no target; an item still
 needs a decision; a settled decision has been orphaned; a referenced credential is missing or not
-mechanically retrievable; or a `Microsoft.ApiManagement/service` shares the target's name, which
-matters because several CLI commands dispatch by name without `--ids`. Manual prerequisites are
-raised as notes and acknowledged with `--acknowledge <id>`.
+mechanically retrievable; the plan describes work it cannot itself produce; a step names a provider
+nothing in the plan registers; an object the planner marked as not fully configurable would become a
+step; or a `Microsoft.ApiManagement/service` shares the target's name, which matters because several
+CLI commands dispatch by name without `--ids`. Manual prerequisites are raised as notes and
+acknowledged with `--acknowledge <id>`.
+
+That last one is the plan's own judgement, read back. `plan` records why it could not finish shaping
+an object, and until `apply` consulted it the condition surfaced part-way through a phase — under a
+cause the builder guessed at, with every step queued behind it skipped. It is asked of the steps a
+run would perform rather than of every object in the plan, because an object no phase executes
+cannot fail one, and blocking on it would stop a migration over work the operator was going to apply
+by hand anyway.
 
 ### Phases
 

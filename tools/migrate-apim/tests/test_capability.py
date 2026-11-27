@@ -3,6 +3,7 @@ import subprocess
 
 import pytest
 
+from migrate_apim import plan as plan_mod
 from migrate_apim.azcli import az_argv
 from migrate_apim.capability import (
     CAPABILITIES_DIR,
@@ -127,10 +128,28 @@ class TestPolicyRules:
     def test_expression_is_the_fallback_for_unmapped_elements(self, caps):
         rule = caps.policy_rule("some-future-policy", family="other", has_expression=True)
         assert rule["verdict"] == "gap"
-        assert (rule.get("match") or {}).get("hasExpression") is True
+        assert rule["where"] == {"expressionIds": {"nonEmpty": True}}
 
-    def test_an_unmapped_element_without_an_expression_matches_nothing(self, caps):
-        assert caps.policy_rule("some-future-policy", family="other") is None
+    def test_an_unmapped_element_without_an_expression_reaches_the_terminal_rule(self, caps):
+        # It used to match nothing, and `plan._policies` dropped what matched
+        # nothing where it stood. An element carrying an expression at least
+        # reached the pass above, so the policies that vanished most completely
+        # were the simplest ones.
+        rule = caps.policy_rule("some-future-policy", family="other")
+        assert rule is caps.terminal_policy_rule()
+        assert rule["verdict"] == "gap"
+
+    def test_only_an_element_outside_the_vocabulary_reaches_the_terminal_rule(self, caps):
+        # The terminal rule is the net, not the mapping. `compile` holds every
+        # element in policy.FAMILIES to a rule of its own or a family rule.
+        from migrate_apim.policy import FAMILIES, family_of
+
+        terminal = caps.terminal_policy_rule()
+        reached = sorted(
+            name for name in FAMILIES
+            if caps.policy_rule(name, family=family_of(name)) is terminal
+        )
+        assert reached == []
 
     def test_plumbing_is_explicitly_not_applicable(self, caps):
         for name in ("base", "include-fragment", "choose", "set-variable", "cors"):
@@ -159,12 +178,11 @@ class TestTargetSurface:
             if capability_id:
                 assert caps.capability(capability_id) is not None, capability_id
 
-    def test_an_unknown_coverage_gap_cannot_be_accepted(self, caps):
-        rule = next(
-            r for r in caps.structural_rules() if (r.get("match") or {}).get("kind") == "coverageGap"
-        )
-        assert rule["cannotAccept"] is True
-        assert rule["blocking"] is True
+    # The coverage gate is no longer a rule, so there is no rule here to assert
+    # against. What matters is the item it produces, and
+    # `test_plan.TestCoverageGapCannotBeAccepted` holds that: blocking, cannot
+    # be accepted, and offering no `accept` option. Asserting the data a rule
+    # carried was always the weaker of the two tests.
 
 
 class TestTheDefaultCatalogueResolves:
@@ -234,3 +252,35 @@ class TestTheCatalogueOnlyDeclaresRealCommands:
             "the catalogue declares what the installed CLI does not expose: "
             + json.dumps(unavailable, indent=2)
         )
+
+
+class TestAPlanSaysWhichCliItMeans:
+    """`cliVersion` is the catalog's documented version, not the installed one.
+
+    Reported alone it read as a claim about the machine: a plan built on a host
+    running extension b26 announced "against CLI 1.0.0b31", which is the
+    version the catalog documents and says nothing about what will run the
+    commands.
+    """
+
+    def test_an_unprobed_map_claims_nothing_about_the_install(self):
+        caps = CapabilityMap.load().to_dict()
+        assert caps["probed"] is False
+        assert caps["installedVersion"] is None
+
+    def test_a_probe_records_what_is_installed(self):
+        caps = CapabilityMap.load()
+        caps.probe(probe=lambda command: {"--name", "--gateway-name", "-g", "--subscription",
+                                          "--location", "--yes", "--system-assigned",
+                                          "--provider-name", "--deployment-config",
+                                          "--supported-endpoints", "--api-format",
+                                          "--routing-name", "--backend-models", "--kind",
+                                          "--endpoint", "--api-key", "--value",
+                                          "--metrics-endpoint", "--exporter"},
+                   available=lambda: True)
+        caps.installed_version = "1.0.0b26"
+        out = caps.to_dict()
+        assert out["probed"] is True
+        assert out["installedVersion"] == "1.0.0b26"
+        assert out["cliVersion"] != out["installedVersion"], \
+            "the catalog's version and the installed one are different facts"

@@ -5,6 +5,7 @@ import pytest
 
 from migrate_apim.arm import ArmResponse
 from migrate_apim.capability import CapabilityMap
+from migrate_apim.cli import validate_inventory
 from migrate_apim.collect import Collector, CollectOptions
 from migrate_apim.plan import build_plan
 from migrate_apim.resolve import (
@@ -149,6 +150,19 @@ class TestResolution:
         assert asset["models"]["discoverySource"] == "modelsEndpoint"
         assert asset["models"]["catalogue"] == ["model-a"]
 
+    def test_a_resolved_inventory_still_validates(self, inventory):
+        """The schema has to know the status the resolver writes.
+
+        `catalogued` was not in its enum while `resolve.py` wrote it and
+        `plan.py` branched on it, so `migrate-apim validate` rejected an
+        inventory the tool itself had just produced. Only a resolve run reaches
+        the value, and nothing here had asked the schema about one.
+        """
+        document = copy.deepcopy(inventory)
+        resolve_models(document, client=_SecretClient(), allow={"all"},
+                       fetcher=lambda url, headers: ["model-a"])
+        assert validate_inventory(document) == []
+
     def test_the_credential_never_reaches_the_inventory(self, inventory):
         document = copy.deepcopy(inventory)
         secret = "Bearer s3cret-value-not-in-any-file"
@@ -228,7 +242,8 @@ class TestPlanAfterResolving:
         plan = build_plan(catalogued, caps, previous=first)
         naming = [
             i for i in plan["items"]
-            if i["kind"] == "name" and i["source"]["assetId"] == "model:meta-ai"
+            if i["source"]["aspect"] == "aliasNames"
+            and i["source"]["assetId"] == "model:meta-ai"
         ]
         assert len(naming) == 1
         assert naming[0]["evidence"]["count"] == 10

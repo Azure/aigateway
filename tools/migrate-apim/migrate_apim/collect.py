@@ -11,12 +11,12 @@ from __future__ import annotations
 import datetime as _dt
 import re
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Sequence
 from urllib.parse import urlsplit
 
 from . import detect, ids, policy as policy_mod, secrets
 from .arm import ArmAuthError, ArmClient, ArmError
-from .foundry import FoundryResolver, target_model_registration
+from .foundry import FoundryResolver, resolved_model, target_model_registration
 
 SCHEMA_VERSION = "1.0"
 GENERATOR_VERSION = "0.1.0"
@@ -85,10 +85,30 @@ class Collector:
         self.warnings: list[dict[str, Any]] = []
         self.policies: list[dict[str, Any]] = []
         self._policy_index: dict[str, dict[str, Any]] = {}
+        # One graph for the run, kept current by `_add_policy`. Which policy
+        # governs which API is asked here and in the planner, and asking it two
+        # ways is how the two answers drift.
+        self._graph = policy_mod.PolicyGraph([])
         self.foundry: FoundryResolver | None = None
         self.subscription_id = ids.arm_segment(self.service_id, "subscriptions") or ""
-        self._products_by_scope: dict[str, list[dict[str, Any]]] = {}
         self.excluded_backends: list[dict[str, Any]] = []
+        # Every API seen, in every scope walked. Accumulated here rather than
+        # returned, because it is one flat answer to "what APIs are there" and
+        # the scope loop is an implementation detail of finding them.
+        self.apim_apis: list[dict[str, Any]] = []
+        self._operations_by_api: dict[str, list[dict[str, Any]]] = {}
+        # What governs each API, kept so the model providers behind it can be
+        # asked the same question. A provider's credential is set by the policy
+        # of whatever publishes it just as often as by the backend record, and
+        # `_model_providers` runs after the API loop has thrown the resolution
+        # away. Resolving a second time there would be the two-ways drift the
+        # graph comment above exists to prevent.
+        self._effective_by_api: dict[str, policy_mod.Resolution] = {}
+        # Named value name -> the secret ref already registered for it. A policy
+        # references a named value by bare name, so that is the key; a workspace
+        # redefining a service-scope name would collide, which no instance seen
+        # so far does and which the registry would surface as one ref used twice.
+        self._secret_by_named_value: dict[str, str] = {}
 
     # ------------------------------------------------------------------ run
 
@@ -153,18 +173,44 @@ class Collector:
                 "warnings": self.warnings,
             },
             "service": service,
-            "workspaces": [
-                {**entry, "collected": entry["name"] in scopes} for entry in workspaces
-            ],
+            # What APIM has, under the names APIM gives it. A rule selects from
+            # here, so the path a rule names is a path through the service's own
+            # object graph rather than through this tool's decomposition of it.
+            # `authorizationProviders` is the one that had drifted: we called it
+            # `credentialProviders`, which is a name APIM does not use for a
+            # resource it does have.
+            "apim": {
+                "workspaces": [
+                    {**entry, "collected": entry["name"] in scopes} for entry in workspaces
+                ],
+                "apis": self.apim_apis,
+                "backends": shared.get("backends") or [],
+                "namedValues": shared.get("namedValues") or [],
+                "products": shared.get("products") or [],
+                "subscriptions": shared.get("subscriptions") or [],
+                "certificates": shared.get("certificates") or [],
+                "authorizationServers": shared.get("authorizationServers") or [],
+                "openidConnectProviders": shared.get("openidConnectProviders") or [],
+                "authorizationProviders": shared.get("authorizationProviders") or [],
+                "policyFragments": shared.get("policyFragments") or [],
+                # APIM has loggers and diagnostics; "telemetry" was a box we put
+                # them in, and a rule had to select the box to reach either.
+                "loggers": (shared.get("telemetry") or {}).get("loggers") or [],
+                "diagnostics": (shared.get("telemetry") or {}).get("diagnostics") or [],
+                "policies": self.policies,
+            },
             "assets": assets,
             "excludedApis": excluded,
             "excludedBackends": self.excluded_backends,
-            "shared": shared,
-            "policies": self.policies,
+            # Not APIM: a Microsoft.CognitiveServices account, read to resolve
+            # what a Foundry backend actually serves. It stays outside `apim`
+            # because putting it in would make the one claim that region makes
+            # -- these are APIM's objects -- false.
+            "foundryAccounts": [],
             "secrets": self.registry.items(),
         }
         if self.foundry:
-            document["shared"]["foundryAccounts"] = [
+            document["foundryAccounts"] = [
                 account.to_dict() for account in self.foundry.accounts() if account.deployments is not None
             ]
             if self.foundry.errors:
@@ -192,49 +238,21 @@ class Collector:
             raise ArmError(
                 f"Could not read the API Management service {self.service_id}: {entry.get('error')}"
             )
-        props = raw.get("properties") or {}
-        identity = raw.get("identity") or {}
-        user_assigned = identity.get("userAssignedIdentities") or {}
-        hostnames = [
-            {
-                "type": entry.get("type"),
-                "hostName": entry.get("hostName"),
-                "certificateSource": entry.get("certificateSource"),
-                "keyVaultId": entry.get("keyVaultId"),
-                "identityClientId": entry.get("identityClientId"),
-            }
-            for entry in (props.get("hostnameConfigurations") or [])
-        ]
+        networking = self._networking(raw.get("properties") or {})
         return {
-            "resourceId": raw.get("id"),
-            "name": raw.get("name"),
-            "location": raw.get("location"),
-            "subscriptionId": self.subscription_id,
-            "resourceGroup": ids.arm_segment(self.service_id, "resourceGroups"),
-            "sku": raw.get("sku"),
-            "provisioningState": props.get("provisioningState"),
-            "gatewayUrl": props.get("gatewayUrl"),
-            "managementApiUrl": props.get("managementApiUrl"),
-            "developerPortalUrl": props.get("developerPortalUrl"),
-            "virtualNetworkType": props.get("virtualNetworkType"),
-            "publicNetworkAccess": props.get("publicNetworkAccess"),
-            "publicIPAddresses": props.get("publicIPAddresses"),
-            "privateIPAddresses": props.get("privateIPAddresses"),
+            **_service_source(
+                raw,
+                subscription_id=self.subscription_id,
+                resource_group=ids.arm_segment(self.service_id, "resourceGroups"),
+            ),
             # Reaching a backend depends on how the source reaches it today, so the
             # target needs the same reachability -- not the same subnet, because the
             # two resource types require different delegations.
-            "networking": self._networking(props),
-            "hostnameConfigurations": hostnames,
-            "identity": {
-                "type": identity.get("type"),
-                "principalId": identity.get("principalId"),
-                "tenantId": identity.get("tenantId"),
-                "userAssignedIdentities": [
-                    {"resourceId": key, "clientId": (value or {}).get("clientId")}
-                    for key, value in user_assigned.items()
-                ],
-            },
-            "tags": raw.get("tags") or {},
+            "networking": networking,
+            # A reading of the service, for a rule to narrow on. How it was worked
+            # out is ours -- from `virtualNetworkType` and `publicNetworkAccess` --
+            # but what it is about is the service, which is APIM's.
+            "needsSubnet": (networking.get("targetRequirement") or {}).get("needsSubnet"),
         }
 
     def _networking(self, props: dict[str, Any]) -> dict[str, Any]:
@@ -320,7 +338,8 @@ class Collector:
     def _collect_service_wide(self) -> None:
         """Scopes that exist only on the service, never inside a workspace."""
         self._capture_policy(
-            scope={"level": "global", "name": None, "resourceId": self.service_id},
+            scope={"level": "global", "name": None, "workspace": "default",
+                   "resourceId": self.service_id},
             scope_url=self.service_id,
             policy_id=ids.policy("global"),
         )
@@ -338,9 +357,9 @@ class Collector:
 
         backends = self._collect_backends(base, workspace, scope_label)
         named_values = self._collect_named_values(base, workspace, scope_label)
-        fragments = self._collect_fragments(base, scope_label)
+        fragments = self._collect_fragments(base, workspace, scope_label)
         products = self._collect_products(base, workspace, scope_label)
-        self._products_by_scope[workspace or "default"] = products
+        self._graph.add_products(products)
         subscriptions = self._collect_subscriptions(base, workspace, scope_label)
         certificates = self._collect_certificates(base, scope_label) if not workspace else []
         auth_servers = self._collect_auth_servers(base, scope_label) if not workspace else []
@@ -350,7 +369,8 @@ class Collector:
 
         if workspace and workspace != "default":
             self._capture_policy(
-                scope={"level": "workspace", "name": workspace, "resourceId": base},
+                scope={"level": "workspace", "name": workspace, "workspace": workspace,
+                       "resourceId": base},
                 scope_url=base,
                 policy_id=ids.policy("workspace", workspace),
             )
@@ -364,7 +384,7 @@ class Collector:
             "certificates": certificates,
             "authorizationServers": auth_servers,
             "openidConnectProviders": openid,
-            "credentialProviders": credential_providers,
+            "authorizationProviders": credential_providers,
             "telemetry": telemetry,
         }
 
@@ -495,6 +515,7 @@ class Collector:
             }
             if props.get("secret") or props.get("keyVault"):
                 record["secretRef"] = self.registry.named_value(entry, workspace=workspace, used_by=record["id"])
+                self._secret_by_named_value[name] = record["secretRef"]
             else:
                 # Non-secret named values are plain configuration and are part of
                 # the migration payload, so keep their value.
@@ -502,33 +523,59 @@ class Collector:
             results.append(record)
         return results
 
-    def _collect_fragments(self, base: str, scope: str) -> list[dict[str, Any]]:
-        raw = self._list(f"{base}/policyFragments", "policyFragments", scope)
+    def _collect_fragments(
+        self, base: str, workspace: str | None, scope: str
+    ) -> list[dict[str, Any]]:
+        # `format=rawxml` on the list, not only on the per-fragment fallback:
+        # every other policy read goes through `get_policy`, which forces it so
+        # expression text is kept as authored. Without it a fragment's
+        # expressions come back XML-encoded and hash to different `expr:` ids
+        # than the same expression captured at API scope.
+        raw = self._list(
+            f"{base}/policyFragments", "policyFragments", scope, params={"format": "rawxml"}
+        )
         results = []
         for entry in raw:
             name = entry.get("name") or ""
             props = entry.get("properties") or {}
             value = props.get("value")
+            unreadable = False
             if value is None:
                 detail = self._get(
                     f"{base}/policyFragments/{name}", "policyFragment", scope, params={"format": "rawxml"}
                 )
                 value = ((detail or {}).get("properties") or {}).get("value")
-            policy_id = ids.policy("fragment", name)
+                unreadable = value is None
+            policy_id = ids.policy("fragment", ids.scoped(workspace, name))
             document = policy_mod.parse(
                 value or "",
                 policy_id=policy_id,
-                scope={"level": "fragment", "name": name, "resourceId": entry.get("id")},
+                scope={
+                    "level": "fragment", "name": name,
+                    "workspace": workspace or "default", "resourceId": entry.get("id"),
+                },
                 scope_url=f"{base}/policyFragments/{name}",
                 registry=self.registry,
             )
+            if unreadable:
+                # An empty parse is a fragment that says nothing; a fragment
+                # whose body could not be read says nothing about what is in
+                # it. Left alike, the second reads as the first, and whatever
+                # the fragment carried migrates as though it were not there.
+                document["parseError"] = (
+                    "The body could not be read, so what this fragment contains is unknown. "
+                    "It is not evidence that the fragment is empty."
+                )
             self._add_policy(document)
             results.append(
                 {
-                    "id": ids.fragment(name),
+                    "id": ids.fragment(name, workspace),
                     "name": name,
+                    "workspace": workspace or "default",
                     "description": props.get("description"),
                     "policyId": policy_id,
+                    "elementCount": len(document.get("elements") or []),
+                    "parseError": document.get("parseError"),
                 }
             )
         return results
@@ -541,7 +588,8 @@ class Collector:
             props = entry.get("properties") or {}
             policy_id = ids.policy("product", ids.scoped(workspace, name))
             self._capture_policy(
-                scope={"level": "product", "name": name, "resourceId": entry.get("id")},
+                scope={"level": "product", "name": name, "workspace": workspace or "default",
+                       "resourceId": entry.get("id")},
                 scope_url=f"{base}/products/{name}",
                 policy_id=policy_id,
             )
@@ -738,6 +786,14 @@ class Collector:
             name = raw.get("name") or ""
             props = raw.get("properties") or {}
             if not props.get("isCurrent", True):
+                # A superseded revision is not what callers reach, so it is not
+                # inventoried -- but it was leaving by a bare `continue`, with no
+                # excludedApis entry and no coverage record. That made it the one
+                # thing this collector dropped without saying so, in a file whose
+                # premise is that `excludedApis` proves nothing was. An operator
+                # auditing what moved could not tell a revision that was
+                # considered and set aside from one that was never seen.
+                excluded.append(_excluded(raw, workspace, "notCurrentRevision", []))
                 continue
             if self.options.exclude_api and detect.matches_any(name, self.options.exclude_api):
                 excluded.append(_excluded(raw, workspace, "excludedByOption", []))
@@ -747,7 +803,8 @@ class Collector:
             api_url = f"{base}/apis/{name}"
             policy_id = ids.policy("api", ids.scoped(workspace, name))
             document = self._capture_policy(
-                scope={"level": "api", "name": name, "resourceId": raw.get("id")},
+                scope={"level": "api", "name": name, "workspace": workspace or "default",
+                       "resourceId": raw.get("id")},
                 scope_url=api_url,
                 policy_id=policy_id,
             )
@@ -760,21 +817,31 @@ class Collector:
             # only: a global llm-token-limit applies to every API and would make all
             # of them look like model APIs. Backend auth uses every scope, because
             # any of them can set it.
-            api_scoped = self._effective_elements(document, include_shared=False, api_name=name, workspace=workspace)
-            effective = self._effective_elements(document, include_shared=True, api_name=name, workspace=workspace)
-            element_names = {element["name"] for element in api_scoped["elements"]}
-            families = {element["family"] for element in api_scoped["elements"]}
+            api_scoped = self._graph.governing(
+                api=name, workspace=workspace, levels=("api",)
+            )
+            effective = self._graph.governing(api=name, workspace=workspace)
+            self._effective_by_api[ids.api(name, workspace)] = effective
+            element_names = {element["name"] for element in api_scoped.elements}
+            families = {element["family"] for element in api_scoped.elements}
 
             backend_record, routing_candidates = _resolve_backend(
-                props, backends_by_name, backends_by_id, workspace, api_scoped["elements"]
+                props, backends_by_name, backends_by_id, workspace, api_scoped.elements
             )
-            backend_urls = _backend_urls(backend_record, backends_by_id)
+            candidate_records = _candidate_records(
+                routing_candidates, backends_by_name, backends_by_id, workspace
+            )
+            backend_urls = _backend_urls(
+                backend_record, backends_by_id, candidates=candidate_records
+            )
 
             api_type = (props.get("type") or "http").lower()
             operations: list[dict[str, Any]] = []
             # MCP and A2A APIs expose no REST operations; skip the round trip.
             if api_type not in {"mcp", "a2a"} and not self.options.fast:
                 operations = self._collect_operations(api_url, name, workspace, scope_label)
+
+            self._operations_by_api[ids.api(name, workspace)] = operations
 
             classification = detect.classify_api(
                 raw,
@@ -801,6 +868,7 @@ class Collector:
                 "policyRefs": _policy_refs(
                     policy_id, document, workspace, shared, name, operations,
                     operation_policies_collected=self.options.operation_policies,
+                    effective=effective,
                 ),
                 "access": self._access(raw, name, workspace, shared),
             }
@@ -816,14 +884,17 @@ class Collector:
                 })
 
             if classification.kind == "mcpServer" and "mcp" in self.options.families:
-                assets["mcpServers"].append(self._mcp_asset(common, raw, api_url, backend_record, backends_by_id, workspace, scope_label, classification))
+                assets["mcpServers"].append(self._mcp_asset(
+                    common, raw, api_url, backend_record, backends_by_id, workspace,
+                    scope_label, classification, candidate_records,
+                ))
             elif classification.kind == "agent" and "a2a" in self.options.families:
                 assets["agents"].append(self._agent_asset(common, raw, api_url, backend_record, workspace))
             elif classification.kind == "modelApi" and "models" in self.options.families:
                 assets["models"].append(
                     self._model_asset(
                         common, raw, operations, backend_record, backends_by_id, classification,
-                        effective, routing_candidates,
+                        effective, routing_candidates, candidate_records,
                     )
                 )
             else:
@@ -835,6 +906,8 @@ class Collector:
         if "models" in self.options.families:
             assets["modelProviders"] = self._model_providers(workspace, shared, assets, api_index)
         _mark_referenced(excluded, assets)
+        self.apim_apis.extend(
+            _apim_apis(raw_apis, workspace, assets, excluded, self._operations_by_api))
         return assets, excluded
 
     # ------------------------------------------------------- model providers
@@ -956,7 +1029,10 @@ class Collector:
                 "apiDialect": declared.get("apiDialect") or (rule.api_dialect if rule else None),
                 "endpoint": candidate["endpoint"],
                 "origin": candidate["origin"],
-                "auth": _provider_auth(candidate, self.registry),
+                "auth": _provider_auth(
+                    candidate, self._provider_resolutions(candidate["origin"], assets), self.registry,
+                    secret_by_named_value=self._secret_by_named_value,
+                ),
                 "tls": candidate["tls"],
                 "circuitBreaker": candidate["circuitBreaker"],
                 "azure": None,
@@ -985,6 +1061,7 @@ class Collector:
                             "modelName": declaration.get("model"),
                             "apiFormat": declaration.get("apiFormat"),
                             "formatResolution": declaration.get("formatResolution"),
+                            "inferenceRoutes": declaration.get("supportedEndpoints"),
                             "target": {
                                 "providerKind": declaration.get("targetProviderKind"),
                                 "deployment": {"modelName": declaration.get("model")},
@@ -1019,15 +1096,7 @@ class Collector:
                         "status": "resolved" if deployments else "empty",
                         "discoverySource": "armDeployments",
                         "resolved": [
-                            {
-                                "deploymentName": deployment["name"],
-                                "modelName": deployment["modelName"],
-                                "modelVersion": deployment["modelVersion"],
-                                "modelFormat": deployment["modelFormat"],
-                                "sku": deployment["sku"],
-                                "raiPolicyName": deployment["raiPolicyName"],
-                                "target": target_model_registration(account, deployment),
-                            }
+                            resolved_model(account, deployment)
                             for deployment in deployments
                         ],
                         "notes": [account.deployments_error] if account.deployments_error else [],
@@ -1056,11 +1125,11 @@ class Collector:
             providers.append(record)
 
         for asset in assets.get("models", []):
+            reachable = _api_backend_ids(asset)
             asset["providerIds"] = [
                 provider["id"]
                 for provider in providers
-                if provider["origin"].get("backendId")
-                in {target.get("backendId") for target in (asset.get("routing") or {}).get("targets", [])}
+                if provider["origin"].get("backendId") in reachable
                 or provider["origin"].get("apiId") == asset["source"]["apiId"]
             ]
         return providers
@@ -1083,6 +1152,38 @@ class Collector:
                 if where not in roles[backend_name][role]:
                     roles[backend_name][role].append(where)
         return roles
+
+    def _provider_resolutions(
+        self, origin: dict[str, Any], assets: dict[str, list[dict[str, Any]]]
+    ) -> list[policy_mod.Resolution]:
+        """What governs every model API that routes to this provider.
+
+        A provider's upstream credential is as often set by the policy of the
+        API publishing it as by the backend record -- `authentication-managed-identity`
+        on the API is how a hand-built Foundry backend is credentialed, and the
+        portal's AI import is the case that writes `credentials.managedIdentity`
+        instead. Reading only the backend reported the first shape as having no
+        credential at all.
+
+        The reverse of the `providerIds` link above, and deliberately the same
+        test: a provider is behind an API when the API can route to its backend,
+        or when the provider *is* that API's service URL. Two statements of
+        "which provider does this API use" would be free to disagree, so both
+        ask `_api_backend_ids` rather than each spelling the test out.
+        """
+        backend_id = origin.get("backendId")
+        api_id = origin.get("apiId")
+        resolutions = []
+        for asset in assets.get("models") or []:
+            reachable = _api_backend_ids(asset)
+            asset_api = asset["source"]["apiId"]
+            if not ((backend_id is not None and backend_id in reachable)
+                    or (api_id is not None and api_id == asset_api)):
+                continue
+            resolution = self._effective_by_api.get(asset_api)
+            if resolution is not None:
+                resolutions.append(resolution)
+        return resolutions
 
     def _references_to_backend(
         self, backend_name: str | None, api_index: dict[str, dict[str, Any]], workspace: str | None
@@ -1142,8 +1243,21 @@ class Collector:
                     )
                     continue
                 source_props = source.get("properties") or {}
-                record, _ = _resolve_backend(source_props, backends_by_name, backends_by_id, workspace)
-                for target in _routing_targets(record, backends_by_id, source_props.get("serviceUrl")):
+                # The source API routes the tool calls, so a runtime choice in
+                # *its* policy is this server's upstream just as much as a
+                # declared backend is. Dropping the candidates here reported a
+                # projected server as having no upstream at all.
+                resolution = self._effective_by_api.get(ids.api(source_name, workspace))
+                record, source_candidates = _resolve_backend(
+                    source_props, backends_by_name, backends_by_id, workspace,
+                    resolution.elements if resolution else None,
+                )
+                for target in _routing_targets(
+                    record, backends_by_id, source_props.get("serviceUrl"),
+                    candidates=_candidate_records(
+                        source_candidates, backends_by_name, backends_by_id, workspace
+                    ),
+                ):
                     upstream.append({**target, "viaApi": ids.api(source_name, workspace), "transport": "http"})
             asset["upstream"] = upstream
             asset["sourceApiIds"] = [ids.api(name, workspace) for name in source_names]
@@ -1171,6 +1285,7 @@ class Collector:
                         "level": "operation",
                         "name": operation_name,
                         "apiName": name,
+                        "workspace": workspace or "default",
                         "resourceId": entry.get("id"),
                     },
                     scope_url=f"{api_url}/operations/{operation_name}",
@@ -1199,11 +1314,15 @@ class Collector:
         backend_record: dict[str, Any] | None,
         backends_by_id: dict[str, dict[str, Any]],
         classification: detect.Classification,
-        effective: dict[str, Any],
+        effective: policy_mod.Resolution,
         routing_candidates: list[str] | None = None,
+        candidate_records: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         props = raw.get("properties") or {}
-        targets = _routing_targets(backend_record, backends_by_id, props.get("serviceUrl"))
+        targets = _routing_targets(
+            backend_record, backends_by_id, props.get("serviceUrl"),
+            candidates=candidate_records,
+        )
         provider_rule = classification.provider
         endpoint = targets[0]["url"] if targets else props.get("serviceUrl")
 
@@ -1222,7 +1341,10 @@ class Collector:
             "basis": resolved.get("basis") or ("backendHost" if provider_rule else None),
             "protocolBasis": resolved.get("protocolBasis"),
             "endpoint": endpoint,
-            "auth": _backend_auth(backend_record, effective, self.registry),
+            "auth": _backend_auth(
+                backend_record, effective, self.registry,
+                secret_by_named_value=self._secret_by_named_value,
+            ),
             "azure": None,
         }
 
@@ -1231,7 +1353,7 @@ class Collector:
             "status": "unresolved",
             "discoverySource": catalog or "unknown",
             "resolved": [],
-            "declared": sorted(_declared_models(operations, effective.get("elements") or [])),
+            "declared": sorted(_declared_models(operations, effective.elements)),
             "notes": [],
         }
 
@@ -1246,6 +1368,7 @@ class Collector:
                     "modelName": declaration.get("model"),
                     "apiFormat": declaration.get("apiFormat"),
                     "formatResolution": declaration.get("formatResolution"),
+                    "inferenceRoutes": declaration.get("supportedEndpoints"),
                     "target": {
                         "providerKind": declaration.get("targetProviderKind"),
                         "deployment": {"modelName": declaration.get("model")},
@@ -1281,21 +1404,15 @@ class Collector:
                 account = account or member
                 deployments = self.foundry.load_deployments(member)
                 for deployment in deployments:
-                    resolved.append({
-                        "deploymentName": deployment["name"],
-                        "modelName": deployment["modelName"],
-                        "modelVersion": deployment["modelVersion"],
-                        "modelFormat": deployment["modelFormat"],
-                        "sku": deployment["sku"],
-                        "raiPolicyName": deployment["raiPolicyName"],
+                    resolved.append(resolved_model(
+                        member, deployment,
                         # Which member serves it, and on what share of traffic.
                         # One alias fronts the same model across members, so the
                         # registration has to say where each copy lives.
-                        "backendId": target.get("backendId"),
-                        "poolPriority": target.get("priority"),
-                        "poolWeight": target.get("weight"),
-                        "target": target_model_registration(member, deployment),
-                    })
+                        backendId=target.get("backendId"),
+                        poolPriority=target.get("priority"),
+                        poolWeight=target.get("weight"),
+                    ))
                 if member.deployments_error:
                     models["notes"].append(member.deployments_error)
             if account:
@@ -1393,6 +1510,7 @@ class Collector:
         workspace: str | None,
         scope: str,
         classification: detect.Classification,
+        candidate_records: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         props = raw.get("properties") or {}
         mcp_props = props.get("mcpProperties") or {}
@@ -1430,7 +1548,10 @@ class Collector:
 
         transport = _mcp_transport(mcp_props)
         upstream = []
-        for target in _routing_targets(backend_record, backends_by_id, props.get("serviceUrl")):
+        for target in _routing_targets(
+            backend_record, backends_by_id, props.get("serviceUrl"),
+            candidates=candidate_records,
+        ):
             upstream.append(
                 {
                     **target,
@@ -1627,56 +1748,6 @@ class Collector:
             "subscriptions": subscriptions,
         }
 
-    def _effective_elements(
-        self,
-        document: dict[str, Any] | None,
-        *,
-        include_shared: bool,
-        api_name: str,
-        workspace: str | None,
-    ) -> dict[str, Any]:
-        """Flatten the policy elements that actually govern one API.
-
-        Resolves ``include-fragment`` references (guarding against cycles) and,
-        when ``include_shared``, folds in the product and global documents. The
-        scopes consulted are returned so a reader can tell "found nothing" apart
-        from "did not look".
-        """
-        elements: list[dict[str, Any]] = []
-        scopes: list[str] = []
-        unresolved: list[str] = []
-
-        def add(doc: dict[str, Any] | None) -> None:
-            if doc:
-                # Tag each element with the document it came from, so anything built
-                # from this flattened view can point back at the full configuration.
-                elements.extend({**element, "policyId": doc["id"]} for element in doc.get("elements") or [])
-                if doc["id"] not in scopes:
-                    scopes.append(doc["id"])
-
-        add(document)
-        pending = list((document or {}).get("fragmentRefs") or [])
-        seen: set[str] = set()
-        while pending:
-            fragment_name = pending.pop(0)
-            if fragment_name in seen:
-                continue
-            seen.add(fragment_name)
-            fragment_doc = self._policy_index.get(ids.policy("fragment", fragment_name))
-            if fragment_doc is None:
-                unresolved.append(fragment_name)
-                continue
-            add(fragment_doc)
-            pending.extend(fragment_doc.get("fragmentRefs") or [])
-
-        if include_shared:
-            api_id = ids.api(api_name, workspace)
-            for product in self._products_by_scope.get(workspace or "default", []):
-                if api_id in product["apiIds"] and product.get("policyId"):
-                    add(self._policy_index.get(product["policyId"]))
-            add(self._policy_index.get(ids.policy("global")))
-
-        return {"elements": elements, "scopesExamined": scopes, "unresolvedFragments": unresolved}
 
     def _capture_policy(
         self,
@@ -1711,6 +1782,7 @@ class Collector:
             return
         self._policy_index[document["id"]] = document
         self.policies.append(document)
+        self._graph.add(document)
 
     def _get(
         self, url: str, collection: str, scope: str, *, params: dict[str, str] | None = None
@@ -1731,9 +1803,12 @@ class Collector:
         self.coverage.append(_coverage(collection, scope, "complete", 1, None))
         return resp.body if isinstance(resp.body, dict) else None
 
-    def _list(self, url: str, collection: str, scope: str, *, quiet: bool = False) -> list[dict[str, Any]]:
+    def _list(
+        self, url: str, collection: str, scope: str, *, quiet: bool = False,
+        params: dict[str, str] | None = None,
+    ) -> list[dict[str, Any]]:
         try:
-            items = self.client.list(url, self.api_version)
+            items = self.client.list(url, self.api_version, **(params or {}))
         except ArmAuthError:
             raise
         except ArmError as exc:
@@ -1780,6 +1855,203 @@ def _merge_shared(target: dict[str, Any], scope: dict[str, Any]) -> None:
                     existing[sub_key] = sub_value
         else:
             target[key] = value
+
+
+def _service_source(raw: dict[str, Any], *, subscription_id: str = "",
+                    resource_group: str = "") -> dict[str, Any]:
+    """The APIM service as ARM returns it.
+
+    Split out for the reason `_api_source` is: it is the one place the service's
+    own fields are written down, so `compile` can ask it what APIM returns
+    rather than ask a schema we wrote and could have widened by hand.
+    """
+    props = raw.get("properties") or {}
+    identity = raw.get("identity") or {}
+    user_assigned = identity.get("userAssignedIdentities") or {}
+    return {
+        "resourceId": raw.get("id"),
+        "name": raw.get("name"),
+        "location": raw.get("location"),
+        "subscriptionId": subscription_id,
+        "resourceGroup": resource_group,
+        "sku": raw.get("sku"),
+        "provisioningState": props.get("provisioningState"),
+        "gatewayUrl": props.get("gatewayUrl"),
+        "managementApiUrl": props.get("managementApiUrl"),
+        "developerPortalUrl": props.get("developerPortalUrl"),
+        "virtualNetworkType": props.get("virtualNetworkType"),
+        "publicNetworkAccess": props.get("publicNetworkAccess"),
+        "publicIPAddresses": props.get("publicIPAddresses"),
+        "privateIPAddresses": props.get("privateIPAddresses"),
+        "hostnameConfigurations": [
+            {
+                "type": entry.get("type"),
+                "hostName": entry.get("hostName"),
+                "certificateSource": entry.get("certificateSource"),
+                "keyVaultId": entry.get("keyVaultId"),
+                "identityClientId": entry.get("identityClientId"),
+            }
+            for entry in (props.get("hostnameConfigurations") or [])
+        ],
+        "identity": {
+            "type": identity.get("type"),
+            "principalId": identity.get("principalId"),
+            "tenantId": identity.get("tenantId"),
+            "userAssignedIdentities": [
+                {"resourceId": key, "clientId": (value or {}).get("clientId")}
+                for key, value in user_assigned.items()
+            ],
+        },
+        "tags": raw.get("tags") or {},
+    }
+
+
+def api_readings(asset: dict[str, Any]) -> dict[str, Any]:
+    """The scalar readings of an API that a rule narrows on.
+
+    The evidence each summarises is this tool's -- a catalogue resolved from
+    CognitiveServices deployments, a dialect comparison, a tool list fetched at
+    runtime -- but what each is *about* is the API, which is APIM's.
+
+    Rendered here rather than inline because the asset they read can be
+    rewritten after collection: see `refresh_api_readings`.
+    """
+    catalogue = asset.get("models") or {}
+    translation = (asset.get("endpoints") or {}).get("translation") or {}
+    discovery = asset.get("toolDiscovery") or {}
+    return {
+        "catalogueFetched": bool(catalogue.get("catalogue")),
+        "discoverySource": catalogue.get("discoverySource"),
+        "translation": translation.get("status"),
+        "toolDiscovery": discovery.get("status"),
+        "toolsFromGateway": discovery.get("policiesApplied"),
+    }
+
+
+def refresh_api_readings(inventory: dict[str, Any]) -> dict[str, Any]:
+    """Re-render `apim.apis[]`'s readings from the assets they summarise.
+
+    "One reading, rendered once, so there is nothing to drift" held only until
+    something rewrote an asset after collection -- and `resolve-models` and
+    `discover-tools`, the two commands the skill requires, do exactly that.
+    They updated the asset and left the copy saying what was true before they
+    ran: a provider whose catalogue had just been fetched still read
+    `catalogueFetched: false`, and a server whose tools had just been listed
+    still read `toolDiscovery: runtimeOnly`.
+
+    Nothing selected on the stale value yet, because the planner reads the
+    asset. That is the whole danger: the vocabulary those commits introduced
+    for rules to narrow on was wrong, and the first rule to use it would have
+    been wrong with it, silently.
+    """
+    assets = (inventory.get("assets") or {})
+    by_id = {
+        asset["id"]: asset
+        for family in assets.values() if isinstance(family, list)
+        for asset in family if isinstance(asset, dict) and asset.get("id")
+    }
+    for row in (inventory.get("apim") or {}).get("apis") or []:
+        asset = by_id.get(row.get("assetId"))
+        if asset:
+            row.update(api_readings(asset))
+    return inventory
+
+
+def _apim_apis(
+    raw_apis: list[dict[str, Any]],
+    workspace: str | None,
+    assets: dict[str, list[dict[str, Any]]],
+    excluded: list[dict[str, Any]],
+    operations_by_api: dict[str, list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    """Every API APIM has in this scope, and what this tool made of each.
+
+    Answering "which APIs are on this service" took a union of five lists --
+    three asset families plus `excludedApis`, with model providers in a fourth
+    that has no API behind it at all. That is a question APIM can answer in one
+    call, so the inventory should answer it in one place.
+
+    The fields are `_api_source`'s, called here rather than copied: both this
+    and the `source` block on each asset come out of the one function, so there
+    is no second description of an API to drift from the first. What is added is
+    only the pair that cannot be read off APIM -- which asset the API became, or
+    why it became none. Exactly one of the two is set.
+    """
+    became = {
+        (asset.get("source") or {}).get("apiId"): asset
+        for family in assets.values()
+        for asset in family
+        if (asset.get("source") or {}).get("apiId")
+    }
+    # Read after `_mark_referenced`, so an API kept as a dependency carries the
+    # reason it was kept rather than the one it was first set aside for.
+    reasons = {entry["apiId"]: entry["reason"] for entry in excluded}
+    rows = []
+    for raw in raw_apis:
+        source = _api_source(raw, workspace)
+        asset = became.get(source["apiId"])
+        row = {
+            **source,
+            "workspace": workspace or "default",
+            "subscriptionRequired": (raw.get("properties") or {}).get("subscriptionRequired"),
+            "assetId": asset["id"] if asset else None,
+            "role": _ROLE_OF.get((asset or {}).get("kind"), "excluded"),
+            "pattern": (asset or {}).get("pattern"),
+            "excludedReason": reasons.get(source["apiId"]),
+        }
+        # APIM returns operations, so the spine carries them. Each is APIM's
+        # record plus two readings of its `urlTemplate`, named as readings:
+        # `group` is which inference route it looks like, `publishable` whether
+        # the target has that route at all.
+        # Scalar readings of the API, for a rule to narrow on. The evidence they
+        # summarise is this tool's -- a catalogue resolved from CognitiveServices
+        # deployments, a dialect comparison, a tool list fetched at runtime --
+        # but what each is *about* is the API, which is APIM's. So the subject of
+        # the rule is the APIM object and the reading is a `where` key, which is
+        # the same shape `type` and `pattern` already have.
+        if asset:
+            row.update(api_readings(asset))
+        row["operations"] = [
+            {**operation, **_operation_reading(operation.get("urlTemplate") or "")}
+            for operation in operations_by_api.get(source["apiId"]) or []
+        ]
+        rows.append(row)
+    return rows
+
+
+# APIM's `properties.type` says what kind of API it is; `role` is this tool's
+# word for the same thing after classification, because an http-typed API can
+# still be a model API and APIM has no field that says so.
+_ROLE_OF = {"modelApi": "modelApi", "mcpServer": "mcpServer", "agent": "agent"}
+
+# Which keys on an `apim.*` object this tool worked out rather than read from
+# ARM. Declared here, beside the code that produces them, because the checker
+# that uses it must not be a second list that can drift.
+#
+# The rule it encodes: a reading may be a `where` key, never a path segment.
+# `apim.apis[]` narrowed on `pattern` is honest -- an APIM object, this tool's
+# reading of it, and a reader can tell which is which. `apim.apis[].endpoints`
+# was not: `endpoints` is a decomposition of ours, and putting it in the path
+# made a whole structure of this tool's read as though APIM returned it.
+APIM_READINGS = {
+    "service": ("networking", "needsSubnet"),
+    "apim.apis[]": ("role", "pattern", "catalogueFetched", "discoverySource", "translation",
+                    "toolDiscovery", "toolsFromGateway"),
+    "apim.apis[].operations[]": ("group", "publishable", "route", "subresource", "template"),
+}
+
+
+def _operation_reading(url_template: str) -> dict[str, Any]:
+    """This tool's reading of an operation's template, on APIM's own record.
+
+    A reading is allowed to sit on an APIM object as long as it is named as one
+    -- `type` is APIM's, `group` and `publishable` are ours, and a rule can
+    narrow on either. What is not allowed is a whole decomposition of ours
+    hanging off an APIM path: `apim.apis[].endpoints.surface` read as though
+    APIM had an `endpoints` property, which it does not.
+    """
+    classified = detect.classify_operation(url_template)
+    return {"group": classified["group"], "publishable": classified["publishable"]}
 
 
 def _api_source(raw: dict[str, Any], workspace: str | None) -> dict[str, Any]:
@@ -1866,15 +2138,49 @@ def _resolve_backend(
     return by_name.get(name) or by_id.get(ids.backend(name, workspace)), []
 
 
+def _candidate_records(
+    names: list[str] | None,
+    by_name: dict[str, dict[str, Any]],
+    by_id: dict[str, dict[str, Any]],
+    workspace: str | None,
+) -> list[dict[str, Any]]:
+    """The backend records behind the names `_resolve_backend` reported.
+
+    An API that picks its upstream at runtime reports candidates instead of a
+    route, and those are what it reaches. Everything that reads a backend has
+    to see them -- the provider classification, the model catalogue, the alias
+    members, an MCP server's upstream -- or a conditionally routed API is
+    analysed as one with no backend at all.
+
+    A name that resolves to no record is dropped rather than carried as None:
+    `set-backend-service` names a backend by id, and one APIM does not have is
+    a dangling reference in the source, not an upstream to report.
+    """
+    return [
+        record for record in (
+            by_name.get(name) or by_id.get(ids.backend(name, workspace))
+            for name in names or ()
+        ) if record
+    ]
+
+
 def _raw_backend(record: dict[str, Any] | None) -> dict[str, Any] | None:
     if not record:
         return None
     return {"properties": {"url": record.get("url"), "resourceId": record.get("resourceIdRef")}}
 
 
-def _backend_urls(record: dict[str, Any] | None, by_id: dict[str, dict[str, Any]]) -> list[str]:
+def _backend_urls(
+    record: dict[str, Any] | None,
+    by_id: dict[str, dict[str, Any]],
+    candidates: list[dict[str, Any]] | None = None,
+) -> list[str]:
     if not record:
-        return []
+        # What the API reaches when it picks at runtime. `classify_api` reads
+        # these to recognise a model provider by host, so without them a
+        # conditionally routed API was classified with no backend evidence and
+        # its provider came back "unknown".
+        return [member["url"] for member in (candidates or []) if member.get("url")]
     urls = [record.get("url")] if record.get("url") else []
     for item in ((record.get("pool") or {}).get("services") or []):
         member = by_id.get(item["backendId"])
@@ -1883,10 +2189,76 @@ def _backend_urls(record: dict[str, Any] | None, by_id: dict[str, dict[str, Any]
     return [url for url in urls if url]
 
 
+def _api_backend_ids(asset: dict[str, Any]) -> set[str]:
+    """Every backend this API can send a request to, however it chooses.
+
+    Both halves of the provider link ask this -- `providerIds` forward and
+    `_provider_resolutions` back -- because the two are only trustworthy while
+    they are the same test, and two copies of a comprehension are not.
+
+    `targets` is the backend the API resolves to. `candidates` is the set it
+    picks from at runtime, which `_resolve_backend` reports instead of a target
+    whenever the `set-backend-service` count is not exactly one. Reading only
+    `targets` left a conditionally routed API linked to no provider at all, so
+    the policy carrying its upstream credential was never consulted for the
+    backends that policy itself names.
+
+    A candidate is an alternative rather than a confirmed route, and it stays
+    one: this returns what the API *can* reach, and `_backend_auth` is where
+    several alternatives become `identityCandidates` rather than a silent pick.
+    Candidates are recorded as bare backend names, so they are scoped to the
+    asset's workspace to match the ids `targets` carries.
+    """
+    routing = asset.get("routing") or {}
+    workspace = asset.get("workspace")
+    reachable = {
+        target.get("backendId")
+        for target in routing.get("targets") or []
+        if target.get("backendId")
+    }
+    reachable |= {
+        ids.backend(name, workspace) for name in routing.get("candidates") or [] if name
+    }
+    return reachable
+
+
+def _member_target(record: dict[str, Any]) -> dict[str, Any]:
+    """One backend as a routing target, however the API arrived at it.
+
+    Priority and weight are a pool's declaration, so they are absent here: the
+    API that names this backend directly reaches only it, and the one that
+    picks between candidates declares no share either.
+    """
+    return {
+        "backendId": record.get("id"),
+        "url": record.get("url"),
+        "resourceIdRef": record.get("resourceIdRef"),
+        "priority": None,
+        "weight": None,
+        "circuitBreaker": record.get("circuitBreaker"),
+        "secretRefs": record.get("secretRefs") or [],
+        "provider": record.get("provider"),
+        "languageModel": record.get("languageModel"),
+    }
+
+
 def _routing_targets(
-    record: dict[str, Any] | None, by_id: dict[str, dict[str, Any]], service_url: str | None
+    record: dict[str, Any] | None,
+    by_id: dict[str, dict[str, Any]],
+    service_url: str | None,
+    candidates: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     if record is None:
+        # A `set-backend-service` count that is not exactly one resolves to no
+        # single backend, but the API still reaches every candidate. Reporting
+        # no target at all made the model catalogue unresolvable and left the
+        # alias with no members -- so the plan proposed carrying the routing
+        # condition into alias priority and weight while building no alias to
+        # carry it. They are targets without a priority or a weight because a
+        # `choose` declares neither; what the condition meant is the separate
+        # decision the `set-backend-service` rule already raises.
+        if candidates:
+            return [_member_target(member) for member in candidates]
         return [{"backendId": None, "url": service_url, "priority": None, "weight": None}] if service_url else []
     pool = record.get("pool") or {}
     if pool.get("services"):
@@ -1907,35 +2279,39 @@ def _routing_targets(
                 }
             )
         return targets
-    return [
-        {
-            "backendId": record.get("id"),
-            "url": record.get("url"),
-            "resourceIdRef": record.get("resourceIdRef"),
-            "priority": None,
-            "weight": None,
-            "circuitBreaker": record.get("circuitBreaker"),
-            "secretRefs": record.get("secretRefs") or [],
-            "provider": record.get("provider"),
-            "languageModel": record.get("languageModel"),
-        }
-    ]
+    return [_member_target(record)]
 
 
 # A backend can carry several credentials at once. The reported mode is the one
 # that governs how the target provider must be configured, strongest first.
+#
+# The three in the middle have no target field at all, so they rank above the
+# two that do: a backend carrying both a client certificate and an api-key
+# header is not migrated by registering the key and calling it done. `basic` is
+# last of those three because it is the only one a person can reproduce by hand
+# -- `Authorization: Basic base64(user:pass)` is a Custom provider's ApiKey
+# header -- whereas an OAuth connection and mTLS can be reproduced by nothing.
 _AUTH_PRECEDENCE = (
-    "managedIdentity", "credentialManager", "clientCertificate",
+    "managedIdentity", "credentialManager", "clientCertificate", "basic",
     "authorizationHeader", "apiKey", "none",
 )
 
 
 def _backend_auth(
-    record: dict[str, Any] | None, effective: dict[str, Any] | None, registry: secrets.SecretRegistry
+    record: dict[str, Any] | None, effective: policy_mod.Resolution | None,
+    registry: secrets.SecretRegistry, *, alternatives: str = "product",
+    secret_by_named_value: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     auth: dict[str, Any] = {"mode": "none", "modes": [], "secretRefs": [], "evidence": []}
     credentials = (record or {}).get("credentials") or {}
     owner = (record or {}).get("id")
+    # A parameter setter names the credential; its `<value>` child holds it.
+    # Both are elements, so the pair has to be put back together here.
+    children_of: dict[str, list[dict[str, Any]]] = {}
+    for element in (effective.elements if effective else []):
+        parent, _, tail = (element.get("path") or "").rpartition("/")
+        if parent and tail.startswith("value["):
+            children_of.setdefault(parent, []).append(element)
 
     def note(mode: str, evidence: str) -> None:
         if mode not in auth["modes"]:
@@ -1981,17 +2357,84 @@ def _backend_auth(
     for ref in (record or {}).get("secretRefs") or []:
         add_secret(ref)
 
-    for element in (effective or {}).get("elements", []):
-        if element["name"] == "authentication-managed-identity":
-            add_identity(
-                element["attributes"].get("client-id"),
-                element["attributes"].get("resource"),
-                "policy:authentication-managed-identity",
-            )
-        elif element["name"] == "authentication-certificate":
+    for element in (effective.elements if effective else []):
+        if element["name"] == "authentication-certificate":
             note("clientCertificate", "policy:authentication-certificate")
+        elif element["name"] == "authentication-basic":
+            note("basic", "policy:authentication-basic")
+            # The password, which `policy.parse` redacted out of the attribute
+            # and registered a ref for. Withheld until `_custom_auth` learned
+            # to refuse this mode: `secretRefs` is what fills a provider's
+            # ApiKey value, so naming it here used to publish a basic
+            # credential as a working api key. `basic` is now refused outright,
+            # so the ref reaches nothing that would misread it -- and whoever
+            # takes the `compensate` option needs to know where the password is
+            # to compose the `Authorization: Basic ...` header by hand.
+            if element.get("secretRef"):
+                add_secret(element["secretRef"])
         elif element["name"] == "get-authorization-context":
             note("credentialManager", "policy:get-authorization-context")
+        elif element.get("credentialParameter"):
+            # The upstream key, written as the header or query parameter the
+            # provider reads it from. `credentials.header` above is the same
+            # credential declared on the backend record instead; a backend can
+            # carry it either way and the target field is the same, so this
+            # records the parameter in the shape that branch already uses.
+            parameter = element["credentialParameter"]
+            note("apiKey", f"policy:{element['name']}")
+            parameters = auth.setdefault("parameters", {"header": [], "query": []})
+            side = "query" if element["name"] == "set-query-parameter" else "header"
+            if parameter not in parameters.setdefault(side, []):
+                parameters[side].append(parameter)
+            # The value is on the `<value>` child, which is an element of its
+            # own: the setter names the parameter and the child carries what
+            # goes in it. The secret ref is the one `_collect_named_values`
+            # already registered -- minting a second here would describe the
+            # same APIM secret twice, under two ids.
+            for child in children_of.get(element.get("path") or "", ()):
+                for nv_name in child.get("namedValueRefs") or []:
+                    ref = (secret_by_named_value or {}).get(nv_name)
+                    if ref:
+                        add_secret(ref)
+                # A key written straight into the XML rather than as a named
+                # value. `policy.parse` redacted it and registered a ref for
+                # reading it back, so it resolves like any other -- and without
+                # this the provider registered `kind: ApiKey` with a null key,
+                # which is the shape this mode exists to avoid.
+                if child.get("secretRef"):
+                    add_secret(child["secretRef"])
+
+    # Per request context, because the last `authentication-managed-identity`
+    # to run is the one that applies and a union of alternatives is not an
+    # order. A product is one alternative and no product is another: flattened
+    # together, an identity set on the API after `<base />` could be dropped as
+    # a duplicate and a product's identity read as the later of the two, when
+    # the API's overrides it in both contexts.
+    candidates: list[tuple[str | None, str | None]] = []
+    for chain in (effective.chains if effective else ()):
+        last = None
+        for occurrence in chain:
+            if occurrence.name == "authentication-managed-identity":
+                last = occurrence.element
+        if last is not None:
+            attributes = last.get("attributes") or {}
+            candidate = (attributes.get("client-id"), attributes.get("resource"))
+            if candidate not in candidates:
+                candidates.append(candidate)
+    if candidates:
+        client_id, audience = candidates[0]
+        add_identity(client_id, audience, "policy:authentication-managed-identity")
+        if len(candidates) > 1:
+            # Which one applies depends on the route a call arrives by, and one
+            # provider cannot authenticate two ways. Named rather than resolved:
+            # picking silently would be a guess reported as a fact.
+            auth["identityCandidates"] = [
+                {"clientId": cid, "audience": aud} for cid, aud in candidates
+            ]
+            auth["identityNote"] = (
+                f"{len(candidates)} managed identities apply, depending on which {alternatives} a "
+                "call arrives through. The first is proposed; the alternatives are recorded here."
+            )
 
     for mode in _AUTH_PRECEDENCE:
         if mode in auth["modes"]:
@@ -2003,8 +2446,14 @@ def _backend_auth(
     # outright when a fragment could not be resolved.
     auth["basis"] = {
         "backendCredentials": bool(credentials),
-        "policyScopesExamined": (effective or {}).get("scopesExamined") or [],
-        "unresolvedFragments": (effective or {}).get("unresolvedFragments") or [],
+        "policyScopesExamined": list(effective.scopes_examined) if effective else [],
+        # Both kinds of "could not be read", because for this question they
+        # cost the same: a fragment naming nothing and one whose body would not
+        # load are each a place the credential could have been set.
+        "unresolvedFragments": sorted(
+            {*(effective.unresolved_fragments if effective else ()),
+             *(effective.unreadable_fragments if effective else ())}
+        ),
     }
     if auth["mode"] == "none":
         if auth["basis"]["unresolvedFragments"]:
@@ -2028,7 +2477,7 @@ def _backend_auth(
     return auth
 
 
-def _supporting_backends(effective: dict[str, Any], *, workspace: str) -> list[dict[str, Any]]:
+def _supporting_backends(effective: policy_mod.Resolution, *, workspace: str) -> list[dict[str, Any]]:
     """Backends this API depends on for something other than serving the model.
 
     A content-safety or embeddings backend is a migration dependency in its own
@@ -2036,7 +2485,7 @@ def _supporting_backends(effective: dict[str, Any], *, workspace: str) -> list[d
     dependency is also a gap rather than a thing to recreate.
     """
     found: dict[str, dict[str, Any]] = {}
-    for element in effective.get("elements") or []:
+    for element in effective.elements:
         mapping = detect.backend_roles_from_element(element)
         if not mapping:
             continue
@@ -2142,9 +2591,67 @@ def _tool_discovery(pattern: str, tools: list[dict[str, Any]], props: dict[str, 
     }
 
 
-def _provider_auth(candidate: dict[str, Any], registry: secrets.SecretRegistry) -> dict[str, Any]:
+def _merge_resolutions(
+    resolutions: Sequence[policy_mod.Resolution],
+) -> policy_mod.Resolution | None:
+    """One resolution covering every API that reaches the same provider.
+
+    `chains` concatenates rather than unions, because a chain is one alternative
+    request context and `_backend_auth` reads the *last* identity in each. Two
+    APIs are two more alternatives in exactly the sense a product already is, so
+    an identity they disagree on surfaces as `identityCandidates` instead of
+    whichever API happened to be collected second.
+
+    Everything else unions: what a policy covers, which scopes were read, and
+    which fragments would not resolve are all set questions.
+    """
+    if not resolutions:
+        return None
+    if len(resolutions) == 1:
+        return resolutions[0]
+    scopes: list[str] = []
+    unresolved: list[str] = []
+    unreadable: list[str] = []
+    breaks: list[dict[str, Any]] = []
+    occurrences: list[policy_mod.Occurrence] = []
+    chains: list[tuple[policy_mod.Occurrence, ...]] = []
+    for resolution in resolutions:
+        occurrences.extend(resolution.occurrences)
+        chains.extend(resolution.chains)
+        for source, sink in (
+            (resolution.scopes_examined, scopes),
+            (resolution.unresolved_fragments, unresolved),
+            (resolution.unreadable_fragments, unreadable),
+            (resolution.inheritance_breaks, breaks),
+        ):
+            for value in source:
+                if value not in sink:
+                    sink.append(value)
+    return policy_mod.Resolution(
+        occurrences=tuple(policy_mod.unique_occurrences(occurrences)),
+        scopes_examined=tuple(scopes),
+        unresolved_fragments=tuple(unresolved),
+        unreadable_fragments=tuple(unreadable),
+        inheritance_breaks=tuple(breaks),
+        chains=tuple(chains),
+    )
+
+
+def _provider_auth(
+    candidate: dict[str, Any],
+    resolutions: Sequence[policy_mod.Resolution],
+    registry: secrets.SecretRegistry,
+    *,
+    secret_by_named_value: dict[str, str] | None = None,
+) -> dict[str, Any]:
     record = {"credentials": candidate.get("credentials"), "secretRefs": candidate.get("secretRefs")}
-    return _backend_auth(record, None, registry)
+    # "API or product", because a provider sits behind every API that routes to
+    # it: the alternatives it has to choose between are one per API per product,
+    # where an API has only the products.
+    return _backend_auth(
+        record, _merge_resolutions(resolutions), registry, alternatives="API or product",
+        secret_by_named_value=secret_by_named_value,
+    )
 
 
 def _mark_referenced(excluded: list[dict[str, Any]], assets: dict[str, list[dict[str, Any]]]) -> None:
@@ -2232,6 +2739,33 @@ def _mcp_path(mcp_props: dict[str, Any]) -> str | None:
     return None
 
 
+
+def _fragments_reaching(
+    effective: policy_mod.Resolution | None, workspace: str | None
+) -> list[str]:
+    """Every fragment an API's policy reaches, resolved or not.
+
+    A reference naming no collected fragment is listed too, under the id it
+    would have had, and so is one whose body would not load -- that one
+    contributes no elements, so it is in no occurrence's route, and dropping it
+    would cut the asset's only link to the document explaining the failure.
+    `auth.basis.unresolvedFragments` says which of these could not be read.
+    """
+    seen: list[str] = []
+    for occurrence in (effective.occurrences if effective else ()):
+        for policy_id in occurrence.via:
+            if policy_id not in seen:
+                seen.append(policy_id)
+    for policy_id in (effective.unreadable_fragments if effective else ()):
+        if policy_id not in seen:
+            seen.append(policy_id)
+    for name in (effective.unresolved_fragments if effective else ()):
+        missing = ids.policy("fragment", ids.scoped(workspace, name))
+        if missing not in seen:
+            seen.append(missing)
+    return seen
+
+
 def _policy_refs(
     policy_id: str,
     document: dict[str, Any] | None,
@@ -2240,12 +2774,17 @@ def _policy_refs(
     api_name: str,
     operations: list[dict[str, Any]] | None = None,
     operation_policies_collected: bool = False,
+    effective: policy_mod.Resolution | None = None,
 ) -> dict[str, Any]:
     refs: dict[str, Any] = {
         "global": ids.policy("global"),
         "api": policy_id if document else None,
         "operationPoliciesCollected": operation_policies_collected,
-        "fragments": [ids.policy("fragment", name) for name in (document or {}).get("fragmentRefs", [])],
+        # Every fragment that reaches this API, not only the ones its own
+        # document names: a fragment included by another fragment, or by the
+        # product or global policy, governs it just as much. Taken from the
+        # resolution rather than re-walked, so this cannot disagree with it.
+        "fragments": _fragments_reaching(effective, workspace),
         "products": [],
         "operations": [
             operation["policyId"] for operation in (operations or []) if operation.get("policyId")

@@ -9,68 +9,45 @@
     "handled": "Carried by another object; excluded here and cross-referenced rather than dropped.",
     "notApplicable": "Plumbing with nothing to migrate."
   },
-  "publishableRoutes": [
-    "/openai/v1/chat/completions",
-    "/openai/v1/responses",
-    "/openai/v1/embeddings",
-    "/v1/messages"
-  ],
+  "publishableRoutes": ["/openai/v1/chat/completions", "/openai/v1/responses", "/openai/v1/embeddings", "/v1/messages"],
   "assets": [
     {
-      "match": {
-        "family": "mcpServers",
-        "pattern": "passthrough"
-      },
+      "selects": "apim.apis[]",
+      "where": {"type": "mcp", "pattern": "passthrough"},
       "verdict": "native",
       "capabilityId": "mcp.create",
       "note": "The target takes streamableHttp or sse transports, and authorizationCode for OAuth2. Nothing checks a collected server against that here: a transport or grant type outside it is a gap the apply step surfaces, not a rule this file can select on. Recorded so the limit is written down where the mapping is."
     },
     {
-      "match": {
-        "family": "mcpServers",
-        "pattern": "federationRouter"
-      },
+      "selects": "apim.apis[]",
+      "where": {"type": "mcp", "pattern": "federationRouter"},
       "verdict": "native",
       "capabilityId": "mcp.create"
     },
     {
-      "match": {
-        "family": "mcpServers",
-        "pattern": "toolProjection"
-      },
+      "selects": "apim.apis[]",
+      "where": {"type": "mcp", "pattern": "toolProjection"},
       "verdict": "partial",
-      "itemKind": "accept-loss",
+      "answer": "choose",
       "capabilityId": "mcp.create",
-      "options": [
-        "accept",
-        "retain-in-apim",
-        "block"
-      ],
+      "options": ["accept", "retain-in-apim", "block"],
       "proposal": "accept",
       "rationale": "The REST contract becomes an openApi tool-server source, but APIM's per-tool policies and tool name overrides do not survive."
     },
     {
-      "match": {
-        "family": "mcpServers",
-        "pattern": "unconfigured"
-      },
+      "selects": "apim.apis[]",
+      "where": {"type": "mcp", "pattern": "unconfigured"},
       "verdict": "gap",
-      "itemKind": "enumerate",
+      "answer": "supply",
       "rationale": "The MCP API declares no backend, service URL, MCP properties or tools, so there is nothing to register.",
-      "options": [
-        "supply-upstream",
-        "retain-in-apim",
-        "block"
-      ],
+      "options": ["supply-upstream", "retain-in-apim", "block"],
       "proposal": "retain-in-apim"
     },
     {
-      "match": {
-        "family": "mcpServers",
-        "toolDiscovery": "runtimeOnly"
-      },
+      "selects": "apim.apis[]",
+      "where": {"type": "mcp", "toolDiscovery": "runtimeOnly"},
       "verdict": "gap",
-      "itemKind": "enumerate",
+      "answer": "supply",
       "options": [
         {
           "value": "accept-all",
@@ -89,149 +66,362 @@
       "rationale": "APIM stores no tool names for a passthrough server, and the CLI cannot author allowList/blocked in this baseline regardless."
     },
     {
-      "match": {
-        "family": "agents"
-      },
+      "selects": "apim.apis[]",
+      "where": {"type": "a2a"},
       "verdict": "gap",
-      "itemKind": "accept-loss",
-      "options": [
-        "retain-in-apim",
-        "block"
-      ],
+      "answer": "choose",
+      "options": ["retain-in-apim", "block"],
       "proposal": "retain-in-apim",
       "rationale": "AI Gateway exposes no A2A building block. A2A is listed outside the confirmed typed-gateway surface."
+    },
+    {
+      "selects": "assets.modelProviders[]",
+      "verdict": "native",
+      "capabilityId": "provider.create",
+      "note": "Not an APIM path, and deliberately. A model provider is an upstream model endpoint, which APIM reaches either through a backend or through an API's serviceUrl -- so there is no single APIM object that is all of them. Selecting apim.backends[] would quietly drop every provider reached by a service URL, which is the kind of false tidiness this vocabulary exists to avoid."
+    },
+    {
+      "selects": "assets.modelProviders[].auth",
+      "where": {"mode": ["basic", "clientCertificate", "credentialManager"]},
+      "verdict": "gap",
+      "answer": "choose",
+      "capabilityId": "provider.create",
+      "proposal": "retain-in-apim",
+      "rationale": "the upstream is reached with a credential `model-provider create` has no field for. The authentication enum is ApiKey -- a parameter on the request -- so a basic credential, a client certificate and an APIM credential-manager connection each have no target. Registering the provider anyway publishes an endpoint the gateway cannot authenticate to.",
+      "options": [
+        {"value": "retain-in-apim", "consequence": "Keep this upstream's callers on APIM, which still reaches it as it does today."},
+        {"value": "compensate", "consequence": "Re-credential the upstream with an API key, or a managed identity where it supports one, and register it with that instead. A basic credential can be carried as an `Authorization: Basic ...` header, which is an ApiKey to the target -- but the value has to be composed by hand, because this tool never reads a secret."},
+        {"value": "accept", "consequence": "Register the provider with no authentication. Every call through it fails at the upstream."},
+        {"value": "block", "consequence": "Stop the migration until the upstream can be re-credentialed."}
+      ],
+      "note": "The decision the `backendAuthentication` family rule used to raise on the policy element, moved to the object that registers the upstream -- which is where accepting or retaining it has its effect. `mode` is a field of the auth record, so the nesting is in `selects` and the predicate names a real field. The modes listed here are plan.INEXPRESSIBLE_PROVIDER_AUTH; `_custom_auth` refuses to invent an object for these and for the two rules below."
+    },
+    {
+      "selects": "assets.modelProviders[].auth",
+      "where": {"mode": ["authorizationHeader"]},
+      "verdict": "gap",
+      "answer": "choose",
+      "capabilityId": "provider.create",
+      "proposal": "compensate",
+      "rationale": "the upstream is reached with an `Authorization: <scheme> <parameter>` header. The header name maps -- ApiKey takes any name -- but what the gateway has to send is the scheme joined to the secret, and `apply` substitutes a secret reference verbatim, so nothing can prepend `Bearer ` without reading the secret. This tool never reads one. Registered as it was read, the key took the hardcoded `api-key` name and lost its scheme.",
+      "options": [
+        {"value": "compensate", "consequence": "Store the whole header value, scheme included, as one secret and register it as an ApiKey named `Authorization`. The gateway then sends what APIM sent, and the join is done once by hand rather than by this tool."},
+        {"value": "retain-in-apim", "consequence": "Keep this upstream's callers on APIM, which still reaches it as it does today."},
+        {"value": "accept", "consequence": "Register the provider with no authentication. Every call through it fails at the upstream."},
+        {"value": "block", "consequence": "Stop the migration until the upstream can be re-credentialed."}
+      ],
+      "note": "Apart from the rule above because the obstacle is the value and not the field: this one has a target shape and a correct workaround, which is why it proposes `compensate` where a credential with no field at all proposes `retain-in-apim`. plan.UNCOMPOSABLE_PROVIDER_AUTH."
+    },
+    {
+      "selects": "assets.modelProviders[].auth",
+      "where": {"mode": ["undetermined"]},
+      "verdict": "partial",
+      "answer": "choose",
+      "capabilityId": "provider.create",
+      "proposal": "retain-in-apim",
+      "blocking": true,
+      "rationale": "how this upstream authenticates could not be established, so what to register is unknown rather than missing. Registering it anyway publishes an endpoint whose credential nothing in the source confirmed, which fails at the first call if the guess is wrong. The collector's sentence that follows says which case it is -- a policy fragment that would not resolve, or no policy read for this provider at all -- and re-collecting with access to that fragment, or to the API that routes here, is what turns this into an answer rather than a choice.",
+      "options": [
+        {"value": "retain-in-apim", "consequence": "Keep this upstream's callers on APIM, where whatever credential it uses still applies."},
+        {"value": "accept", "consequence": "Register the provider with no authentication. Correct only if the upstream is genuinely open; otherwise every call through it fails."},
+        {"value": "block", "consequence": "Stop the migration until the credential is established, by re-collecting or by reading the backend by hand."}
+      ],
+      "note": "Not a `plannerGap`, whose schema reserves that field for defects in this tool rather than decisions for the operator. An unreadable fragment is arguably such a defect, but an upstream no API routes to is a real unknown about the source, and both end in the same place: the plan cannot produce the object and the operator has real options. Blocking, because a provider registered with a credential nobody established is the failure mode this vocabulary exists to surface before the first write. plan.UNREAD_PROVIDER_AUTH."
+    },
+    {
+      "selects": "apim.apis[].operations[]",
+      "where": {"group": "wildcard"},
+      "verdict": "partial",
+      "answer": "choose",
+      "capabilityId": "alias.create",
+      "proposal": "inference-only",
+      "options": [
+        {
+          "value": "inference-only",
+          "consequence": "Publish the four inference routes; any other path callers use breaks."
+        },
+        {"value": "retain-in-apim", "consequence": "Nothing moves for this API."},
+        {
+          "value": "block",
+          "consequence": "Stop the migration until the used routes are established."
+        }
+      ],
+      "blocking": true,
+      "rationale": "The exposed surface cannot be read from configuration."
+    },
+    {
+      "selects": "apim.apis[].operations[]",
+      "where": {"publishable": false, "anyPublishable": true},
+      "verdict": "partial",
+      "answer": "choose",
+      "capabilityId": "alias.create",
+      "proposal": "split",
+      "options": [
+        "split",
+        {
+          "value": "inference-only",
+          "consequence": "Inference moves and the rest is dropped; those callers break."
+        },
+        {"value": "retain-in-apim", "consequence": "Nothing moves for this API."},
+        {"value": "block", "consequence": "Stop the migration until resolved."}
+      ],
+      "blocking": true,
+      "note": "`split` is bare because what it costs is the number of operations that stay behind, which only this API's surface knows; the planner composes that sentence. The item's rationale is composed there too, for the same reason. `anyPublishable` is pinned because splitting presumes there is something to split off: an API where nothing moves is the rule below."
+    },
+    {
+      "selects": "apim.apis[].operations[]",
+      "where": {"publishable": false, "anyPublishable": false},
+      "verdict": "partial",
+      "answer": "choose",
+      "capabilityId": "alias.create",
+      "proposal": "retain-in-apim",
+      "options": [
+        {"value": "retain-in-apim", "consequence": "Nothing moves for this API."},
+        {"value": "block", "consequence": "Stop the migration until resolved."}
+      ],
+      "blocking": true,
+      "note": "Nothing on this API both maps to a publishable route and has a model behind it that serves the route, so there is no inference to move and `split` would name a half that does not exist. An API reaches this through an operation with no target route, or through a model that does not serve the route its operations use -- an OpenAI-shaped API in front of an Anthropic deployment, for instance."
+    },
+    {
+      "selects": "apim.apis[]",
+      "where": {"translation": "translating"},
+      "verdict": "partial",
+      "answer": "choose",
+      "capabilityId": "alias.create",
+      "proposal": "move-callers",
+      "options": [
+        "move-callers",
+        {"value": "retain-in-apim", "consequence": "Keep APIM in front so callers are unchanged."},
+        {"value": "block", "consequence": "Stop until the caller impact is agreed."}
+      ],
+      "blocking": true,
+      "rationale": "APIM is translating between the dialect callers speak and the one the backend speaks. The gateway publishes the backend's dialect, so the translation does not travel.",
+      "note": "`move-callers` is bare because what it costs is the dialect this backend speaks, which the planner reads off the asset. The rationale is used only when the collector left no note of its own."
+    },
+    {
+      "selects": "apim.apis[]",
+      "where": {"translation": "indeterminate"},
+      "verdict": "partial",
+      "answer": "supply",
+      "capabilityId": "alias.create",
+      "options": [
+        {"value": "confirm-dialect", "consequence": "State the dialect callers use."},
+        {"value": "retain-in-apim", "consequence": "Do not migrate this API."}
+      ],
+      "blocking": true,
+      "rationale": "Which dialect callers speak could not be established from configuration, so whether the gateway can publish it is unknown rather than settled."
+    },
+    {
+      "selects": "apim.backends[].pool.sessionAffinity",
+      "verdict": "gap",
+      "answer": "choose",
+      "capabilityId": "alias.create",
+      "proposal": "accept-loss",
+      "options": [
+        {
+          "value": "accept-loss",
+          "consequence": "Migrate without affinity, and configure it afterwards by hand."
+        },
+        {
+          "value": "retain-in-apim",
+          "consequence": "Keep this API on APIM until affinity can be authored."
+        },
+        {"value": "block", "consequence": "Stop the migration until it can be carried over."}
+      ],
+      "note": "`block` is here because stopping the migration is the option an operator loses if nobody writes it down: this is a gap the target does not have, only the tooling. The item's sentence names which CLI gap it is, so it is composed in the planner rather than stated here."
+    },
+    {
+      "selects": "apim.apis[]",
+      "where": {"catalogueFetched": true},
+      "verdict": "partial",
+      "answer": "supply",
+      "capabilityId": "model.create",
+      "proposal": "list-models",
+      "options": ["list-models", {"value": "retain-in-apim", "consequence": "Do not migrate this API."}],
+      "blocking": true,
+      "note": "The catalogue has been read. It lists what exists, not what each one can serve, which is why this is still a decision. `list-models` is bare and the item's rationale is composed in the planner: both name how many models came back and where from."
+    },
+    {
+      "selects": "apim.apis[]",
+      "where": {"catalogueFetched": false, "discoverySource": "modelsEndpoint"},
+      "verdict": "partial",
+      "answer": "supply",
+      "capabilityId": "model.create",
+      "proposal": "resolve-models",
+      "options": [
+        {
+          "value": "resolve-models",
+          "consequence": "Read the provider's catalogue with its credential."
+        },
+        {"value": "list-models", "consequence": "Name the models to register."},
+        {"value": "retain-in-apim", "consequence": "Do not migrate this API."}
+      ],
+      "blocking": true,
+      "rationale": "The model catalogue could not be resolved."
+    },
+    {
+      "selects": "apim.apis[]",
+      "where": {"catalogueFetched": false},
+      "verdict": "partial",
+      "answer": "supply",
+      "capabilityId": "model.create",
+      "proposal": "list-models",
+      "options": [
+        {
+          "value": "resolve-models",
+          "consequence": "Read the provider's catalogue with its credential."
+        },
+        {"value": "list-models", "consequence": "Name the models to register."},
+        {"value": "retain-in-apim", "consequence": "Do not migrate this API."}
+      ],
+      "blocking": true,
+      "rationale": "The model catalogue could not be resolved."
+    },
+    {
+      "selects": "assets.models[].models.resolved[]",
+      "where": {"inferenceRoutes": {"nonEmpty": true}},
+      "verdict": "native",
+      "capabilityId": "model.create",
+      "note": "Not an APIM path, and deliberately. What is registered is one model deployment, read from Microsoft.CognitiveServices. APIM has the API in front of it, which is a different object and already has its own rules. `inferenceRoutes` is what `model create --supported-endpoints` takes, so this rule asks the question the command asks."
+    },
+    {
+      "selects": "assets.models[].models.resolved[]",
+      "where": {"inferenceRoutes": {"nonEmpty": false}},
+      "verdict": "gap",
+      "answer": "choose",
+      "capabilityId": "model.create",
+      "proposal": "accept-loss",
+      "blocking": true,
+      "options": [
+        {
+          "value": "accept-loss",
+          "consequence": "The model is not registered. Callers of it get nothing from the gateway, and the capability it served -- image generation, transcription, a decision model -- has no equivalent here."
+        },
+        {
+          "value": "retain-in-apim",
+          "consequence": "Keep this model's callers on APIM, which still serves it as it does today. The rest of the API still moves."
+        }
+      ],
+      "rationale": "This model declares no inference route the gateway publishes, and `model create` takes one as `--supported-endpoints`. The gateway serves /openai/v1/chat/completions, /openai/v1/responses, /openai/v1/embeddings and /v1/messages; a deployment whose capabilities name none of them cannot be reached through it. Registering it anyway produces a model that reads as migrated and fails at the upstream on the first call.",
+      "note": "The routes are the model's own declaration, not a guess. Foundry reports capabilities as the strings \"true\" and \"false\", so a deployment saying `chatCompletion: \"false\"` is stating it cannot serve that route -- which is why the value is compared rather than the key tested. An empty list is that claim; a backend whose dialect could not be read carries null instead and is a plannerGap, not this decision, because nothing established what it serves."
+    },
+    {
+      "selects": "apim.apis[]",
+      "where": {"role": "modelApi"},
+      "verdict": "partial",
+      "answer": "supply",
+      "capabilityId": "alias.create",
+      "proposal": "use-model-names",
+      "options": [
+        {"value": "use-model-names", "consequence": "Publish each model under its own name."},
+        {
+          "value": "override",
+          "consequence": "Name them yourself. Set `decision` to {\"value\": \"override\", \"names\": {\"<proposed>\": \"<yours>\"}}, keyed by the proposed name; anything you leave out keeps its proposal. The model an alias resolves to does not move with the name."
+        }
+      ],
+      "rationale": "An alias publishes the route, and its routingName is what clients send as `model`. APIM does not store it.",
+      "note": "The planner follows this sentence with the names it proposes for this API's models, which is the only part of the item that is not the same for every API."
+    },
+    {
+      "selects": "apim.apis[]",
+      "where": {"type": "mcp", "toolsFromGateway": false},
+      "verdict": "partial",
+      "answer": "supply",
+      "proposal": "accept-as-listed",
+      "options": [
+        {"value": "accept-as-listed", "consequence": "Federate every tool the upstream exposes."},
+        {"value": "verify-through-gateway", "consequence": "Re-list through APIM before deciding."},
+        {"value": "retain-in-apim", "consequence": "Do not migrate this server."}
+      ],
+      "note": "The tool list came from the upstream with the API's policies bypassed, so it can be broader than what callers reach through the gateway. The item says how many tools that was, so its sentence is composed in the planner."
     }
   ],
   "policies": [
     {
-      "match": {
-        "element": [
-          "azure-openai-token-limit",
-          "llm-token-limit"
-        ]
-      },
+      "selects": "apim.policies[].elements[]",
+      "where": {"name": ["azure-openai-token-limit", "llm-token-limit"]},
       "verdict": "native",
       "capabilityId": "model.policy",
       "target": "tokenLimit",
-      "partialWhen": {
-        "attributeIsExpression": "counter-key"
-      },
+      "partialWhen": {"attributeIsExpression": "counter-key"},
       "partial": {
-        "itemKind": "translate",
-        "options": [
-          "identity",
-          "ipAddress",
-          "identity+ipAddress",
-          "pooled"
-        ],
+        "answer": "choose",
+        "options": ["identity", "ipAddress", "identity+ipAddress", "pooled"],
         "proposal": "identity",
         "rationale": "The counter partitions by an arbitrary expression in APIM; the target partitions by identity, IP, both, or one pooled counter. @(context.Subscription.Id) is close to identity but not identical."
       },
-      "batchOn": [
-        "counter-key"
-      ]
+      "batchOn": ["counter-key"]
     },
     {
-      "match": {
-        "element": [
-          "ip-filter"
-        ]
-      },
+      "selects": "apim.policies[].elements[]",
+      "where": {"name": ["ip-filter"]},
       "verdict": "native",
       "capabilityId": "policy.update",
       "target": "ipFilter",
-      "batchOn": [
-        "action"
-      ]
+      "batchOn": ["action"]
     },
     {
-      "match": {
-        "element": [
-          "authentication-managed-identity"
-        ]
-      },
+      "selects": "apim.policies[].elements[]",
+      "where": {"name": ["authentication-managed-identity"]},
       "verdict": "handled",
       "capabilityId": "provider.create",
       "target": "provider.authentication.ManagedIdentity",
       "rationale": "Becomes provider authentication configuration. Carried by the model provider item rather than raised again here."
     },
     {
-      "match": {
-        "element": [
-          "rate-limit-by-key",
-          "rate-limit"
-        ]
-      },
+      "selects": "apim.policies[].elements[]",
+      "where": {"name": ["set-header", "set-query-parameter"], "credentialParameter": {"nonEmpty": true}},
+      "verdict": "handled",
+      "capabilityId": "provider.create",
+      "target": "provider.authentication.ApiKey",
+      "rationale": "APIM has no backend-key object: an upstream key is set by writing the header or query parameter the provider expects. A model provider's ApiKey authentication takes that same name and value, so this becomes provider authentication configuration, carried by the model provider item rather than raised again here.",
+      "note": "The one rule in this file that pins a second `where` key, which is what separates it from the `transform` family rule that still answers for every other `set-header`. `credentialParameter` is the field the collector writes when the parameter name is a credential name and its value is a named value or a redacted literal; an element without it never reaches this rule. Ordered before nothing in particular -- the family pass runs after the element pass either way -- but it must stay above any future unconditional `set-header` rule, which would shadow it."
+    },
+    {
+      "selects": "apim.policies[].elements[]",
+      "where": {"name": ["rate-limit-by-key", "rate-limit"]},
       "verdict": "partial",
       "capabilityId": "policy.update",
       "target": "requestRateLimit",
-      "itemKind": "translate",
-      "options": [
-        "identity",
-        "ipAddress",
-        "identity+ipAddress",
-        "pooled"
-      ],
+      "answer": "choose",
+      "options": ["identity", "ipAddress", "identity+ipAddress", "pooled"],
       "proposal": "identity",
       "rationale": "APIM counter-key is an arbitrary expression; AI Gateway partitions by identity, IP, both, or a single pooled counter. @(context.Subscription.Id) is close to identity but not identical.",
-      "batchOn": [
-        "counter-key"
-      ]
+      "batchOn": ["counter-key"]
     },
     {
-      "match": {
-        "element": [
-          "azure-openai-emit-token-metric",
-          "llm-emit-token-metric"
-        ]
-      },
+      "selects": "apim.policies[].elements[]",
+      "where": {"name": ["azure-openai-emit-token-metric", "llm-emit-token-metric"]},
       "verdict": "partial",
-      "itemKind": "accept-loss",
-      "options": [
-        "accept",
-        "compensate",
-        "retain-in-apim"
-      ],
+      "answer": "choose",
+      "options": ["accept", "compensate", "retain-in-apim"],
       "proposal": "accept",
       "rationale": "Token metrics are emitted by the gateway, but custom dimensions do not carry over one for one. Where the telemetry goes is a separate decision, on the telemetry destination item."
     },
     {
-      "match": {
-        "element": [
-          "validate-jwt",
-          "validate-azure-ad-token"
-        ]
-      },
+      "selects": "apim.policies[].elements[]",
+      "where": {"name": ["validate-jwt", "validate-azure-ad-token"]},
       "verdict": "partial",
       "capabilityId": "key.create",
       "target": "entraAuth",
-      "itemKind": "translate",
-      "options": [
-        "entra-rbac",
-        "compensate",
-        "retain-in-apim",
-        "block"
-      ],
+      "answer": "choose",
+      "options": ["entra-rbac", "compensate", "retain-in-apim", "block"],
       "proposal": "entra-rbac",
       "rationale": "Issuer and audience validation is covered by gateway Entra auth plus data-plane RBAC. Gating on custom claims or app roles is not.",
       "batchOn": []
     },
     {
-      "match": {
-        "element": [
-          "quota",
-          "quota-by-key",
-          "limit-concurrency"
-        ]
-      },
+      "selects": "apim.policies[].elements[]",
+      "where": {"name": ["quota", "quota-by-key", "limit-concurrency"]},
       "verdict": "gap",
-      "itemKind": "accept-loss",
+      "answer": "choose",
       "rationale": "costLimit is a dollar budget, not a call quota or a concurrency ceiling.",
       "proposal": "retain-in-apim"
     },
     {
-      "match": {
-        "element": [
+      "selects": "apim.policies[].elements[]",
+      "where": {
+        "name": [
           "azure-openai-semantic-cache-lookup",
           "azure-openai-semantic-cache-store",
           "llm-semantic-cache-lookup",
@@ -243,68 +433,128 @@
         ]
       },
       "verdict": "gap",
-      "itemKind": "accept-loss",
+      "answer": "choose",
       "rationale": "No caching of any kind on the typed gateway.",
       "proposal": "accept"
     },
     {
-      "match": {
-        "element": [
-          "azure-openai-content-safety",
-          "llm-content-safety"
-        ]
-      },
+      "selects": "apim.policies[].elements[]",
+      "where": {"name": ["azure-openai-content-safety", "llm-content-safety"]},
       "verdict": "gap",
-      "itemKind": "accept-loss",
+      "answer": "choose",
       "rationale": "Content-safety flags are visible in the CLI but are not supported on typed aigateways. The policy also pulls in a separate Content Safety backend.",
       "proposal": "retain-in-apim"
     },
     {
-      "match": {
-        "family": "transform"
-      },
+      "selects": "apim.policies[].elements[]",
+      "where": {"family": "transform"},
       "verdict": "gap",
-      "itemKind": "accept-loss",
+      "answer": "choose",
       "rationale": "No request or response rewriting on the target.",
       "proposal": "accept"
     },
     {
-      "match": {
-        "family": "validation"
-      },
+      "selects": "apim.policies[].elements[]",
+      "where": {"family": "validation"},
       "verdict": "gap",
-      "itemKind": "accept-loss",
+      "answer": "choose",
       "rationale": "No schema, header, or status validation on the target.",
       "proposal": "retain-in-apim"
     },
     {
-      "match": {
-        "element": [
-          "send-request",
-          "send-one-way-request",
-          "return-response",
-          "wait"
-        ]
+      "selects": "apim.policies[].elements[]",
+      "where": {"family": "backendAuthentication"},
+      "verdict": "handled",
+      "capabilityId": "provider.create",
+      "target": "provider.authentication",
+      "carriedBy": "modelProvider",
+      "rationale": "The credential this sets becomes the model provider's authentication, so what it costs is decided on the model provider item rather than raised again here. `authentication-managed-identity` is the member of this family that maps, and it has a rule of its own.",
+      "uncarried": {
+        "verdict": "gap",
+        "answer": "choose",
+        "proposal": "retain-in-apim",
+        "rationale": "A model provider authenticates with a managed identity or an API key. `model-provider create` and `model-provider update` expose no basic credential, no client certificate, and nothing equivalent to an APIM credential manager, so a backend secured any other way has no target. `authentication-managed-identity` is the one member of this family that does map, and it has a rule of its own."
       },
+      "note": "`handled` is a promise that another item carries this, and it only holds where the asset has a model provider. An MCP server authenticating its upstream with a client certificate has none -- `mcp create` registers a tool server, not a credentialed model endpoint -- so for those the planner falls back to `uncarried` and raises the decision here. Without that check the flip to `handled` would delete the element from the plan, which is the defect the managed-identity rule had."
+    },
+    {
+      "selects": "apim.policies[].elements[]",
+      "where": {"family": "authentication"},
       "verdict": "gap",
-      "itemKind": "accept-loss",
+      "answer": "choose",
+      "rationale": "Caller authentication on the gateway is Entra auth plus data-plane RBAC, or an API key. A gate on a shared secret in a header, or on a client certificate, is neither. `validate-jwt` and `validate-azure-ad-token` are the members of this family that do map, and they have a rule of their own.",
+      "proposal": "retain-in-apim"
+    },
+    {
+      "selects": "apim.policies[].elements[]",
+      "where": {"family": "observability"},
+      "verdict": "gap",
+      "answer": "choose",
+      "rationale": "The gateway reports through a telemetry exporter it owns: `telemetry-exporter create` takes a kind and an endpoint, not a metric to emit or a sink to write to. There is no Event Hub destination and no way to author a custom metric. Where the gateway's own telemetry reports is a separate decision, on the telemetry destination item.",
+      "proposal": "accept"
+    },
+    {
+      "selects": "apim.policies[].elements[]",
+      "where": {"name": ["mcp-server"]},
+      "verdict": "handled",
+      "capabilityId": "mcp.create",
+      "rationale": "The tool server this policy exposes is collected as an MCP asset from the API that carries it, and registered by the MCP server item rather than raised again here."
+    },
+    {
+      "selects": "apim.policies[].elements[]",
+      "where": {"family": "mcp"},
+      "verdict": "gap",
+      "answer": "choose",
+      "rationale": "`mcp create` registers a tool server, its endpoints and its supported versions. Guarding a tool call on the way through is not part of that surface. `mcp-server`, which declares the server itself, is carried by the MCP server item and has a rule of its own.",
+      "proposal": "retain-in-apim"
+    },
+    {
+      "selects": "apim.policies[].elements[]",
+      "where": {"family": "routing"},
+      "verdict": "gap",
+      "answer": "choose",
+      "rationale": "An alias backend pool holds backends the gateway knows, with a priority and a weight each. Overriding the destination URL outright names no backend, so there is nothing for the pool to hold. `set-backend-service` and `forward-request` choose among backends and have a rule of their own.",
+      "proposal": "retain-in-apim"
+    },
+    {
+      "selects": "apim.policies[].elements[]",
+      "where": {"name": ["send-request", "send-one-way-request", "return-response", "wait"]},
+      "verdict": "gap",
+      "answer": "choose",
       "rationale": "No side-effecting call-outs. agentHooks is the nearest mechanism and applies to tool traffic only.",
       "proposal": "accept"
     },
     {
-      "match": {
-        "element": [
-          "set-backend-service",
-          "forward-request"
-        ]
-      },
+      "selects": "apim.policies[].elements[]",
+      "where": {"name": ["set-backend-service", "forward-request"]},
       "verdict": "handled",
       "capabilityId": "alias.create",
-      "rationale": "Backend selection becomes the alias backend pool."
+      "rationale": "Backend selection becomes the alias backend pool.",
+      "partialWhen": {"hasExpression": true, "underConditional": true},
+      "partial": {
+        "answer": "choose",
+        "options": [
+          {
+            "value": "accept",
+            "consequence": "Every call takes the alias backend pool in its own order, whatever the source would have chosen for it."
+          },
+          {
+            "value": "compensate",
+            "consequence": "Say what the condition was for in the priority and weight of the alias backend models, as far as it can be said that way."
+          },
+          {
+            "value": "retain-in-apim",
+            "consequence": "Keep this workload on APIM, where the routing logic still runs."
+          }
+        ],
+        "proposal": "compensate",
+        "rationale": "The source decides where the request goes with logic the target has no place for: a policy expression, a branch of a `choose`, or both. The alias backend pool carries the set of backends and their priority and weight, not the rule that picked among them."
+      }
     },
     {
-      "match": {
-        "element": [
+      "selects": "apim.policies[].elements[]",
+      "where": {
+        "name": [
           "base",
           "include-fragment",
           "choose",
@@ -320,90 +570,134 @@
       "rationale": "Composition, control flow, and gateway plumbing with no target object."
     },
     {
-      "match": {
-        "hasExpression": true
-      },
+      "selects": "apim.policies[].elements[]",
+      "where": {"expressionIds": {"nonEmpty": true}},
       "verdict": "gap",
-      "itemKind": "accept-loss",
-      "note": "Last of the three passes in capability.policy_rule, so it is reached only by an element with no rule of its own and no family rule. The ordering is in the code, not in a priority here.",
+      "answer": "choose",
+      "note": "Third of the four passes in capability.policy_rule, so it is reached only by an element with no rule of its own and no family rule. The ordering is in the code, not in a priority here.",
       "rationale": "A policy expression doing more than reading a well-known context property has no equivalent. The target's policy surface is six declarative types.",
+      "proposal": "retain-in-apim"
+    },
+    {
+      "selects": "apim.policies[].elements[]",
+      "fallback": true,
+      "verdict": "gap",
+      "answer": "choose",
+      "note": "Last of the four passes in capability.policy_rule, and the one that makes an unmapped element impossible rather than merely unlikely. `compile` holds every element in policy.FAMILIES to a rule of its own or a family rule, so nothing reaching here is a policy the tool has ever been taught; it is a policy APIM has that this catalog does not know about. Deliberately blocking: the alternative is a migration that silently drops a policy nobody has read.",
+      "rationale": "This policy is not in the vocabulary this catalog was written against, so nothing can be said about what it does or whether the target has an equivalent. It is reported rather than assumed harmless.",
       "proposal": "retain-in-apim"
     }
   ],
   "structural": [
     {
-      "match": {
-        "kind": "workspace"
-      },
-      "note": "Selection is by kind alone. The default workspace is skipped by the planner before this rule is consulted, so a name condition here would be read by nobody.",
+      "selects": "apim.workspaces[]",
       "verdict": "partial",
-      "itemKind": "collapse",
-      "options": [
-        "flatten",
-        "retain-in-apim",
-        "block"
-      ],
+      "answer": "choose",
+      "options": ["flatten", "retain-in-apim", "block"],
       "proposal": "flatten",
       "rationale": "AI Gateway configures the implicit default workspace only. Flattening can collide with same-named assets in other workspaces."
     },
     {
-      "match": {
-        "kind": "subscriptions"
-      },
+      "selects": "apim.subscriptions",
       "verdict": "partial",
-      "itemKind": "scope",
-      "options": [
-        "gateway-key-per-consumer",
-        "entra-rbac",
-        "retain-in-apim"
-      ],
+      "answer": "choose",
+      "options": ["gateway-key-per-consumer", "entra-rbac", "retain-in-apim"],
       "proposal": "entra-rbac",
       "rationale": "APIM subscription keys are scoped per product, per API, or service-wide. AI Gateway keys are gateway-wide and no key value can be imported, so every caller is re-keyed."
     },
     {
-      "match": {
-        "kind": "certificates"
-      },
+      "selects": "apim.certificates",
       "verdict": "gap",
-      "itemKind": "accept-loss",
+      "answer": "choose",
       "rationale": "APIM does not export a certificate private key. Client certificates are re-provisioning work, not migration work.",
       "proposal": "accept"
     },
     {
-      "match": {
-        "kind": "credentialProviders"
-      },
+      "selects": "apim.authorizationProviders",
       "verdict": "gap",
-      "itemKind": "accept-loss",
+      "answer": "choose",
       "rationale": "Credential-manager connections are never exported. The equivalent tool-server OAuth connection is re-authorized interactively.",
       "proposal": "accept"
     },
     {
-      "match": {
-        "kind": "coverageGap"
-      },
+      "selects": "apim.policyFragments[]",
+      "where": {"disposition": "dissolved"},
+      "verdict": "handled",
+      "rationale": "AI Gateway has no policy composition: no fragments, no includes, no inheritance. A fragment is therefore dissolved into every scope that includes it, and what it carries is assessed as the elements of that scope. Listed so a reader can see the fragment reached the plan rather than having to infer it from the policies it contributed."
+    },
+    {
+      "selects": "apim.policyFragments[]",
+      "where": {"disposition": "conditional"},
+      "verdict": "partial",
+      "answer": "choose",
+      "options": [
+        {
+          "value": "accept",
+          "consequence": "Everything the fragment carries applies to every call, including the ones the branch excluded."
+        },
+        {
+          "value": "compensate",
+          "consequence": "Narrow what the fragment carries until it is true unconditionally, as far as it can be said that way."
+        },
+        {
+          "value": "retain-in-apim",
+          "consequence": "Keep this workload on APIM, where the branch still runs."
+        }
+      ],
+      "proposal": "compensate",
+      "rationale": "A `choose` branch at the include site decides whether this fragment runs at all, and dissolving it into the including scope keeps what it carries and not the condition on it. The target has nowhere to put the branch: its policy surface is six declarative types with no predicate."
+    },
+    {
+      "selects": "apim.policyFragments[]",
+      "where": {"disposition": "splitSection"},
+      "verdict": "partial",
+      "answer": "choose",
+      "options": [
+        {
+          "value": "accept",
+          "consequence": "One dissolution for every include, taking whichever section's reading the target can express."
+        },
+        {
+          "value": "compensate",
+          "consequence": "Split the fragment per section in the source first, so each include dissolves to one thing."
+        },
+        {
+          "value": "retain-in-apim",
+          "consequence": "Keep this workload on APIM, where one fragment can mean two things."
+        }
+      ],
+      "proposal": "compensate",
+      "rationale": "The same fragment is included into more than one section, so what it does depends on where it was pulled in -- a check on the way in is not the same check on the way out. One dissolution cannot be both."
+    },
+    {
+      "selects": "apim.policyFragments[]",
+      "where": {"disposition": "unreferenced"},
+      "verdict": "notApplicable",
+      "rationale": "Nothing includes this fragment, so it governs no traffic and there is nothing to dissolve it into. Reported rather than dropped: a fragment that governs nothing and a fragment nobody looked for are the same silence, and operation policies are not collected unless asked for."
+    },
+    {
+      "selects": "apim.policyFragments[]",
+      "where": {"disposition": "unresolved"},
       "verdict": "gap",
-      "itemKind": "enumerate",
+      "answer": "supply",
       "blocking": true,
       "cannotAccept": true,
       "options": [
         {
           "value": "re-collect",
-          "consequence": "Fix access and collect again."
+          "consequence": "Collect again with access to the fragment, and re-plan from what it actually contains."
         },
         {
           "value": "supply-facts",
-          "consequence": "State what is there."
+          "consequence": "State what the fragment carries, and plan against that."
         }
       ],
-      "rationale": "A control-plane read failed, so this is unknown rather than absent. Unknown coverage cannot be accepted as an acceptable loss."
+      "rationale": "A policy includes a fragment this inventory does not hold, so what runs at that point is unknown rather than absent. It cannot be accepted as a loss: nobody has read it, so nobody can say what accepting it costs."
     },
     {
-      "match": {
-        "kind": "telemetry"
-      },
+      "selects": "apim.loggers",
       "verdict": "partial",
-      "itemKind": "translate",
+      "answer": "choose",
       "capabilityId": "telemetry.create",
       "options": [
         {
@@ -426,10 +720,83 @@
       "proposal": "reuse-appinsights",
       "rationale": "APIM reports to Azure Application Insights and the gateway exports OpenTelemetry. The only surface both support is the OTLP endpoint on an Application Insights resource. This question asks where that is: reuse the resource APIM already reports to, create a new one for the gateway alone, configure the gateway only, or keep both separate.",
       "note": "The `ApplicationInsights` exporter kind exists in the command but carries nothing across from APIM and is never offered. The mapping requires an explicit OTLP endpoint. When deciding, ask this question before the `emit-token-metric` dimensions question (which is separate).",
-      "prerequisiteWhen": [
-        "reuse-appinsights",
-        "new-appinsights"
-      ]
+      "prerequisiteWhen": ["reuse-appinsights", "new-appinsights"]
+    },
+    {
+      "selects": "service.identity",
+      "where": {"userAssignedIdentities": {"nonEmpty": true}},
+      "verdict": "partial",
+      "answer": "choose",
+      "capabilityId": "identity.assign",
+      "options": [
+        {
+          "value": "system-assigned",
+          "consequence": "A new principal; every backend grant has to be made against it."
+        }
+      ],
+      "proposal": "system-assigned",
+      "note": "The source authenticates to its backends as a user-assigned identity, and the gateway can carry the same one or take a system-assigned identity of its own; the grants differ. `system-assigned` is the choice that exists whether or not the source carries any, so it is stated here; the reuse options are one per identity it does carry, so they are built where the inventory is read. The item's sentence counts the providers that need one, so it is composed there too."
+    },
+    {
+      "selects": "service.identity",
+      "where": {"userAssignedIdentities": {"nonEmpty": false}},
+      "verdict": "native",
+      "capabilityId": "identity.assign",
+      "proposal": "system-assigned",
+      "note": "A system-assigned identity is created with the gateway and granted on each provider. Nothing is offered because there is nothing to choose between: the verdict is what says so, rather than a planner branch emitting an empty option list."
+    },
+    {
+      "selects": "service",
+      "where": {"needsSubnet": true},
+      "verdict": "partial",
+      "answer": "choose",
+      "capabilityId": "network.update",
+      "proposal": "new-delegated-subnet",
+      "options": [
+        {
+          "value": "new-delegated-subnet",
+          "consequence": "Provision a subnet delegated to Microsoft.App/environments and integrate the gateway."
+        },
+        {
+          "value": "public-egress",
+          "consequence": "Reach backends over public networking; only viable if they accept it."
+        },
+        {
+          "value": "retain-in-apim",
+          "consequence": "Keep workloads that need private backends on APIM."
+        },
+        {"value": "block", "consequence": "Stop until the network design is agreed."}
+      ],
+      "rationale": "Backends are reachable only over private networking, which the gateway joins differently from APIM."
+    },
+    {
+      "selects": "service",
+      "where": {"needsSubnet": false},
+      "verdict": "partial",
+      "answer": "choose",
+      "capabilityId": "network.update",
+      "proposal": "private-ingress",
+      "options": [
+        {
+          "value": "private-ingress",
+          "consequence": "Expose the gateway privately, matching the source's ingress."
+        },
+        {
+          "value": "new-delegated-subnet",
+          "consequence": "Provision a subnet delegated to Microsoft.App/environments and integrate the gateway."
+        },
+        {
+          "value": "public-egress",
+          "consequence": "Reach backends over public networking; only viable if they accept it."
+        },
+        {
+          "value": "retain-in-apim",
+          "consequence": "Keep workloads that need private backends on APIM."
+        },
+        {"value": "block", "consequence": "Stop until the network design is agreed."}
+      ],
+      "rationale": "The source restricts how it is reached, and the gateway expresses that differently.",
+      "note": "`private-ingress` is the proposal and was not among the options while this decision lived in `plan.py`: both cases were offered the subnet list, so the recommended value was one nobody could settle on. It is offered here, and the other four are kept, because which of them an operator can live with is theirs to say."
     }
   ]
 }

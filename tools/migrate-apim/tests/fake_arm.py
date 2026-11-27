@@ -68,6 +68,11 @@ def _api(name, **props):
 
 APIS = [
     _api("aoai-api", backendId="aoai-pool", type="http"),
+    # A superseded revision, which APIM lists beside the current one under the
+    # `;rev=` name. Not what callers reach, so not an asset -- but it is an API
+    # the collector saw, and it used to leave without a trace.
+    _api("aoai-api;rev=1", backendId="aoai-pool", type="http",
+         isCurrent=False, apiRevision="1"),
     _api(
         "support-mcp", type="mcp", backendId="support-backend",
         mcpProperties={"transportType": "streamable", "endpoints": [{"name": "mcp", "uriTemplate": "/mcp"}]},
@@ -309,6 +314,23 @@ ROUTES: dict[str, Any] = {
                         "provisioningState": "Succeeded",
                         "capabilities": {"embeddings": "true"}},
          "sku": {"name": "Standard", "capacity": 120}},
+        # Two ways a deployment can have no publishable route, both real and
+        # both previously registered on `/openai/v1/chat/completions`. The first
+        # names the route and denies it; reading the key and not the value made
+        # "false" indistinguishable from "true". The second names no route the
+        # gateway has at all.
+        {"id": f"{ACCOUNT}/deployments/decision-1", "name": "decision-1",
+         "properties": {"model": {"format": "Microsoft", "name": "Microsoft-Decision-1",
+                                  "version": "1"},
+                        "provisioningState": "Succeeded",
+                        "capabilities": {"chatCompletion": "false", "decision": "true",
+                                         "area": "US"}},
+         "sku": {"name": "GlobalStandard", "capacity": 250}},
+        {"id": f"{ACCOUNT}/deployments/dall-e-3", "name": "dall-e-3",
+         "properties": {"model": {"format": "OpenAI", "name": "dall-e-3", "version": "3.0"},
+                        "provisioningState": "Succeeded",
+                        "capabilities": {"imageGenerations": "true"}},
+         "sku": {"name": "Standard", "capacity": 2}},
     ],
     f"{ACCOUNT_WEST}/deployments": [
         {"id": f"{ACCOUNT_WEST}/deployments/gpt-5", "name": "gpt-5",

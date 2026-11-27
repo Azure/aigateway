@@ -50,8 +50,20 @@ def render(document: dict[str, Any], *, fmt: str = "text") -> str:
                 f"{'  - ' if fmt == 'markdown' else '      '}{name} {marker}"
                 + (f" {detail}" if detail else "")
             )
-    excluded = document.get("excludedApis") or []
-    lines.append(f"{bullet}{len(excluded)} APIs excluded as non-AI")
+    # Counted off `apim.apis`, which holds every API whichever way it went, so
+    # the two numbers add up to the one APIM would report. Counting the excluded
+    # alone left "excluded out of how many" for the reader to work out.
+    apis = (document.get("apim") or {}).get("apis") or []
+    excluded = [api for api in apis if api.get("excludedReason")]
+    reasons: dict[str, int] = {}
+    for api in excluded:
+        reasons[api["excludedReason"]] = reasons.get(api["excludedReason"], 0) + 1
+    lines.append(
+        f"{bullet}{len(apis)} APIs on the service, {len(apis) - len(excluded)} inventoried, "
+        f"{len(excluded)} not"
+    )
+    for reason, count in sorted(reasons.items()):
+        lines.append(f"{'  - ' if fmt == 'markdown' else '      '}{reason}: {count}")
     lines.append("")
 
     secrets = document.get("secrets") or []
@@ -68,7 +80,7 @@ def render(document: dict[str, Any], *, fmt: str = "text") -> str:
         lines.append(f"{'  - ' if fmt == 'markdown' else '      '}{name}: {count}")
     lines.append("")
 
-    policies = document.get("policies") or []
+    policies = (document.get("apim") or {}).get("policies") or []
     elements = sum((policy.get("stats") or {}).get("elementCount", 0) for policy in policies)
     expressions = sum(len(policy.get("expressions") or []) for policy in policies)
     families: dict[str, int] = {}
@@ -108,10 +120,15 @@ def render_plan(document: dict[str, Any], *, fmt: str = "text") -> str:
 
     lines.append(f"{heading}Migration plan: {source.get('name')}")
     caps = target.get("capabilities") or {}
-    lines.append(
-        f"{bullet}{summary.get('total')} items against CLI {caps.get('cliVersion')} "
-        f"({'probed' if caps.get('probed') else 'declared, not probed'})"
-    )
+    # "against CLI <documented version>" read as a statement about the
+    # installed extension and was a statement about the catalog. They are
+    # routinely different, and only one of them is going to run the commands.
+    if caps.get("probed"):
+        installed = caps.get("installedVersion") or "unknown"
+        provenance = f"catalog {caps.get('cliVersion')}, installed {installed} (probed)"
+    else:
+        provenance = f"catalog {caps.get('cliVersion')} (declared, installed CLI not probed)"
+    lines.append(f"{bullet}{summary.get('total')} items against {provenance}")
     by_status = summary.get("byStatus") or {}
     lines.append(
         f"{bullet}" + ", ".join(f"{count} {status}" for status, count in sorted(by_status.items()))
@@ -128,11 +145,23 @@ def render_plan(document: dict[str, Any], *, fmt: str = "text") -> str:
     for item in unsettled:
         flag = "!" if item.get("blocking") else " "
         src = item.get("source") or {}
-        asset = src.get("assetId") or f"{src.get('assetKind')}:{src.get('aspect')}"
+        # The asset and the question asked about it. One API raises six, and
+        # the line used to name only the asset -- which was readable only
+        # because `kind` was a label per question (`reduce-surface` was the
+        # published surface and nothing else). `kind` now says how the item is
+        # answered, so the question has to be named where it is asked.
+        asset = "/".join(filter(None, [src.get("assetId") or src.get("assetKind"),
+                                       src.get("aspect")]))
         options = "/".join(option["value"] for option in item.get("options") or [])
+        # Some items deliberately propose nothing: a read that failed, or a
+        # fragment nobody could open, offers no recommended choice because
+        # nothing is known about what choosing would cost. Printing
+        # `proposal=None` made that read as a defect in the plan.
+        proposal = (f" -> proposal={item['proposal']}" if item.get("proposal")
+                    else " -> no proposal")
         lines.append(
             f"{'  - ' if fmt == 'markdown' else '    '}{flag} [{item.get('kind')}] {asset}"
-            f" -> proposal={item.get('proposal')}"
+            + proposal
             + (f" of {options}" if options else "")
         )
         if item.get("status") == "stale":

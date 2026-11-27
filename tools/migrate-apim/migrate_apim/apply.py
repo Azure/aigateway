@@ -158,6 +158,21 @@ def preflight(plan: dict[str, Any], inventory: dict[str, Any], *, runner: Runner
         except ApplyError as exc:
             finding("badTarget", True, str(exc))
 
+    # The capability table is the catalog's declaration unless somebody asked
+    # for a probe, and nothing ever mentioned that it could be asked for:
+    # `--probe-cli` is opt-in, apply never probes, and SKILL.md does not name
+    # it. So a command the installed extension does not expose is discovered
+    # when its step fails, which is the one moment preflight exists to avoid.
+    caps = (plan.get("target") or {}).get("capabilities") or {}
+    if caps and not caps.get("probed"):
+        finding(
+            "capabilitiesNotProbed", False,
+            f"The plan was built against catalog {caps.get('cliVersion')} as declared; the "
+            "installed `az aigateway` was not asked what it exposes. A command this catalog "
+            "declares and your extension lacks will fail when its step runs.",
+            "Re-run plan with --probe-cli to reconcile the two before writing anything.",
+        )
+
     unsettled = [i for i in plan.get("items") or [] if i.get("status") in {"needs-decision", "stale"}]
     if unsettled:
         finding(
@@ -245,6 +260,38 @@ def preflight(plan: dict[str, Any], inventory: dict[str, Any], *, runner: Runner
             "Re-plan from a current inventory, or settle the items that register those providers.",
         )
 
+    # Work the plan has already judged unappliable. `plan` detects it, explains
+    # it and writes the reason on the object, and nothing read it back: the
+    # condition surfaced as a step failing part-way through a phase, under a
+    # builder's guess at a cause the plan could name exactly. A failed step stops
+    # its phase, so one such object also costs every step queued behind it.
+    #
+    # Asked of `steps_for` rather than re-derived from the items, so the objects
+    # checked are the objects that run. One no phase performs cannot fail a
+    # phase, and blocking on it would stop a whole migration over work the
+    # operator was going to apply by hand -- which `notExecutable` already names.
+    incomplete = [
+        (step, obj)
+        for step in steps_for(plan)
+        for obj in step.objects
+        # Only an explicit false. The field is absent from most objects, and
+        # reading absence as incomplete would block every plan there is.
+        if obj.get("configurationComplete") is False
+    ]
+    if incomplete:
+        finding(
+            "incompleteObject", True,
+            f"{len(incomplete)} object(s) the plan marked as not fully configurable: "
+            + "; ".join(_incomplete_note(step, obj) for step, obj in incomplete[:3])
+            + ("..." if len(incomplete) > 3 else ""),
+            "Correct the source and collect again, or exclude the items named above to leave "
+            "their objects out of the run. Re-planning the same inventory reproduces these, "
+            "because each one is what the plan could make of what it was given. Applied as it "
+            "stands, an object missing what its command requires fails its step and stops the "
+            "rest of its phase; one the builder can part-write -- an `ip-filter` whose "
+            "convertible ranges go through -- succeeds while carrying less than the source did.",
+        )
+
     unbuildable: dict[str, list[str]] = {}
     for item in plan.get("items") or []:
         capability_id = item.get("capabilityId")
@@ -275,6 +322,30 @@ def preflight(plan: dict[str, Any], inventory: dict[str, Any], *, runner: Runner
         findings.extend(_role_grant_check(plan, Target.parse(target_id), runner))
 
     return findings
+
+
+def _incomplete_note(step: Step, obj: dict[str, Any]) -> str:
+    """One unappliable object, in the planner's own words.
+
+    The reason is quoted rather than restated, because the plan knows it and a
+    builder does not: `model policy set` can say only that an object names no
+    model registration, where the plan can say which scope covered none.
+    `fullConfigurationAt` comes with it, since the remedy usually starts at the
+    policy document the element was read from.
+    """
+    label = _object_label(obj)
+    where = f"{step.item_id} ({label})" if label else step.item_id
+    reason = str(obj.get("incompleteReason") or "").strip()
+    if not reason:
+        # Two planner paths mark an object incomplete from empty settings alone
+        # and write no reason. Reporting that silence beats quoting an empty
+        # string, and naming a cause this check cannot see would be a guess.
+        reason = "the plan marked it incomplete and said no more"
+        if not obj.get("settings"):
+            reason += "; it carries no settings"
+    at = obj.get("fullConfigurationAt") or {}
+    source = " ".join(str(part) for part in (at.get("policyId"), at.get("path")) if part)
+    return f"{where}: {reason}" + (f" [{source}]" if source else "")
 
 
 def _role_grant_check(
@@ -884,6 +955,15 @@ def _model_create(executor: Executor, step: Step, obj: dict[str, Any]) -> tuple[
     provider = spec.get("providerName")
     if not provider:
         raise ApplyError(f"{step.item_id} does not say which provider to register under")
+    # Before the deployment config is written, so a refused step leaves no file
+    # behind. `--supported-endpoints` omitted does not mean "no routes", it
+    # means the gateway's default -- which registered models nothing
+    # established could serve. The planner no longer builds such an object.
+    if not spec.get("supportedEndpoints"):
+        raise ApplyError(
+            f"`{spec.get('name')}` has no supported endpoints, so `model create` would fall back "
+            "to the gateway's default route for a model nothing established it can serve."
+        )
     path = executor._json_file(spec.get("deploymentConfig") or {})
     argv = [
         "az", "aigateway", "model", "create", *executor.target.selectors,
@@ -895,9 +975,7 @@ def _model_create(executor: Executor, step: Step, obj: dict[str, Any]) -> tuple[
     # `--supported-endpoints` takes space-separated values, not a repeatable
     # flag: repeating it keeps only the last, which silently registered a model
     # on one route when the plan asked for several.
-    endpoints = spec.get("supportedEndpoints") or []
-    if endpoints:
-        argv += ["--supported-endpoints", *endpoints]
+    argv += ["--supported-endpoints", *spec["supportedEndpoints"]]
     return argv + ["-o", "json"], [path]
 
 

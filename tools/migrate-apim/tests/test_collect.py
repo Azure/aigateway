@@ -56,6 +56,28 @@ class TestAssets:
         assert excluded["orders-rest"]["reason"] == "notAnAiAssetButReferencedByOne"
         assert excluded["orders-rest"]["referencedBy"] == ["mcp:orders-mcp"]
 
+    def test_a_superseded_revision_is_recorded_rather_than_dropped(self, inventory):
+        """`excludedApis` is what proves no API was lost, so it has to hold them all.
+
+        A non-current revision left by a bare `continue`: no entry, no coverage
+        record, nothing. It is the one thing this collector dropped in silence,
+        which is exactly the shape of defect the list exists to rule out -- an
+        operator auditing what moved could not tell a revision considered and
+        set aside from one never seen.
+        """
+        excluded = {entry["name"]: entry for entry in inventory["excludedApis"]}
+        assert "aoai-api;rev=1" in excluded
+        assert excluded["aoai-api;rev=1"]["reason"] == "notCurrentRevision"
+
+    def test_a_superseded_revision_is_not_an_asset(self, inventory):
+        """Recording it must not promote it: callers do not reach it."""
+        names = [
+            asset["source"]["name"]
+            for family in inventory["assets"].values() for asset in family
+            if asset.get("source")
+        ]
+        assert "aoai-api;rev=1" not in names
+
     def test_expands_a_backend_pool_into_weighted_targets(self, inventory):
         model = inventory["assets"]["models"][0]
         assert model["routing"]["mode"] == "pool"
@@ -114,7 +136,7 @@ class TestAssets:
         assert provider["auth"]["modes"] == ["managedIdentity"]
 
     def test_management_uri_resource_id_is_normalized_to_an_arm_id(self, inventory):
-        backend = next(b for b in inventory["shared"]["backends"] if b["name"] == "aoai-east")
+        backend = next(b for b in inventory["apim"]["backends"] if b["name"] == "aoai-east")
         assert backend["resourceIdRef"].startswith("/subscriptions/")
         assert "management.azure.com" not in backend["resourceIdRef"]
 
@@ -226,7 +248,7 @@ class TestWorkspaces:
     def test_workspaces_are_collected_by_default(self, inventory):
         # A workspace can hold model APIs of its own; skipping it by default
         # would silently under-report the migration.
-        [workspace] = inventory["workspaces"]
+        [workspace] = inventory["apim"]["workspaces"]
         assert workspace["name"] == "finance"
         assert workspace["collected"] is True
         assert workspace["serveOn"] == "workspaceAndDefault"
@@ -235,12 +257,12 @@ class TestWorkspaces:
         model = next(m for m in inventory["assets"]["models"] if m["source"]["name"] == "model-api")
         assert model["id"] == "model:finance/model-api"
         assert model["workspace"] == "finance"
-        backend = next(b for b in inventory["shared"]["backends"] if b["name"] == "claude-backend")
+        backend = next(b for b in inventory["apim"]["backends"] if b["name"] == "claude-backend")
         assert backend["id"] == "backend:finance/claude-backend"
 
     def test_workspace_scope_can_be_disabled(self):
         document = Collector(FakeArmClient(), SERVICE, options(workspaces=["none"])).run()
-        assert [w["collected"] for w in document["workspaces"]] == [False]
+        assert [w["collected"] for w in document["apim"]["workspaces"]] == [False]
         assert not any(m["workspace"] == "finance" for m in document["assets"]["models"])
 
     def test_unknown_workspace_name_is_reported(self):
@@ -353,24 +375,24 @@ class TestSecrets:
         assert "sk-abcdefghijklmnopqrstuvwxyz01" not in payload
 
     def test_inline_backend_credential_becomes_a_reference(self, inventory):
-        backend = next(b for b in inventory["shared"]["backends"] if b["name"] == "support-backend")
+        backend = next(b for b in inventory["apim"]["backends"] if b["name"] == "support-backend")
         assert backend["credentials"]["header"]["x-api-key"][0].startswith("${secret:backendInline/")
         ref = next(s for s in inventory["secrets"] if s["class"] == "apimBackendInlineCredential")
         assert ref["retrievable"] is True
         assert ref["resolution"]["method"] == "armRead"
 
     def test_named_value_reference_is_preserved_verbatim(self, inventory):
-        backend = next(b for b in inventory["shared"]["backends"] if b["name"] == "aoai-west")
+        backend = next(b for b in inventory["apim"]["backends"] if b["name"] == "aoai-west")
         assert backend["credentials"]["header"]["api-key"] == ["{{aoai-key}}"]
         assert "secret:namedValue/aoai-key" in backend["secretRefs"]
 
     def test_non_secret_named_value_keeps_its_value(self, inventory):
-        entry = next(n for n in inventory["shared"]["namedValues"] if n["name"] == "MCP-KILLSWITCH")
+        entry = next(n for n in inventory["apim"]["namedValues"] if n["name"] == "MCP-KILLSWITCH")
         assert entry["value"] == "off"
         assert entry["secretRef"] is None
 
     def test_secret_named_value_has_no_value_but_has_a_recipe(self, inventory):
-        entry = next(n for n in inventory["shared"]["namedValues"] if n["name"] == "aoai-key")
+        entry = next(n for n in inventory["apim"]["namedValues"] if n["name"] == "aoai-key")
         assert entry["value"] is None
         ref = next(s for s in inventory["secrets"] if s["id"] == entry["secretRef"])
         assert ref["resolution"]["request"]["url"].endswith("/namedValues/aoai-key/listValue?api-version=2025-09-01-preview")
@@ -392,18 +414,18 @@ class TestSecrets:
 
 class TestPolicies:
     def test_captures_every_scope_it_reads(self, inventory):
-        levels = {document["scope"]["level"] for document in inventory["policies"]}
+        levels = {document["scope"]["level"] for document in inventory["apim"]["policies"]}
         assert {"api", "fragment"} <= levels
 
     def test_normalizes_llm_policies_into_families(self, inventory):
-        document = next(p for p in inventory["policies"] if p["id"] == "policy:api/aoai-api")
+        document = next(p for p in inventory["apim"]["policies"] if p["id"] == "policy:api/aoai-api")
         families = {element["family"] for element in document["elements"]}
         assert {"tokenLimit", "tokenMetrics", "semanticCache", "backendAuthentication"} <= families
 
     def test_tracks_fragment_dependencies(self, inventory):
-        document = next(p for p in inventory["policies"] if p["id"] == "policy:api/support-mcp")
+        document = next(p for p in inventory["apim"]["policies"] if p["id"] == "policy:api/support-mcp")
         assert document["fragmentRefs"] == ["killswitch"]
-        assert any(p["id"] == "policy:fragment/killswitch" for p in inventory["policies"])
+        assert any(p["id"] == "policy:fragment/killswitch" for p in inventory["apim"]["policies"])
 
     def test_links_assets_to_the_policies_that_govern_them(self, inventory):
         model = inventory["assets"]["models"][0]
@@ -449,6 +471,55 @@ class TestInferenceIsMarked:
         )
         assert "killswitch" in server["policyRefs"]["fragments"][0]
 
+    def test_a_key_set_by_policy_reaches_the_provider_it_credentials(self):
+        """APIM credentials a backend either on the backend record or in policy.
+
+        Reading only the record reported the policy shape as having no
+        credential at all -- and once the policy *is* read, saying nothing about
+        a `set-header` turns that into the stronger claim that the upstream is
+        called unauthenticated. The key is the same key either way, and the
+        target field is the same field.
+        """
+        import copy, fake_arm
+
+        backends_key = f"{SERVICE}/backends"
+        policy_key = f"{SERVICE}/apis/meta-ai"
+        original_backends = fake_arm.ROUTES[backends_key]
+        original_policy = fake_arm.POLICIES.get(policy_key)
+
+        backends = copy.deepcopy(original_backends)
+        for backend in backends:
+            if backend["name"] == "meta-ai-openai-endpoint":
+                backend["properties"].pop("credentials", None)
+        fake_arm.ROUTES[backends_key] = backends
+        fake_arm.POLICIES[policy_key] = (
+            "<policies><inbound><base />"
+            '<set-header name="api-key" exists-action="override">'
+            "<value>{{meta-ai-Authorization-LLM}}</value></set-header>"
+            "</inbound><backend><base /></backend>"
+            "<outbound><base /></outbound><on-error><base /></on-error></policies>"
+        )
+        try:
+            document = Collector(FakeArmClient(), SERVICE, options()).run()
+        finally:
+            fake_arm.ROUTES[backends_key] = original_backends
+            if original_policy is None:
+                fake_arm.POLICIES.pop(policy_key, None)
+            else:
+                fake_arm.POLICIES[policy_key] = original_policy
+
+        provider = next(
+            p for p in document["assets"]["modelProviders"] if "meta-ai" in p["id"]
+        )
+        auth = provider["auth"]
+        assert auth["mode"] == "apiKey", auth.get("note")
+        assert auth["evidence"] == ["policy:set-header"]
+        # The real header, not a default, and the secret ref the named value
+        # collection already registered rather than a second one for the same
+        # APIM secret.
+        assert auth["parameters"]["header"] == ["api-key"]
+        assert auth["secretRefs"] == ["secret:namedValue/meta-ai-Authorization-LLM"]
+
     def test_operation_policies_are_linked_to_their_asset(self, inventory):
         # Regression: policyRefs.operations was hardcoded empty, so an asset with
         # operation-level policy looked like it had none.
@@ -469,7 +540,7 @@ class TestInferenceIsMarked:
             document = Collector(FakeArmClient(), SERVICE, options()).run()
         finally:
             fake_arm.ROUTES[key] = original
-        [subscription] = document["shared"]["subscriptions"]
+        [subscription] = document["apim"]["subscriptions"]
         # Defaulting to "service" would over-report a key as granting full access.
         assert subscription["scope"]["level"] == "unknown"
 
@@ -566,7 +637,7 @@ class TestCollectionCost:
     because "not collected" must not read as "none exist"."""
 
     def test_operation_policies_are_not_read_by_default(self, inventory):
-        levels = [doc["scope"]["level"] for doc in inventory["policies"]]
+        levels = [doc["scope"]["level"] for doc in inventory["apim"]["policies"]]
         assert "operation" not in levels
 
     def test_the_skip_is_recorded_in_coverage(self, inventory):
@@ -629,7 +700,7 @@ class TestBackendRoles:
         assert entry["declaredBy"]["contentSafety"]
 
     def test_roles_are_attached_to_the_backend_record(self, inventory):
-        backend = next(b for b in inventory["shared"]["backends"] if b["name"] == "AI-CS-demo")
+        backend = next(b for b in inventory["apim"]["backends"] if b["name"] == "AI-CS-demo")
         assert backend["roles"] == ["contentSafety"]
 
     def test_content_safety_is_surfaced_as_a_dependency_of_the_api(self, inventory):
@@ -656,7 +727,7 @@ class TestBackendRoles:
         pointer = next(
             e for e in model["supportingBackends"] if e["role"] == "contentSafety"
         )["fullConfigurationAt"]
-        document = next(p for p in inventory["policies"] if p["id"] == pointer["policyId"])
+        document = next(p for p in inventory["apim"]["policies"] if p["id"] == pointer["policyId"])
         categories = [
             element for element in document["elements"]
             if element["path"].startswith(pointer["path"]) and element["name"] == "category"
@@ -714,8 +785,8 @@ class TestOptions:
         document = Collector(
             FakeArmClient(), SERVICE, options(include_policy_xml=False)
         ).run()
-        assert all("xml" not in policy for policy in document["policies"])
-        assert any(policy["elements"] for policy in document["policies"])
+        assert all("xml" not in policy for policy in document["apim"]["policies"])
+        assert any(policy["elements"] for policy in document["apim"]["policies"])
 
     def test_no_foundry_skips_arm_resolution(self):
         document = Collector(FakeArmClient(), SERVICE, options(resolve_foundry=False)).run()
@@ -772,3 +843,979 @@ class TestAServiceThatCouldNotBeRead:
             Collector(client, SERVICE, options()).run()
         assert "not found" in str(excinfo.value)
         assert "--subscription" in str(excinfo.value)
+
+
+class TestFragmentsAreCollectedAsAssetsOfTheirOwn:
+    """A fragment is a shared asset, and was the one that was not scoped like
+    one: two workspaces holding a same-named fragment collapsed onto one id,
+    and the collector keeps whichever document it saw first."""
+
+    def _with_workspace_fragment(self, body="<fragment><set-variable name='w' value='1' /></fragment>"):
+        import fake_arm
+
+        key = f"{SERVICE}/workspaces/finance/policyFragments"
+        original = fake_arm.ROUTES[key]
+        fake_arm.ROUTES[key] = [{
+            "id": f"{SERVICE}/workspaces/finance/policyFragments/killswitch",
+            "name": "killswitch",
+            "properties": {"description": "finance kill switch", "value": body},
+        }]
+        try:
+            return Collector(FakeArmClient(), SERVICE, options()).run()
+        finally:
+            fake_arm.ROUTES[key] = original
+
+    def test_a_same_named_fragment_in_a_workspace_is_a_second_fragment(self):
+        document = self._with_workspace_fragment()
+        ids = {d["id"] for d in document["apim"]["policies"]
+               if (d.get("scope") or {}).get("level") == "fragment"}
+        assert ids == {"policy:fragment/killswitch", "policy:fragment/finance/killswitch"}
+
+    def test_each_one_keeps_its_own_contents(self):
+        document = self._with_workspace_fragment()
+        bodies = {
+            d["id"]: [e["name"] for e in d["elements"]]
+            for d in document["apim"]["policies"] if (d.get("scope") or {}).get("level") == "fragment"
+        }
+        assert bodies["policy:fragment/killswitch"] == ["set-variable"]
+        assert bodies["policy:fragment/finance/killswitch"] == ["set-variable"]
+        service = next(d for d in document["apim"]["policies"] if d["id"] == "policy:fragment/killswitch")
+        finance = next(d for d in document["apim"]["policies"]
+                       if d["id"] == "policy:fragment/finance/killswitch")
+        assert service["elements"][0]["attributes"] != finance["elements"][0]["attributes"]
+
+    def test_the_asset_record_says_which_workspace_it_is_in(self):
+        document = self._with_workspace_fragment()
+        by_id = {f["id"]: f for f in document["apim"]["policyFragments"]}
+        assert by_id["policyFragment:killswitch"]["workspace"] == "default"
+        assert by_id["policyFragment:finance/killswitch"]["workspace"] == "finance"
+
+    def test_a_fragment_whose_body_could_not_be_read_is_not_an_empty_fragment(self):
+        """Parsed as the empty string it registered as a fragment that resolves
+        and contains nothing, so whatever it carried migrated as if absent."""
+        import fake_arm
+
+        key = f"{SERVICE}/policyFragments"
+        original = fake_arm.ROUTES[key]
+        fake_arm.ROUTES[key] = [{
+            "id": f"{SERVICE}/policyFragments/killswitch", "name": "killswitch",
+            "properties": {"description": "kill switch"},  # no value, and the GET 404s
+        }]
+        try:
+            document = Collector(FakeArmClient(), SERVICE, options()).run()
+        finally:
+            fake_arm.ROUTES[key] = original
+        fragment = next(d for d in document["apim"]["policies"] if d["id"] == "policy:fragment/killswitch")
+        assert fragment["parseError"], "unknown is not empty"
+        assert "not evidence" in fragment["parseError"]
+        asset = next(f for f in document["apim"]["policyFragments"] if f["name"] == "killswitch")
+        assert asset["parseError"]
+
+    def test_the_fragment_list_is_read_as_authored(self):
+        """Every other policy read forces `format=rawxml` so expression text is
+        kept as written. The fragment list did not, so the same expression
+        hashed to a different `expr:` id than it did at API scope."""
+        seen = {}
+
+        class Recording(FakeArmClient):
+            def list(self, url, api_version, **params):
+                seen[url] = params
+                return super().list(url, api_version, **params)
+
+        Collector(Recording(), SERVICE, options()).run()
+        assert seen[f"{SERVICE}/policyFragments"] == {"format": "rawxml"}
+
+
+def _find_auth(value):
+    """The first `auth` record anywhere in an asset, however it is nested."""
+    if isinstance(value, dict):
+        if "mode" in value and "evidence" in value:
+            return value
+        for nested in value.values():
+            found = _find_auth(nested)
+            if found:
+                return found
+    elif isinstance(value, list):
+        for nested in value:
+            found = _find_auth(nested)
+            if found:
+                return found
+    return None
+
+
+class TestBackendAuthReadsAnOrderAndNotAUnion:
+    """The last `authentication-managed-identity` to run is the one that
+    applies, and a union of alternative request contexts has no last."""
+
+    def _collected(self, product_identity):
+        import fake_arm
+
+        api_policy = (
+            "<policies><inbound><base />"
+            "<authentication-managed-identity resource='https://api' />"
+            "</inbound><backend><base /></backend>"
+            "<outbound><base /></outbound><on-error><base /></on-error></policies>"
+        )
+        product_policy = (
+            "<policies><inbound>"
+            f"<authentication-managed-identity resource='{product_identity}' />"
+            "</inbound><backend><base /></backend>"
+            "<outbound><base /></outbound><on-error><base /></on-error></policies>"
+        )
+        originals = {
+            "policies": dict(fake_arm.POLICIES),
+            "product_apis": fake_arm.ROUTES[f"{SERVICE}/products/ai/apis"],
+        }
+        fake_arm.POLICIES[f"{SERVICE}/apis/aoai-api"] = api_policy
+        fake_arm.POLICIES[f"{SERVICE}/products/ai"] = product_policy
+        try:
+            return Collector(FakeArmClient(), SERVICE, options()).run()
+        finally:
+            fake_arm.POLICIES.clear()
+            fake_arm.POLICIES.update(originals["policies"])
+
+    def _auth(self, document):
+        """The authentication the policy decided, not one a backend declared."""
+        for group in document["assets"].values():
+            for asset in group:
+                auth = _find_auth(asset)
+                if auth and "policy:authentication-managed-identity" in (
+                    auth.get("evidence") or []
+                ):
+                    return auth
+        raise AssertionError("no asset took its identity from policy")
+
+    def test_the_apis_own_identity_wins_over_an_inherited_one(self):
+        auth = self._auth(self._collected("https://product"))
+        assert auth["identity"]["audience"] == "https://api"
+
+    def test_two_identities_that_cannot_both_apply_are_named_not_chosen(self):
+        auth = self._auth(self._collected("https://product"))
+        assert "identityCandidates" not in auth, (
+            "the API overrides the product in both contexts, so there is one answer")
+
+    def test_an_unambiguous_identity_carries_no_note(self):
+        auth = self._auth(self._collected("https://api"))
+        assert "identityNote" not in auth
+
+    def test_two_products_setting_different_identities_are_named_not_picked(self):
+        """Which one applies depends on the product a call arrives through,
+        and one provider cannot authenticate two ways."""
+        from migrate_apim import collect as collect_mod
+        from migrate_apim import policy as policy_mod
+        from migrate_apim import secrets as secrets_mod
+
+        def doc(policy_id, scope, xml):
+            return policy_mod.parse(xml, policy_id=policy_id, scope=scope, scope_url="/x")
+
+        def product(name, resource):
+            return doc(
+                f"policy:product/{name}",
+                {"level": "product", "name": name, "workspace": "default"},
+                "<policies><inbound>"
+                f"<authentication-managed-identity resource='{resource}' />"
+                "</inbound><backend><base /></backend><outbound><base /></outbound>"
+                "<on-error><base /></on-error></policies>",
+            )
+
+        graph = policy_mod.PolicyGraph(
+            [
+                product("a", "https://a"),
+                product("b", "https://b"),
+                doc("policy:api/aoai", {"level": "api", "name": "aoai", "workspace": "default"},
+                    "<policies><inbound><base /></inbound><backend><base /></backend>"
+                    "<outbound><base /></outbound><on-error><base /></on-error></policies>"),
+            ],
+            products=[{"policyId": "policy:product/a", "apiIds": ["api:aoai"]},
+                      {"policyId": "policy:product/b", "apiIds": ["api:aoai"]}],
+        )
+        auth = collect_mod._backend_auth(
+            None, graph.governing(api="aoai"),
+            secrets_mod.SecretRegistry(service_id=SERVICE, api_version="2025-09-01-preview"),
+        )
+        assert auth["mode"] == "managedIdentity"
+        assert {c["audience"] for c in auth["identityCandidates"]} == {"https://a", "https://b"}
+        assert "depending on which product" in auth["identityNote"]
+
+
+class TestAnUnreadableFragmentCannotBeCalledUnauthenticated:
+    """`mode: none` is a claim the backend is called without credentials. A
+    fragment whose body would not load is a place one could have been set."""
+
+    def _resolved(self):
+        from migrate_apim import policy as policy_mod
+
+        def doc(policy_id, scope, xml):
+            return policy_mod.parse(xml, policy_id=policy_id, scope=scope, scope_url="/x")
+
+        broken = doc("policy:fragment/creds",
+                     {"level": "fragment", "name": "creds", "workspace": "default"},
+                     "<fragment />")
+        broken["parseError"] = "the body could not be read"
+        graph = policy_mod.PolicyGraph([
+            doc("policy:api/aoai", {"level": "api", "name": "aoai", "workspace": "default"},
+                "<policies><inbound><include-fragment fragment-id='creds' /></inbound>"
+                "<backend><base /></backend><outbound><base /></outbound>"
+                "<on-error><base /></on-error></policies>"),
+            broken,
+        ])
+        return graph.governing(api="aoai")
+
+    def _auth(self):
+        from migrate_apim import collect as collect_mod
+        from migrate_apim import secrets as secrets_mod
+
+        return collect_mod._backend_auth(
+            None, self._resolved(),
+            secrets_mod.SecretRegistry(service_id=SERVICE, api_version="2025-09-01-preview"),
+        )
+
+    def test_it_is_undetermined_rather_than_none(self):
+        assert self._auth()["mode"] == "undetermined"
+
+    def test_the_basis_names_the_fragment_nobody_could_read(self):
+        assert "policy:fragment/creds" in self._auth()["basis"]["unresolvedFragments"]
+
+    def test_the_asset_keeps_its_link_to_the_document_that_failed(self):
+        """It contributes no elements, so it is on no route -- and dropping it
+        cut the only pointer to the document explaining the failure."""
+        from migrate_apim import collect as collect_mod
+
+        assert collect_mod._fragments_reaching(self._resolved(), None) == [
+            "policy:fragment/creds"
+        ]
+
+    def test_an_identity_inherited_through_a_products_fragment_still_loses_to_the_api(self):
+        """The reported shape: `<base />` then identity A on the API, and a
+        product that *includes a fragment* setting B. A overrides B in both
+        request contexts, and the flattened union says otherwise."""
+        from migrate_apim import collect as collect_mod
+        from migrate_apim import policy as policy_mod
+        from migrate_apim import secrets as secrets_mod
+
+        def doc(policy_id, scope, xml):
+            return policy_mod.parse(xml, policy_id=policy_id, scope=scope, scope_url="/x")
+
+        def wrap(inner):
+            return (f"<policies><inbound>{inner}</inbound><backend><base /></backend>"
+                    "<outbound><base /></outbound><on-error><base /></on-error></policies>")
+
+        graph = policy_mod.PolicyGraph(
+            [
+                doc("policy:product/ai", {"level": "product", "name": "ai",
+                                          "workspace": "default"},
+                    wrap("<include-fragment fragment-id='creds' />")),
+                doc("policy:api/aoai", {"level": "api", "name": "aoai", "workspace": "default"},
+                    wrap("<base /><authentication-managed-identity resource='https://a' />")),
+                doc("policy:fragment/creds", {"level": "fragment", "name": "creds",
+                                              "workspace": "default"},
+                    "<fragment><authentication-managed-identity resource='https://b' />"
+                    "</fragment>"),
+            ],
+            products=[{"policyId": "policy:product/ai", "apiIds": ["api:aoai"]}],
+        )
+        auth = collect_mod._backend_auth(
+            None, graph.governing(api="aoai"),
+            secrets_mod.SecretRegistry(service_id=SERVICE, api_version="2025-09-01-preview"),
+        )
+        assert auth["identity"]["audience"] == "https://a"
+        assert "identityCandidates" not in auth, "both chains end on A, so there is one answer"
+
+
+class TestABasicCredentialIsNotNoCredential:
+    """`authentication-basic` sets the credential the upstream is called with.
+
+    It contributed no mode, so a backend secured by it reported `none` -- whose
+    note says outright that the upstream "appears to be called unauthenticated".
+    That is a false statement in the voice of something that checked, and the
+    policy element was separately raised as a gap, so the inventory and the plan
+    said different things about one backend.
+    """
+
+    def _auth(self, inbound, record=None):
+        from migrate_apim import collect as collect_mod
+        from migrate_apim import policy as policy_mod
+        from migrate_apim import secrets as secrets_mod
+
+        graph = policy_mod.PolicyGraph([
+            policy_mod.parse(
+                f"<policies><inbound>{inbound}</inbound><backend><base /></backend>"
+                "<outbound><base /></outbound><on-error><base /></on-error></policies>",
+                policy_id="policy:api/aoai",
+                scope={"level": "api", "name": "aoai", "workspace": "default"},
+                scope_url="/x",
+            )
+        ])
+        return collect_mod._backend_auth(
+            record, graph.governing(api="aoai"),
+            secrets_mod.SecretRegistry(service_id=SERVICE, api_version="2025-09-01-preview"),
+        )
+
+    BASIC = "<authentication-basic username='svc' password='{{aoai-key}}' />"
+
+    def test_the_mode_names_the_credential_that_is_set(self):
+        assert self._auth(self.BASIC)["mode"] == "basic"
+
+    def test_the_evidence_names_the_policy_that_set_it(self):
+        assert self._auth(self.BASIC)["evidence"] == ["policy:authentication-basic"]
+
+    def test_it_no_longer_claims_the_upstream_is_called_unauthenticated(self):
+        assert "note" not in self._auth(self.BASIC)
+
+    def test_it_claims_no_secret_ref_for_a_credential_with_no_target(self):
+        """`secretRefs` is what fills a Custom provider's ApiKey value.
+
+        Publishing the basic password there would register it as a working api
+        key -- a stronger falsehood than the one this fix removes. The password
+        is still registered on the policy document, so nothing is lost.
+        """
+        assert self._auth(self.BASIC)["secretRefs"] == []
+
+    def test_it_outranks_an_api_key_the_same_backend_carries(self):
+        """Basic has no target field and an api-key header has one. Reporting
+        the key would say this backend migrates by registering it, when the
+        call also carries a credential nothing on the target can express."""
+        auth = self._auth(self.BASIC, record={"credentials": {"header": {"api-key": ["{{k}}"]}}})
+        assert auth["mode"] == "basic"
+        assert set(auth["modes"]) == {"basic", "apiKey"}
+
+    def test_a_client_certificate_still_outranks_it(self):
+        auth = self._auth(self.BASIC + "<authentication-certificate thumbprint='ABC' />")
+        assert auth["mode"] == "clientCertificate"
+
+
+class TestEveryApiIsInOnePlace:
+    """`apim.apis` answers "what APIs are on this service" in one read.
+
+    It used to take a union of four lists -- three asset families plus
+    `excludedApis` -- with model providers in a fifth that has no API behind it
+    at all. That is a question APIM answers in one call, and an inventory that
+    cannot answer it in one place makes every caller reassemble it, each the
+    same way, each able to forget a list.
+    """
+
+    def test_it_holds_every_api_exactly_once(self, inventory):
+        apis = inventory["apim"]["apis"]
+        ids = [api["apiId"] for api in apis]
+        assert len(ids) == len(set(ids)), "an API listed twice"
+
+        reachable = {
+            (asset.get("source") or {}).get("apiId")
+            for family in inventory["assets"].values() for asset in family
+            if (asset.get("source") or {}).get("apiId")
+        } | {entry["apiId"] for entry in inventory["excludedApis"]}
+        assert set(ids) == reachable
+
+    def test_an_api_either_became_an_asset_or_says_why_not(self, inventory):
+        """Exactly one of the two, for every API. Neither would be an API the
+        inventory holds and says nothing about, which is the state this
+        collection exists to make impossible."""
+        for api in inventory["apim"]["apis"]:
+            assert bool(api["assetId"]) != bool(api["excludedReason"]), api["apiId"]
+
+    def test_it_agrees_with_the_asset_it_points_at(self, inventory):
+        """Both come out of `_api_source`, so this is a guard on that staying true.
+
+        A second copy of an API's fields that nothing joins is a second
+        description, and a second description drifts.
+        """
+        by_id = {api["apiId"]: api for api in inventory["apim"]["apis"]}
+        for family in inventory["assets"].values():
+            for asset in family:
+                source = asset.get("source") or {}
+                if not source.get("apiId"):
+                    continue
+                row = by_id[source["apiId"]]
+                assert all(row[key] == value for key, value in source.items()), source["apiId"]
+                assert row["assetId"] == asset["id"]
+
+    def test_a_superseded_revision_is_in_it_too(self, inventory):
+        row = next(a for a in inventory["apim"]["apis"] if a["name"] == "aoai-api;rev=1")
+        assert row["isCurrent"] is False
+        assert row["excludedReason"] == "notCurrentRevision"
+        assert row["assetId"] is None
+
+    def test_the_summary_counts_from_it(self, inventory):
+        from migrate_apim.summary import render
+
+        line = next(l for l in render(inventory).splitlines() if "APIs on the service" in l)
+        total = len(inventory["apim"]["apis"])
+        excluded = len([a for a in inventory["apim"]["apis"] if a["excludedReason"]])
+        assert f"{total} APIs on the service, {total - excluded} inventoried, {excluded} not" in line
+
+
+def _account():
+    from migrate_apim.foundry import FoundryAccount
+    return FoundryAccount(
+        resource_id="/subscriptions/s/resourceGroups/r/providers/"
+                    "Microsoft.CognitiveServices/accounts/a",
+        name="a", resource_group="r", subscription_id="s", location="eastus2",
+        kind="AIServices", sku="S0", hosts={"a.cognitiveservices.azure.com"},
+    )
+
+
+class TestACapabilityValueIsReadNotJustItsKey:
+    """Foundry writes capability values as the strings "true" and "false".
+
+    `bool("false")` is True, so testing the value naively is as wrong as not
+    testing it. Both are pinned here because the obvious fix is the second bug.
+    """
+
+    def test_a_false_capability_declares_no_route(self):
+        from migrate_apim.foundry import supported_endpoints
+        assert supported_endpoints(
+            {"capabilities": {"chatCompletion": "false", "decision": "true"}}) == []
+
+    def test_a_true_capability_declares_its_route(self):
+        from migrate_apim.foundry import supported_endpoints
+        assert supported_endpoints({"capabilities": {"chatCompletion": "true"}}) == [
+            "/openai/v1/chat/completions"]
+
+    def test_a_real_boolean_is_read_too(self):
+        from migrate_apim.foundry import supported_endpoints
+        assert supported_endpoints({"capabilities": {"embeddings": True}}) == [
+            "/openai/v1/embeddings"]
+        assert supported_endpoints({"capabilities": {"embeddings": False}}) == []
+
+    def test_a_capability_with_no_gateway_route_is_ignored(self):
+        from migrate_apim.foundry import supported_endpoints
+        assert supported_endpoints(
+            {"capabilities": {"imageGenerations": "true", "area": "US"}}) == []
+
+    def test_the_record_names_the_routes_the_command_takes(self):
+        """`inferenceRoutes` is the value `model create --supported-endpoints` wants."""
+        from migrate_apim.foundry import resolved_model
+        account = _account()
+        deployment = {"name": "d", "modelName": "m", "modelVersion": "1",
+                      "modelFormat": "OpenAI", "sku": {}, "raiPolicyName": None,
+                      "capabilities": {"chatCompletion": "true"}}
+        record = resolved_model(account, deployment)
+        assert record["inferenceRoutes"] == ["/openai/v1/chat/completions"]
+        assert record["inferenceRoutes"] == record["target"]["supportedEndpoints"], \
+            "one list, named where a rule can reach it and where the command reads it"
+
+    def test_a_model_denying_every_route_names_none(self):
+        from migrate_apim.foundry import resolved_model
+        account = _account()
+        deployment = {"name": "d", "modelName": "m", "modelVersion": "1",
+                      "modelFormat": "Microsoft", "sku": {}, "raiPolicyName": None,
+                      "capabilities": {"chatCompletion": "false", "decision": "true"}}
+        assert resolved_model(account, deployment)["inferenceRoutes"] == []
+
+
+class TestTheReadingsFollowTheAssetTheySummarise:
+    """"Rendered once, so there is nothing to drift" held only until collection.
+
+    `resolve-models` and `discover-tools` -- the two commands the skill
+    requires -- rewrite an asset in place. The readings on `apim.apis[]` are a
+    copy of what that asset said when it was collected, so afterwards a
+    provider whose catalogue had just been fetched still read
+    `catalogueFetched: false`, and a server whose tools had just been listed
+    still read `toolDiscovery: runtimeOnly`.
+    """
+
+    def api_row(self, inventory, asset_id):
+        return next(r for r in inventory["apim"]["apis"] if r.get("assetId") == asset_id)
+
+    def an_asset(self, inventory, family):
+        return (inventory["assets"][family] or [])[0]
+
+    def test_a_fetched_catalogue_is_reflected(self, inventory):
+        from migrate_apim.collect import refresh_api_readings
+        asset = next(a for a in inventory["assets"]["models"]
+                     if (a.get("source") or {}).get("apiId"))
+        row = self.api_row(inventory, asset["id"])
+        asset.setdefault("models", {})["catalogue"] = ["muse-1", "muse-2"]
+        asset["models"]["discoverySource"] = "modelsEndpoint"
+        assert row["catalogueFetched"] is False, "nothing has refreshed it yet"
+
+        refresh_api_readings(inventory)
+        row = self.api_row(inventory, asset["id"])
+        assert row["catalogueFetched"] is True
+        assert row["discoverySource"] == "modelsEndpoint"
+
+    def test_a_discovered_tool_list_is_reflected(self, inventory):
+        from migrate_apim.collect import refresh_api_readings
+        servers = inventory["assets"].get("mcpServers") or []
+        if not servers:
+            pytest.skip("fixture has no MCP server")
+        asset = servers[0]
+        asset["toolDiscovery"] = {"status": "complete", "policiesApplied": True}
+        refresh_api_readings(inventory)
+        row = self.api_row(inventory, asset["id"])
+        assert row["toolDiscovery"] == "complete"
+        assert row["toolsFromGateway"] is True
+
+    def test_refreshing_an_untouched_inventory_changes_nothing(self, inventory):
+        import copy as _copy
+        from migrate_apim.collect import refresh_api_readings
+        before = _copy.deepcopy(inventory)
+        refresh_api_readings(inventory)
+        assert inventory == before
+
+
+class TestABackendChosenAtRuntimeIsStillBehindItsApi:
+    """An API that picks its upstream in policy still credentials that upstream.
+
+    `_resolve_backend` reports a target only when exactly one
+    `set-backend-service` names a backend; a `choose` between two reports
+    `candidates` and no target at all. Both halves of the provider link read
+    targets alone, so such an API linked to no provider -- and the policy
+    carrying its managed identity was never consulted for the very backends
+    that policy names. The plan then registered Foundry providers with
+    `authentication.kind: ManagedIdentity` while creating no identity and
+    granting no role.
+    """
+
+    CONDITIONAL = (
+        "<policies><inbound><base />"
+        '<authentication-managed-identity resource="https://cognitiveservices.azure.com/" />'
+        "<choose>"
+        '<when condition="@(true)"><set-backend-service backend-id="aoai-east" /></when>'
+        '<otherwise><set-backend-service backend-id="aoai-west" /></otherwise>'
+        "</choose>"
+        "</inbound><backend><base /></backend>"
+        "<outbound><base /></outbound><on-error><base /></on-error></policies>"
+    )
+
+    def _collect(self, policy, *, strip_credentials=True):
+        """Collect with `aoai-api` routed by policy instead of `backendId`."""
+        import copy, fake_arm
+
+        apis_key, backends_key = f"{SERVICE}/apis", f"{SERVICE}/backends"
+        policy_key = f"{SERVICE}/apis/aoai-api"
+        originals = (
+            fake_arm.ROUTES[apis_key], fake_arm.ROUTES[backends_key],
+            fake_arm.POLICIES[policy_key],
+        )
+
+        apis = copy.deepcopy(originals[0])
+        for api in apis:
+            if api["name"] == "aoai-api":
+                api["properties"]["backendId"] = None
+        backends = copy.deepcopy(originals[1])
+        if strip_credentials:
+            # The policy must be the only place a credential could come from,
+            # or the backend record would answer and prove nothing.
+            for backend in backends:
+                if backend["name"] in {"aoai-east", "aoai-west"}:
+                    backend["properties"].pop("credentials", None)
+
+        fake_arm.ROUTES[apis_key] = apis
+        fake_arm.ROUTES[backends_key] = backends
+        fake_arm.POLICIES[policy_key] = policy
+        try:
+            return Collector(FakeArmClient(), SERVICE, options()).run()
+        finally:
+            (fake_arm.ROUTES[apis_key], fake_arm.ROUTES[backends_key],
+             fake_arm.POLICIES[policy_key]) = originals
+
+    def test_the_policys_identity_reaches_every_backend_it_can_route_to(self):
+        document = self._collect(self.CONDITIONAL)
+        asset = next(
+            a for a in document["assets"]["models"] if a["source"]["name"] == "aoai-api"
+        )
+        # The precondition: no *single* backend resolved, so the candidates are
+        # named and the targets are derived from them. `mode` is what keeps the
+        # distinction from a declared pool; this used to assert no targets at
+        # all, which is what left the catalogue unresolvable.
+        assert asset["routing"]["mode"] == "conditional"
+        assert asset["routing"]["candidates"] == ["aoai-east", "aoai-west"]
+        assert [target["backendId"] for target in asset["routing"]["targets"]] == [
+            "backend:aoai-east", "backend:aoai-west"
+        ]
+
+        for name in ("aoai-east", "aoai-west"):
+            provider = next(
+                p for p in document["assets"]["modelProviders"] if p["id"].endswith(name)
+            )
+            auth = provider["auth"]
+            assert auth["mode"] == "managedIdentity", auth.get("note")
+            assert auth["evidence"] == ["policy:authentication-managed-identity"]
+
+    def test_both_halves_of_the_provider_link_agree(self):
+        """The forward and reverse links are only trustworthy while they match.
+
+        `providerIds` says which providers an API uses; `_provider_resolutions`
+        asks the same question backwards to find the policy governing a
+        provider. A provider credentialed by this API's policy that the API
+        does not list is the divergence both are written to prevent.
+        """
+        document = self._collect(self.CONDITIONAL)
+        asset = next(
+            a for a in document["assets"]["models"] if a["source"]["name"] == "aoai-api"
+        )
+        credentialled = {
+            p["id"] for p in document["assets"]["modelProviders"]
+            if p["auth"]["evidence"] == ["policy:authentication-managed-identity"]
+        }
+        assert credentialled <= set(asset["providerIds"])
+        assert {"modelProvider:aoai-east", "modelProvider:aoai-west"} == credentialled
+
+    def test_a_single_set_backend_service_still_resolves_as_a_target(self):
+        """The path that already worked must not have moved.
+
+        One `set-backend-service` resolves to a real target, so these providers
+        were always reachable. If the fix had replaced the target test rather
+        than widening it, this is what would have broken.
+        """
+        document = self._collect(
+            "<policies><inbound><base />"
+            '<authentication-managed-identity resource="https://cognitiveservices.azure.com/" />'
+            '<set-backend-service backend-id="aoai-east" />'
+            "</inbound><backend><base /></backend>"
+            "<outbound><base /></outbound><on-error><base /></on-error></policies>"
+        )
+        asset = next(
+            a for a in document["assets"]["models"] if a["source"]["name"] == "aoai-api"
+        )
+        assert asset["routing"]["candidates"] == []
+        assert [t["backendId"] for t in asset["routing"]["targets"]] == ["backend:aoai-east"]
+        provider = next(
+            p for p in document["assets"]["modelProviders"] if p["id"].endswith("aoai-east")
+        )
+        assert provider["auth"]["mode"] == "managedIdentity"
+
+    def test_a_candidate_is_an_alternative_and_not_a_confirmed_route(self):
+        """Widening the link must not turn alternatives into one asserted answer.
+
+        Two APIs that both pick this backend at runtime, credentialling it
+        differently, have no single answer. Reading targets alone neither API
+        reached it, so the question could not arise; now that both do, it has
+        to arrive at `identityCandidates` rather than at whichever API was
+        collected second. The merge concatenates chains for exactly this.
+        """
+        import copy, fake_arm
+
+        apis_key, backends_key = f"{SERVICE}/apis", f"{SERVICE}/backends"
+        second_ops = f"{SERVICE}/apis/aoai-api-2/operations"
+        originals = (
+            fake_arm.ROUTES[apis_key], fake_arm.ROUTES[backends_key],
+            fake_arm.POLICIES[f"{SERVICE}/apis/aoai-api"],
+        )
+
+        apis = copy.deepcopy(originals[0])
+        second = None
+        for api in apis:
+            if api["name"] == "aoai-api":
+                api["properties"]["backendId"] = None
+                second = copy.deepcopy(api)
+        second["id"], second["name"] = f"{SERVICE}/apis/aoai-api-2", "aoai-api-2"
+        second["properties"]["displayName"] = second["properties"]["path"] = "aoai-api-2"
+        apis.append(second)
+
+        backends = copy.deepcopy(originals[1])
+        for backend in backends:
+            if backend["name"] in {"aoai-east", "aoai-west"}:
+                backend["properties"].pop("credentials", None)
+
+        fake_arm.ROUTES[apis_key] = apis
+        fake_arm.ROUTES[backends_key] = backends
+        fake_arm.ROUTES[second_ops] = copy.deepcopy(
+            fake_arm.ROUTES[f"{SERVICE}/apis/aoai-api/operations"]
+        )
+        fake_arm.POLICIES[f"{SERVICE}/apis/aoai-api"] = self.CONDITIONAL
+        fake_arm.POLICIES[f"{SERVICE}/apis/aoai-api-2"] = self.CONDITIONAL.replace(
+            "<authentication-managed-identity ",
+            '<authentication-managed-identity client-id="11111111-1111-1111-1111-111111111111" ',
+        )
+        try:
+            document = Collector(FakeArmClient(), SERVICE, options()).run()
+        finally:
+            (fake_arm.ROUTES[apis_key], fake_arm.ROUTES[backends_key],
+             fake_arm.POLICIES[f"{SERVICE}/apis/aoai-api"]) = originals
+            fake_arm.ROUTES.pop(second_ops, None)
+            fake_arm.POLICIES.pop(f"{SERVICE}/apis/aoai-api-2", None)
+
+        auth = next(
+            p for p in document["assets"]["modelProviders"] if p["id"].endswith("aoai-east")
+        )["auth"]
+        # Both APIs were read, so neither silently won.
+        assert auth["basis"]["policyScopesExamined"] == [
+            "policy:api/aoai-api", "policy:api/aoai-api-2"
+        ]
+        assert [c["clientId"] for c in auth["identityCandidates"]] == [
+            None, "11111111-1111-1111-1111-111111111111"
+        ]
+        assert "2 managed identities apply" in auth["identityNote"]
+
+    def test_the_model_catalogue_resolves_from_the_backends_the_policy_names(self):
+        """The models are readable, so the operator must not be asked for them.
+
+        Model resolution walks `targets`, so an empty list meant no Foundry
+        account was ever looked up: the catalogue came back `unresolved` with
+        "Provider could not be inferred from the backend URL", and the plan
+        raised a blocking item asking the operator to hand-list models that ARM
+        had already resolved for the very same backends in the pool case.
+        """
+        document = self._collect(self.CONDITIONAL, strip_credentials=False)
+        asset = next(
+            a for a in document["assets"]["models"] if a["source"]["name"] == "aoai-api"
+        )
+        models = asset["models"]
+        assert models["status"] == "resolved"
+        assert models["discoverySource"] == "armDeployments"
+        assert models["notes"] == []
+        # Every member's catalogue, filed under the member that serves it.
+        assert {r["backendId"] for r in models["resolved"]} == {
+            "backend:aoai-east", "backend:aoai-west"
+        }
+        # And the provider is identified rather than "unknown".
+        assert asset["provider"]["targetProviderKind"] == "Foundry"
+
+    def test_a_runtime_choice_is_not_reported_as_a_declared_pool(self):
+        """Deriving targets must not invent what APIM did not declare.
+
+        A pool states a priority and a weight per member; a `choose` states a
+        condition. Carrying the members across without carrying shares they
+        never had is the point -- what the condition meant is the separate
+        decision the `set-backend-service` rule raises.
+        """
+        document = self._collect(self.CONDITIONAL, strip_credentials=False)
+        routing = next(
+            a for a in document["assets"]["models"] if a["source"]["name"] == "aoai-api"
+        )["routing"]
+        assert routing["mode"] == "conditional"
+        assert routing["sessionAffinity"] is None
+        # Asserted over a non-empty list on purpose: "no target carries a
+        # weight" is vacuously true of no targets, which is the shape this
+        # exists to tell apart from a pool.
+        assert len(routing["targets"]) == 2
+        assert [t["priority"] for t in routing["targets"]] == [None, None]
+        assert [t["weight"] for t in routing["targets"]] == [None, None]
+
+    def test_the_compensate_proposal_has_an_alias_to_compensate_in(self):
+        """The plan must not propose an answer it builds nothing to carry.
+
+        The `set-backend-service` decision proposes `compensate`: say what the
+        condition was for in the priority and weight of the alias backend
+        models. With no target resolved there was no alias and no members, so
+        the proposed answer could not be applied to anything.
+        """
+        from migrate_apim.capability import CapabilityMap
+        from migrate_apim.plan import build_plan
+
+        document = self._collect(self.CONDITIONAL, strip_credentials=False)
+        plan = build_plan(document, CapabilityMap.load())
+
+        routing_items = [
+            item for item in plan["items"]
+            if (item.get("evidence") or {}).get("element") == "set-backend-service"
+        ]
+        assert [item["proposal"] for item in routing_items] == ["compensate"]
+
+        aliases = [
+            object_
+            for item in plan["items"]
+            if (item.get("target") or {}).get("capability") == "alias.create"
+            for object_ in (item.get("target") or {}).get("objects") or []
+        ]
+        assert aliases, "compensate names alias priority and weight; there was no alias"
+        members = {
+            backend["providerName"]
+            for alias in aliases for backend in alias["backendModels"]
+        }
+        assert {"aoai-east", "aoai-west"} <= members
+
+
+class TestAnMcpServerChosenAtRuntime:
+    """The same gap, one asset kind over.
+
+    A model API that picks its upstream in policy now reads its candidates as
+    targets. An MCP server did not: `_mcp_asset` called `_routing_targets`
+    without them, so a tool server behind a `choose` reported no upstream at
+    all -- and `mcp create` takes the absolute URL of the endpoint, so a server
+    with no upstream registers nothing.
+    """
+
+    CONDITIONAL = (
+        "<policies><inbound><base />"
+        "<choose>"
+        '<when condition="@(true)"><set-backend-service backend-id="support-backend" /></when>'
+        '<otherwise><set-backend-service backend-id="support-backend-eu" /></otherwise>'
+        "</choose>"
+        "</inbound><backend><base /></backend>"
+        "<outbound><base /></outbound><on-error><base /></on-error></policies>"
+    )
+
+    def _collect(self, policy):
+        """Collect with `support-mcp` routed by policy instead of `backendId`."""
+        import copy, fake_arm
+
+        apis_key, backends_key = f"{SERVICE}/apis", f"{SERVICE}/backends"
+        policy_key = f"{SERVICE}/apis/support-mcp"
+        originals = (
+            fake_arm.ROUTES[apis_key], fake_arm.ROUTES[backends_key],
+            fake_arm.POLICIES[policy_key],
+        )
+
+        apis = copy.deepcopy(originals[0])
+        for api in apis:
+            if api["name"] == "support-mcp":
+                api["properties"]["backendId"] = None
+        backends = copy.deepcopy(originals[1])
+        # A second upstream, so the choose has two arms to pick between. One
+        # arm is not a runtime choice -- `_resolve_backend` resolves it.
+        backends.append({
+            "id": f"{SERVICE}/backends/support-backend-eu", "name": "support-backend-eu",
+            "properties": {"type": "Single", "protocol": "http",
+                           "url": "https://support-eu.contoso.com:8000"},
+        })
+
+        fake_arm.ROUTES[apis_key] = apis
+        fake_arm.ROUTES[backends_key] = backends
+        fake_arm.POLICIES[policy_key] = policy
+        try:
+            return Collector(FakeArmClient(), SERVICE, options()).run()
+        finally:
+            (fake_arm.ROUTES[apis_key], fake_arm.ROUTES[backends_key],
+             fake_arm.POLICIES[policy_key]) = originals
+
+    def _server(self, document):
+        return next(
+            a for a in document["assets"]["mcpServers"]
+            if a["source"]["name"] == "support-mcp"
+        )
+
+    def test_every_backend_the_choose_can_pick_is_an_upstream(self):
+        server = self._server(self._collect(self.CONDITIONAL))
+        assert [u["backendId"] for u in server["upstream"]] == [
+            "backend:support-backend", "backend:support-backend-eu"
+        ]
+
+    def test_each_upstream_carries_what_registering_it_needs(self):
+        """A backendId alone registers nothing: `mcp create` takes a URL and a
+        transport, so a candidate has to arrive as complete as a target does."""
+        server = self._server(self._collect(self.CONDITIONAL))
+        # Asserted over a known count, not over whatever the list holds: every
+        # claim below is vacuously true of the empty list this used to be.
+        assert len(server["upstream"]) == 2
+        for upstream in server["upstream"]:
+            assert upstream["url"]
+            assert upstream["transport"] == "streamableHttp"
+
+    def test_a_declared_backend_is_unaffected(self):
+        """The fixture routes by `backendId`, which still resolves to one."""
+        import fake_arm
+
+        server = self._server(
+            Collector(FakeArmClient(), SERVICE, options()).run()
+        )
+        assert [u["backendId"] for u in server["upstream"]] == ["backend:support-backend"]
+
+
+class TestACredentialWrittenStraightIntoThePolicy:
+    """A key written inline is the same credential as `{{name}}`.
+
+    `policy.parse` redacts a hard-coded credential and registers a ref for
+    reading it back, but the ref lived only on the document. `_backend_auth`
+    is handed elements, so it saw the named-value form and not this one: the
+    upstream reported `mode: apiKey` -- correctly -- with no secret behind it,
+    and the provider registered `kind: ApiKey` with a null key. The mode was
+    right and the registration was empty, which is the shape that mode exists
+    to avoid.
+    """
+
+    LITERAL = "sk-abcdefghijklmnopqrstuvwxyz01"
+
+    def _collect(self, value):
+        """Collect with `meta-ai` credentialled by policy instead of its backend."""
+        import copy, fake_arm
+
+        backends_key = f"{SERVICE}/backends"
+        policy_key = f"{SERVICE}/apis/meta-ai"
+        originals = (fake_arm.ROUTES[backends_key], fake_arm.POLICIES.get(policy_key))
+
+        backends = copy.deepcopy(originals[0])
+        for backend in backends:
+            if backend["name"] == "meta-ai-openai-endpoint":
+                backend["properties"].pop("credentials", None)
+        fake_arm.ROUTES[backends_key] = backends
+        fake_arm.POLICIES[policy_key] = (
+            '<policies><inbound><base />'
+            f'<set-header name="api-key" exists-action="override"><value>{value}</value></set-header>'
+            '</inbound><backend><base /></backend><outbound><base /></outbound>'
+            '<on-error><base /></on-error></policies>'
+        )
+        try:
+            return Collector(FakeArmClient(), SERVICE, options()).run()
+        finally:
+            fake_arm.ROUTES[backends_key] = originals[0]
+            if originals[1] is None:
+                fake_arm.POLICIES.pop(policy_key, None)
+            else:
+                fake_arm.POLICIES[policy_key] = originals[1]
+
+    def _auth(self, document):
+        return next(
+            p for p in document["assets"]["modelProviders"] if "meta-ai" in p["id"]
+        )["auth"]
+
+    def test_an_inline_key_resolves_like_a_named_value(self):
+        auth = self._auth(self._collect(self.LITERAL))
+        assert auth["mode"] == "apiKey"
+        assert len(auth["secretRefs"]) == 1
+        assert auth["secretRefs"][0].startswith("secret:policyInline/")
+
+    def test_a_named_value_still_resolves_to_its_own_ref(self):
+        """The inline path is additional, not a replacement."""
+        auth = self._auth(self._collect("{{meta-ai-Authorization-LLM}}"))
+        assert auth["secretRefs"] == ["secret:namedValue/meta-ai-Authorization-LLM"]
+
+    def test_the_credential_itself_is_never_carried(self):
+        """A ref says where to read it. The inventory never holds the value."""
+        document = self._collect(self.LITERAL)
+        assert self.LITERAL not in json.dumps(document)
+
+
+class TestTheBasicPasswordIsNamedButNotRegistered:
+    """Recording where the password is, without registering it as a key.
+
+    The ref was withheld while `_custom_auth` answered every mode with an
+    ApiKey object: `secretRefs` is what fills that object's value, so naming
+    the password published a basic credential as a working api key. `basic` is
+    refused outright now, so the ref reaches nothing that would misread it --
+    and the `compensate` option tells an operator to compose
+    `Authorization: Basic ...` by hand, which they cannot do without knowing
+    where the password lives.
+    """
+
+    PASSWORD = "hunter2-not-a-real-password"
+
+    def _collect(self):
+        import copy, fake_arm
+
+        backends_key = f"{SERVICE}/backends"
+        policy_key = f"{SERVICE}/apis/meta-ai"
+        originals = (fake_arm.ROUTES[backends_key], fake_arm.POLICIES.get(policy_key))
+
+        backends = copy.deepcopy(originals[0])
+        for backend in backends:
+            if backend["name"] == "meta-ai-openai-endpoint":
+                backend["properties"].pop("credentials", None)
+        fake_arm.ROUTES[backends_key] = backends
+        fake_arm.POLICIES[policy_key] = (
+            '<policies><inbound><base />'
+            f'<authentication-basic username="svc" password="{self.PASSWORD}" />'
+            '</inbound><backend><base /></backend><outbound><base /></outbound>'
+            '<on-error><base /></on-error></policies>'
+        )
+        try:
+            return Collector(FakeArmClient(), SERVICE, options()).run()
+        finally:
+            fake_arm.ROUTES[backends_key] = originals[0]
+            if originals[1] is None:
+                fake_arm.POLICIES.pop(policy_key, None)
+            else:
+                fake_arm.POLICIES[policy_key] = originals[1]
+
+    def test_the_password_is_referenced(self):
+        document = self._collect()
+        auth = next(
+            p for p in document["assets"]["modelProviders"] if "meta-ai" in p["id"]
+        )["auth"]
+        assert auth["mode"] == "basic"
+        assert [r for r in auth["secretRefs"] if r.startswith("secret:policyInline/")]
+
+    def test_the_password_value_is_not(self):
+        assert self.PASSWORD not in json.dumps(self._collect())

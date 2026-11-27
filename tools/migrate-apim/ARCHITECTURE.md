@@ -18,18 +18,46 @@ Declares what the `az aigateway` CLI extension can do. Paired to one CLI release
 
 Declares how APIM shapes map to target capabilities. Never versioned separately; versioned with the catalog it references. Contains:
 
-- **`assets[]`** — How to map each APIM asset family (models, mcpServers, agents, modelProviders). Each rule matches on asset properties (`family`, `modelsStatus`, `surfaceStatus`, etc.) and declares:
+**What belongs in this file, and what does not.** `rules.json` is the AI Gateway
+mapping, versioned with the capability catalog it names in `targetCapabilities`.
+The test for a rule is whether it moves when the target moves: "AI Gateway
+exposes no A2A building block" and "no caching on the typed gateway" are claims
+about a release, and a release that changed them would change the rule. A
+decision that holds whatever AI Gateway ever ships is not a mapping, however
+much it looks like one — it has no `capabilityId`, makes no claim about the
+target, and belongs in the planner.
+
+The coverage gate is the case that proved it. "A failed control-plane read is
+unknown rather than absent, and unknown coverage cannot be accepted as a loss"
+is a fact about the collection run and about what may be concluded from
+silence. It sat in this file as the only rule answering to nothing in the
+catalog, and — not coincidentally — the only one whose `selects` named no APIM
+object. The path never fit because the rule was never a mapping.
+
+Every rule names the object it judges in `selects`, by where that object lives: a path into the inventory, with `[]` for "each of these". It narrows with `where` (field predicates on that object) or `fallback` (the rule that answers when nothing above it did), and then declares the decision. The paths are APIM's object graph, because that is what a rule is about: an API, a policy element, a product, a workspace. One API raises several questions and they are decided separately, so they are several paths: `apim.apis[].operations[]` is not `assets.models[].models`. Take the path, open the inventory, see the object — and `compile` checks both halves against `inventory.schema.json`, which a label like `publishedSurface` could not be checked against at all.
+
+A path under `apim.` carries a further claim: that these are APIM's objects. So it has to be APIM's the whole way down, and `apim-path-is-apim` asks `_api_source` — the one place an APIM API's fields are written down — rather than the schema, which is a file we write and can widen until it certifies anything. A *reading* of an APIM object may be a `where` key (`apim.apis[]` narrowed on `pattern`, which reads honestly: APIM's object, our reading, and you can tell which is which) but never a path segment. `apim.apis[].endpoints.surface` shipped once: `endpoints` is a decomposition of ours and `surface` is a judgment about the target, and declaring both on `apim.apis[]` made the checker certify them.
+
+- **`assets[]`** — The questions asked about one API: `apim.apis[]`, `apim.apis[].operations[]` and `apim.backends[].pool.sessionAffinity` are APIM's objects; `assets.models[].endpoints.translation`, `assets.models[].models`, `assets.models[].models.resolved[]`, `assets.mcpServers[].toolDiscovery` and `assets.modelProviders[]` are this tool's readings, and their paths say so. Which APIs a rule means it says in `where`: `type` is APIM's own discriminator (`mcp`, `a2a`), `pattern` and `role` are this tool's reading of that API — `role` because an http-typed API can still be a model API and APIM has no field that says so. One rule here does not name an APIM path and says why in a `note`: `assets.modelProviders[]`, because a model provider is an upstream endpoint APIM reaches through a backend *or* an API's serviceUrl, and no single APIM object is all of them. Each declares:
   - `verdict` — `native` (direct map), `partial` (decision needed), `gap` (no target), `handled` (carried elsewhere), `notApplicable` (skip it)
   - `capabilityId` — Which capability in the catalog handles this
-  - `itemKind` — What type of plan item to raise (`reduce-surface`, `translate`, `accept-loss`, `enumerate`, `name`, `scope`, `collapse`)
+  - `answer` — How the question is answered: `choose` one of `options`, or `supply` the data the decision carries (a model list, a name per member). It was `itemKind`, seven labels of which six meant "pick one of options" and differed only in what they were called; the distinction an agent or a UI has to act on is picker or form, and that is the one kept
   - `options` — If `partial`, the choices the operator can make
   - `proposal` — If `partial`, the recommended choice
 
-- **`structural[]`** — Rules for cross-asset things (workspaces, subscriptions, telemetry, coverage gaps).
+- **`structural[]`** — The questions asked about the service rather than one API: `apim.workspaces[]`, `apim.subscriptions`, `apim.loggers`, `apim.certificates`, `apim.authorizationProviders`, `apim.policies[]`, plus `service.identity` and `service.networking.targetRequirement`. `collection.coverage[]` is the one path here that is not APIM's, and says why in a `note`: it records what this run managed to read, and a failed read is unknown rather than absent. A rule may narrow with `where` where one object resolves to several cases: a policy fragment — `policies[]`, filtered on `scope.level` by `plan._policy_fragments` — pins a `disposition`, because a fragment the target must dissolve is not a fragment nothing includes, and neither is an `include-fragment` naming one the inventory does not hold. `disposition` is the one predicate no record carries; the site declares it `computed` so the path check knows there is nothing to check it against.
 
-- **`policies[]`** — How APIM policies map to AI Gateway policies. Matched by element name, then by family, with fallbacks for expressions and unknowns.
+  A `where` predicate takes one of three forms and no others: `key: value` is equals, `key: [a, b]` is one of, and `key: {"present": bool}` is non-empty or empty. They were two blocks until `derived` was checked against what each of its five keys actually computed — `policiesBypassed: true` tested `policiesApplied is False`, an equality on a real field, misfiled and inverted in the name so a reader had to negate it; the other four were a non-empty test on a field the collector writes. Folding them in is only an improvement while `where` stays small, so `compile` closes the set: a predicate needing `contains`, `gt` or `matches` belongs in code, where it can say why.
 
-- **`publishableRoutes[]`** — The four routes AI Gateway publishes (`/openai/v1/chat/completions`, `/v1/messages`, etc.). Used to decide what part of a model API surface can move.
+- **`policies[]`** — How APIM policies map to AI Gateway policies. Every rule here `selects: apim.policies[].elements[]`. Four passes in order: by element name (`where.name`), then by family (`where.family`), then a fallback for anything carrying a policy expression (`where.expressionIds: {"present": true}`), then one terminal rule (`fallback: true`) that answers for everything else.
+
+  The last pass is what makes an unmapped element impossible rather than unlikely: before it, an element matching no rule was dropped where it was classified, and the ones that vanished were those carrying *no* expression, since an expression at least reached the pass above. It is a net and not a mapping, so `compile` holds every element in `policy.FAMILIES` to a rule of its own or a family rule and fails if one is left to it. The planner counts what reaches it into `policyCoverage.unrecognised` on the plan.
+
+- **`publishableRoutes[]`** — The four routes AI Gateway publishes (`/openai/v1/chat/completions`, `/v1/messages`, etc.). Used twice: to decide what part of a model API surface can move, and — through the `publishable` reading on a resolved model — whether an individual model can move at all.
+
+  A model declares its own routes: a Foundry deployment's `capabilities` map, or a backend's stated dialect. A deployment whose capabilities name none of the four cannot be reached through the gateway, so registering it produces a model that reads as migrated and fails at the upstream on the first call. `publishable: false` is that claim and raises a decision; `publishable: null` is the absence of one, for a backend whose dialect could not be read, and keeps the native default because the dialect rules ask about that instead.
+
+  The values in that map are the strings `"true"` and `"false"`, so the value has to be compared and not tested — reading only the key published a deployment that said `chatCompletion: "false"`, and `bool("false")` is `True`.
 
 ## How the Planner Uses Both
 
@@ -60,13 +88,14 @@ Declares how APIM shapes map to target capabilities. Never versioned separately;
 │ For each asset: │          │ For each policy:     │
 │ .asset_rules()  │          │ .policy_rule()       │
 │    ↓            │          │    ↓                 │
-│ Match on        │          │ Match on element     │
-│ family,         │          │    ↓                 │
-│ modelsStatus,   │          │ Get capability id    │
-│ surfaceStatus   │          │    ↓                 │
-│    ↓            │          │ Build plan item      │
-│ Get capability  │          │                      │
-│ from catalog    │          │                      │
+│ selects: where  │          │ selects: apim.policies[] │
+│ the object is   │          │          .elements[] │
+│    ↓            │          │    ↓                 │
+│ where: which    │          │ where: name, family  │
+│ answer applies  │          │    ↓                 │
+│    ↓            │          │ Get capability id    │
+│ Get capability  │          │    ↓                 │
+│ from catalog    │          │ Build plan item      │
 │    ↓            │          │                      │
 │ Build plan item │          │                      │
 │ with verdict    │          │                      │
@@ -116,8 +145,10 @@ A data-driven contract is only as good as the checking of it. Two claims used to
 | A newer release exists | With `--newest-release`, whether anything newer than the documented version is published — a suggestion, see below |
 | The shapes are well formed | Both files against `schemas/capabilities.schema.json` and `schemas/rules.schema.json`, `additionalProperties` closed |
 | Every rule can be selected | Each rule is governed by a registered selector (below) |
+| Every path is a real one | What a site selects, and every field it narrows on, is declared in `inventory.schema.json` |
 | Every rule field has a reader | Each field is one that some site able to select the rule declares it `reads` |
-| No rule is ambiguous | In every section, no two rules look identical to the site that selects them — including the policy passes keyed on `family` and `hasExpression` |
+| No rule is ambiguous | In every section, no two rules look identical to the site that selects them — including the policy passes keyed on `family` and on whether the element carries an expression |
+| `where` stays three forms wide | Every predicate is equals, one of, or `{"present": bool}` |
 
 Three severities. **Errors** fail the command. **Warnings** — a field no site reads, a version that cannot be compared — are advisory, and `--strict` promotes them; `--strict` passes on the committed data, which is the only state in which it is worth having, since a mode that cannot pass is a mode nobody runs. **Suggestions** are never fatal, not even under `--strict`, and are counted apart from the tally so a clean compile still reads as clean.
 
@@ -127,13 +158,17 @@ The catalog says which release to install; nothing here reads `cli/` to find out
 
 ### The selector registry
 
+One question is answered in one place for the same reason. `migrate_apim/policy.py` owns which policy governs which API: the scope chain, `<base />` inheritance, fragment splicing and the workspace qualification of every name. `collect` asks it to decide what authenticates a backend and `plan` asks it to decide what a policy item covers, so the two cannot drift — which they had, the collector folding in the product and global policy but never the workspace, and the planner answering for neither a fragment nor an operation. Nothing is re-derived to answer it: `include-fragment` and `base` are already elements in the inventory, each with its section and path.
+
+`compile` holds two invariants that keep this true rather than aspirational: every path a site selects on has at least one rule, so a question the planner asks cannot be answered in code instead of in the file; and every path a site names — what it selects, and that path plus each `where` key — is one `inventory.schema.json` declares, so a rule cannot match on something no record carries and simply never fire. Both are checked against the registry the planner itself uses.
+
 Reachability is checkable only because selection happens in one place. `migrate_apim/dispatch.py` defines `Selector`, which both performs a match and states what the match looks at; `plan.py` and `capability.py` declare one per selection site. `compile` imports those modules and reads `dispatch.REGISTRY`, so the contract it checks is the one the planner runs — not a second declaration that can drift from it.
 
-A selector *governs* a rule when the rule's `match` keys are a subset of the keys that site reads, and every value it pins is one that site accepts. Subset, not equality: a rule may pin fewer keys, but pinning more means the surplus is silently ignored and the rule matches more broadly than it reads.
+A selector *governs* a rule when the rule selects the path that site selects, its `where` keys are a subset of the ones that site examines, and every literal it pins is one that site accepts. Subset, not equality: a rule may pin fewer keys, but pinning more means the surplus is silently ignored and the rule matches more broadly than it reads.
 
-A selector also declares what it `reads`: the rule fields it consumes once it has chosen one. A field outside that union is a field somebody wrote expecting an effect it does not have — the same defect as an unreadable match key, one layer in — and it is found the same way, by asking the sites rather than by keeping a list in the checker. A list in the checker is a second declaration, and it drifted: `constraints` and `toolDiscoveryGuidance` sat unread for releases because nobody thought to add them to it.
+A selector also declares what it `reads`: the rule fields it consumes once it has chosen one. A field outside that union is a field somebody wrote expecting an effect it does not have — the same defect as an unreadable `where` key, one layer in — and it is found the same way, by asking the sites rather than by keeping a list in the checker. A list in the checker is a second declaration, and it drifted: `constraints` and `toolDiscoveryGuidance` sat unread for releases because nobody thought to add them to it.
 
-This is why the six `plan._structural` branches declare six selectors rather than one keyed on `kind`. They share a key and nothing else — each raises a different item and takes a different set of fields — and a single selector would have to declare the union, excusing a field on the workspace rule because the telemetry branch happens to read it.
+This is why the six `plan._structural` branches declare six selectors rather than one, and why `apim.apis[].endpoints.translation` has two: branches that share a path and nothing else each raise a different item and take a different set of fields, and a single selector would have to declare the union — excusing a field on the workspace rule because the telemetry branch happens to read it, or a `proposal` on the indeterminate-dialect rule that nothing reads. The declaration is only worth having while it is the narrowest true one.
 
 Adding a selection site means declaring a selector there. A rule that no selector governs is an error, with the reason given — an unread key is a different mistake from an unknown value, and they have different fixes.
 

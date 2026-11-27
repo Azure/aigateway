@@ -21,31 +21,99 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
+from . import dispatch
 from .azcli import az_argv
 from .dispatch import selector
 
-# `policy_rule` runs three passes in order: an element-specific rule wins, then
-# a family rule, then the expression fallback. Each pass is its own selection
-# site, so each declares what it looks at.
+# `policy_rule` runs four passes in order: an element-specific rule wins, then a
+# family rule, then the expression fallback, then a terminal rule that matches
+# anything. Each pass is its own selection site, so each declares what it looks
+# at.
 #
-# All three hand the chosen rule back to the same reader in `plan._policies`, so
+# All four hand the chosen rule back to the same reader in `plan._policies`, so
 # they read the same fields; they differ only in how the rule is found.
 _POLICY_FIELDS = (
-    "verdict", "itemKind", "capabilityId", "target", "proposal", "rationale",
+    "verdict", "answer", "capabilityId", "target", "proposal", "rationale",
     "options", "partial", "partialWhen", "batchOn",
+    # A `handled` rule names what carries it, and what to say when nothing
+    # does. Read in `plan._policies`, which checks the promise rather than
+    # taking it: an element excluded on the strength of an item that was
+    # never raised leaves no trace at all.
+    "carriedBy", "uncarried",
 )
 POLICY_BY_ELEMENT = selector(
-    "policies", keys=("element",), site="capability.policy_rule element",
-    reads=_POLICY_FIELDS,
+    "policies", selects="apim.policies[].elements[]",
+    keys=("name", "credentialParameter"),
+    site="capability.policy_rule element", reads=_POLICY_FIELDS,
 )
 POLICY_BY_FAMILY = selector(
-    "policies", keys=("family",), site="capability.policy_rule family",
-    reads=_POLICY_FIELDS,
+    "policies", selects="apim.policies[].elements[]", keys=("family",),
+    site="capability.policy_rule family", reads=_POLICY_FIELDS,
 )
 POLICY_BY_EXPRESSION = selector(
-    "policies", keys=("hasExpression",), site="capability.policy_rule expression",
-    reads=_POLICY_FIELDS,
+    "policies", selects="apim.policies[].elements[]", keys=("expressionIds",),
+    site="capability.policy_rule expression", reads=_POLICY_FIELDS,
 )
+# The pass that makes "no rule" unreachable. Everything above it answers some
+# part of APIM's policy vocabulary; this answers the rest, including whatever
+# APIM ships next. Without it an element nothing matched was dropped where it
+# was classified, so a policy the tool did not recognise left no trace at all --
+# and the elements that reached it were the ones carrying no expression, since
+# an expression at least fell into the pass above. The simpler the policy, the
+# more completely it vanished.
+POLICY_TERMINAL = selector(
+    "policies", selects="apim.policies[].elements[]", fallback=True,
+    site="capability.policy_rule terminal", reads=_POLICY_FIELDS,
+)
+
+
+def resolve_policy_rule(
+    rules: list[dict[str, Any]], element_name: str, *, family: str = "",
+    has_expression: bool = False, credential_parameter: str | None = None,
+) -> dict[str, Any] | None:
+    """The rule governing one policy element, by the four passes in order.
+
+    A module-level function because `compile` has to ask the same question of a
+    raw rules document, and asking it a second way is how the two answers drift.
+    """
+    # What the element pass can be told about the element beyond its name. A
+    # by-name rule may pin one of these to separate two rules over the same
+    # element -- a `set-header` carrying the upstream credential from one
+    # rewriting a header -- and file order decides between them as it always has.
+    criteria = {"credentialParameter": credential_parameter}
+    for rule in rules:
+        if not POLICY_BY_ELEMENT.governs(rule):
+            continue
+        where = rule.get("where") or {}
+        names = where.get("name")
+        if not names or element_name not in names:
+            continue
+        # Only the keys this rule pins are tested, so a rule naming nothing but
+        # the element is matched exactly as before. A pinned key the caller did
+        # not ask about is answered with `None`, which no predicate form holds
+        # for: omission is not a wildcard, here as in `dispatch.matches`.
+        if all(
+            dispatch.holds(predicate, criteria.get(key))
+            for key, predicate in where.items()
+            if key != "name"
+        ):
+            return rule
+    for rule in rules:
+        if not POLICY_BY_FAMILY.governs(rule):
+            continue
+        where = rule.get("where") or {}
+        if where.get("family") and where["family"] == family:
+            return rule
+    if has_expression:
+        # `has_expression` is `bool(element["expressionIds"])`, which is all the
+        # `nonEmpty` form asks, so the bool stands in for the list here.
+        found = POLICY_BY_EXPRESSION.first(rules, expressionIds=has_expression)
+        if found:
+            return found
+    for rule in rules:
+        if POLICY_TERMINAL.governs(rule):
+            return rule
+    return None
 
 CAPABILITIES_DIR = Path(__file__).resolve().parent.parent / "capabilities"
 # Discovered rather than written down. The catalog is renamed on every CLI
@@ -136,6 +204,11 @@ class CapabilityMap:
             entry for entry in (catalog.get("serviceOnly") or []) if isinstance(entry, dict)
         ]
         self.probed = False
+        # What `az aigateway` is actually installed, filled in by a probe.
+        # `cliVersion` is the catalog's documented version and says nothing
+        # about this machine, so a plan reporting only that read as a claim
+        # about the install -- "against CLI 1.0.0b31" beside a b26 extension.
+        self.installed_version: str | None = None
 
     # ------------------------------------------------------------- loading
 
@@ -197,6 +270,8 @@ class CapabilityMap:
             capability.missing_options = missing
             capability.support = "unavailable" if missing else "conditional"
         self.probed = True
+        if self.installed_version is None:
+            self.installed_version = az_extension_version()
         return self
 
     # --------------------------------------------------------------- rules
@@ -210,8 +285,8 @@ class CapabilityMap:
     def structural_rules(self) -> list[dict[str, Any]]:
         return list(self.rules.get("structural") or [])
 
-    def policy_rule(self, element_name: str, *, family: str = "", has_expression: bool = False
-                    ) -> dict[str, Any] | None:
+    def policy_rule(self, element_name: str, *, family: str = "", has_expression: bool = False,
+                    credential_parameter: str | None = None) -> dict[str, Any] | None:
         """The rule governing one policy element.
 
         Element-specific rules win. An expression does not by itself demote a
@@ -219,28 +294,31 @@ class CapabilityMap:
         ``@(context.Subscription.Id)`` still maps to ``tokenLimit`` -- only the
         partitioning needs choosing, which the rule expresses through
         ``partialWhen``. The expression rule is the fallback for elements with no
-        mapping of their own, where arbitrary C# genuinely has no target.
+        mapping of their own, where arbitrary C# genuinely has no target, and the
+        terminal rule catches whatever reaches neither.
+
+        ``credential_parameter`` is the element's own field of that name, which
+        only a parameter setter carrying the upstream credential has. Left
+        unsupplied it reads as absent, so a caller that does not know about it
+        gets the same rule it always did.
         """
-        rules = self.rules.get("policies") or []
-        for rule in rules:
-            if not POLICY_BY_ELEMENT.governs(rule):
-                continue
-            names = (rule.get("match") or {}).get("element")
-            if names and element_name in names:
-                return rule
-        for rule in rules:
-            if not POLICY_BY_FAMILY.governs(rule):
-                continue
-            match = rule.get("match") or {}
-            if match.get("family") and match["family"] == family:
-                return rule
-        if has_expression:
-            for rule in rules:
-                if not POLICY_BY_EXPRESSION.governs(rule):
-                    continue
-                if (rule.get("match") or {}).get("hasExpression"):
-                    return rule
-        return None
+        return resolve_policy_rule(
+            self.rules.get("policies") or [], element_name,
+            family=family, has_expression=has_expression,
+            credential_parameter=credential_parameter,
+        )
+
+    def terminal_policy_rule(self) -> dict[str, Any] | None:
+        """The rule that answers for an element nothing else recognises.
+
+        Named apart from the rest because reaching it is not the same as being
+        mapped: `compile` holds every element the tool knows of to a rule of its
+        own, so arriving here means the vocabulary has grown.
+        """
+        return next(
+            (rule for rule in self.rules.get("policies") or [] if POLICY_TERMINAL.governs(rule)),
+            None,
+        )
 
     def service_only_entry(self, entry_id: str) -> dict[str, Any] | None:
         """A capability the gateway has and the CLI cannot author."""
@@ -255,7 +333,11 @@ class CapabilityMap:
     def to_dict(self) -> dict[str, Any]:
         return {
             "catalog": self.catalog_name,
+            # The version the catalog documents. It is a fact about this file,
+            # not about the machine, which is why the installed one is reported
+            # beside it rather than folded into it.
             "cliVersion": self.cli_version,
+            "installedVersion": self.installed_version,
             "probed": self.probed,
             "capabilities": {cid: cap.support for cid, cap in sorted(self.capabilities.items())},
             "unsupported": self.unsupported,
@@ -280,6 +362,25 @@ def az_extension_present(*, timeout: int = 30) -> bool:
     except (FileNotFoundError, subprocess.TimeoutExpired):  # pragma: no cover
         return False
     return proc.returncode == 0
+
+
+def az_extension_version(*, timeout: int = 30) -> str | None:
+    """The installed `aigateway` extension's version, or None if unreadable.
+
+    Reported beside the catalog's documented version rather than in place of
+    it: the two answer different questions, and a plan that printed only the
+    documented one read as a statement about the machine it was built on.
+    """
+    try:
+        proc = subprocess.run(
+            az_argv(["az", "extension", "show", "-n", "aigateway", "--query", "version", "-o", "tsv"]),
+            capture_output=True, text=True, timeout=timeout,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):  # pragma: no cover
+        return None
+    if proc.returncode != 0:  # pragma: no cover
+        return None
+    return proc.stdout.strip() or None
 
 
 def az_option_probe(command: Iterable[str], *, timeout: int = 30) -> set[str] | None:
