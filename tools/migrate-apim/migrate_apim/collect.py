@@ -11,7 +11,7 @@ from __future__ import annotations
 import datetime as _dt
 import re
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Sequence
 from urllib.parse import urlsplit
 
 from . import detect, ids, policy as policy_mod, secrets
@@ -97,6 +97,18 @@ class Collector:
         # the scope loop is an implementation detail of finding them.
         self.apim_apis: list[dict[str, Any]] = []
         self._operations_by_api: dict[str, list[dict[str, Any]]] = {}
+        # What governs each API, kept so the model providers behind it can be
+        # asked the same question. A provider's credential is set by the policy
+        # of whatever publishes it just as often as by the backend record, and
+        # `_model_providers` runs after the API loop has thrown the resolution
+        # away. Resolving a second time there would be the two-ways drift the
+        # graph comment above exists to prevent.
+        self._effective_by_api: dict[str, policy_mod.Resolution] = {}
+        # Named value name -> the secret ref already registered for it. A policy
+        # references a named value by bare name, so that is the key; a workspace
+        # redefining a service-scope name would collide, which no instance seen
+        # so far does and which the registry would surface as one ref used twice.
+        self._secret_by_named_value: dict[str, str] = {}
 
     # ------------------------------------------------------------------ run
 
@@ -503,6 +515,7 @@ class Collector:
             }
             if props.get("secret") or props.get("keyVault"):
                 record["secretRef"] = self.registry.named_value(entry, workspace=workspace, used_by=record["id"])
+                self._secret_by_named_value[name] = record["secretRef"]
             else:
                 # Non-secret named values are plain configuration and are part of
                 # the migration payload, so keep their value.
@@ -808,6 +821,7 @@ class Collector:
                 api=name, workspace=workspace, levels=("api",)
             )
             effective = self._graph.governing(api=name, workspace=workspace)
+            self._effective_by_api[ids.api(name, workspace)] = effective
             element_names = {element["name"] for element in api_scoped.elements}
             families = {element["family"] for element in api_scoped.elements}
 
@@ -1007,7 +1021,10 @@ class Collector:
                 "apiDialect": declared.get("apiDialect") or (rule.api_dialect if rule else None),
                 "endpoint": candidate["endpoint"],
                 "origin": candidate["origin"],
-                "auth": _provider_auth(candidate, self.registry),
+                "auth": _provider_auth(
+                    candidate, self._provider_resolutions(candidate["origin"], assets), self.registry,
+                    secret_by_named_value=self._secret_by_named_value,
+                ),
                 "tls": candidate["tls"],
                 "circuitBreaker": candidate["circuitBreaker"],
                 "azure": None,
@@ -1100,11 +1117,11 @@ class Collector:
             providers.append(record)
 
         for asset in assets.get("models", []):
+            reachable = _api_backend_ids(asset)
             asset["providerIds"] = [
                 provider["id"]
                 for provider in providers
-                if provider["origin"].get("backendId")
-                in {target.get("backendId") for target in (asset.get("routing") or {}).get("targets", [])}
+                if provider["origin"].get("backendId") in reachable
                 or provider["origin"].get("apiId") == asset["source"]["apiId"]
             ]
         return providers
@@ -1127,6 +1144,38 @@ class Collector:
                 if where not in roles[backend_name][role]:
                     roles[backend_name][role].append(where)
         return roles
+
+    def _provider_resolutions(
+        self, origin: dict[str, Any], assets: dict[str, list[dict[str, Any]]]
+    ) -> list[policy_mod.Resolution]:
+        """What governs every model API that routes to this provider.
+
+        A provider's upstream credential is as often set by the policy of the
+        API publishing it as by the backend record -- `authentication-managed-identity`
+        on the API is how a hand-built Foundry backend is credentialed, and the
+        portal's AI import is the case that writes `credentials.managedIdentity`
+        instead. Reading only the backend reported the first shape as having no
+        credential at all.
+
+        The reverse of the `providerIds` link above, and deliberately the same
+        test: a provider is behind an API when the API can route to its backend,
+        or when the provider *is* that API's service URL. Two statements of
+        "which provider does this API use" would be free to disagree, so both
+        ask `_api_backend_ids` rather than each spelling the test out.
+        """
+        backend_id = origin.get("backendId")
+        api_id = origin.get("apiId")
+        resolutions = []
+        for asset in assets.get("models") or []:
+            reachable = _api_backend_ids(asset)
+            asset_api = asset["source"]["apiId"]
+            if not ((backend_id is not None and backend_id in reachable)
+                    or (api_id is not None and api_id == asset_api)):
+                continue
+            resolution = self._effective_by_api.get(asset_api)
+            if resolution is not None:
+                resolutions.append(resolution)
+        return resolutions
 
     def _references_to_backend(
         self, backend_name: str | None, api_index: dict[str, dict[str, Any]], workspace: str | None
@@ -1267,7 +1316,10 @@ class Collector:
             "basis": resolved.get("basis") or ("backendHost" if provider_rule else None),
             "protocolBasis": resolved.get("protocolBasis"),
             "endpoint": endpoint,
-            "auth": _backend_auth(backend_record, effective, self.registry),
+            "auth": _backend_auth(
+                backend_record, effective, self.registry,
+                secret_by_named_value=self._secret_by_named_value,
+            ),
             "azure": None,
         }
 
@@ -2074,6 +2126,39 @@ def _backend_urls(record: dict[str, Any] | None, by_id: dict[str, dict[str, Any]
     return [url for url in urls if url]
 
 
+def _api_backend_ids(asset: dict[str, Any]) -> set[str]:
+    """Every backend this API can send a request to, however it chooses.
+
+    Both halves of the provider link ask this -- `providerIds` forward and
+    `_provider_resolutions` back -- because the two are only trustworthy while
+    they are the same test, and two copies of a comprehension are not.
+
+    `targets` is the backend the API resolves to. `candidates` is the set it
+    picks from at runtime, which `_resolve_backend` reports instead of a target
+    whenever the `set-backend-service` count is not exactly one. Reading only
+    `targets` left a conditionally routed API linked to no provider at all, so
+    the policy carrying its upstream credential was never consulted for the
+    backends that policy itself names.
+
+    A candidate is an alternative rather than a confirmed route, and it stays
+    one: this returns what the API *can* reach, and `_backend_auth` is where
+    several alternatives become `identityCandidates` rather than a silent pick.
+    Candidates are recorded as bare backend names, so they are scoped to the
+    asset's workspace to match the ids `targets` carries.
+    """
+    routing = asset.get("routing") or {}
+    workspace = asset.get("workspace")
+    reachable = {
+        target.get("backendId")
+        for target in routing.get("targets") or []
+        if target.get("backendId")
+    }
+    reachable |= {
+        ids.backend(name, workspace) for name in routing.get("candidates") or [] if name
+    }
+    return reachable
+
+
 def _routing_targets(
     record: dict[str, Any] | None, by_id: dict[str, dict[str, Any]], service_url: str | None
 ) -> list[dict[str, Any]]:
@@ -2115,19 +2200,34 @@ def _routing_targets(
 
 # A backend can carry several credentials at once. The reported mode is the one
 # that governs how the target provider must be configured, strongest first.
+#
+# The three in the middle have no target field at all, so they rank above the
+# two that do: a backend carrying both a client certificate and an api-key
+# header is not migrated by registering the key and calling it done. `basic` is
+# last of those three because it is the only one a person can reproduce by hand
+# -- `Authorization: Basic base64(user:pass)` is a Custom provider's ApiKey
+# header -- whereas an OAuth connection and mTLS can be reproduced by nothing.
 _AUTH_PRECEDENCE = (
-    "managedIdentity", "credentialManager", "clientCertificate",
+    "managedIdentity", "credentialManager", "clientCertificate", "basic",
     "authorizationHeader", "apiKey", "none",
 )
 
 
 def _backend_auth(
     record: dict[str, Any] | None, effective: policy_mod.Resolution | None,
-    registry: secrets.SecretRegistry
+    registry: secrets.SecretRegistry, *, alternatives: str = "product",
+    secret_by_named_value: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     auth: dict[str, Any] = {"mode": "none", "modes": [], "secretRefs": [], "evidence": []}
     credentials = (record or {}).get("credentials") or {}
     owner = (record or {}).get("id")
+    # A parameter setter names the credential; its `<value>` child holds it.
+    # Both are elements, so the pair has to be put back together here.
+    children_of: dict[str, list[dict[str, Any]]] = {}
+    for element in (effective.elements if effective else []):
+        parent, _, tail = (element.get("path") or "").rpartition("/")
+        if parent and tail.startswith("value["):
+            children_of.setdefault(parent, []).append(element)
 
     def note(mode: str, evidence: str) -> None:
         if mode not in auth["modes"]:
@@ -2176,8 +2276,39 @@ def _backend_auth(
     for element in (effective.elements if effective else []):
         if element["name"] == "authentication-certificate":
             note("clientCertificate", "policy:authentication-certificate")
+        elif element["name"] == "authentication-basic":
+            # No secret ref, deliberately, and the same way the two branches
+            # around it carry none. `secretRefs` is what `_custom_auth` reads
+            # to fill a provider's ApiKey value, so claiming the password here
+            # would publish a basic credential as a working api key -- a
+            # stronger falsehood than the one this branch exists to remove. The
+            # password is still registered on the policy document, so it is
+            # recorded; it is just not this provider's credential.
+            note("basic", "policy:authentication-basic")
         elif element["name"] == "get-authorization-context":
             note("credentialManager", "policy:get-authorization-context")
+        elif element.get("credentialParameter"):
+            # The upstream key, written as the header or query parameter the
+            # provider reads it from. `credentials.header` above is the same
+            # credential declared on the backend record instead; a backend can
+            # carry it either way and the target field is the same, so this
+            # records the parameter in the shape that branch already uses.
+            parameter = element["credentialParameter"]
+            note("apiKey", f"policy:{element['name']}")
+            parameters = auth.setdefault("parameters", {"header": [], "query": []})
+            side = "query" if element["name"] == "set-query-parameter" else "header"
+            if parameter not in parameters.setdefault(side, []):
+                parameters[side].append(parameter)
+            # The value is on the `<value>` child, which is an element of its
+            # own: the setter names the parameter and the child carries what
+            # goes in it. The secret ref is the one `_collect_named_values`
+            # already registered -- minting a second here would describe the
+            # same APIM secret twice, under two ids.
+            for child in children_of.get(element.get("path") or "", ()):
+                for nv_name in child.get("namedValueRefs") or []:
+                    ref = (secret_by_named_value or {}).get(nv_name)
+                    if ref:
+                        add_secret(ref)
 
     # Per request context, because the last `authentication-managed-identity`
     # to run is the one that applies and a union of alternatives is not an
@@ -2200,15 +2331,15 @@ def _backend_auth(
         client_id, audience = candidates[0]
         add_identity(client_id, audience, "policy:authentication-managed-identity")
         if len(candidates) > 1:
-            # Which one applies depends on the product a call arrives through,
-            # and one provider cannot authenticate two ways. Named rather than
-            # resolved: picking silently would be a guess reported as a fact.
+            # Which one applies depends on the route a call arrives by, and one
+            # provider cannot authenticate two ways. Named rather than resolved:
+            # picking silently would be a guess reported as a fact.
             auth["identityCandidates"] = [
                 {"clientId": cid, "audience": aud} for cid, aud in candidates
             ]
             auth["identityNote"] = (
-                f"{len(candidates)} managed identities apply, depending on which product a call "
-                "arrives through. The first is proposed; the alternatives are recorded here."
+                f"{len(candidates)} managed identities apply, depending on which {alternatives} a "
+                "call arrives through. The first is proposed; the alternatives are recorded here."
             )
 
     for mode in _AUTH_PRECEDENCE:
@@ -2366,9 +2497,67 @@ def _tool_discovery(pattern: str, tools: list[dict[str, Any]], props: dict[str, 
     }
 
 
-def _provider_auth(candidate: dict[str, Any], registry: secrets.SecretRegistry) -> dict[str, Any]:
+def _merge_resolutions(
+    resolutions: Sequence[policy_mod.Resolution],
+) -> policy_mod.Resolution | None:
+    """One resolution covering every API that reaches the same provider.
+
+    `chains` concatenates rather than unions, because a chain is one alternative
+    request context and `_backend_auth` reads the *last* identity in each. Two
+    APIs are two more alternatives in exactly the sense a product already is, so
+    an identity they disagree on surfaces as `identityCandidates` instead of
+    whichever API happened to be collected second.
+
+    Everything else unions: what a policy covers, which scopes were read, and
+    which fragments would not resolve are all set questions.
+    """
+    if not resolutions:
+        return None
+    if len(resolutions) == 1:
+        return resolutions[0]
+    scopes: list[str] = []
+    unresolved: list[str] = []
+    unreadable: list[str] = []
+    breaks: list[dict[str, Any]] = []
+    occurrences: list[policy_mod.Occurrence] = []
+    chains: list[tuple[policy_mod.Occurrence, ...]] = []
+    for resolution in resolutions:
+        occurrences.extend(resolution.occurrences)
+        chains.extend(resolution.chains)
+        for source, sink in (
+            (resolution.scopes_examined, scopes),
+            (resolution.unresolved_fragments, unresolved),
+            (resolution.unreadable_fragments, unreadable),
+            (resolution.inheritance_breaks, breaks),
+        ):
+            for value in source:
+                if value not in sink:
+                    sink.append(value)
+    return policy_mod.Resolution(
+        occurrences=tuple(policy_mod.unique_occurrences(occurrences)),
+        scopes_examined=tuple(scopes),
+        unresolved_fragments=tuple(unresolved),
+        unreadable_fragments=tuple(unreadable),
+        inheritance_breaks=tuple(breaks),
+        chains=tuple(chains),
+    )
+
+
+def _provider_auth(
+    candidate: dict[str, Any],
+    resolutions: Sequence[policy_mod.Resolution],
+    registry: secrets.SecretRegistry,
+    *,
+    secret_by_named_value: dict[str, str] | None = None,
+) -> dict[str, Any]:
     record = {"credentials": candidate.get("credentials"), "secretRefs": candidate.get("secretRefs")}
-    return _backend_auth(record, None, registry)
+    # "API or product", because a provider sits behind every API that routes to
+    # it: the alternatives it has to choose between are one per API per product,
+    # where an API has only the products.
+    return _backend_auth(
+        record, _merge_resolutions(resolutions), registry, alternatives="API or product",
+        secret_by_named_value=secret_by_named_value,
+    )
 
 
 def _mark_referenced(excluded: list[dict[str, Any]], assets: dict[str, list[dict[str, Any]]]) -> None:

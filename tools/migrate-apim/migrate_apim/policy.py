@@ -190,6 +190,7 @@ def parse(
         sections_present.append("fragment")
         _walk(root, section="fragment", path="fragment", depth=0, **walk_args)
 
+    _mark_credential_parameters(document["elements"])
     document["expressions"] = list(expressions.values())
     document["namedValueRefs"] = _dedupe(named_values)
     document["fragmentRefs"] = _dedupe(fragments)
@@ -204,6 +205,53 @@ def parse(
         "families": sorted({element["family"] for element in document["elements"]}),
     }
     return document
+
+
+# Elements that set a named parameter on the upstream request. APIM has no
+# "backend key" object: a key is set by writing the header the upstream expects,
+# which is an ordinary `set-header` until you read what it carries.
+_PARAMETER_SETTERS = frozenset({"set-header", "set-query-parameter"})
+
+
+def _mark_credential_parameters(elements: list[dict[str, Any]]) -> None:
+    """Record which parameter-setting elements carry the upstream credential.
+
+    A `set-header` naming `api-key` is how an APIM policy authenticates to a
+    model backend, and the target has a field for exactly that: a Custom model
+    provider's ``authentication.kind: ApiKey`` takes a header name and a value.
+    Unmarked, the element is indistinguishable from request rewriting -- which
+    has no target -- so the credential reaches nothing and the backend reads as
+    called unauthenticated.
+
+    Two conditions, because either alone misfires. The parameter name must be
+    one `secrets` already treats as a credential by construction, *and* the
+    value must be an indirection to a stored secret -- a named value, or a
+    literal this module redacted. A header named `api-key` whose value is an
+    expression forwarding the caller's own key is not a backend credential, and
+    a named value in a header that is not a credential name (`x-mcp-caller`
+    carrying `{{MCP-KILLSWITCH}}`) is not one either.
+
+    Written on the setter rather than on its `<value>` child because the header
+    name lives on the setter, and the pair is what the target field needs.
+    """
+    children: dict[str, list[dict[str, Any]]] = {}
+    for element in elements:
+        parent, _, tail = (element.get("path") or "").rpartition("/")
+        if parent and tail.startswith("value["):
+            children.setdefault(parent, []).append(element)
+
+    for element in elements:
+        if element["name"] not in _PARAMETER_SETTERS:
+            continue
+        parameter = (element.get("attributes") or {}).get("name")
+        if not secrets.is_credential_parameter(parameter):
+            continue
+        carries = any(
+            child.get("namedValueRefs") or secrets.is_redacted(child.get("text"))
+            for child in children.get(element["path"], ())
+        )
+        if carries:
+            element["credentialParameter"] = parameter
 
 
 def _tag(node: ET.Element) -> str:

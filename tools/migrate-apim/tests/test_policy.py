@@ -735,3 +735,60 @@ class TestEachRequestContextKeepsItsOrder:
             last = [o.element["attributes"].get("resource") for o in chain
                     if o.name == "authentication-managed-identity"][-1]
             assert last == "https://a", "and in every chain it does not"
+
+
+CREDENTIAL_XML = """<policies>
+  <inbound>
+    <base />
+    <set-header name="api-key" exists-action="override"><value>{{aoai-key}}</value></set-header>
+    <set-header name="x-api-key" exists-action="override"><value>sk-abcdefghijklmnopqrstuvwxyz01</value></set-header>
+    <set-query-parameter name="api-key" exists-action="override"><value>{{aoai-key}}</value></set-query-parameter>
+    <set-header name="x-mcp-caller" exists-action="override"><value>gateway</value></set-header>
+    <set-header name="x-trace" exists-action="override"><value>{{MCP-KILLSWITCH}}</value></set-header>
+    <set-header name="Authorization" exists-action="override">
+      <value>@(context.Request.Headers.GetValueOrDefault("Authorization"))</value>
+    </set-header>
+  </inbound>
+  <backend><base /></backend><outbound><base /></outbound><on-error><base /></on-error>
+</policies>"""
+
+
+class TestTheUpstreamCredentialIsRecognised:
+    """APIM has no backend-key object: an upstream key is a `set-header`.
+
+    Unmarked it reads as request rewriting -- which has no target -- so the
+    credential reaches no provider and the backend reports as called
+    unauthenticated. Both conditions are pinned here because either alone
+    misfires, and a false positive publishes a header as a credential.
+    """
+
+    def _marked(self, xml=CREDENTIAL_XML):
+        return {
+            (element["name"], (element["attributes"] or {}).get("name")):
+                element.get("credentialParameter")
+            for element in parse(xml)["elements"]
+            if element["name"] in {"set-header", "set-query-parameter"}
+        }
+
+    def test_a_credential_name_holding_a_named_value_is_the_upstream_key(self):
+        marked = self._marked()
+        assert marked[("set-header", "api-key")] == "api-key"
+        assert marked[("set-query-parameter", "api-key")] == "api-key"
+
+    def test_a_redacted_literal_counts_as_the_value(self):
+        """The inventory keeps no literal secret, so the placeholder is the
+        only evidence left that one was there."""
+        assert self._marked()[("set-header", "x-api-key")] == "x-api-key"
+
+    def test_an_ordinary_header_is_not_a_credential(self):
+        assert self._marked()[("set-header", "x-mcp-caller")] is None
+
+    def test_a_named_value_in_a_non_credential_header_is_not_one_either(self):
+        """`{{MCP-KILLSWITCH}}` is configuration. The name is what says what a
+        header is for, so the value alone must not promote it."""
+        assert self._marked()[("set-header", "x-trace")] is None
+
+    def test_forwarding_the_callers_own_key_is_not_a_backend_credential(self):
+        """An expression reading the inbound request sets no stored secret:
+        there is nothing for a provider to be registered with."""
+        assert self._marked()[("set-header", "Authorization")] is None

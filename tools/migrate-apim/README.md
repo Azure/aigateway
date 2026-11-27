@@ -3,15 +3,10 @@
 Inventory the AI assets of an Azure API Management instance, shaped for migration to
 [Azure AI Gateway](https://ai.gateway.azure.com) (`Microsoft.ApiManagement/aigateways`).
 
-It answers two questions a coding agent has to answer before it can move anything:
-
 1. **What AI workload is actually running in this APIM?** Models, MCP servers, and A2A agents —
    and nothing else.
 2. **What would it take to reproduce it on AI Gateway?** Every asset is captured decomposed into
    the target's building blocks, so the gap is a comparison rather than an interpretation.
-
-Status: `collect`, `resolve-models`, `discover-tools`, `plan`, `apply` and `validate` are
-implemented and verified against live APIM instances.
 
 ---
 
@@ -727,7 +722,7 @@ Each item is one source aspect and what becomes of it:
   "status": "needs-decision",     // ready | needs-decision | adapted | excluded | stale
   "kind": "choose",
   "proposal": "split",
-  "rationale": "7 of 50 operations map to the four publishable routes. No target for: threads x17, …",
+  "rationale": "7 of 50 operations move. No target for: threads x17, … No model behind this API serves: embeddings x1.",
   "options": [
     {"value": "split", "consequence": "Inference moves; 43 operations stay on APIM."},
     {"value": "inference-only", "consequence": "Inference moves and the rest is dropped; those callers break."}
@@ -812,6 +807,15 @@ A real Azure OpenAI import publishes far more. On `a2a-intent-fdry-9a73`, 50 ope
 17 thread operations, 16 vector-store, 5 assistants, 3 audio, 1 images and 1 legacy completions have
 no target at all. So the first question about a model API is not how to map it but **how much of it
 can move** — and `split` keeps the rest on APIM rather than dropping it.
+
+A route in that list is necessary and not sufficient: a model behind the API still has to serve it.
+The two readings are separate, so the plan keeps them separate — each left-behind group carries the
+reason it stays, `noTargetRoute` or `noModelServes`, and `evidence.surface.servedRoutes` names what
+the deployments declared. An APIM embeddings operation over a `gpt-5-mini` deployment is the second
+kind: `/openai/v1/embeddings` is publishable, `gpt-5-mini` serves chat completions and responses, and
+counting the route alone reported the operation as migrating when nothing would serve it. Where
+nothing survives both readings there is no inference to split off, and the proposal is
+`retain-in-apim` rather than a `split` naming a half that does not exist.
 
 ## Applying the plan
 

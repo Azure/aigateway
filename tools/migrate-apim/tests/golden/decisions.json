@@ -21,7 +21,8 @@
       "https://cognitiveservices.azure.com/"
      ],
      "providers": [
-      "modelProvider:aoai-east"
+      "modelProvider:aoai-east",
+      "modelProvider:aoai-west"
      ],
      "sourceIdentity": {
       "principalId": "p-1",
@@ -33,11 +34,11 @@
     "id": "item:identity/assign",
     "kind": null,
     "memberDigests": {
-     "item:identity/assign": "sha256:c96447348b9dc37dd5ea95e12192020710adc1664fa3ae3d0cb1028e754caff2"
+     "item:identity/assign": "sha256:7350b5802c594792851f604590cd8508c3a4a4f1293ff445a4fbcafbee35532e"
     },
     "options": [],
     "proposal": "system-assigned",
-    "rationale": "1 provider(s) authenticate as a managed identity, so the gateway needs one. The source uses a system-assigned identity, whose principal cannot be carried over, so the target gets its own and the backend grants must be made against it.",
+    "rationale": "2 provider(s) authenticate as a managed identity, so the gateway needs one. The source uses a system-assigned identity, whose principal cannot be carried over, so the target gets its own and the backend grants must be made against it.",
     "shapeDigest": "sha256:decc47869967de1ee9e5e878d0ae318e3d0522715c6a27326cbcc099b620a5d0",
     "source": {
      "aspect": "gatewayIdentity",
@@ -117,13 +118,13 @@
     "decidedAgainst": null,
     "decision": null,
     "evidence": {
-     "authMode": "apiKey",
+     "authMode": "managedIdentity",
      "endpoint": "https://aif-west.openai.azure.com/"
     },
     "id": "item:modelProvider/modelProvider-aoai-west",
     "kind": null,
     "memberDigests": {
-     "modelProvider:aoai-west": "sha256:998814ec8b516d853248ddcd5a24224357b41598da5dd28949ee99cecf1d1829"
+     "modelProvider:aoai-west": "sha256:49205b16f16ab4c3130b87f7e5d6bef9c11e29c8a1649e6b40a83531ec12a40a"
     },
     "options": [],
     "proposal": null,
@@ -363,7 +364,7 @@
      }
     ],
     "proposal": "split",
-    "rationale": "2 of 6 operations map to the four publishable routes. No target for: threads x2, assistants x1, vectorStores x1.",
+    "rationale": "2 of 6 operations move. No target for: threads x2, assistants x1, vectorStores x1.",
     "shapeDigest": "sha256:90385b59949f7d9ebc5051d510f8f5d24884a4874c9f01330ea206ac460cb6d7",
     "source": {
      "aspect": "publishedSurface",
@@ -867,19 +868,11 @@
      "surface": {
       "basis": "operationTemplates",
       "operationCount": 2,
-      "publishable": [
-       {
-        "count": 1,
-        "group": "chatCompletions",
-        "publishable": true,
-        "route": "/openai/v1/chat/completions",
-        "samples": [
-         "/chat/completions"
-        ],
-        "subresources": 0
-       }
+      "publishable": [],
+      "publishableCount": 0,
+      "servedRoutes": [
+       "/v1/messages"
       ],
-      "publishableCount": 1,
       "status": "bounded",
       "targetRoutes": [
        "/openai/v1/chat/completions",
@@ -892,30 +885,34 @@
         "count": 1,
         "group": "modelCatalogue",
         "publishable": false,
+        "reason": "noTargetRoute",
         "route": null,
         "samples": [
          "/models"
         ],
         "subresources": 0
+       },
+       {
+        "count": 1,
+        "group": "chatCompletions",
+        "publishable": false,
+        "reason": "noModelServes",
+        "route": "/openai/v1/chat/completions",
+        "samples": [
+         "/chat/completions"
+        ],
+        "subresources": 0
        }
       ],
-      "unpublishableCount": 1
+      "unpublishableCount": 2
      }
     },
     "id": "item:model/finance/model-api/surface",
     "kind": "choose",
     "memberDigests": {
-     "model:finance/model-api": "sha256:f0460375fc9b1169a3692ea83ee5f0fdc05479786a1ee77ba912c9a0e2299464"
+     "model:finance/model-api": "sha256:eb59d5f2009ae3543f0e8eb15a9b9fb3eb8e5c4d9958f4f14cec9106fdfcf9a6"
     },
     "options": [
-     {
-      "consequence": "Inference moves; 1 operations stay on APIM.",
-      "value": "split"
-     },
-     {
-      "consequence": "Inference moves and the rest is dropped; those callers break.",
-      "value": "inference-only"
-     },
      {
       "consequence": "Nothing moves for this API.",
       "value": "retain-in-apim"
@@ -925,9 +922,9 @@
       "value": "block"
      }
     ],
-    "proposal": "split",
-    "rationale": "1 of 2 operations map to the four publishable routes. No target for: modelCatalogue x1.",
-    "shapeDigest": "sha256:90385b59949f7d9ebc5051d510f8f5d24884a4874c9f01330ea206ac460cb6d7",
+    "proposal": "retain-in-apim",
+    "rationale": "0 of 2 operations move. No target for: modelCatalogue x1. No model behind this API serves: chatCompletions x1.",
+    "shapeDigest": "sha256:a9294073fe050fc2814e7096c33f9fbc093bf8267e72127795ad476c9b21afba",
     "source": {
      "aspect": "publishedSurface",
      "assetId": "model:finance/model-api",
@@ -2284,6 +2281,12 @@
       "principalFrom": "az aigateway show ... --query identity.principalId -o tsv, after the identity phase",
       "roleDefinitionId": "53ca6127-db72-4b80-b1b0-d745d6d5456d",
       "scope": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-demo/providers/Microsoft.CognitiveServices/accounts/aif"
+     },
+     {
+      "command": "az role assignment create --role 'Foundry User' --assignee-object-id <gateway-principal-id> --assignee-principal-type ServicePrincipal --scope /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-demo/providers/Microsoft.CognitiveServices/accounts/aif-west",
+      "principalFrom": "az aigateway show ... --query identity.principalId -o tsv, after the identity phase",
+      "roleDefinitionId": "53ca6127-db72-4b80-b1b0-d745d6d5456d",
+      "scope": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-demo/providers/Microsoft.CognitiveServices/accounts/aif-west"
      }
     ],
     "detail": "A provider using ManagedIdentity needs a role assignment on the backend account, and role assignments are outside the gateway resource provider. The target's system-assigned identity is a new principal, so the source's existing grants do not apply to it.",

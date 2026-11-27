@@ -445,6 +445,7 @@
             "none",
             "apiKey",
             "authorizationHeader",
+            "basic",
             "clientCertificate",
             "managedIdentity",
             "credentialManager",
@@ -732,7 +733,11 @@
               "expressionIds": {"type": "array", "items": {"type": "string"}},
               "namedValueRefs": {"type": "array", "items": {"type": "string"}},
               "childNames": {"type": "array", "items": {"type": "string"}},
-              "fragmentId": {"type": "string"}
+              "fragmentId": {"type": "string"},
+              "credentialParameter": {
+                "type": "string",
+                "description": "The header or query parameter name this element sets, when it carries the upstream credential: a credential parameter name whose value is a named value or a redacted literal. A model provider's authentication.kind: ApiKey takes exactly this name and that value, so the element is provider configuration rather than request rewriting."
+              }
             }
           }
         },

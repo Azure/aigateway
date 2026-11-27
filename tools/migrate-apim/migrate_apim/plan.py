@@ -83,9 +83,14 @@ SURFACE_BY_STATUS = selector(
     site="plan._model surface",
     reads=("verdict", "answer", "capabilityId", "proposal", "rationale", "options", "blocking"),
 )
+# `anyPublishable` is the API's, not the operation's: whether anything on this
+# API both maps to a publishable route and has a model behind it that serves
+# that route. It is computed in `_model` from the narrowed surface, so it is
+# declared computed here rather than read off a record.
 SURFACE_PARTIALLY_PUBLISHABLE = selector(
-    "assets", selects="apim.apis[].operations[]", keys=("publishable",),
-    values={"publishable": (False,)},
+    "assets", selects="apim.apis[].operations[]", keys=("publishable", "anyPublishable"),
+    values={"publishable": (False,), "anyPublishable": (True, False)},
+    computed=("anyPublishable",),
     site="plan._model surface partial",
     reads=("verdict", "answer", "capabilityId", "proposal", "options", "blocking"),
 )
@@ -595,32 +600,37 @@ class PlanBuilder:
                 evidence={"surface": surface},
                 blocking=rule.get("blocking", True),
             )
-        elif surface.get("unpublishableCount"):
-            groups = ", ".join(
-                f"{entry['group']} x{entry['count']}" for entry in surface.get("unpublishable", [])
-            )
-            rule = SURFACE_PARTIALLY_PUBLISHABLE.first(
-                self.caps.asset_rules(), publishable=False,
-            ) or {}
-            self._add(
-                item_id=ids.item(asset_id, "surface"),
-                source={"assetId": asset_id, "assetKind": "modelApi", "aspect": "publishedSurface"},
-                kind=rule.get("answer", "choose"),
-                verdict=rule.get("verdict", "partial"),
-                capability_id=rule.get("capabilityId"),
-                proposal=rule.get("proposal"),
-                rationale=(
-                    f"{surface['publishableCount']} of {surface['operationCount']} operations map to the "
-                    f"four publishable routes. No target for: {groups}."
-                ),
-                # What `split` costs is this API's number of left-behind
-                # operations, so that one sentence is built here.
-                options=_options_of(rule, {
-                    "split": f"Inference moves; {surface['unpublishableCount']} operations stay on APIM.",
-                }),
-                evidence={"surface": surface},
-                blocking=rule.get("blocking", True),
-            )
+        else:
+            # What the target publishes, narrowed to what the models behind this
+            # API actually serve. Both readings have to hold for an operation to
+            # move, and the operator is owed the count that survives both.
+            surface = _surface_against_models(surface, _served_routes(models))
+            if surface.get("unpublishableCount"):
+                rule = SURFACE_PARTIALLY_PUBLISHABLE.first(
+                    self.caps.asset_rules(), publishable=False,
+                    anyPublishable=bool(surface.get("publishableCount")),
+                ) or {}
+                self._add(
+                    item_id=ids.item(asset_id, "surface"),
+                    source={"assetId": asset_id, "assetKind": "modelApi",
+                            "aspect": "publishedSurface"},
+                    kind=rule.get("answer", "choose"),
+                    verdict=rule.get("verdict", "partial"),
+                    capability_id=rule.get("capabilityId"),
+                    proposal=rule.get("proposal"),
+                    rationale=(
+                        f"{surface['publishableCount']} of {surface['operationCount']} "
+                        f"operations move. {_left_behind_reasons(surface)}"
+                    ),
+                    # What `split` costs is this API's number of left-behind
+                    # operations, so that one sentence is built here.
+                    options=_options_of(rule, {
+                        "split": (f"Inference moves; {surface['unpublishableCount']} "
+                                  "operations stay on APIM."),
+                    }),
+                    evidence={"surface": surface},
+                    blocking=rule.get("blocking", True),
+                )
 
         # Models: a registration needs a model name.
         if models.get("status") in {"unresolved", "empty", "catalogued"}:
@@ -1211,7 +1221,8 @@ class PlanBuilder:
                 continue
             has_expression = bool(element.get("expressionIds"))
             rule = self.caps.policy_rule(
-                element["name"], family=element.get("family", ""), has_expression=has_expression
+                element["name"], family=element.get("family", ""), has_expression=has_expression,
+                credential_parameter=element.get("credentialParameter"),
             )
             if not rule:
                 # Unreachable while rules.json carries a terminal rule, and
@@ -2521,6 +2532,78 @@ def _options_of(rule: dict[str, Any],
             consequence = option.get("consequence", "") if isinstance(option, dict) else ""
         options.append(_opt(value, consequence))
     return options
+
+
+def _served_routes(models: dict[str, Any]) -> set[str] | None:
+    """The routes the models behind this API declare they can serve.
+
+    `None` when no resolved model carries `inferenceRoutes` at all: not having
+    looked is not the same as having looked and found none, and the second
+    reading is the only one allowed to narrow what moves.
+    """
+    read = [
+        entry.get("inferenceRoutes")
+        for entry in (models.get("resolved") or [])
+        if isinstance(entry, dict) and entry.get("inferenceRoutes") is not None
+    ]
+    if not read:
+        return None
+    return {str(route) for routes in read for route in (routes or [])}
+
+
+def _surface_against_models(surface: dict[str, Any],
+                            served: set[str] | None) -> dict[str, Any]:
+    """Move publishable groups that no model behind the API serves to the other side.
+
+    A route the target publishes is half the question; a deployment behind
+    *this* API still has to serve it. The sample migration is the case: APIM
+    publishes an embeddings operation, `/openai/v1/embeddings` is a publishable
+    route, and the one deployment is `gpt-5-mini`, which declares chat
+    completions and responses. Counted on the route alone the operator was told
+    one operation stayed on APIM when two did, and the embeddings callers would
+    have found out at cutover.
+
+    The inventory keeps APIM's own reading -- this narrows the plan's copy,
+    where the verdict belongs, and marks each entry with the reason it did not
+    move so the two causes stay distinguishable.
+    """
+    publishable = list(surface.get("publishable") or [])
+    if served is None or not publishable:
+        return surface
+    kept = [entry for entry in publishable if entry.get("route") in served]
+    unserved = [
+        dict(entry, publishable=False, reason="noModelServes")
+        for entry in publishable if entry.get("route") not in served
+    ]
+    if not unserved:
+        return surface
+    left_behind = [
+        dict(entry, reason=entry.get("reason", "noTargetRoute"))
+        for entry in (surface.get("unpublishable") or [])
+    ] + unserved
+    return {
+        **surface,
+        "publishable": kept,
+        "unpublishable": left_behind,
+        "publishableCount": sum(entry.get("count", 0) for entry in kept),
+        "unpublishableCount": sum(entry.get("count", 0) for entry in left_behind),
+        "servedRoutes": sorted(served),
+    }
+
+
+def _left_behind_reasons(surface: dict[str, Any]) -> str:
+    """Why each left-behind group stays, grouped by the reason it stays."""
+    sentences = []
+    for reason, lead in (("noTargetRoute", "No target for"),
+                         ("noModelServes", "No model behind this API serves")):
+        groups = [
+            f"{entry['group']} x{entry['count']}"
+            for entry in (surface.get("unpublishable") or [])
+            if entry.get("reason", "noTargetRoute") == reason
+        ]
+        if groups:
+            sentences.append(f"{lead}: {', '.join(groups)}.")
+    return " ".join(sentences)
 
 
 def _loss_options(verdict: str) -> list[dict[str, str]]:

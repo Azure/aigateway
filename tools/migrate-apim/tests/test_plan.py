@@ -158,6 +158,48 @@ class TestScopeIsTheDominantDecision:
         assert surface["unpublishableCount"] >= 1
         assert str(surface["operationCount"]) in item["rationale"]
 
+    def test_a_route_no_model_serves_counts_as_staying_behind(self, plan):
+        """A publishable route still needs a model behind the API that serves it.
+
+        `finance/model-api` publishes chat completions over a deployment that
+        declares `/v1/messages` only. Counting the route alone called that
+        operation migrated, so the operator was told one operation stayed on
+        APIM when both did, and the chat callers would have found out at
+        cutover.
+        """
+        item = item_for(plan, "model:finance/model-api", "publishedSurface")
+        surface = item["evidence"]["surface"]
+        assert surface["unpublishableCount"] == 2
+        left_behind = {entry["group"]: entry["reason"] for entry in surface["unpublishable"]}
+        assert left_behind == {
+            "modelCatalogue": "noTargetRoute",
+            "chatCompletions": "noModelServes",
+        }
+        assert "No model behind this API serves: chatCompletions x1" in item["rationale"]
+
+    def test_an_api_where_nothing_moves_is_not_proposed_as_a_split(self, plan):
+        """`split` names a half that does not exist when no operation moves."""
+        item = item_for(plan, "model:finance/model-api", "publishedSurface")
+        assert item["evidence"]["surface"]["publishableCount"] == 0
+        assert item["proposal"] == "retain-in-apim"
+        assert "split" not in {option["value"] for option in item["options"]}
+        assert item["rationale"].startswith("0 of 2 operations move.")
+
+    def test_routes_are_only_narrowed_by_a_reading_that_happened(self, inventory, capabilities):
+        """No resolved model naming its routes is an unknown, not an absence."""
+        changed = copy.deepcopy(inventory)
+        model = next(m for m in changed["assets"]["models"]
+                     if m["id"] == "model:finance/model-api")
+        for resolved in model["models"]["resolved"]:
+            resolved.pop("inferenceRoutes", None)
+
+        again = build_plan(changed, capabilities)
+        item = item_for(again, "model:finance/model-api", "publishedSurface")
+        surface = item["evidence"]["surface"]
+        assert surface["publishableCount"] == 1
+        assert "servedRoutes" not in surface
+        assert item["proposal"] == "split"
+
     def test_a_wildcard_api_cannot_be_split_only_scoped(self, plan):
         item = item_for(plan, "model:meta-ai", "publishedSurface")
         assert item["kind"] == "choose"

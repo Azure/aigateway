@@ -137,7 +137,8 @@
             "toolDiscovery": {"$ref": "#/$defs/predicate"},
             "toolsFromGateway": {"$ref": "#/$defs/predicate"},
             "catalogueFetched": {"$ref": "#/$defs/predicate"},
-            "inferenceRoutes": {"$ref": "#/$defs/predicate"}
+            "inferenceRoutes": {"$ref": "#/$defs/predicate"},
+            "anyPublishable": {"$ref": "#/$defs/predicate"}
           }
         },
         "blocking": {"type": "boolean"},
@@ -230,6 +231,10 @@
             "expressionIds": {
               "$ref": "#/$defs/predicate",
               "description": "`{\"present\": true}` is the element evaluating a policy expression anywhere in it. It was `derived.hasExpression`, a computed key that named no field; `expressionIds` is the field the collector writes."
+            },
+            "credentialParameter": {
+              "$ref": "#/$defs/predicate",
+              "description": "`{\"present\": true}` is a `set-header` or `set-query-parameter` whose value is the upstream credential, which the target takes as a model provider's ApiKey authentication rather than as request rewriting. The field the collector writes when the parameter name is a credential name and its value is a named value or a redacted literal; the only `where` key that pairs with `name` to separate two rules over one element."
             }
           }
         },

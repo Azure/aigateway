@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
+from . import dispatch
 from .azcli import az_argv
 from .dispatch import selector
 
@@ -36,7 +37,8 @@ _POLICY_FIELDS = (
     "options", "partial", "partialWhen", "batchOn",
 )
 POLICY_BY_ELEMENT = selector(
-    "policies", selects="apim.policies[].elements[]", keys=("name",),
+    "policies", selects="apim.policies[].elements[]",
+    keys=("name", "credentialParameter"),
     site="capability.policy_rule element", reads=_POLICY_FIELDS,
 )
 POLICY_BY_FAMILY = selector(
@@ -62,18 +64,34 @@ POLICY_TERMINAL = selector(
 
 def resolve_policy_rule(
     rules: list[dict[str, Any]], element_name: str, *, family: str = "",
-    has_expression: bool = False,
+    has_expression: bool = False, credential_parameter: str | None = None,
 ) -> dict[str, Any] | None:
     """The rule governing one policy element, by the four passes in order.
 
     A module-level function because `compile` has to ask the same question of a
     raw rules document, and asking it a second way is how the two answers drift.
     """
+    # What the element pass can be told about the element beyond its name. A
+    # by-name rule may pin one of these to separate two rules over the same
+    # element -- a `set-header` carrying the upstream credential from one
+    # rewriting a header -- and file order decides between them as it always has.
+    criteria = {"credentialParameter": credential_parameter}
     for rule in rules:
         if not POLICY_BY_ELEMENT.governs(rule):
             continue
-        names = (rule.get("where") or {}).get("name")
-        if names and element_name in names:
+        where = rule.get("where") or {}
+        names = where.get("name")
+        if not names or element_name not in names:
+            continue
+        # Only the keys this rule pins are tested, so a rule naming nothing but
+        # the element is matched exactly as before. A pinned key the caller did
+        # not ask about is answered with `None`, which no predicate form holds
+        # for: omission is not a wildcard, here as in `dispatch.matches`.
+        if all(
+            dispatch.holds(predicate, criteria.get(key))
+            for key, predicate in where.items()
+            if key != "name"
+        ):
             return rule
     for rule in rules:
         if not POLICY_BY_FAMILY.governs(rule):
@@ -262,8 +280,8 @@ class CapabilityMap:
     def structural_rules(self) -> list[dict[str, Any]]:
         return list(self.rules.get("structural") or [])
 
-    def policy_rule(self, element_name: str, *, family: str = "", has_expression: bool = False
-                    ) -> dict[str, Any] | None:
+    def policy_rule(self, element_name: str, *, family: str = "", has_expression: bool = False,
+                    credential_parameter: str | None = None) -> dict[str, Any] | None:
         """The rule governing one policy element.
 
         Element-specific rules win. An expression does not by itself demote a
@@ -273,10 +291,16 @@ class CapabilityMap:
         ``partialWhen``. The expression rule is the fallback for elements with no
         mapping of their own, where arbitrary C# genuinely has no target, and the
         terminal rule catches whatever reaches neither.
+
+        ``credential_parameter`` is the element's own field of that name, which
+        only a parameter setter carrying the upstream credential has. Left
+        unsupplied it reads as absent, so a caller that does not know about it
+        gets the same rule it always did.
         """
         return resolve_policy_rule(
             self.rules.get("policies") or [], element_name,
             family=family, has_expression=has_expression,
+            credential_parameter=credential_parameter,
         )
 
     def terminal_policy_rule(self) -> dict[str, Any] | None:

@@ -52,6 +52,17 @@ _NOT_A_SECRET = re.compile(r"^(?:\d+|true|false|null|none|bearer|basic|negotiate
 _MIN_SECRET_LENGTH = 8
 
 
+def is_credential_parameter(name: str | None) -> bool:
+    """Whether a header or query parameter name declares a credential.
+
+    The same vocabulary `classify_literal` uses, asked of a name on its own.
+    `policy` needs the question answered for a `set-header` whose value is an
+    indirection, where there is no literal to classify: the name is then the
+    only thing saying what the header is for.
+    """
+    return (name or "").strip().lower() in _SECRET_PARAM_NAMES
+
+
 def is_named_value_reference(value: str) -> bool:
     return bool(_NAMED_VALUE_REF.match(value or ""))
 
@@ -90,6 +101,19 @@ def redact(value: str) -> str:
     """A non-reversible placeholder that preserves shape but no content."""
     length = len(value or "")
     return f"<redacted:{length}>"
+
+
+_REDACTED = re.compile(r"^<redacted:\d+>$")
+
+
+def is_redacted(value: Any) -> bool:
+    """Whether a captured value is a placeholder this module wrote.
+
+    The inventory keeps no literal credential, so "a secret was here" survives
+    only as the placeholder. Reading it back is how a later pass can tell a
+    value that was withheld from one that was never a secret.
+    """
+    return isinstance(value, str) and bool(_REDACTED.match(value))
 
 
 # ---------------------------------------------------------------------------

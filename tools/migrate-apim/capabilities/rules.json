@@ -103,7 +103,7 @@
     },
     {
       "selects": "apim.apis[].operations[]",
-      "where": {"publishable": false},
+      "where": {"publishable": false, "anyPublishable": true},
       "verdict": "partial",
       "answer": "choose",
       "capabilityId": "alias.create",
@@ -118,7 +118,21 @@
         {"value": "block", "consequence": "Stop the migration until resolved."}
       ],
       "blocking": true,
-      "note": "`split` is bare because what it costs is the number of operations that stay behind, which only this API's surface knows; the planner composes that sentence. The item's rationale is composed there too, for the same reason."
+      "note": "`split` is bare because what it costs is the number of operations that stay behind, which only this API's surface knows; the planner composes that sentence. The item's rationale is composed there too, for the same reason. `anyPublishable` is pinned because splitting presumes there is something to split off: an API where nothing moves is the rule below."
+    },
+    {
+      "selects": "apim.apis[].operations[]",
+      "where": {"publishable": false, "anyPublishable": false},
+      "verdict": "partial",
+      "answer": "choose",
+      "capabilityId": "alias.create",
+      "proposal": "retain-in-apim",
+      "options": [
+        {"value": "retain-in-apim", "consequence": "Nothing moves for this API."},
+        {"value": "block", "consequence": "Stop the migration until resolved."}
+      ],
+      "blocking": true,
+      "note": "Nothing on this API both maps to a publishable route and has a model behind it that serves the route, so there is no inference to move and `split` would name a half that does not exist. An API reaches this through an operation with no target route, or through a model that does not serve the route its operations use -- an OpenAI-shaped API in front of an Anthropic deployment, for instance."
     },
     {
       "selects": "apim.apis[]",
@@ -305,6 +319,15 @@
       "capabilityId": "provider.create",
       "target": "provider.authentication.ManagedIdentity",
       "rationale": "Becomes provider authentication configuration. Carried by the model provider item rather than raised again here."
+    },
+    {
+      "selects": "apim.policies[].elements[]",
+      "where": {"name": ["set-header", "set-query-parameter"], "credentialParameter": {"present": true}},
+      "verdict": "handled",
+      "capabilityId": "provider.create",
+      "target": "provider.authentication.ApiKey",
+      "rationale": "APIM has no backend-key object: an upstream key is set by writing the header or query parameter the provider expects. A model provider's ApiKey authentication takes that same name and value, so this becomes provider authentication configuration, carried by the model provider item rather than raised again here.",
+      "note": "The one rule in this file that pins a second `where` key, which is what separates it from the `transform` family rule that still answers for every other `set-header`. `credentialParameter` is the field the collector writes when the parameter name is a credential name and its value is a named value or a redacted literal; an element without it never reaches this rule. Ordered before nothing in particular -- the family pass runs after the element pass either way -- but it must stay above any future unconditional `set-header` rule, which would shadow it."
     },
     {
       "selects": "apim.policies[].elements[]",
@@ -512,7 +535,6 @@
   "structural": [
     {
       "selects": "apim.workspaces[]",
-      "note": "Selection is by kind alone. The default workspace is skipped by the planner before this rule is consulted, so a name condition here would be read by nobody.",
       "verdict": "partial",
       "answer": "choose",
       "options": ["flatten", "retain-in-apim", "block"],
